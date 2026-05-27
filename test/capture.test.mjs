@@ -7,12 +7,24 @@ import { join } from 'node:path';
 import { captureEntry } from '../bin/commands/capture.mjs';
 import { sha256 } from '../bin/lib/ids.mjs';
 import { readEntry } from '../bin/lib/fsutil.mjs';
+import { lintVault } from '../bin/lib/lintrules.mjs';
 
 function freshVault() {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');
   cpSync(fileURLToPath(new URL('./fixtures/vault', import.meta.url)), dir, { recursive: true });
   return dir;
 }
+
+test('capture produces lint-clean entries for ALL six types', () => {
+  const dir = freshVault();
+  captureEntry(dir, { type: 'note', title: 'N', sources: '2026-01-01-a', confidence: 'high', now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'synthesis', title: 'S', contributingIds: '2026-01-01-a', now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'snippet', title: 'Sn', language: 'python', tested: true, now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'experiment', title: 'E', provider: 'anthropic', modelId: 'claude-opus-4-7', task: 't', outcome: 'success', now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'question', title: 'Does X hold?', now: '2026-05-27', repoRoot: process.cwd() });
+  const { violations } = lintVault(dir, process.cwd());
+  assert.equal(violations.length, 0, 'expected 0 violations, got: ' + JSON.stringify(violations));
+});
 
 test('creates a conformant source entry and is lint-clean', () => {
   const dir = freshVault();

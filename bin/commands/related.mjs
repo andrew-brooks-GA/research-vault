@@ -5,7 +5,7 @@ export function relatedTo(vaultPath, id) {
   const m = buildManifest(vaultPath);
   const e = m.entries.find(x => x.id === id);
   if (!e) throw new Error(`not found: ${id}`);
-  return { id, forward: [...e.related, ...e.contributing_ids, ...e.sources], backlinks: m.backlinks[id] || [] };
+  return { id, forward: [...new Set([...e.related, ...e.contributing_ids, ...e.sources])], backlinks: m.backlinks[id] || [] };
 }
 
 export async function run(args) {

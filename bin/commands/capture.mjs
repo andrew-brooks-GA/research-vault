@@ -1,6 +1,6 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { loadSchema, fieldOrder } from '../lib/schema.mjs';
 import { makeId, normalizeUrl, sha256 } from '../lib/ids.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
@@ -48,8 +48,27 @@ export function captureEntry(vaultPath, opts) {
     if (newHash) data.content_hash = newHash;
     if (opts.subjectName) data.subject = { name: opts.subjectName, version: opts.subjectVersion || '' };
     if (opts.series) data.series = opts.series;
+  } else if (opts.type === 'note') {
+    data.sources = opts.sources ? opts.sources.split(',') : [];
+    data.confidence = opts.confidence || 'medium';
+  } else if (opts.type === 'synthesis') {
+    data.contributing_ids = opts.contributingIds ? opts.contributingIds.split(',') : [];
+    if (opts.question) data.question = opts.question;
+  } else if (opts.type === 'snippet') {
+    data.language = opts.language || 'text';
+    data.tested = opts.tested === true || opts.tested === 'true';
+  } else if (opts.type === 'experiment') {
+    data.provider = opts.provider || 'unknown';
+    data.model_id = opts.modelId || 'unknown';
+    data.date_run = opts.dateRun || now;
+    data.task = opts.task || opts.title;
+    data.outcome = opts.outcome || 'inconclusive';
+  } else if (opts.type === 'question') {
+    data.question = opts.question || opts.title;
+    data.state = opts.state || 'open';
   }
   const order = fieldOrder(schema, opts.type);
+  mkdirSync(join(vaultPath, folder), { recursive: true });
   const path = join(vaultPath, folder, `${id}.md`);
   writeEntry(path, data, `# ${opts.title}\n`, order);
   writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');
@@ -63,6 +82,10 @@ export async function run(args) {
     subjectName: args['subject-name'], subjectVersion: args['subject-version'], series: args.series,
     domain: args.domain, topics: args.topics, related: args.related, volatility: args.volatility,
     content: args.content, contentHash: args['content-hash'],
+    sources: args.sources, confidence: args.confidence,
+    contributingIds: args['contributing-ids'], question: args.question,
+    language: args.language, tested: args.tested,
+    provider: args.provider, modelId: args['model-id'], dateRun: args['date-run'], task: args.task, outcome: args.outcome, state: args.state,
   });
   if (r.dedup) {
     const how = r.dedup.ambiguous ? 'ambiguous' : 'duplicate';

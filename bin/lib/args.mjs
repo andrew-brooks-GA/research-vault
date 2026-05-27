@@ -1,4 +1,4 @@
-const BOOL = new Set(['json', 'check', 'fix', 'force', 'stale', 'rebuild', 'succession']);
+const BOOL = new Set(['json', 'check', 'fix', 'force', 'stale', 'rebuild', 'succession', 'tested']);
 export function parseArgs(argv) {
   const out = { _: [] };
   for (let i = 0; i < argv.length; i++) {

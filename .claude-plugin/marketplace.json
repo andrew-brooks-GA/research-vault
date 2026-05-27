@@ -1,5 +1,6 @@
 {
   "name": "research-vault",
+  "description": "Research-vault: a portable cache of research artifacts with freshness governance, for Claude Code and any agent.",
   "owner": {
     "name": "Andrew Brooks"
   },
