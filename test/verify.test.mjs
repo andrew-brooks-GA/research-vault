@@ -32,3 +32,12 @@ test('listStale flags entries past their volatility window', () => {
   const stale = listStale(dir, { now: '2030-01-01', repoRoot: process.cwd() });
   assert.ok(stale.some(s => s.id === '2026-01-01-a'));
 });
+
+test('version succession keeps the entry active and does NOT supersede', () => {
+  const dir = freshVault();
+  const r = applyVerification(dir, { id: '2026-01-01-a', method: 'cross-referenced', result: 'confirmed', succession: true, byId: 'claude-opus-4-7', now: '2026-05-27', repoRoot: process.cwd() });
+  const e = readEntry(join(dir, 'sources', '2026-01-01-a.md'));
+  assert.equal(e.data.status, 'active');          // NOT superseded
+  assert.equal(e.data.verifications.length, 2);   // verification recorded
+  assert.equal(r.action, 'version-succeeded');
+});
