@@ -2,7 +2,5 @@
   "name": "research-vault",
   "version": "0.1.0",
   "description": "Portable research-vault scaffold and tooling for Claude Code and any agent.",
-  "commands": "./commands",
-  "skills": "./skills",
-  "hooks": "./hooks/hooks.json"
+  "author": { "name": "Andrew Brooks" }
 }
