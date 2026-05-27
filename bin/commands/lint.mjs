@@ -1,7 +1,7 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeFileSync, existsSync, readFileSync } from 'node:fs';
-import { lintVault } from '../lib/lintrules.mjs';
+import { lintVault, fixVault } from '../lib/lintrules.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 
@@ -22,6 +22,10 @@ export function lintAndReport(vaultPath, { check = false } = {}) {
 
 export async function run(args) {
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
+  if (args.fix) {
+    const { fixed } = fixVault(vaultPath, REPO_ROOT);
+    process.stdout.write(`lint --fix: normalized ${fixed} file(s)\n`);
+  }
   const violations = lintAndReport(vaultPath, { check: !!args.check });
   if (args.json) process.stdout.write(JSON.stringify(violations, null, 2) + '\n');
   else if (violations.length === 0) process.stdout.write('lint: clean\n');

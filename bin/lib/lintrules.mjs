@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { walkEntries, readEntry } from './fsutil.mjs';
-import { loadSchema, stageAllowedInFolder } from './schema.mjs';
+import { loadSchema, stageAllowedInFolder, fieldOrder } from './schema.mjs';
+import { serializeFrontmatter } from './frontmatter.mjs';
 
 const FOLDER_TYPE = { sources:'source', notes:'note', synthesis:'synthesis', snippets:'snippet', experiments:'experiment', questions:'question' };
 const EDGE_FIELDS = ['related','contributing_ids','sources','source_id','prompt_id','superseded_by'];
@@ -42,4 +43,22 @@ export function lintVault(vaultPath, repoRoot) {
     if (data.subject && !(data.subject.name)) add(abs, 'SUBJECT_SHAPE', 'subject requires name');
   }
   return { violations, ids: [...ids] };
+}
+
+export function fixVault(vaultPath, repoRoot) {
+  const schema = loadSchema(repoRoot);
+  let fixed = 0;
+  for (const abs of walkEntries(vaultPath)) {
+    const raw = readFileSync(abs, 'utf8');
+    const normalized = raw.replace(/^﻿/, '').replace(/\r/g, '');
+    let out = normalized;
+    let entry;
+    try { entry = readEntry(abs); } catch { }
+    if (entry) {
+      const order = fieldOrder(schema, entry.data.type);
+      out = serializeFrontmatter(entry.data, entry.body, order);
+    }
+    if (out !== raw) { writeFileSync(abs, out, 'utf8'); fixed++; }
+  }
+  return { fixed };
 }
