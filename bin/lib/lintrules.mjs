@@ -12,12 +12,14 @@ export function lintVault(vaultPath, repoRoot) {
   const ids = new Set(files.map(f => f.split(/[\\/]/).pop().replace(/\.md$/, '')));
   const violations = [];
   const add = (file, code, msg) => violations.push({ file, code, msg });
+  const warnings = [];
+  const warn = (file, code, msg) => warnings.push({ file, code, msg });
 
   for (const abs of files) {
     const raw = readFileSync(abs, 'utf8');
     if (raw.charCodeAt(0) === 0xFEFF) add(abs, 'ENCODING_BOM', 'file has a UTF-8 BOM');
     if (/\r/.test(raw)) add(abs, 'ENCODING_CRLF', 'file has CRLF line endings');
-    if (/Ã¢â‚¬/.test(raw)) add(abs, 'ENCODING_MOJIBAKE', 'double-encoded UTF-8 detected');
+    if (/\u00C3\u00A2\u00E2\u201A\u00AC/.test(raw)) add(abs, 'ENCODING_MOJIBAKE', 'double-encoded UTF-8 detected');
 
     let entry;
     try { entry = readEntry(abs); } catch (e) { add(abs, 'PARSE', e.message); continue; }
@@ -41,8 +43,12 @@ export function lintVault(vaultPath, repoRoot) {
     for (const f of required) if (!(f in data)) add(abs, 'MISSING_REQUIRED', `missing required field: ${f}`);
     if (data.status === 'superseded' && !data.superseded_by) add(abs, 'SUPERSEDE', 'superseded without superseded_by');
     if (data.subject && !(data.subject.name)) add(abs, 'SUBJECT_SHAPE', 'subject requires name');
+
+    if (data.type === 'source' && data.volatility === 'fast' && data.source_type === 'docs' && !(data.subject && data.subject.version))
+      warn(abs, 'WARN_MISSING_VERSION', 'fast docs source without subject.version');
+    for (const t of (data.topics || [])) if (schema.taxonomy.topic_aliases[t]) warn(abs, 'WARN_TOPIC_ALIAS', `topic '${t}' should be normalized to '${schema.taxonomy.topic_aliases[t]}'`);
   }
-  return { violations, ids: [...ids] };
+  return { violations, warnings, ids: [...ids] };
 }
 
 export function fixVault(vaultPath, repoRoot) {
@@ -50,7 +56,7 @@ export function fixVault(vaultPath, repoRoot) {
   let fixed = 0;
   for (const abs of walkEntries(vaultPath)) {
     const raw = readFileSync(abs, 'utf8');
-    const normalized = raw.replace(/^﻿/, '').replace(/\r/g, '');
+    const normalized = raw.replace(/^\uFEFF/, '').replace(/\r/g, '');
     let out = normalized;
     let entry;
     try { entry = readEntry(abs); } catch { }
