@@ -1,0 +1,21 @@
+{
+  "common": ["title","type","created","updated","domain","stage","topics","status","related","volatility","verifications","superseded_by"],
+  "derived_forbidden": ["id","last_verified","folder"],
+  "by_type": {
+    "source": ["source_type","source_url","source_author","source_date","captured_via","attachments","content_hash","subject","series"],
+    "note": ["sources","confidence","subject","series"],
+    "synthesis": ["contributing_ids","question"],
+    "snippet": ["language","usage_context","tested","source_id"],
+    "experiment": ["provider","model_id","date_run","task","outcome","tokens_in","tokens_out","prompt_id"],
+    "question": ["question","state","answer_summary","contributing"]
+  },
+  "required_by_type": {
+    "source": ["source_type","source_url"],
+    "note": ["sources","confidence"],
+    "synthesis": ["contributing_ids"],
+    "snippet": ["language","tested"],
+    "experiment": ["provider","model_id","date_run","task","outcome"],
+    "question": ["question","state"]
+  },
+  "verification_subfields": ["date","by_type","by_id","method","result","notes"]
+}

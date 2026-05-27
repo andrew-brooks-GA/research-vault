@@ -1,0 +1,28 @@
+{
+  "domain": ["software-engineering", "learning", "llm-assisted-dev", "meta"],
+  "artifact_type": ["source","note","synthesis","snippet","experiment","question"],
+  "stage": ["raw","distilled","synthesized","stable"],
+  "status": ["active","archived","superseded"],
+  "volatility": {
+    "stable": { "refresh_after_days": 1095, "description": "Fundamentals; algorithms, design patterns, classics." },
+    "slow": { "refresh_after_days": 365, "description": "Established practices, mature frameworks." },
+    "fast": { "refresh_after_days": 90, "description": "Specific tool APIs, framework versions, LLM capabilities." },
+    "volatile": { "refresh_after_days": 0, "description": "Pricing, rate limits, current best model, availability." }
+  },
+  "confidence": ["high","medium","low"],
+  "outcome": ["success","partial","failure","inconclusive"],
+  "verification_method": ["refetched-source","cross-referenced","existence-check","human-spot-check","inferred-stable"],
+  "verification_result": ["confirmed","changed-trivially","outdated","unreachable","inconclusive"],
+  "by_type": ["human","agent"],
+  "question_state": ["open","investigating","answered"],
+  "durable_source_types": ["book","paper","talk"],
+  "stage_by_folder": {
+    "sources": { "allowed": ["raw"], "default": "raw" },
+    "notes": { "allowed": ["distilled"], "default": "distilled" },
+    "synthesis": { "allowed": ["synthesized","stable"], "default": "synthesized" },
+    "snippets": { "allowed": ["distilled","stable"], "default": "distilled" },
+    "experiments": { "allowed": ["distilled"], "default": "distilled" },
+    "questions": { "allowed": ["raw","distilled","stable"], "default": "raw" }
+  },
+  "topic_aliases": { "tdd": "test-driven-development", "ci": "continuous-integration" }
+}
