@@ -1,0 +1,13 @@
+{
+  "name": "research-vault",
+  "owner": {
+    "name": "Andrew Brooks"
+  },
+  "plugins": [
+    {
+      "name": "research-vault",
+      "source": "./",
+      "description": "Portable research-vault scaffold and tooling for Claude Code and any agent."
+    }
+  ]
+}
