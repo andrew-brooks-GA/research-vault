@@ -1,5 +1,5 @@
 {
-  "domain": ["software-engineering", "learning", "llm-assisted-dev", "meta"],
+  "domain": ["software-engineering", "systems-infrastructure", "data-ml", "security", "learning", "llm-assisted-dev", "meta"],
   "artifact_type": ["source","note","synthesis","snippet","experiment","question"],
   "stage": ["raw","distilled","synthesized","stable"],
   "status": ["active","archived","superseded"],

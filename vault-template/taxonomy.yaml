@@ -1,7 +1,13 @@
 # Generated view of the plugin's schema/taxonomy.json — do not hand-edit; the JSON is the source of truth.
 
 domain:
+  # Broad research areas (controlled). Specific tech — e.g. kubernetes, vcluster,
+  # istio, helm — goes in freeform `topics:`, NOT here. Add a bucket if you enter a
+  # genuinely new broad area.
   - software-engineering
+  - systems-infrastructure
+  - data-ml
+  - security
   - learning
   - llm-assisted-dev
   - meta

@@ -26,6 +26,19 @@ test('capture produces lint-clean entries for ALL six types', () => {
   assert.equal(violations.length, 0, 'expected 0 violations, got: ' + JSON.stringify(violations));
 });
 
+test('Kubernetes-ecosystem entry: broad domain + tech in topics is lint-clean', () => {
+  const dir = freshVault();
+  const r = captureEntry(dir, {
+    type: 'source', title: 'vcluster config docs', url: 'https://docs.vcluster.com/config',
+    domain: 'systems-infrastructure', topics: 'kubernetes,vcluster,multi-tenancy',
+    subjectName: 'vcluster', subjectVersion: '0.19', series: 'vcluster-config',
+    now: '2026-05-27', repoRoot: process.cwd(),
+  });
+  assert.equal(r.dedup, null);
+  const { violations } = lintVault(dir, process.cwd());
+  assert.equal(violations.length, 0, 'expected 0 violations, got: ' + JSON.stringify(violations));
+});
+
 test('creates a conformant source entry and is lint-clean', () => {
   const dir = freshVault();
   const r = captureEntry(dir, { type: 'source', title: 'New Article', url: 'https://new.example.com/post', now: '2026-05-27', repoRoot: process.cwd() });
