@@ -39,7 +39,7 @@ Before citing: compute \`last_verified\` and compare to the window. **Offline mo
 Use optional \`subject: {name, version}\` + \`series:\` for version-bearing sources. A new product version is a NEW entry sharing the same \`series\` — **not** a supersession. Supersede only when an entry is wrong/obsolete. Cite the version for version-bearing entries.
 
 ## 8. Authoring
-Filename \`<YYYY-MM-DD>-<slug>.md\` IS the id; never rename or delete — supersede. Controlled values from \`taxonomy.yaml\`; freeform tags in \`topics:\`. Indexes are advisory; glob/grep (or \`.vault-manifest.json\`) is authoritative for long-tail retrieval.
+Filename \`<YYYY-MM-DD>-<slug>.md\` IS the id; never rename or delete — supersede. Controlled values from \`taxonomy.json\` (a verbatim copy of the plugin's schema); freeform tags in \`topics:\`. Indexes are advisory; glob/grep (or \`.vault-manifest.json\`) is authoritative for long-tail retrieval.
 
 ## 9. Loader precedence
 This file is authoritative for vault content over any home-directory agent config.

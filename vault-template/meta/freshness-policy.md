@@ -15,7 +15,7 @@ Cached information ages at very different rates. An algorithm from a 2018 textbo
 | `fast` | Tool APIs, framework versions, LLM capabilities, benchmarks | 90 days |
 | `volatile` | Pricing, rate limits, "current best model", availability | Always re-check |
 
-Tier definitions live in the plugin's `schema/taxonomy.json` (mirrored in `taxonomy.yaml`).
+Tier definitions live in `schema/taxonomy.json` (the single source of truth; `init` copies it verbatim into the vault as `taxonomy.json`).
 
 ## 3. Per-tier behavior
 

@@ -13,6 +13,11 @@ test('init scaffolds vault, generates AGENTS.md, is idempotent', () => {
   assert.ok(existsSync(join(dir, 'AGENTS.md')));
   assert.ok(existsSync(join(dir, 'sources', 'INDEX.md')));
   assert.match(readFileSync(join(dir, 'AGENTS.md'), 'utf8'), /Research Vault/);
+  // taxonomy is copied verbatim from the single source of truth (no hand-maintained duplicate)
+  assert.equal(
+    readFileSync(join(dir, 'taxonomy.json'), 'utf8'),
+    readFileSync(join(repoRoot, 'schema', 'taxonomy.json'), 'utf8'),
+    'vault taxonomy.json must be a verbatim copy of schema/taxonomy.json');
   writeFileSync(join(dir, 'sources', '2026-01-01-x.md'), 'content');
   const r2 = runInit({ vaultPath: dir, repoRoot });
   assert.equal(r2.created, false);

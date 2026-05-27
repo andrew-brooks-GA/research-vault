@@ -24,6 +24,8 @@ export function runInit({ vaultPath, repoRoot = REPO_ROOT, force = false }) {
   cpSync(join(repoRoot, 'vault-template'), vaultPath, { recursive: true });
   const schema = loadSchema(repoRoot);
   writeFileSync(join(vaultPath, 'AGENTS.md'), generateAgentsMd(schema), 'utf8');
+  // Copy the canonical taxonomy verbatim — single source of truth, no hand-maintained duplicate.
+  cpSync(join(repoRoot, 'schema', 'taxonomy.json'), join(vaultPath, 'taxonomy.json'));
   writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');
   return { created: true, vaultPath };
 }
