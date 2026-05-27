@@ -5,6 +5,8 @@ import { mkdtempSync, cpSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { captureEntry } from '../bin/commands/capture.mjs';
+import { sha256 } from '../bin/lib/ids.mjs';
+import { readEntry } from '../bin/lib/fsutil.mjs';
 
 function freshVault() {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');
@@ -33,4 +35,30 @@ test('dedup bypassed for distinct subject.version (version succession)', () => {
   captureEntry(dir, { type: 'source', title: 'vc 19', url: 'https://docs.vcluster.com/config', subjectName: 'vcluster', subjectVersion: '0.19', series: 'vcluster-config', now: '2026-05-27', repoRoot: process.cwd() });
   const r2 = captureEntry(dir, { type: 'source', title: 'vc 20', url: 'https://docs.vcluster.com/config', subjectName: 'vcluster', subjectVersion: '0.20', series: 'vcluster-config', now: '2026-05-27', repoRoot: process.cwd() });
   assert.equal(r2.dedup, null);
+});
+
+test('stores content_hash and normalizes topics through aliases', () => {
+  const dir = freshVault();
+  const r = captureEntry(dir, { type: 'source', title: 'Hashed', url: 'https://h.example.com/x', content: 'hello world', topics: 'tdd,go', now: '2026-05-27', repoRoot: process.cwd() });
+  const e = readEntry(r.path);
+  assert.equal(e.data.content_hash, sha256('hello world'));
+  assert.ok(e.data.topics.includes('test-driven-development')); // 'tdd' alias-normalized
+  assert.ok(e.data.topics.includes('go'));
+});
+
+test('tripwire: same url+version but different content surfaces ambiguity', () => {
+  const dir = freshVault();
+  captureEntry(dir, { type: 'source', title: 'V1', url: 'https://t.example.com/p', content: 'AAA', now: '2026-05-27', repoRoot: process.cwd() });
+  const r2 = captureEntry(dir, { type: 'source', title: 'V2', url: 'https://t.example.com/p', content: 'BBB', now: '2026-05-27', repoRoot: process.cwd() });
+  assert.ok(r2.dedup);
+  assert.equal(r2.dedup.ambiguous, true);
+  assert.match(r2.dedup.reason, /content/);
+});
+
+test('exact duplicate: same url+version+content is a plain (non-ambiguous) dup', () => {
+  const dir = freshVault();
+  captureEntry(dir, { type: 'source', title: 'V1', url: 'https://e2.example.com/p', content: 'SAME', now: '2026-05-27', repoRoot: process.cwd() });
+  const r2 = captureEntry(dir, { type: 'source', title: 'V1b', url: 'https://e2.example.com/p', content: 'SAME', now: '2026-05-27', repoRoot: process.cwd() });
+  assert.ok(r2.dedup);
+  assert.ok(!r2.dedup.ambiguous);
 });
