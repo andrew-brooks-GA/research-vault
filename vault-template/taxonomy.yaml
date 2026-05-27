@@ -1,0 +1,31 @@
+# Generated view of the plugin's schema/taxonomy.json — do not hand-edit; the JSON is the source of truth.
+
+domain:
+  - software-engineering
+  - learning
+  - llm-assisted-dev
+  - meta
+
+artifact_type:
+  - source
+  - note
+  - synthesis
+  - snippet
+  - experiment
+  - question
+
+stage: [raw, distilled, synthesized, stable]
+status: [active, archived, superseded]
+
+volatility:
+  stable: { refresh_after_days: 1095 }
+  slow: { refresh_after_days: 365 }
+  fast: { refresh_after_days: 90 }
+  volatile: { refresh_after_days: 0 }
+
+confidence: [high, medium, low]
+outcome: [success, partial, failure, inconclusive]
+verification_method: [refetched-source, cross-referenced, existence-check, human-spot-check, inferred-stable]
+verification_result: [confirmed, changed-trivially, outdated, unreachable, inconclusive]
+by_type: [human, agent]
+question_state: [open, investigating, answered]
