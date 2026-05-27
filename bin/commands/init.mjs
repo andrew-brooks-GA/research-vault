@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { loadSchema } from '../lib/schema.mjs';
 import { generateAgentsMd } from '../lib/agentsmd.mjs';
 import { resolveVault, configPath } from '../lib/resolve.mjs';
+import { buildManifest } from '../lib/manifest.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -23,6 +24,7 @@ export function runInit({ vaultPath, repoRoot = REPO_ROOT, force = false }) {
   cpSync(join(repoRoot, 'vault-template'), vaultPath, { recursive: true });
   const schema = loadSchema(repoRoot);
   writeFileSync(join(vaultPath, 'AGENTS.md'), generateAgentsMd(schema), 'utf8');
+  writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');
   return { created: true, vaultPath };
 }
 
