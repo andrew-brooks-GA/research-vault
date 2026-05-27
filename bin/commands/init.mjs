@@ -39,8 +39,16 @@ export async function run(args) {
   if (!r.created) { process.stderr.write(r.reason + '\n'); return 1; }
   const home = process.env.HOME || process.env.USERPROFILE;
   const cfg = configPath({ platform: process.platform, home, env: process.env });
-  mkdirSync(dirname(cfg), { recursive: true });
-  writeFileSync(cfg, JSON.stringify({ vaultPath }, null, 2), 'utf8');
-  process.stdout.write(`Initialized vault at ${vaultPath} (resolved via ${source}).\n${profileHint(process.platform, vaultPath)}\n`);
+  // Only set the global discovery pointer when establishing the default vault:
+  // when none exists yet, or when explicitly requested. Never silently hijack an
+  // existing default (e.g. a throwaway `init --vault /tmp/x` must not steal it).
+  if (args['set-default'] || !existsSync(cfg)) {
+    mkdirSync(dirname(cfg), { recursive: true });
+    writeFileSync(cfg, JSON.stringify({ vaultPath }, null, 2), 'utf8');
+    process.stdout.write(`Initialized vault at ${vaultPath} (resolved via ${source}); set as default.\n`);
+  } else {
+    process.stdout.write(`Initialized vault at ${vaultPath} (resolved via ${source}). Default pointer unchanged (use --set-default to repoint).\n`);
+  }
+  process.stdout.write(profileHint(process.platform, vaultPath) + '\n');
   return 0;
 }
