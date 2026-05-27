@@ -1,0 +1,10 @@
+{
+  "name": "research-vault",
+  "version": "0.1.0",
+  "description": "Portable research-vault scaffold and tooling for Claude Code and any agent.",
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "bin": { "research-vault": "bin/research-vault.mjs" },
+  "scripts": { "test": "node --test", "lint:self": "node bin/research-vault.mjs lint --check" },
+  "license": "MIT"
+}
