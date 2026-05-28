@@ -11,7 +11,7 @@ test('init scaffolds vault, generates AGENTS.md, is idempotent', () => {
   const r1 = runInit({ vaultPath: dir, repoRoot });
   assert.equal(r1.created, true);
   assert.ok(existsSync(join(dir, 'AGENTS.md')));
-  assert.ok(existsSync(join(dir, 'sources', 'INDEX.md')));
+  assert.ok(existsSync(join(dir, 'sources')), 'entry folders are created by init');
   assert.match(readFileSync(join(dir, 'AGENTS.md'), 'utf8'), /Research Vault/);
   // taxonomy is copied verbatim from the single source of truth (no hand-maintained duplicate)
   assert.equal(

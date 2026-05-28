@@ -22,6 +22,12 @@ export function runInit({ vaultPath, repoRoot = REPO_ROOT, force = false }) {
   }
   mkdirSync(vaultPath, { recursive: true });
   cpSync(join(repoRoot, 'vault-template'), vaultPath, { recursive: true });
+  // Create the six entry folders (+ attachments) explicitly — there are no INDEX.md
+  // placeholders; the manifest is the index.
+  for (const f of ['sources', 'notes', 'synthesis', 'snippets', 'experiments', 'questions']) {
+    mkdirSync(join(vaultPath, f), { recursive: true });
+  }
+  mkdirSync(join(vaultPath, 'sources', '_attachments'), { recursive: true });
   const schema = loadSchema(repoRoot);
   writeFileSync(join(vaultPath, 'AGENTS.md'), generateAgentsMd(schema), 'utf8');
   // Copy the canonical taxonomy verbatim — single source of truth, no hand-maintained duplicate.
