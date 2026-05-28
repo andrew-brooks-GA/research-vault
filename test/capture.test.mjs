@@ -87,3 +87,40 @@ test('exact duplicate: same url+version+content is a plain (non-ambiguous) dup',
   assert.ok(r2.dedup);
   assert.ok(!r2.dedup.ambiguous);
 });
+
+test('captures source with authority_tier and authority_basis, lint-clean', () => {
+  const dir = freshVault();
+  const r = captureEntry(dir, {
+    type: 'source', title: 'Auth K8s', url: 'https://kubernetes.io/docs/x',
+    authorityTier: 'primary', authorityBasis: 'official-docs',
+    now: '2026-05-27', repoRoot: process.cwd(),
+  });
+  const e = readEntry(r.path);
+  assert.equal(e.data.authority_tier, 'primary');
+  assert.equal(e.data.authority_basis, 'official-docs');
+  const { violations } = lintVault(dir, process.cwd());
+  assert.equal(violations.length, 0, 'expected 0 violations, got: ' + JSON.stringify(violations));
+});
+
+test('captures synthesis with synthesis_basis: primary-rollup', () => {
+  const dir = freshVault();
+  const r = captureEntry(dir, {
+    type: 'synthesis', title: 'Version diff', contributingIds: '2026-01-01-a',
+    synthesisBasis: 'primary-rollup', now: '2026-05-27', repoRoot: process.cwd(),
+  });
+  const e = readEntry(r.path);
+  assert.equal(e.data.synthesis_basis, 'primary-rollup');
+});
+
+test('lint rejects unknown synthesis_basis / authority_tier / authority_basis values', () => {
+  const dir = freshVault();
+  // Capture with bogus values then check lint surfaces them.
+  captureEntry(dir, { type: 'synthesis', title: 'Bad basis', contributingIds: '2026-01-01-a', synthesisBasis: 'nonsense', now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'source', title: 'Bad tier', url: 'https://bt.example.com/x', authorityTier: 'mid', now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'source', title: 'Bad basis', url: 'https://bb.example.com/x', authorityBasis: 'tweet', now: '2026-05-27', repoRoot: process.cwd() });
+  const { violations } = lintVault(dir, process.cwd());
+  const codes = violations.map(v => v.code);
+  assert.ok(codes.includes('ENUM_SYNTHESIS_BASIS'), 'expected ENUM_SYNTHESIS_BASIS: ' + codes.join(','));
+  assert.ok(codes.includes('ENUM_AUTHORITY_TIER'), 'expected ENUM_AUTHORITY_TIER: ' + codes.join(','));
+  assert.ok(codes.includes('ENUM_AUTHORITY_BASIS'), 'expected ENUM_AUTHORITY_BASIS: ' + codes.join(','));
+});

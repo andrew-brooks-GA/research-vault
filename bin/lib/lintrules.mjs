@@ -31,6 +31,9 @@ export function lintVault(vaultPath, repoRoot) {
     if (data.domain) for (const d of data.domain) if (!schema.taxonomy.domain.includes(d)) add(abs, 'ENUM_DOMAIN', `unknown domain: ${d}`);
     if (data.volatility && !(data.volatility in schema.taxonomy.volatility)) add(abs, 'ENUM_VOLATILITY', `unknown volatility: ${data.volatility}`);
     if (data.status && !schema.taxonomy.status.includes(data.status)) add(abs, 'ENUM_STATUS', `unknown status: ${data.status}`);
+    if (data.synthesis_basis && !schema.taxonomy.synthesis_basis.includes(data.synthesis_basis)) add(abs, 'ENUM_SYNTHESIS_BASIS', `unknown synthesis_basis: ${data.synthesis_basis}`);
+    if (data.authority_tier && !schema.taxonomy.authority_tier.includes(data.authority_tier)) add(abs, 'ENUM_AUTHORITY_TIER', `unknown authority_tier: ${data.authority_tier}`);
+    if (data.authority_basis && !schema.taxonomy.authority_basis.includes(data.authority_basis)) add(abs, 'ENUM_AUTHORITY_BASIS', `unknown authority_basis: ${data.authority_basis}`);
     for (const v of (data.verifications || [])) {
       if (!schema.taxonomy.verification_method.includes(v.method)) add(abs, 'ENUM_METHOD', `unknown method: ${v.method}`);
       if (!schema.taxonomy.verification_result.includes(v.result)) add(abs, 'ENUM_RESULT', `unknown result: ${v.result}`);
