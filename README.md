@@ -113,6 +113,7 @@ Tooling and data are separate — your notes never live in this repo. The vault 
 - **Cache, not source of truth.** Staleness is the dominant failure mode of agent research; this vault makes it visible and actionable.
 - **Lint is the guarantee, not the hook.** Correctness lives in `lint` (runs anywhere, on any writer). `capture`/`verify` self-heal; the optional Claude Code hook is convenience only.
 - **Everything human-facing is generated.** `AGENTS.md` and the per-vault `taxonomy.json` are derived from the schema, so they can't drift — CI enforces it.
+- **Orchestration is out of scope, but contracted.** Skills that drive research (yours or third-party) compose with the vault rather than replacing it. See [`docs/ORCHESTRATOR-INTEGRATION.md`](docs/ORCHESTRATOR-INTEGRATION.md) for the lifecycle boundary, the capture-plan checklist, and the two lint warnings that make non-conforming output visible.
 
 ## Development
 
