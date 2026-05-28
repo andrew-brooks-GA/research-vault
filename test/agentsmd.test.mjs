@@ -12,3 +12,12 @@ test('generates AGENTS.md containing schema-derived content, no BOM, single offl
   assert.match(md, /inferred-stable.*human-spot-check|human-spot-check.*inferred-stable/s);
   assert.ok(!/﻿/.test(md));
 });
+
+test('AGENTS.md introduces every artifact type and the distillation lifecycle', () => {
+  const md = generateAgentsMd(loadSchema(process.cwd()));
+  assert.match(md, /Artifact types/);
+  for (const folder of ['sources/', 'notes/', 'synthesis/', 'snippets/', 'experiments/', 'questions/']) {
+    assert.ok(md.includes('`' + folder + '`'), `AGENTS.md should describe ${folder}`);
+  }
+  assert.match(md, /distill/i);
+});

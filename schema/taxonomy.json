@@ -1,6 +1,14 @@
 {
   "domain": ["software-engineering", "systems-infrastructure", "data-ml", "security", "learning", "llm-assisted-dev", "meta"],
   "artifact_type": ["source","note","synthesis","snippet","experiment","question"],
+  "artifact_purpose": {
+    "sources": "Raw capture of external material (article, paper, docs, talk) — what it says, as-is.",
+    "notes": "Your distilled take on one or more sources — the load-bearing claims and how you'd use them.",
+    "synthesis": "Cross-source themes that combine multiple notes/sources into a conclusion.",
+    "snippets": "Reusable, ideally tested code or prompt fragments.",
+    "experiments": "Logged trial runs (e.g. an LLM or tool run) with task, parameters, and outcome.",
+    "questions": "Open questions driving research; tracked open -> investigating -> answered."
+  },
   "stage": ["raw","distilled","synthesized","stable"],
   "status": ["active","archived","superseded"],
   "volatility": {

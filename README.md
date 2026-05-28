@@ -77,7 +77,18 @@ Two facet tiers keep retrieval clean as the vault grows to hundreds of entries:
 - **`domain`** — a small, controlled set of broad areas: `software-engineering` · `systems-infrastructure` · `data-ml` · `security` · `learning` · `llm-assisted-dev` · `meta`.
 - **`topics`** — freeform; where specific tech lives (`kubernetes`, `vcluster`, `istio`, `helm`, …). Research a hundred tools without ever editing the schema.
 
-Six artifact types — **sources** (raw captures) → **notes** (distilled) → **synthesis** (cross-source themes), plus **snippets**, **experiments**, and open **questions**.
+### What goes where
+
+| Folder | What it holds | You create one when… |
+|---|---|---|
+| `sources/` | Raw captures of external material — articles, papers, docs, talks (what it says, as-is) | you clip something worth keeping |
+| `notes/` | Your **distilled** take on one or more sources — the load-bearing claims + how you'd use them | you read a source and want a durable, skimmable version *(deliberate — capturing a source does not auto-create a note)* |
+| `synthesis/` | **Cross-source themes** combining several notes/sources into a conclusion | you see a pattern across multiple entries worth stating once |
+| `snippets/` | Reusable, ideally tested code or prompt fragments | you have a fragment you'll reuse |
+| `experiments/` | Logged trial runs (an LLM/tool run) with task, parameters, and outcome | you run a trial worth recording |
+| `questions/` | Open questions driving research (`open → investigating → answered`) | you hit a question to track and answer over time |
+
+The spine is a deliberate distillation flow — **`sources/` → `notes/` → `synthesis/`** — that you (or the agent, on request) walk explicitly; nothing auto-promotes. `snippets/`, `experiments/`, and `questions/` stand alone.
 
 To change the controlled vocabulary, you edit exactly **one file**: `schema/taxonomy.json`. The linter, `capture`, the generated `AGENTS.md`, and each vault's copied `taxonomy.json` all derive from it — nothing to keep in sync by hand.
 
