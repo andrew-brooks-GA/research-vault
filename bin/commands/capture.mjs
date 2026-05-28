@@ -48,12 +48,15 @@ export function captureEntry(vaultPath, opts) {
     if (newHash) data.content_hash = newHash;
     if (opts.subjectName) data.subject = { name: opts.subjectName, version: opts.subjectVersion || '' };
     if (opts.series) data.series = opts.series;
+    if (opts.authorityTier) data.authority_tier = opts.authorityTier;
+    if (opts.authorityBasis) data.authority_basis = opts.authorityBasis;
   } else if (opts.type === 'note') {
     data.sources = opts.sources ? opts.sources.split(',') : [];
     data.confidence = opts.confidence || 'medium';
   } else if (opts.type === 'synthesis') {
     data.contributing_ids = opts.contributingIds ? opts.contributingIds.split(',') : [];
     if (opts.question) data.question = opts.question;
+    if (opts.synthesisBasis) data.synthesis_basis = opts.synthesisBasis;
   } else if (opts.type === 'snippet') {
     data.language = opts.language || 'text';
     data.tested = opts.tested === true || opts.tested === 'true';
@@ -84,6 +87,8 @@ export async function run(args) {
     content: args.content, contentHash: args['content-hash'],
     sources: args.sources, confidence: args.confidence,
     contributingIds: args['contributing-ids'], question: args.question,
+    synthesisBasis: args['synthesis-basis'],
+    authorityTier: args['authority-tier'], authorityBasis: args['authority-basis'],
     language: args.language, tested: args.tested,
     provider: args.provider, modelId: args['model-id'], dateRun: args['date-run'], task: args.task, outcome: args.outcome, state: args.state,
   });

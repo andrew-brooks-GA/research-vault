@@ -5,6 +5,7 @@ import { serializeFrontmatter } from './frontmatter.mjs';
 
 const FOLDER_TYPE = { sources:'source', notes:'note', synthesis:'synthesis', snippets:'snippet', experiments:'experiment', questions:'question' };
 const EDGE_FIELDS = ['related','contributing_ids','sources','source_id','prompt_id','superseded_by'];
+const MONOLITHIC_SYNTHESIS_WORDS = 1500;
 
 export function lintVault(vaultPath, repoRoot) {
   const schema = loadSchema(repoRoot);
@@ -14,6 +15,16 @@ export function lintVault(vaultPath, repoRoot) {
   const add = (file, code, msg) => violations.push({ file, code, msg });
   const warnings = [];
   const warn = (file, code, msg) => warnings.push({ file, code, msg });
+
+  // First pass: build id -> type map for cross-entry checks (e.g. synthesis note-coverage).
+  const idType = new Map();
+  for (const abs of files) {
+    try {
+      const e = readEntry(abs);
+      const id = abs.split(/[\\/]/).pop().replace(/\.md$/, '');
+      if (e.data && e.data.type) idType.set(id, e.data.type);
+    } catch { /* PARSE will surface in the main loop */ }
+  }
 
   for (const abs of files) {
     const raw = readFileSync(abs, 'utf8');
@@ -31,6 +42,9 @@ export function lintVault(vaultPath, repoRoot) {
     if (data.domain) for (const d of data.domain) if (!schema.taxonomy.domain.includes(d)) add(abs, 'ENUM_DOMAIN', `unknown domain: ${d}`);
     if (data.volatility && !(data.volatility in schema.taxonomy.volatility)) add(abs, 'ENUM_VOLATILITY', `unknown volatility: ${data.volatility}`);
     if (data.status && !schema.taxonomy.status.includes(data.status)) add(abs, 'ENUM_STATUS', `unknown status: ${data.status}`);
+    if (data.synthesis_basis && !schema.taxonomy.synthesis_basis.includes(data.synthesis_basis)) add(abs, 'ENUM_SYNTHESIS_BASIS', `unknown synthesis_basis: ${data.synthesis_basis}`);
+    if (data.authority_tier && !schema.taxonomy.authority_tier.includes(data.authority_tier)) add(abs, 'ENUM_AUTHORITY_TIER', `unknown authority_tier: ${data.authority_tier}`);
+    if (data.authority_basis && !schema.taxonomy.authority_basis.includes(data.authority_basis)) add(abs, 'ENUM_AUTHORITY_BASIS', `unknown authority_basis: ${data.authority_basis}`);
     for (const v of (data.verifications || [])) {
       if (!schema.taxonomy.verification_method.includes(v.method)) add(abs, 'ENUM_METHOD', `unknown method: ${v.method}`);
       if (!schema.taxonomy.verification_result.includes(v.result)) add(abs, 'ENUM_RESULT', `unknown result: ${v.result}`);
@@ -47,6 +61,27 @@ export function lintVault(vaultPath, repoRoot) {
     if (data.type === 'source' && data.volatility === 'fast' && data.source_type === 'docs' && !(data.subject && data.subject.version))
       warn(abs, 'WARN_MISSING_VERSION', 'fast docs source without subject.version');
     for (const t of (data.topics || [])) if (schema.taxonomy.topic_aliases[t]) warn(abs, 'WARN_TOPIC_ALIAS', `topic '${t}' should be normalized to '${schema.taxonomy.topic_aliases[t]}'`);
+
+    // Synthesis note-coverage: a synthesis whose contributing_ids contain only sources
+    // (no notes) is non-conforming unless it declares synthesis_basis: primary-rollup.
+    // See AGENTS.md §2.5–2.6.
+    if (data.type === 'synthesis' && Array.isArray(data.contributing_ids) && data.contributing_ids.length > 0 && data.synthesis_basis !== 'primary-rollup') {
+      const types = data.contributing_ids.map(r => idType.get(r)).filter(Boolean);
+      const hasNote = types.includes('note');
+      const hasSource = types.includes('source');
+      if (hasSource && !hasNote)
+        warn(abs, 'WARN_SYNTHESIS_NO_NOTE_COVERAGE', 'synthesis cites sources directly with no contributing note; distill load-bearing sources to notes first, or set synthesis_basis: primary-rollup for a factual rollup');
+    }
+
+    // Monolithic-synthesis heuristic: large body + no note contributors + no primary-rollup
+    // declaration is the empirical shape of a bypassed-distillation report. See AGENTS.md §2.6.
+    if (data.type === 'synthesis' && data.synthesis_basis !== 'primary-rollup') {
+      const types = (Array.isArray(data.contributing_ids) ? data.contributing_ids : []).map(r => idType.get(r)).filter(Boolean);
+      const hasNote = types.includes('note');
+      const words = (entry.body || '').split(/\s+/).filter(Boolean).length;
+      if (!hasNote && words > MONOLITHIC_SYNTHESIS_WORDS)
+        warn(abs, 'WARN_SYNTHESIS_MONOLITHIC', `synthesis body is ${words} words with no contributing note; extract notes and trim to cross-source claims, or set synthesis_basis: primary-rollup if this is a factual rollup`);
+    }
   }
   return { violations, warnings, ids: [...ids] };
 }

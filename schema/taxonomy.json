@@ -23,6 +23,9 @@
   "verification_result": ["confirmed","changed-trivially","outdated","unreachable","inconclusive"],
   "by_type": ["human","agent"],
   "question_state": ["open","investigating","answered"],
+  "synthesis_basis": ["interpretive","primary-rollup"],
+  "authority_tier": ["primary","secondary","tertiary"],
+  "authority_basis": ["official-docs","spec","source-code","release-notes","vendor-blog","community-report","benchmark","talk","personal-experiment","unknown"],
   "durable_source_types": ["book","paper","talk"],
   "stage_by_folder": {
     "sources": { "allowed": ["raw"], "default": "raw" },
