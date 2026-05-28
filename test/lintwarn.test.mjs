@@ -16,6 +16,20 @@ test('warns on fast docs missing subject.version and un-aliased topics', () => {
   assert.ok(codes.includes('WARN_TOPIC_ALIAS'));
 });
 
+test('warns on synthesis citing only sources with no contributing note', () => {
+  const { warnings, violations } = lintVault(WARN, process.cwd());
+  assert.equal(violations.length, 0, 'fixture should be lint-clean: ' + JSON.stringify(violations));
+  const codes = warnings.map(w => w.code);
+  assert.ok(codes.includes('WARN_SYNTHESIS_NO_NOTE_COVERAGE'), 'expected WARN_SYNTHESIS_NO_NOTE_COVERAGE: ' + codes.join(','));
+});
+
+test('synthesis_basis: primary-rollup exempts source-only synthesis from note-coverage warn', () => {
+  // The GOOD fixture's synthesis cites only a source but declares primary-rollup; should not warn.
+  const { warnings } = lintVault(GOOD, process.cwd());
+  const codes = warnings.map(w => w.code);
+  assert.ok(!codes.includes('WARN_SYNTHESIS_NO_NOTE_COVERAGE'), 'primary-rollup should exempt: ' + codes.join(','));
+});
+
 test('clean vault has no warnings', () => {
   const { warnings } = lintVault(GOOD, process.cwd());
   assert.equal(warnings.length, 0);

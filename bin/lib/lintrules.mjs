@@ -15,6 +15,16 @@ export function lintVault(vaultPath, repoRoot) {
   const warnings = [];
   const warn = (file, code, msg) => warnings.push({ file, code, msg });
 
+  // First pass: build id -> type map for cross-entry checks (e.g. synthesis note-coverage).
+  const idType = new Map();
+  for (const abs of files) {
+    try {
+      const e = readEntry(abs);
+      const id = abs.split(/[\\/]/).pop().replace(/\.md$/, '');
+      if (e.data && e.data.type) idType.set(id, e.data.type);
+    } catch { /* PARSE will surface in the main loop */ }
+  }
+
   for (const abs of files) {
     const raw = readFileSync(abs, 'utf8');
     if (raw.charCodeAt(0) === 0xFEFF) add(abs, 'ENCODING_BOM', 'file has a UTF-8 BOM');
@@ -50,6 +60,17 @@ export function lintVault(vaultPath, repoRoot) {
     if (data.type === 'source' && data.volatility === 'fast' && data.source_type === 'docs' && !(data.subject && data.subject.version))
       warn(abs, 'WARN_MISSING_VERSION', 'fast docs source without subject.version');
     for (const t of (data.topics || [])) if (schema.taxonomy.topic_aliases[t]) warn(abs, 'WARN_TOPIC_ALIAS', `topic '${t}' should be normalized to '${schema.taxonomy.topic_aliases[t]}'`);
+
+    // Synthesis note-coverage: a synthesis whose contributing_ids contain only sources
+    // (no notes) is non-conforming unless it declares synthesis_basis: primary-rollup.
+    // See AGENTS.md §2.5–2.6.
+    if (data.type === 'synthesis' && Array.isArray(data.contributing_ids) && data.contributing_ids.length > 0 && data.synthesis_basis !== 'primary-rollup') {
+      const types = data.contributing_ids.map(r => idType.get(r)).filter(Boolean);
+      const hasNote = types.includes('note');
+      const hasSource = types.includes('source');
+      if (hasSource && !hasNote)
+        warn(abs, 'WARN_SYNTHESIS_NO_NOTE_COVERAGE', 'synthesis cites sources directly with no contributing note; distill load-bearing sources to notes first, or set synthesis_basis: primary-rollup for a factual rollup');
+    }
   }
   return { violations, warnings, ids: [...ids] };
 }
