@@ -1,6 +1,5 @@
 {
   "name": "research-vault",
-  "version": "0.1.0",
   "description": "Portable research-vault scaffold and tooling for Claude Code and any agent.",
   "author": { "name": "Andrew Brooks" }
 }
