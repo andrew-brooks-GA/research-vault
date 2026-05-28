@@ -30,6 +30,12 @@ test('synthesis_basis: primary-rollup exempts source-only synthesis from note-co
   assert.ok(!codes.includes('WARN_SYNTHESIS_NO_NOTE_COVERAGE'), 'primary-rollup should exempt: ' + codes.join(','));
 });
 
+test('warns on monolithic synthesis (>1500 words, no note contributors, no primary-rollup)', () => {
+  const { warnings } = lintVault(WARN, process.cwd());
+  const codes = warnings.map(w => w.code);
+  assert.ok(codes.includes('WARN_SYNTHESIS_MONOLITHIC'), 'expected WARN_SYNTHESIS_MONOLITHIC: ' + codes.join(','));
+});
+
 test('clean vault has no warnings', () => {
   const { warnings } = lintVault(GOOD, process.cwd());
   assert.equal(warnings.length, 0);

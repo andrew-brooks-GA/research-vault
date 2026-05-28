@@ -5,6 +5,7 @@ import { serializeFrontmatter } from './frontmatter.mjs';
 
 const FOLDER_TYPE = { sources:'source', notes:'note', synthesis:'synthesis', snippets:'snippet', experiments:'experiment', questions:'question' };
 const EDGE_FIELDS = ['related','contributing_ids','sources','source_id','prompt_id','superseded_by'];
+const MONOLITHIC_SYNTHESIS_WORDS = 1500;
 
 export function lintVault(vaultPath, repoRoot) {
   const schema = loadSchema(repoRoot);
@@ -70,6 +71,16 @@ export function lintVault(vaultPath, repoRoot) {
       const hasSource = types.includes('source');
       if (hasSource && !hasNote)
         warn(abs, 'WARN_SYNTHESIS_NO_NOTE_COVERAGE', 'synthesis cites sources directly with no contributing note; distill load-bearing sources to notes first, or set synthesis_basis: primary-rollup for a factual rollup');
+    }
+
+    // Monolithic-synthesis heuristic: large body + no note contributors + no primary-rollup
+    // declaration is the empirical shape of a bypassed-distillation report. See AGENTS.md §2.6.
+    if (data.type === 'synthesis' && data.synthesis_basis !== 'primary-rollup') {
+      const types = (Array.isArray(data.contributing_ids) ? data.contributing_ids : []).map(r => idType.get(r)).filter(Boolean);
+      const hasNote = types.includes('note');
+      const words = (entry.body || '').split(/\s+/).filter(Boolean).length;
+      if (!hasNote && words > MONOLITHIC_SYNTHESIS_WORDS)
+        warn(abs, 'WARN_SYNTHESIS_MONOLITHIC', `synthesis body is ${words} words with no contributing note; extract notes and trim to cross-source claims, or set synthesis_basis: primary-rollup if this is a factual rollup`);
     }
   }
   return { violations, warnings, ids: [...ids] };
