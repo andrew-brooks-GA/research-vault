@@ -1,5 +1,6 @@
 node_modules/
 .vault-manifest.json
+.idea/
 
 # design/process docs — not part of the published plugin
 docs/superpowers/
