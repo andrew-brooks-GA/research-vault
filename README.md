@@ -58,16 +58,46 @@ You captured once. Weeks later, in a fresh session, the knowledge is there — *
 /reload-plugins
 ```
 
-Explicit slash commands are available too: `/research-vault:research-capture`, `…:research-search`, `…:research-verify`, `…:research-lint`, `…:research-related`, `…:research-init`.
+Explicit slash commands are available too: `/research-vault:research-capture`, `…:research-search`, `…:research-verify`, `…:research-lint`, `…:research-related`, `…:research-init`, `…:research-advise`, `…:research-compile`, `…:research-obsidian`.
 
 **Standalone** — clone and run; no install, no dependencies:
 
-```bash
+```text
 node bin/research-vault.mjs init        # scaffold a vault (prints the env-var setup line)
 node bin/research-vault.mjs capture --type source --title "vcluster sleep mode" \
   --url https://docs.vcluster.com/... --domain systems-infrastructure \
   --topics kubernetes,vcluster,cost-optimization --subject-name vcluster --subject-version 0.20
 node bin/research-vault.mjs search --topic vcluster
+```
+
+## Two ways to use it
+
+`research-vault` works in two modes, and most people mix them:
+
+- **Prose / skill-activated (default in Claude Code).** Just talk to your agent. The `research-vault-usage`, `research-capture`, `research-verify`, and `research-librarian` skills auto-activate on technical-research questions, describe the procedure, and shell out to the fast-path commands — degrading to plain glob/grep when Node isn't present. Reading, searching, citing-with-freshness, and guided capture/verify all happen this way.
+- **Manual (slash commands / CLI).** Run an operation deterministically yourself — `/research-capture`, `node bin/research-vault.mjs lint --check`, and so on.
+
+Most operations **can be driven entirely by prose** — the command is just the faster, safer path: `search`, `related`, `capture`, `verify`, `advise`, `compile`, `obsidian`. A few **require a command**; prose can't substitute, by design:
+
+| Requires a command | Why prose can't do it |
+|---|---|
+| `lint` / `lint --check` | The single authoritative correctness gate (CI / pre-commit). Correctness must be *checked*, not asserted. |
+| `init` | Scaffolds the vault and generates `AGENTS.md` from the schema. |
+| `refresh` | Network re-fetch, **double-gated** (`RESEARCH_VAULT_ALLOW_NETWORK=1` **and** the subcommand) — a deliberate consent control. |
+| `export` | Data egress; bodies are **double-gated** (`--include-bodies` **and** `--ack-data-egress`). |
+
+**Prose example** — no commands typed (full flow in [The magic moment](#the-magic-moment)):
+
+> **You:** capture the vcluster sleep-mode docs
+> **Claude:** Captured as a source · vcluster 0.20 · topics: kubernetes, vcluster …
+> *…weeks later, a fresh session…*
+> **You:** how does vcluster sleep mode work again?
+> **Claude:** *(cites your entry, with a "this is 21 days old — re-verify against the live docs?" freshness warning)*
+
+**Command example** — the kind of thing prose can't do (network, double-gated):
+
+```text
+RESEARCH_VAULT_ALLOW_NETWORK=1 node bin/research-vault.mjs refresh --id 2026-05-31-vcluster-sleep-mode
 ```
 
 ## How it's organized
@@ -96,21 +126,30 @@ To change the controlled vocabulary, you edit exactly **one file**: `schema/taxo
 
 Tooling and data are separate — your notes never live in this repo. The vault is discovered in order: `--vault` flag → `$RESEARCH_VAULT_PATH` → a pointer written by `init` → OS default (`~/.local/share/research-vault` on Linux, `~/Library/Application Support/research-vault` on macOS, `%LOCALAPPDATA%\research-vault` on Windows).
 
+## Team use
+
+A vault is just a folder of Markdown, so a **shared team knowledge base** is simply a vault kept in a git repo. Commit the entries, `schema/`, and the generated `AGENTS.md`; the derived caches (`.vault-manifest.json`, `_index/`, `_obsidian/`) are git-ignored by the bundled `vault-template/.gitignore` and rebuilt locally with `lint` / `compile`. Run `lint --check` in CI or a pre-commit hook as the shared correctness gate, and every teammate's agent reads the same `AGENTS.md` — so the whole team searches, cites, and verifies against one freshness-governed source of truth instead of re-researching in private silos. Coordination is plain git; the lint floor — not a server — is what keeps a multi-writer vault consistent.
+
 ## Commands
 
 | Command | Does |
 |---|---|
 | `init` | Scaffold a spec-conformant vault; generate its `AGENTS.md`. |
-| `capture` | Add an entry with correct frontmatter; dedupe by URL + version. |
+| `capture` | Add an entry with correct frontmatter; dedupe by URL + version. Optional: `--scaffold` (per-type body skeleton), `--content-file` / `--captured-via` (local provenance), `--store-body` (requires `--ack-data-egress`). |
 | `lint` | Validate the vault (the correctness floor) and rebuild the manifest. `--fix` normalizes safely. |
 | `verify` | List stale entries; record a verification; supersede or note version succession. |
-| `search` | Facet/text query over the manifest (`--domain`, `--topic`, `--series`, `--text`). |
+| `search` | Facet/text query over the manifest (`--domain`, `--topic`, `--series`, `--text`, `--body`). |
 | `related` | Forward links + computed backlinks for an entry (`--format mermaid`). |
 | `manifest` | Rebuild/print the derived index. |
+| `compile` | Regenerate a git-ignored `_index/` human-readable index (grouped by type) — a derived cache, never a source of truth. |
+| `advise` | Read-only curation report: stale entries, orphans, sources lacking a note, aliasable topics. Never mutates. |
 | `obsidian` | Regenerate a git-ignored `_obsidian/` wikilink view + Map-of-Content; never mutates canonical entries. |
 | `refresh` | Re-check source freshness over the network (off by default, double-gated). Reports `confirmed`/`changed`/`unreachable`; never mutates entries. |
+| `export` | Read-only JSONL for external finetuning/eval — metadata + answered-question summaries by default; entry bodies only behind `--include-bodies --ack-data-egress`. |
 
-## Security — network refresh
+## Security & privacy
+
+### Network refresh
 
 The `refresh` command is the **only** feature that touches the network, and it is **off by default**:
 
@@ -118,6 +157,14 @@ The `refresh` command is the **only** feature that touches the network, and it i
 - **Hash-only.** It fetches a source URL, recomputes the SHA-256 of the raw bytes, and stores only that hash plus the HTTP status — **never the response body**, and it does no HTML→text conversion.
 - **Never mutates.** It reports `confirmed`/`changed`/`unreachable` and defers all edits to `verify`; entries and the manifest are left byte-identical.
 - **SSRF-guarded.** HTTPS-only (plaintext and https→http redirect downgrades refused). Every resolved address must be public global-unicast — RFC 6890 private/loopback/link-local/CGNAT/ULA/doc/multicast/reserved ranges are rejected (including IPv4-mapped IPv6 and the cloud metadata address `169.254.169.254`, and alt-encoded numeric hosts). The socket is pinned to the pre-validated IP (no re-resolution, no pooling), redirects are re-validated per hop, and a body cap + timeout bound each request. No cookies or auth headers are sent.
+
+### Data export
+
+The `export` command is the only path that writes vault content to an external file, and it is conservative by default:
+
+- **Metadata-first.** By default it emits only answered-question summaries (`{input, output}`) plus per-entry metadata — **never entry bodies**, and never a `source` body.
+- **Body egress is double-gated.** Including any entry body requires **both** `--include-bodies` **and** `--ack-data-egress`; either alone refuses and writes nothing.
+- **Deterministic, offline.** Output is stable, id-sorted JSONL for an external pipeline; nothing is sent over the network and the vault is never modified.
 
 ## Design notes
 
@@ -128,7 +175,7 @@ The `refresh` command is the **only** feature that touches the network, and it i
 
 ## Development
 
-```bash
+```text
 npm test     # node --test — unit + integration, zero test-framework deps
 ```
 
