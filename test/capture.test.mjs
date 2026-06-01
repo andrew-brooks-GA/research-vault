@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, existsSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, cpSync, existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { captureEntry } from '../bin/commands/capture.mjs';
+import { captureEntry, run } from '../bin/commands/capture.mjs';
 import { makeId, sha256 } from '../bin/lib/ids.mjs';
 import { readEntry, writeEntry } from '../bin/lib/fsutil.mjs';
 import { lintVault } from '../bin/lib/lintrules.mjs';
@@ -86,6 +86,46 @@ test('stores content_hash and normalizes topics through aliases', () => {
   assert.equal(e.data.content_hash, sha256('hello world'));
   assert.ok(e.data.topics.includes('test-driven-development')); // 'tdd' alias-normalized
   assert.ok(e.data.topics.includes('go'));
+});
+
+test('content-file hashes the local file bytes, matching inline content', async () => {
+  const dir = freshVault();
+  const tmp = join(mkdtempSync(join(tmpdir(), 'rv-cf-')), 'src.txt');
+  writeFileSync(tmp, 'hello world', 'utf8');
+  const code = await run({ type: 'source', title: 'CF', url: 'https://cf.example.com/x', 'content-file': tmp, vault: dir });
+  assert.equal(code, 0);
+  const e = readEntry(join(dir, 'sources', makeId(new Date().toISOString().slice(0, 10), 'CF') + '.md'));
+  assert.equal(e.data.content_hash, sha256('hello world'));
+});
+
+test('captured_via persists and stays lint-clean', () => {
+  const dir = freshVault();
+  const r = captureEntry(dir, { type: 'source', title: 'CV', url: 'https://cv.example.com/x', capturedVia: 'manual paste 2026-05-27', now: '2026-05-27', repoRoot: process.cwd() });
+  assert.equal(readEntry(r.path).data.captured_via, 'manual paste 2026-05-27');
+  const { violations } = lintVault(dir, process.cwd());
+  assert.equal(violations.length, 0, 'expected 0 violations, got: ' + JSON.stringify(violations));
+});
+
+test('store-body without ack throws and writes nothing', () => {
+  const dir = freshVault();
+  assert.throws(
+    () => captureEntry(dir, { type: 'source', title: 'B', url: 'https://b.example.com/x', content: 'BODY TEXT', storeBody: true, now: '2026-05-27', repoRoot: process.cwd() }),
+    /ack.*egress|egress.*ack/i,
+  );
+  const id = makeId('2026-05-27', 'B');
+  assert.ok(!existsSync(join(dir, 'sources', `${id}.md`)), 'no entry file should be written on rejection');
+});
+
+test('store-body with ack appends content to body; default keeps it out', () => {
+  const dir = freshVault();
+  const r = captureEntry(dir, { type: 'source', title: 'B', url: 'https://b.example.com/x', content: 'BODY TEXT', storeBody: true, ackDataEgress: true, now: '2026-05-27', repoRoot: process.cwd() });
+  const { body } = readEntry(r.path);
+  assert.ok(body.startsWith('# B'), 'body should start with H1');
+  assert.ok(body.includes('BODY TEXT'), 'body should include the stored content');
+
+  const dir2 = freshVault();
+  const r2 = captureEntry(dir2, { type: 'source', title: 'B2', url: 'https://b2.example.com/x', content: 'BODY TEXT', now: '2026-05-27', repoRoot: process.cwd() });
+  assert.ok(!readEntry(r2.path).body.includes('BODY TEXT'), 'default capture body must not include the content');
 });
 
 test('tripwire: same url+version but different content surfaces ambiguity', () => {

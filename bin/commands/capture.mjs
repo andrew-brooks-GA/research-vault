@@ -22,6 +22,8 @@ export function captureEntry(vaultPath, opts) {
   const now = opts.now || new Date().toISOString().slice(0, 10);
   const folder = TYPE_FOLDER[opts.type];
   if (!folder) throw new Error(`invalid type: ${opts.type}`);
+  if (opts.storeBody && !opts.ackDataEgress)
+    throw new Error('--store-body requires --ack-data-egress (storing source text is a data-egress / copyright surface)');
 
   const newHash = opts.content ? sha256(opts.content) : (opts.contentHash || null);
   if (opts.type === 'source' && opts.url) {
@@ -56,6 +58,7 @@ export function captureEntry(vaultPath, opts) {
     if (opts.series) data.series = opts.series;
     if (opts.authorityTier) data.authority_tier = opts.authorityTier;
     if (opts.authorityBasis) data.authority_basis = opts.authorityBasis;
+    if (opts.capturedVia) data.captured_via = opts.capturedVia;
   } else if (opts.type === 'note') {
     data.sources = opts.sources ? opts.sources.split(',') : [];
     data.confidence = opts.confidence || 'medium';
@@ -81,7 +84,8 @@ export function captureEntry(vaultPath, opts) {
   mkdirSync(join(vaultPath, folder), { recursive: true });
   const path = join(vaultPath, folder, `${id}.md`);
   const skel = opts.scaffold ? loadSkeleton(repoRoot, opts.type) : '';
-  const body = skel ? `# ${opts.title}\n\n${skel}\n` : `# ${opts.title}\n`;
+  let body = skel ? `# ${opts.title}\n\n${skel}\n` : `# ${opts.title}\n`;
+  if (opts.storeBody && opts.content) body += `\n${opts.content}\n`;
   writeEntry(path, data, body, order);
   writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');
   return { id, path, dedup: null };
@@ -93,7 +97,8 @@ export async function run(args) {
     type: args.type, title: args.title, url: args.url, sourceType: args['source-type'],
     subjectName: args['subject-name'], subjectVersion: args['subject-version'], series: args.series,
     domain: args.domain, topics: args.topics, related: args.related, volatility: args.volatility,
-    content: args.content, contentHash: args['content-hash'],
+    content: args['content-file'] ? readFileSync(args['content-file'], 'utf8') : args.content, contentHash: args['content-hash'],
+    capturedVia: args['captured-via'], storeBody: !!args['store-body'], ackDataEgress: !!args['ack-data-egress'],
     sources: args.sources, confidence: args.confidence,
     contributingIds: args['contributing-ids'], question: args.question,
     synthesisBasis: args['synthesis-basis'],
