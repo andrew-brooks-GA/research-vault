@@ -196,6 +196,9 @@ Optional `sqlite-vec` semantic-search MCP, built from the same manifest — Stag
 ### 5.5 Compiled index view (`compile`)
 `compile` regenerates a human-readable index into a top-level git-ignored `_index/` directory: a root `INDEX.md` grouped by type plus one file per folder. It is a derived, regenerable cache — never a source of truth — and is deliberately NOT lint-gated (§9.6 keeps convenience out of the correctness floor). It lives outside the six entry folders, so it never affects the manifest or lint.
 
+### 5.6 Advisory librarian (`advise`)
+`advise` is a read-only aggregation of existing signals — the stale set, orphans (no backlinks and no outgoing edges), sources without a distilling note, and entries carrying aliasable topics — surfaced as curation guidance. It never writes, never adds lint rules, and the vault is byte-for-byte unchanged after it runs; it is convenience, not part of the correctness floor (§9.6).
+
 ---
 
 ## 6. Claude Code plugin surface
