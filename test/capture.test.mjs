@@ -153,6 +153,45 @@ test('capture rejects unknown controlled values up front and writes nothing', ()
   assert.ok(!existsSync(join(dir, 'notes', `${id}.md`)), 'no entry file should be written on rejection');
 });
 
+const SECTIONS = {
+  source: ['## What it says', '## Authority & scope', '## Open questions'],
+  note: ['## Load-bearing claims', '## Caveats / scope', "## How I'd use this"],
+  synthesis: ['## Question', '## Cross-source claims', '## Tensions', '## What would change my mind'],
+  snippet: ['## Usage context', '## Code', '## Caveats'],
+  experiment: ['## Task', '## Setup', '## Result', '## Interpretation'],
+  question: ['## Why it matters', '## What would answer it', '## Leads'],
+};
+
+const SCAFFOLD_ARGS = {
+  source: { type: 'source', title: 'Src', url: 'https://sc.example.com/x' },
+  note: { type: 'note', title: 'N', sources: '2026-01-01-a', confidence: 'high' },
+  synthesis: { type: 'synthesis', title: 'S', contributingIds: '2026-01-01-a' },
+  snippet: { type: 'snippet', title: 'Sn', language: 'python', tested: true },
+  experiment: { type: 'experiment', title: 'E', provider: 'anthropic', modelId: 'm', task: 't', outcome: 'success' },
+  question: { type: 'question', title: 'Does X hold?' },
+};
+
+for (const [type, sections] of Object.entries(SECTIONS)) {
+  test(`capture --scaffold seeds ${type} body skeleton, lint-clean`, () => {
+    const dir = freshVault();
+    const r = captureEntry(dir, { ...SCAFFOLD_ARGS[type], scaffold: true, now: '2026-05-27', repoRoot: process.cwd() });
+    const { body, data } = readEntry(r.path);
+    assert.ok(body.startsWith(`# ${data.title}`), `body should start with H1: ${body.slice(0, 40)}`);
+    for (const s of sections) assert.ok(body.includes(s), `missing section ${s} in ${type} body`);
+    const bodyAfterH1 = body.slice(body.indexOf('\n') + 1);
+    assert.ok(!/^---/m.test(bodyAfterH1), 'no frontmatter should leak into the body');
+    const { violations } = lintVault(dir, process.cwd());
+    assert.equal(violations.length, 0, 'expected 0 violations, got: ' + JSON.stringify(violations));
+  });
+}
+
+test('capture without --scaffold keeps body as bare H1', () => {
+  const dir = freshVault();
+  const r = captureEntry(dir, { type: 'note', title: 'N', sources: '2026-01-01-a', confidence: 'high', now: '2026-05-27', repoRoot: process.cwd() });
+  const { body } = readEntry(r.path);
+  assert.equal(body, '# N\n');
+});
+
 test('capture (all six types) leaves the vault lint-clean under --check', () => {
   const dir = freshVault();
   captureEntry(dir, { type: 'source', title: 'Src', url: 'https://s.example.com/x', now: '2026-05-27', repoRoot: process.cwd() });

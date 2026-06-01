@@ -257,7 +257,7 @@ Walks every `*.md`; checks against `schema/`:
 - Output: human table by default; `--json` for CI; `--fix` only for safe normalizations (BOM strip, frontmatter re-serialize, manifest regen) — never touches claims.
 
 ### 9.3 `capture` — authoring helper
-`capture --type <t> --title "..." [--url ... --subject-name ... --subject-version ... --series ... --related id,...]`. Computes filename/id, fills required frontmatter from `schema/` with an initial `verifications[]` line, writes only an `# <title>` heading as the body (no template scaffolding is implemented), validates `related` ids, runs **dedup** (§5.2), and rebuilds the manifest (the manifest is the sole index; a human-readable compiled index view is deferred — §12 / roadmap item 10). Prints the path.
+`capture --type <t> --title "..." [--url ... --subject-name ... --subject-version ... --series ... --related id,...]`. Computes filename/id, fills required frontmatter from `schema/` with an initial `verifications[]` line, writes only an `# <title>` heading as the body (or, with `--scaffold`, seeds a per-type body skeleton from `vault-template/meta/entry-skeletons/<type>.md`), validates `related` ids, runs **dedup** (§5.2), and rebuilds the manifest (the manifest is the sole index; a human-readable compiled index view is deferred — §12 / roadmap item 10). Prints the path.
 
 ### 9.4 `verify` — freshness workflow
 `verify [--stale] [--id <id>]`. `--stale` lists entries past their volatility window (`last_verified = max(verifications[].date)` vs. `taxonomy.json` windows). For a chosen entry: walk the method/result decision tree, append a `verifications[]` line, then **either** bump `updated:` **or** supersede (new id, mark old, backlink) per the mutate-vs-supersede invariant — and recognize the **version-succession** branch (§4.3) as a third outcome distinct from supersession. Enforces offline rules and the self-confirmation rule.
@@ -323,7 +323,6 @@ A `PostToolUse` hook (matching `Edit`/`Write` on vault paths) runs idempotent `l
 
 ## 12. Deferred / future (out of scope for v1)
 - `sqlite-vec` semantic-search MCP (§5.4).
-- Opt-in `capture` body-template scaffold seeding entries from `meta/prompt-templates/*` (§9.3).
 - Human-readable compiled index views (a regenerated per-folder/root digest of entries) under `_index/`, replacing the per-folder index files retired in v1 — see roadmap item 10.
 - Automatic web re-fetch / refresh-queue automation.
 - `npm` publish of the standalone CLI.

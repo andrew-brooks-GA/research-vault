@@ -1,6 +1,6 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { loadSchema, fieldOrder } from '../lib/schema.mjs';
 import { makeId, normalizeUrl, sha256 } from '../lib/ids.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
@@ -10,6 +10,11 @@ import { assertControlledValues } from '../lib/validate.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const TYPE_FOLDER = { source:'sources', note:'notes', synthesis:'synthesis', snippet:'snippets', experiment:'experiments', question:'questions' };
+
+function loadSkeleton(repoRoot, type) {
+  try { return readFileSync(join(repoRoot, 'vault-template', 'meta', 'entry-skeletons', `${type}.md`), 'utf8').trimEnd(); }
+  catch { return ''; }
+}
 
 export function captureEntry(vaultPath, opts) {
   const repoRoot = opts.repoRoot || REPO_ROOT;
@@ -75,7 +80,9 @@ export function captureEntry(vaultPath, opts) {
   const order = fieldOrder(schema, opts.type);
   mkdirSync(join(vaultPath, folder), { recursive: true });
   const path = join(vaultPath, folder, `${id}.md`);
-  writeEntry(path, data, `# ${opts.title}\n`, order);
+  const skel = opts.scaffold ? loadSkeleton(repoRoot, opts.type) : '';
+  const body = skel ? `# ${opts.title}\n\n${skel}\n` : `# ${opts.title}\n`;
+  writeEntry(path, data, body, order);
   writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');
   return { id, path, dedup: null };
 }
@@ -93,6 +100,7 @@ export async function run(args) {
     authorityTier: args['authority-tier'], authorityBasis: args['authority-basis'],
     language: args.language, tested: args.tested,
     provider: args.provider, modelId: args['model-id'], dateRun: args['date-run'], task: args.task, outcome: args.outcome, state: args.state,
+    scaffold: !!args.scaffold,
   });
   if (r.dedup) {
     const how = r.dedup.ambiguous ? 'ambiguous' : 'duplicate';

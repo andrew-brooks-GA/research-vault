@@ -9,5 +9,6 @@ Gather: type, title, and (for sources) url, and optional subject name/version + 
 - Notes: `--sources <id,id>` and `--confidence <high|medium|low>`.
 - Experiments: `--provider`, `--model-id`, `--task`, `--outcome <success|partial|failure|inconclusive>`.
 - Questions: `--state <open|investigating|answered>`.
+- Any type: `--scaffold` seeds a per-type body skeleton (headings only; default off).
 
 Run `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" capture` with the matching `--` flags. If the tool reports a duplicate, surface the existing id and run `/research-verify` instead of re-capturing.
