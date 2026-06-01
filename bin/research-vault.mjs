@@ -2,7 +2,7 @@
 import { parseArgs } from './lib/args.mjs';
 
 const USAGE = `research-vault <command> [options]
-commands: init|lint|capture|verify|search|related|manifest`;
+commands: init|lint|capture|verify|search|related|manifest|compile`;
 
 const args = parseArgs(process.argv.slice(2));
 const cmd = args._[0];
@@ -16,6 +16,7 @@ const commands = {
   search: () => import('./commands/search.mjs'),
   related: () => import('./commands/related.mjs'),
   manifest: () => import('./commands/manifest.mjs'),
+  compile: () => import('./commands/compile.mjs'),
 };
 if (!commands[cmd]) { process.stderr.write(`unknown command: ${cmd}\n${USAGE}\n`); process.exit(1); }
 try {

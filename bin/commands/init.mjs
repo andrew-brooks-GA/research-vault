@@ -5,6 +5,7 @@ import { loadSchema } from '../lib/schema.mjs';
 import { generateAgentsMd } from '../lib/agentsmd.mjs';
 import { resolveVault, configPath } from '../lib/resolve.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
+import { compileVault } from './compile.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -33,6 +34,7 @@ export function runInit({ vaultPath, repoRoot = REPO_ROOT, force = false }) {
   // Copy the canonical taxonomy verbatim — single source of truth, no hand-maintained duplicate.
   cpSync(join(repoRoot, 'schema', 'taxonomy.json'), join(vaultPath, 'taxonomy.json'));
   writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');
+  try { compileVault(vaultPath); } catch { /* derived view is best-effort */ }
   return { created: true, vaultPath };
 }
 

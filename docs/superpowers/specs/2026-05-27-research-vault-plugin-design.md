@@ -193,6 +193,9 @@ Plus a computed `backlinks` map (reverse edges of `related`/`contributing_ids`/`
 ### 5.4 Deferred (documented, not built)
 Optional `sqlite-vec` semantic-search MCP, built from the same manifest — Stage 4 (>500 entries, fuzzy semantic overlap). It conflicts with self-contained/offline/portable goals (needs an embedding model, a second source of truth to keep in sync, a non-diffable binary index), so it is **never a core dependency** — an additive layer only.
 
+### 5.5 Compiled index view (`compile`)
+`compile` regenerates a human-readable index into a top-level git-ignored `_index/` directory: a root `INDEX.md` grouped by type plus one file per folder. It is a derived, regenerable cache — never a source of truth — and is deliberately NOT lint-gated (§9.6 keeps convenience out of the correctness floor). It lives outside the six entry folders, so it never affects the manifest or lint.
+
 ---
 
 ## 6. Claude Code plugin surface
