@@ -1,6 +1,6 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { loadSchema, fieldOrder } from '../lib/schema.mjs';
 import { makeId, normalizeUrl, sha256 } from '../lib/ids.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
@@ -10,6 +10,7 @@ import { assertControlledValues } from '../lib/validate.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const TYPE_FOLDER = { source:'sources', note:'notes', synthesis:'synthesis', snippet:'snippets', experiment:'experiments', question:'questions' };
+const verKey = v => (v == null || v === '') ? null : String(v);
 
 function loadSkeleton(repoRoot, type) {
   try { return readFileSync(join(repoRoot, 'vault-template', 'meta', 'entry-skeletons', `${type}.md`), 'utf8').trimEnd(); }
@@ -25,12 +26,13 @@ export function captureEntry(vaultPath, opts) {
   if (opts.storeBody && !opts.ackDataEgress)
     throw new Error('--store-body requires --ack-data-egress (storing source text is a data-egress / copyright surface)');
 
-  const newHash = opts.content ? sha256(opts.content) : (opts.contentHash || null);
+  const hashInput = opts.contentBytes ?? (opts.content || null);
+  const newHash = hashInput != null ? sha256(hashInput) : (opts.contentHash || null);
   if (opts.type === 'source' && opts.url) {
     const normUrl = normalizeUrl(opts.url);
-    const version = opts.subjectVersion || null;
+    const version = verKey(opts.subjectVersion);
     for (const e of buildManifest(vaultPath).entries) {
-      if (e.source_url === normUrl && (e.subject?.version || null) === version) {
+      if (e.source_url === normUrl && verKey(e.subject?.version) === version) {
         if (newHash && e.content_hash && newHash !== e.content_hash) {
           // §4.2 tripwire: same url+version but content changed → ambiguous (edit / new version / supersede)
           return { dedup: { id: e.id, ambiguous: true, reason: 'content changed at same url+version — verify (edit / new version / supersede)' } };
@@ -41,6 +43,8 @@ export function captureEntry(vaultPath, opts) {
   }
 
   const id = makeId(now, opts.title);
+  const path = join(vaultPath, folder, `${id}.md`);
+  if (existsSync(path)) return { dedup: { id, ambiguous: false, reason: `entry id ${id} already exists (supersede via verify, do not overwrite)` } };
   const data = {
     title: opts.title, type: opts.type, created: now,
     domain: opts.domain ? opts.domain.split(',') : ['software-engineering'],
@@ -48,7 +52,7 @@ export function captureEntry(vaultPath, opts) {
     topics: (opts.topics ? opts.topics.split(',') : []).map(t => schema.taxonomy.topic_aliases[t] || t),
     status: 'active', related: opts.related ? opts.related.split(',') : [],
     volatility: opts.volatility || 'slow',
-    verifications: [{ date: now, by_type: 'agent', by_id: opts.byId || '', method: 'existence-check', result: 'confirmed', notes: '' }],
+    verifications: [{ date: now, by_type: 'agent', by_id: opts.byId || '', method: 'captured', result: 'confirmed', notes: '' }],
   };
   if (opts.type === 'source') {
     data.source_type = opts.sourceType || 'article';
@@ -82,7 +86,6 @@ export function captureEntry(vaultPath, opts) {
   assertControlledValues(data, schema);
   const order = fieldOrder(schema, opts.type);
   mkdirSync(join(vaultPath, folder), { recursive: true });
-  const path = join(vaultPath, folder, `${id}.md`);
   const skel = opts.scaffold ? loadSkeleton(repoRoot, opts.type) : '';
   let body = skel ? `# ${opts.title}\n\n${skel}\n` : `# ${opts.title}\n`;
   if (opts.storeBody && opts.content) body += `\n${opts.content}\n`;
@@ -93,11 +96,12 @@ export function captureEntry(vaultPath, opts) {
 
 export async function run(args) {
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
+  const cfBuf = args['content-file'] ? readFileSync(args['content-file']) : null;
   const r = captureEntry(vaultPath, {
     type: args.type, title: args.title, url: args.url, sourceType: args['source-type'],
     subjectName: args['subject-name'], subjectVersion: args['subject-version'], series: args.series,
     domain: args.domain, topics: args.topics, related: args.related, volatility: args.volatility,
-    content: args['content-file'] ? readFileSync(args['content-file'], 'utf8') : args.content, contentHash: args['content-hash'],
+    content: cfBuf ? cfBuf.toString('utf8') : args.content, contentBytes: cfBuf, contentHash: args['content-hash'],
     capturedVia: args['captured-via'], storeBody: !!args['store-body'], ackDataEgress: !!args['ack-data-egress'],
     sources: args.sources, confidence: args.confidence,
     contributingIds: args['contributing-ids'], question: args.question,

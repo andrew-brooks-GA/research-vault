@@ -7,4 +7,4 @@ This plugin ships **no entry content** — only the scaffold and tooling. To mov
 3. Run `research-vault lint --fix` to normalize encoding/formatting and rebuild the manifest, then `research-vault lint` to surface any schema violations to fix by hand.
 4. Personal/machine-specific paths belong only in your private entries — never commit them to this plugin repo.
 
-Note: in v1, `capture` fully populates `source` entries; the other types (note/synthesis/snippet/experiment/question) can be authored by hand per the schema, and `lint` enforces their required fields regardless.
+Note: `capture` supports all six types (source/note/synthesis/snippet/experiment/question) with their type-specific flags; you can also author entries by hand per the schema, and `lint` enforces required fields either way.

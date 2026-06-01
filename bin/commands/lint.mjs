@@ -23,6 +23,10 @@ export function lintAndReport(vaultPath, { check = false } = {}) {
 
 export async function run(args) {
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
+  if (args.fix) {
+    const { fixed } = fixVault(vaultPath, REPO_ROOT);
+    if (!args.json) process.stdout.write(`fixed ${fixed} file(s)\n`);
+  }
   const { violations, warnings } = lintAndReport(vaultPath, { check: !!args.check });
   if (args.json) {
     process.stdout.write(JSON.stringify({ violations, warnings }, null, 2) + '\n');

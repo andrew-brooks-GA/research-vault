@@ -68,3 +68,11 @@ test('version succession keeps the entry active and does NOT supersede', () => {
   assert.equal(e.data.verifications.length, 2);   // verification recorded
   assert.equal(r.action, 'version-succeeded');
 });
+
+test('verify refuses the capture-time `captured` method', () => {
+  const dir = freshVault();
+  assert.throws(
+    () => applyVerification(dir, { id: '2026-01-01-a', method: 'captured', result: 'confirmed', now: '2026-05-27', repoRoot: process.cwd() }),
+    /captured is a capture-time seed/,
+  );
+});

@@ -21,6 +21,15 @@ LLM-assisted research has two failure modes:
 
 A plain notes folder fixes neither: it has no idea *how fast a fact goes stale* or *when you last checked it*. `research-vault` does: it's a cache **with an expiry policy**. A 2009 algorithm is still true; a "current best model" claim from last quarter probably isn't. The vault knows the difference and makes your agent act on it.
 
+```mermaid
+flowchart LR
+  cite["about to cite an entry"] --> cmp{"last_verified vs<br/>volatility window?"}
+  cmp -->|within window| ok["cite it"]
+  cmp -->|past window| stale["flag stale; prefer live data"]
+  stale --> ver["verify: confirm or supersede"]
+  ver --> ok
+```
+
 ## The magic moment
 
 ```text
@@ -120,7 +129,21 @@ Two facet tiers keep retrieval clean as the vault grows to hundreds of entries:
 
 The spine is a deliberate distillation flow (**`sources/` → `notes/` → `synthesis/`**) that you (or the agent, on request) walk explicitly; nothing auto-promotes. `snippets/`, `experiments/`, and `questions/` stand alone.
 
+```mermaid
+flowchart LR
+  src["sources/<br/>raw captures"] -->|distill| note["notes/<br/>load-bearing claims"] -->|combine| syn["synthesis/<br/>cross-source conclusions"]
+  subgraph standalone ["standalone (no auto-promotion)"]
+    snip["snippets/"]
+    exp["experiments/"]
+    q["questions/"]
+  end
+```
+
 To change the controlled vocabulary, you edit exactly **one file**: `schema/taxonomy.json`. The linter, `capture`, the generated `AGENTS.md`, and each vault's copied `taxonomy.json` all derive from it. Nothing to keep in sync by hand.
+
+![Obsidian graph view of a research vault: entries as nodes, backlinks as edges](docs/img/obsidian-graph.png)
+
+*The vault as a navigable graph in Obsidian. Regenerate the view with `research-vault obsidian`, then open the `_obsidian/` folder (see each vault's `meta/obsidian-view.md`).*
 
 ## Where the vault lives
 
@@ -145,7 +168,7 @@ A vault is just a folder of Markdown, so a **shared team knowledge base** is sim
 | `advise` | Read-only curation report: stale entries, orphans, sources lacking a note, aliasable topics. Never mutates. |
 | `obsidian` | Regenerate a git-ignored `_obsidian/` wikilink view + Map-of-Content; never mutates canonical entries. |
 | `refresh` | Re-check source freshness over the network (off by default, double-gated). Reports `confirmed`/`changed`/`unreachable`; never mutates entries. |
-| `export` | Read-only JSONL for external finetuning/eval: metadata + answered-question summaries by default; entry bodies only behind `--include-bodies --ack-data-egress`. |
+| `export` | Read-only JSONL for external finetuning/eval: by default only answered-question `{input, output}` pairs; `--scope <types>` widens to title+metadata for other types, and bodies need `--include-bodies --ack-data-egress`. See [`docs/FINETUNING.md`](docs/FINETUNING.md). |
 
 ## Security & privacy
 
@@ -154,7 +177,7 @@ A vault is just a folder of Markdown, so a **shared team knowledge base** is sim
 The `refresh` command is the **only** feature that touches the network, and it is **off by default**:
 
 - **Double-gated.** It refuses (non-zero exit, including `--dry-run`) unless you both run the `refresh` subcommand **and** set `RESEARCH_VAULT_ALLOW_NETWORK=1`.
-- **Hash-only.** It fetches a source URL, recomputes the SHA-256 of the raw bytes, and stores only that hash plus the HTTP status (**never the response body**), and it does no HTML→text conversion.
+- **Hash-only.** It fetches a source URL, recomputes the SHA-256 of the raw bytes, and compares it to the entry's stored `content_hash` (**never the response body**); it does no HTML→text conversion. The fetched hash is used only for the comparison and is never written back.
 - **Never mutates.** It reports `confirmed`/`changed`/`unreachable` and defers all edits to `verify`; entries and the manifest are left byte-identical.
 - **SSRF-guarded.** HTTPS-only (plaintext and https→http redirect downgrades refused). Every resolved address must be public global-unicast; RFC 6890 private/loopback/link-local/CGNAT/ULA/doc/multicast/reserved ranges are rejected (including IPv4-mapped IPv6 and the cloud metadata address `169.254.169.254`, and alt-encoded numeric hosts). The socket is pinned to the pre-validated IP (no re-resolution, no pooling), redirects are re-validated per hop, and a body cap + timeout bound each request. No cookies or auth headers are sent.
 
@@ -162,7 +185,7 @@ The `refresh` command is the **only** feature that touches the network, and it i
 
 The `export` command is the only path that writes vault content to an external file, and it is conservative by default:
 
-- **Metadata-first.** By default it emits only answered-question summaries (`{input, output}`) plus per-entry metadata (**never entry bodies**, and never a `source` body).
+- **Metadata-first.** By default it emits only **answered questions** as `{input, output}` pairs (each with per-record metadata) — no other entry types, **never entry bodies**, and never a `source` body. Use `--scope <types>` to include other types as title/metadata-only records.
 - **Body egress is double-gated.** Including any entry body requires **both** `--include-bodies` **and** `--ack-data-egress`; either alone refuses and writes nothing.
 - **Deterministic, offline.** Output is stable, id-sorted JSONL for an external pipeline; nothing is sent over the network and the vault is never modified.
 
@@ -172,6 +195,7 @@ The `export` command is the only path that writes vault content to an external f
 - **Lint is the guarantee, not the hook.** Correctness lives in `lint` (runs anywhere, on any writer). `capture`/`verify` self-heal; the plugin ships two advisory Claude Code hooks (a `PostToolUse` lint-fix and a `SessionStart` vault summary), both non-blocking and non-load-bearing (convenience only).
 - **Everything human-facing is generated.** `AGENTS.md` and the per-vault `taxonomy.json` are derived from the schema, so they can't drift; CI enforces it.
 - **Orchestration is out of scope, but contracted.** Skills that drive research (yours or third-party) compose with the vault rather than replacing it. See [`docs/ORCHESTRATOR-INTEGRATION.md`](docs/ORCHESTRATOR-INTEGRATION.md) for the lifecycle boundary, the capture-plan checklist, and the two lint warnings that make non-conforming output visible.
+- **Migrating existing notes?** See [`docs/MIGRATION.md`](docs/MIGRATION.md) for moving an existing folder of entries into a managed vault.
 
 ## Development
 

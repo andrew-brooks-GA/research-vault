@@ -36,7 +36,7 @@ Before citing any entry, compute `last_verified := max(verifications[].date)` (i
 
 ## 5. What counts as verification
 
-Methods: `refetched-source` (re-fetched original; strong), `cross-referenced` (independent current source; strong), `existence-check` (URL resolves; weak), `human-spot-check` (human confirmed; strong), `inferred-stable` (no fetch; weakest — ONLY for `volatility: stable` AND a durable source type book/paper/talk).
+Methods: `refetched-source` (re-fetched original; strong), `cross-referenced` (independent current source; strong), `existence-check` (URL resolves; weak), `human-spot-check` (human confirmed; strong), `inferred-stable` (no fetch; weakest — ONLY for `volatility: stable` AND a durable source type book/paper/talk), `captured` (the seed `capture` writes at creation time: provenance only, not verification; `verify` rejects it).
 
 Results: `confirmed` (append; no body change), `changed-trivially` (cosmetic source change, claims unaffected → update in place), `outdated` (claims no longer match → supersede), `unreachable` (404/paywall; archive if persistent), `inconclusive` (do NOT append a confirming verification).
 

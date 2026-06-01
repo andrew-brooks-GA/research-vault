@@ -9,16 +9,17 @@ import { compileVault } from './compile.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-function hasEntries(dir) {
+const VAULT_MARKERS = ['AGENTS.md', 'taxonomy.json', 'README.md', 'CLAUDE.md', 'GEMINI.md', 'meta'];
+function hasVaultContent(dir) {
   for (const f of ['sources','notes','synthesis','snippets','experiments','questions']) {
     const p = join(dir, f);
     if (existsSync(p) && readdirSync(p).some(n => n.endsWith('.md') && n !== 'INDEX.md')) return true;
   }
-  return false;
+  return VAULT_MARKERS.some(m => existsSync(join(dir, m)));
 }
 
 export function runInit({ vaultPath, repoRoot = REPO_ROOT, force = false }) {
-  if (existsSync(vaultPath) && hasEntries(vaultPath) && !force) {
+  if (existsSync(vaultPath) && hasVaultContent(vaultPath) && !force) {
     return { created: false, reason: 'target vault is non-empty (use --force to overwrite)', vaultPath };
   }
   mkdirSync(vaultPath, { recursive: true });

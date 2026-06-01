@@ -24,6 +24,7 @@ export function applyVerification(vaultPath, opts) {
   const entry = readEntry(abs);
 
   if (!schema.taxonomy.verification_method.includes(opts.method)) throw new Error(`invalid method: ${opts.method}`);
+  if (opts.method === 'captured') throw new Error('captured is a capture-time seed, not a verification method');
   if (!schema.taxonomy.verification_result.includes(opts.result))
     throw new Error(`invalid result: ${opts.result}`);
   if (opts.result === 'outdated' && !opts.supersededBy)
