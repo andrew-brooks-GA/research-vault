@@ -107,6 +107,7 @@ Tooling and data are separate — your notes never live in this repo. The vault 
 | `search` | Facet/text query over the manifest (`--domain`, `--topic`, `--series`, `--text`). |
 | `related` | Forward links + computed backlinks for an entry (`--format mermaid`). |
 | `manifest` | Rebuild/print the derived index. |
+| `obsidian` | Regenerate a git-ignored `_obsidian/` wikilink view + Map-of-Content; never mutates canonical entries. |
 
 ## Design notes
 

@@ -199,6 +199,9 @@ Optional `sqlite-vec` semantic-search MCP, built from the same manifest — Stag
 ### 5.6 Advisory librarian (`advise`)
 `advise` is a read-only aggregation of existing signals — the stale set, orphans (no backlinks and no outgoing edges), sources without a distilling note, and entries carrying aliasable topics — surfaced as curation guidance. It never writes, never adds lint rules, and the vault is byte-for-byte unchanged after it runs; it is convenience, not part of the correctness floor (§9.6).
 
+### 5.7 Obsidian export (`obsidian`)
+`obsidian` regenerates a derived `[[wikilink]]` browsing view — one stub note per entry with forward links and backlinks, plus a `MOC.md` Map-of-Content — into a top-level git-ignored `_obsidian/` directory. It NEVER rewrites canonical entry bodies (the id-reference model and portability are preserved) and lives outside the six entry folders, so it never affects the manifest or lint — a regenerable cache, not a source of truth (§9.6).
+
 ---
 
 ## 6. Claude Code plugin surface
