@@ -17,3 +17,8 @@ test('computes backlinks from related/contributing_ids', () => {
   const m = buildManifest(VAULT);
   assert.deepEqual(m.backlinks['2026-01-01-a'].sort(), ['2026-01-02-b']);
 });
+
+test('two buildManifest runs are byte-identical except generated', () => {
+  const norm = m => { const { generated, ...rest } = m; return JSON.stringify(rest); };
+  assert.equal(norm(buildManifest(VAULT)), norm(buildManifest(VAULT)));
+});

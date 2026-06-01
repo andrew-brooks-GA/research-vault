@@ -9,7 +9,7 @@ export function walkEntries(vaultPath) {
   for (const folder of ENTRY_FOLDERS) {
     const dir = join(vaultPath, folder);
     if (!existsSync(dir)) continue;
-    for (const name of readdirSync(dir)) {
+    for (const name of readdirSync(dir).sort()) {
       if (name.endsWith('.md') && name !== 'INDEX.md') files.push(join(dir, name));
     }
   }

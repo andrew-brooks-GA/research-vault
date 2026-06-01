@@ -26,5 +26,7 @@ export function buildManifest(vaultPath) {
     }
   }
   entries.sort((a, b) => a.id.localeCompare(b.id));
-  return { generated: new Date().toISOString().slice(0, 10), entries, backlinks };
+  const sortedBacklinks = {};
+  for (const k of Object.keys(backlinks).sort()) sortedBacklinks[k] = backlinks[k].slice().sort();
+  return { generated: new Date().toISOString().slice(0, 10), entries, backlinks: sortedBacklinks };
 }

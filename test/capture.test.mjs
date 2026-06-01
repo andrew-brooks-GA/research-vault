@@ -1,13 +1,30 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, existsSync } from 'node:fs';
+import { mkdtempSync, cpSync, existsSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { captureEntry } from '../bin/commands/capture.mjs';
-import { sha256 } from '../bin/lib/ids.mjs';
-import { readEntry } from '../bin/lib/fsutil.mjs';
+import { makeId, sha256 } from '../bin/lib/ids.mjs';
+import { readEntry, writeEntry } from '../bin/lib/fsutil.mjs';
 import { lintVault } from '../bin/lib/lintrules.mjs';
+import { lintAndReport } from '../bin/commands/lint.mjs';
+import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
+
+// Hand-write an entry to disk (mimicking a non-tooling writer that bypasses fail-fast
+// capture) so the detective floor can be exercised on bad controlled values.
+function handWrite(dir, folder, type, id, extra) {
+  const schema = loadSchema(process.cwd());
+  const data = {
+    title: id, type, created: '2026-01-01',
+    domain: ['software-engineering'], stage: schema.taxonomy.stage_by_folder[folder].default,
+    topics: ['x'], status: 'active', related: [], volatility: 'slow',
+    verifications: [{ date: '2026-01-01', by_type: 'human', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }],
+    ...extra,
+  };
+  mkdirSync(join(dir, folder), { recursive: true });
+  writeEntry(join(dir, folder, `${id}.md`), data, `# ${id}\n`, fieldOrder(schema, type));
+}
 
 function freshVault() {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');
@@ -114,13 +131,36 @@ test('captures synthesis with synthesis_basis: primary-rollup', () => {
 
 test('lint rejects unknown synthesis_basis / authority_tier / authority_basis values', () => {
   const dir = freshVault();
-  // Capture with bogus values then check lint surfaces them.
-  captureEntry(dir, { type: 'synthesis', title: 'Bad basis', contributingIds: '2026-01-01-a', synthesisBasis: 'nonsense', now: '2026-05-27', repoRoot: process.cwd() });
-  captureEntry(dir, { type: 'source', title: 'Bad tier', url: 'https://bt.example.com/x', authorityTier: 'mid', now: '2026-05-27', repoRoot: process.cwd() });
-  captureEntry(dir, { type: 'source', title: 'Bad basis', url: 'https://bb.example.com/x', authorityBasis: 'tweet', now: '2026-05-27', repoRoot: process.cwd() });
+  // Fail-fast capture would refuse these, so hand-write the bogus entries (a non-tooling
+  // writer) and assert the detective floor still surfaces them.
+  handWrite(dir, 'synthesis', 'synthesis', '2026-01-01-bad-sb', { contributing_ids: ['2026-01-01-a'], synthesis_basis: 'nonsense' });
+  handWrite(dir, 'sources', 'source', '2026-01-01-bad-tier', { source_type: 'article', source_url: 'https://bt.example.com/x', authority_tier: 'mid' });
+  handWrite(dir, 'sources', 'source', '2026-01-01-bad-ab', { source_type: 'article', source_url: 'https://bb.example.com/x', authority_basis: 'tweet' });
   const { violations } = lintVault(dir, process.cwd());
   const codes = violations.map(v => v.code);
   assert.ok(codes.includes('ENUM_SYNTHESIS_BASIS'), 'expected ENUM_SYNTHESIS_BASIS: ' + codes.join(','));
   assert.ok(codes.includes('ENUM_AUTHORITY_TIER'), 'expected ENUM_AUTHORITY_TIER: ' + codes.join(','));
   assert.ok(codes.includes('ENUM_AUTHORITY_BASIS'), 'expected ENUM_AUTHORITY_BASIS: ' + codes.join(','));
+});
+
+test('capture rejects unknown controlled values up front and writes nothing', () => {
+  const dir = freshVault();
+  assert.throws(
+    () => captureEntry(dir, { type: 'note', title: 'Bad conf', sources: '2026-01-01-a', confidence: 'certain', now: '2026-05-27', repoRoot: process.cwd() }),
+    /unknown confidence: certain/,
+  );
+  const id = makeId('2026-05-27', 'Bad conf');
+  assert.ok(!existsSync(join(dir, 'notes', `${id}.md`)), 'no entry file should be written on rejection');
+});
+
+test('capture (all six types) leaves the vault lint-clean under --check', () => {
+  const dir = freshVault();
+  captureEntry(dir, { type: 'source', title: 'Src', url: 'https://s.example.com/x', now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'note', title: 'N', sources: '2026-01-01-a', confidence: 'high', now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'synthesis', title: 'S', contributingIds: '2026-01-01-a', synthesisBasis: 'primary-rollup', now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'snippet', title: 'Sn', language: 'python', tested: true, now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'experiment', title: 'E', provider: 'anthropic', modelId: 'm', task: 't', outcome: 'success', now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'question', title: 'Does X hold?', now: '2026-05-27', repoRoot: process.cwd() });
+  const { violations } = lintAndReport(dir, { check: true });
+  assert.equal(violations.length, 0, 'expected clean --check after captures: ' + JSON.stringify(violations));
 });

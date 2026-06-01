@@ -6,6 +6,7 @@ import { makeId, normalizeUrl, sha256 } from '../lib/ids.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { writeEntry } from '../lib/fsutil.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
+import { assertControlledValues } from '../lib/validate.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const TYPE_FOLDER = { source:'sources', note:'notes', synthesis:'synthesis', snippet:'snippets', experiment:'experiments', question:'questions' };
@@ -70,6 +71,7 @@ export function captureEntry(vaultPath, opts) {
     data.question = opts.question || opts.title;
     data.state = opts.state || 'open';
   }
+  assertControlledValues(data, schema);
   const order = fieldOrder(schema, opts.type);
   mkdirSync(join(vaultPath, folder), { recursive: true });
   const path = join(vaultPath, folder, `${id}.md`);

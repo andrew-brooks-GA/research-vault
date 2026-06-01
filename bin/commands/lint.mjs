@@ -10,9 +10,10 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export function lintAndReport(vaultPath, { check = false } = {}) {
   const { violations, warnings } = lintVault(vaultPath, REPO_ROOT);
   if (check) {
-    const fresh = JSON.stringify(buildManifest(vaultPath).entries);
+    const norm = m => { const { generated, ...rest } = m; return JSON.stringify(rest); };
+    const fresh = norm(buildManifest(vaultPath));
     const mfPath = join(vaultPath, '.vault-manifest.json');
-    const cur = existsSync(mfPath) ? JSON.stringify(JSON.parse(readFileSync(mfPath, 'utf8')).entries) : null;
+    const cur = existsSync(mfPath) ? norm(JSON.parse(readFileSync(mfPath, 'utf8'))) : null;
     if (cur !== fresh) violations.push({ file: mfPath, code: 'MANIFEST_STALE', msg: 'manifest out of date (run lint)' });
   } else {
     writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');

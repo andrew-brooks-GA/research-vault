@@ -5,6 +5,7 @@ import { loadSchema, fieldOrder } from '../lib/schema.mjs';
 import { walkEntries, readEntry, writeEntry } from '../lib/fsutil.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
+import { assertControlledValues } from '../lib/validate.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -21,6 +22,10 @@ export function applyVerification(vaultPath, opts) {
   const entry = readEntry(abs);
 
   if (!schema.taxonomy.verification_method.includes(opts.method)) throw new Error(`invalid method: ${opts.method}`);
+  if (!schema.taxonomy.verification_result.includes(opts.result))
+    throw new Error(`invalid result: ${opts.result}`);
+  if (opts.result === 'outdated' && !opts.supersededBy)
+    throw new Error('outdated requires --superseded-by <id> (supersede must name its replacement)');
   if (opts.method === 'inferred-stable') {
     const durable = schema.taxonomy.durable_source_types.includes(entry.data.source_type);
     if (entry.data.volatility !== 'stable' || !durable)
@@ -30,6 +35,7 @@ export function applyVerification(vaultPath, opts) {
 
   entry.data.verifications = entry.data.verifications || [];
   entry.data.verifications.push({ date: now, by_type: opts.byId ? 'agent' : 'human', by_id: opts.byId || '', method: opts.method, result: opts.result, notes: opts.notes || '' });
+  assertControlledValues(entry.data, schema);
 
   if (opts.succession) {
     // Version succession: entry remains correct for its version → stay active, do NOT supersede.
