@@ -286,6 +286,8 @@ A `PostToolUse` hook (matching `Edit`/`Write` on vault paths) runs idempotent `l
 - **Single-platform** — Claude Code only; does not port to other agents and does not fire on human IDE edits. Never relied on for correctness.
 - **Loop-guarded** — the fix pass is idempotent and the hook no-ops when `lint --fix` produces no change, preventing write→hook→write cycles. A re-entrancy guard (skip if the triggering write originated from the tool) is required.
 
+A non-blocking `SessionStart` advisory hook also ships: it prints a one-line vault summary (entry count + stale count), stays silent when no vault is present, and never blocks (always exits 0). Like the `PostToolUse` hook it is purely UX — correctness never depends on it (§9.6.1).
+
 > Design rule: a preventive control you *depend on* is a liability — the first bypassing writer (non-Claude agent, human IDE edit, hook misfire) silently rots invariants. Correctness lives in §9.6.1; §9.6.2–9.6.3 are UX only.
 
 ---
