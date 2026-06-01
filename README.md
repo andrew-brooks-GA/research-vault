@@ -108,6 +108,16 @@ Tooling and data are separate — your notes never live in this repo. The vault 
 | `related` | Forward links + computed backlinks for an entry (`--format mermaid`). |
 | `manifest` | Rebuild/print the derived index. |
 | `obsidian` | Regenerate a git-ignored `_obsidian/` wikilink view + Map-of-Content; never mutates canonical entries. |
+| `refresh` | Re-check source freshness over the network (off by default, double-gated). Reports `confirmed`/`changed`/`unreachable`; never mutates entries. |
+
+## Security — network refresh
+
+The `refresh` command is the **only** feature that touches the network, and it is **off by default**:
+
+- **Double-gated.** It refuses (non-zero exit, including `--dry-run`) unless you both run the `refresh` subcommand **and** set `RESEARCH_VAULT_ALLOW_NETWORK=1`.
+- **Hash-only.** It fetches a source URL, recomputes the SHA-256 of the raw bytes, and stores only that hash plus the HTTP status — **never the response body**, and it does no HTML→text conversion.
+- **Never mutates.** It reports `confirmed`/`changed`/`unreachable` and defers all edits to `verify`; entries and the manifest are left byte-identical.
+- **SSRF-guarded.** HTTPS-only (plaintext and https→http redirect downgrades refused). Every resolved address must be public global-unicast — RFC 6890 private/loopback/link-local/CGNAT/ULA/doc/multicast/reserved ranges are rejected (including IPv4-mapped IPv6 and the cloud metadata address `169.254.169.254`, and alt-encoded numeric hosts). The socket is pinned to the pre-validated IP (no re-resolution, no pooling), redirects are re-validated per hop, and a body cap + timeout bound each request. No cookies or auth headers are sent.
 
 ## Design notes
 

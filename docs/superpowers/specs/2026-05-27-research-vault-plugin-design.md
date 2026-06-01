@@ -202,6 +202,9 @@ Optional `sqlite-vec` semantic-search MCP, built from the same manifest — Stag
 ### 5.7 Obsidian export (`obsidian`)
 `obsidian` regenerates a derived `[[wikilink]]` browsing view — one stub note per entry with forward links and backlinks, plus a `MOC.md` Map-of-Content — into a top-level git-ignored `_obsidian/` directory. It NEVER rewrites canonical entry bodies (the id-reference model and portability are preserved) and lives outside the six entry folders, so it never affects the manifest or lint — a regenerable cache, not a source of truth (§9.6).
 
+### 5.8 Web refresh (`refresh`) — opt-in, double-gated, hash-only
+`refresh [--id <id>] [--dry-run]` re-checks source freshness over the network. It is **off by default and double-gated**: it refuses (non-zero exit, including `--dry-run`) unless the `refresh` subcommand is invoked **and** `RESEARCH_VAULT_ALLOW_NETWORK=1`. Targets are `type: source` entries with a `source_url` (a single `--id`, else the stale set from §5.x freshness). For each it fetches the URL, recomputes `sha256` over the raw bytes, and reports `confirmed` (hash equals stored `content_hash`), `changed` (differs — run `verify`), or `unreachable`. It stores **only the hash + HTTP status** — never the body — does **no** HTML→text conversion, and **never** mutates an entry or the manifest (it reports; `verify` is the only mutator). Fetching is SSRF-guarded (§12): HTTPS-only, every resolved address must be public/global-unicast (RFC 6890), the socket is pinned to the validated IP with no pooling, redirects are followed manually and re-validated (no scheme downgrade), and a body cap + timeout bound each request.
+
 ---
 
 ## 6. Claude Code plugin surface
@@ -335,7 +338,7 @@ A non-blocking `SessionStart` advisory hook also ships: it prints a one-line vau
 ## 12. Deferred / future (out of scope for v1)
 - `sqlite-vec` semantic-search MCP (§5.4).
 - Human-readable compiled index views (a regenerated per-folder/root digest of entries) under `_index/`, replacing the per-folder index files retired in v1 — see roadmap item 10.
-- Automatic web re-fetch / refresh-queue automation.
+- ~~Automatic web re-fetch / refresh-queue automation.~~ Shipped as the opt-in, double-gated, hash-only `refresh` command (§5.8). Activation requires both the subcommand and `RESEARCH_VAULT_ALLOW_NETWORK=1`; otherwise it refuses. It stores only hash + status (never bodies), does no HTML→text conversion, and never auto-mutates entries — it reports `confirmed`/`changed`/`unreachable` and defers all edits to `verify`. SSRF guard (`bin/lib/ssrfguard.mjs`): HTTPS-only; `assertSafeUrl` rejects plaintext and non-canonical/alt-encoded numeric hosts (WHATWG `URL` normalizes decimal/octal/hex literals, which are then caught as private IP literals); `isPublicAddress` classifies against RFC 6890 special-purpose ranges (IPv4 by integer/prefix, IPv6 by hextet/prefix, IPv4-mapped IPv6 by the embedded IPv4); `resolveSafe` requires **every** resolved address to be public. The socket `lookup` is pinned to the pre-validated IP with `agent:false` (no pooling/re-resolution), redirects are followed manually with per-hop re-validation and no https→http downgrade, and a 5 MB body cap + timeout bound each request. No cookies/auth headers are sent.
 - `npm` publish of the standalone CLI.
 - Additional hook events beyond the optional `PostToolUse` lint-fix hook shipped in v1 (§9.6.3).
 
