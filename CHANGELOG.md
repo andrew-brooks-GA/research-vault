@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-06-01
+
+A bug-fix release closing gaps an adversarial review surfaced: documented behavior
+that did not hold, plus two paths that could mutate canonical vault data.
+
+### Fixed
+- **`lint --fix` now normalizes via the CLI.** It was imported but never invoked, so `--fix` only rebuilt the manifest; it never stripped BOM/CRLF or re-serialized frontmatter.
+- **`obsidian --out` can no longer overwrite canonical entries.** A `--out` that escapes the vault, is the vault root, or targets an entry folder (e.g. `--out sources`) is refused.
+- **`export --out` can no longer write inside the vault**, preserving the read-only-on-the-vault guarantee.
+- **`capture` refuses to overwrite an existing id** (same date + title) instead of silently clobbering; supersede via `verify` instead.
+- **Integer `subject.version` now dedups correctly** (the URL + version comparison no longer fails on a string-vs-number mismatch).
+- **`capture --content-file` hashes the file's raw bytes**, matching what `refresh` computes (previously it hashed a UTF-8 decode).
+- **`init` refuses to overwrite a non-empty or customized vault**, not just one that already has entries.
+
+### Changed
+- **`capture` seeds a `captured` verification** at creation time instead of a fake `existence-check: confirmed`; `verify` rejects `captured` as a verification method.
+
+### Added
+- **`captured` verification method** in the taxonomy (capture-time provenance; not a verification).
+
 ## [0.2.0] - 2026-05-31
 
 Completes the lint "detective floor", then adds five new commands plus richer

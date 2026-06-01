@@ -22,3 +22,8 @@ test('fieldOrder returns deterministic key order for a type', () => {
   assert.equal(order[0], 'title');
   assert.ok(order.includes('source_url'));
 });
+
+test('verification_method includes the capture-time seed method', () => {
+  const s = loadSchema(process.cwd());
+  assert.ok(s.taxonomy.verification_method.includes('captured'));
+});

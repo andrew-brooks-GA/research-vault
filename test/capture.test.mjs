@@ -9,6 +9,7 @@ import { makeId, sha256 } from '../bin/lib/ids.mjs';
 import { readEntry, writeEntry } from '../bin/lib/fsutil.mjs';
 import { lintVault } from '../bin/lib/lintrules.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
+import { refreshVault } from '../bin/commands/refresh.mjs';
 import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
 
 // Hand-write an entry to disk (mimicking a non-tooling writer that bypasses fail-fast
@@ -242,4 +243,51 @@ test('capture (all six types) leaves the vault lint-clean under --check', () => 
   captureEntry(dir, { type: 'question', title: 'Does X hold?', now: '2026-05-27', repoRoot: process.cwd() });
   const { violations } = lintAndReport(dir, { check: true });
   assert.equal(violations.length, 0, 'expected clean --check after captures: ' + JSON.stringify(violations));
+});
+
+test('capture refuses a colliding id and leaves the first entry intact', () => {
+  const dir = freshVault();
+  const opts = { type: 'note', title: 'Same Title', sources: '2026-01-01-a', confidence: 'high', now: '2026-05-27', repoRoot: process.cwd() };
+  const r1 = captureEntry(dir, opts);
+  assert.equal(r1.dedup, null);
+  const before = readFileSync(r1.path);
+  const r2 = captureEntry(dir, opts);
+  assert.ok(r2.dedup && r2.dedup.ambiguous === false, 'second capture of same id must refuse');
+  assert.match(r2.dedup.reason, /already exists/);
+  assert.ok(readFileSync(r1.path).equals(before), 'first entry must be byte-identical');
+  assert.ok(!lintAndReport(dir, { check: true }).violations.some(v => v.code === 'MANIFEST_STALE'), 'manifest not clobbered by the refusal');
+});
+
+test('dedup: same url + integer subject.version dedups on recapture', () => {
+  const dir = freshVault();
+  captureEntry(dir, { type: 'source', title: 'v20', url: 'https://int.example.com/d', subjectName: 'thing', subjectVersion: '20', series: 'thing-rel', now: '2026-05-27', repoRoot: process.cwd() });
+  const r2 = captureEntry(dir, { type: 'source', title: 'v20 again', url: 'https://int.example.com/d', subjectName: 'thing', subjectVersion: '20', series: 'thing-rel', now: '2026-05-27', repoRoot: process.cwd() });
+  assert.ok(r2.dedup, 'integer version must still dedup (string/number mismatch fixed)');
+  assert.equal(r2.dedup.ambiguous, false);
+});
+
+test('content-file hashes raw bytes (non-UTF-8) and matches what refresh computes', async () => {
+  const dir = freshVault();
+  const tmp = join(mkdtempSync(join(tmpdir(), 'rv-bin-')), 'src.bin');
+  const bytes = Buffer.from([0xff, 0xfe, 0x00, 0x41, 0x80, 0x81]);
+  writeFileSync(tmp, bytes);
+  const code = await run({ type: 'source', title: 'BIN', url: 'https://bin.example.com/x', 'content-file': tmp, vault: dir });
+  assert.equal(code, 0);
+  const e = readEntry(join(dir, 'sources', makeId(new Date().toISOString().slice(0, 10), 'BIN') + '.md'));
+  assert.equal(e.data.content_hash, sha256(bytes), 'hash must be over raw bytes');
+  assert.notEqual(e.data.content_hash, sha256(bytes.toString('utf8')), 'must not hash the lossy UTF-8 decode');
+  const results = await refreshVault(dir, {
+    targets: [{ id: e.id, type: 'source', source_url: e.data.source_url, content_hash: e.data.content_hash }],
+    fetch: async () => ({ status: 200, hash: sha256(bytes) }),
+  });
+  assert.equal(results[0].result, 'confirmed', 'capture and refresh hashing must agree');
+});
+
+test('capture seeds an honest `captured` verification, not a fake existence-check', () => {
+  const dir = freshVault();
+  const r = captureEntry(dir, { type: 'source', title: 'Seed', url: 'https://seed.example.com/x', now: '2026-05-27', repoRoot: process.cwd() });
+  const v = readEntry(r.path).data.verifications;
+  assert.equal(v.length, 1);
+  assert.equal(v[0].method, 'captured');
+  assert.equal(v[0].result, 'confirmed');
 });

@@ -3,7 +3,7 @@ name: research-verify
 description: Use when checking freshness or verifying a vault entry before citing — implements the method/result decision tree, the three change-outcomes, offline mode, and the self-confirmation rule.
 ---
 # Verifying an entry
-Follow `meta/prompt-templates/verify-entry.md`. Pick a method; re-reading an entry is NOT verification. `inferred-stable` only for volatility=stable + durable source.
+Follow `meta/prompt-templates/verify-entry.md`. Pick a method; re-reading an entry is NOT verification. `inferred-stable` only for volatility=stable + durable source. The `captured` seed `capture` writes at creation time is provenance, not verification (`verify` rejects it).
 
 Three distinct outcomes when something changed:
 - **Supersession** — the entry is WRONG/obsolete → `result: outdated` → mark `status: superseded`, create a corrected new entry. (`verify --id <id> --method <m> --result outdated --superseded-by <new-id>`)

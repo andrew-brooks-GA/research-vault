@@ -47,3 +47,14 @@ test('obsidian dedups forward Links in a synthesis entry note', () => {
   const count = body.split('[[2026-01-01-a]]').length - 1;
   assert.equal(count, 1, 'related+contributing_ids+sources must dedup to a single wikilink');
 });
+
+test('obsidian --out refuses canonical folders / escapes; default still works', () => {
+  const dir = freshVault();
+  const canon = join(dir, 'sources', '2026-01-01-a.md');
+  const before = readFileSync(canon);
+  assert.throws(() => obsidianView(dir, 'sources'), /refused/);
+  assert.ok(readFileSync(canon).equals(before), 'canonical entry untouched after refused --out sources');
+  assert.throws(() => obsidianView(dir, '..'), /refused/);
+  assert.throws(() => obsidianView(dir, '.'), /refused/);
+  assert.doesNotThrow(() => obsidianView(dir), 'default _obsidian still works');
+});

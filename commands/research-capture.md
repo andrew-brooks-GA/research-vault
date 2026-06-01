@@ -5,7 +5,7 @@ argument-hint: [type] [title] [url]
 Gather: type, title, and (for sources) url, and optional subject name/version + series for versioned resources. Optional fields:
 
 - Sources: `--authority-tier <primary|secondary|tertiary>` and `--authority-basis <official-docs|spec|source-code|release-notes|vendor-blog|community-report|benchmark|talk|personal-experiment|unknown>`.
-- Sources: `--content-file <path>` hashes `content_hash` from a local file's bytes (no network); `--captured-via <text>` records provenance; `--store-body` copies the content into the entry body (off by default — a copyright/PII surface, so it REQUIRES `--ack-data-egress`).
+- Sources: `--content-file <path>` hashes `content_hash` from a local file's raw bytes (no network); `--captured-via <text>` records provenance; `--store-body` copies the content (decoded as UTF-8) into the entry body (off by default — a copyright/PII surface, so it REQUIRES `--ack-data-egress`).
 - Syntheses: `--synthesis-basis <interpretive|primary-rollup>` (declare `primary-rollup` only for factual rollups that legitimately skip notes; see AGENTS.md §2.5).
 - Notes: `--sources <id,id>` and `--confidence <high|medium|low>`.
 - Experiments: `--provider`, `--model-id`, `--task`, `--outcome <success|partial|failure|inconclusive>`.

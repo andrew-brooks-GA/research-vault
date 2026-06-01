@@ -8,6 +8,7 @@ import { writeEntry, walkEntries } from '../bin/lib/fsutil.mjs';
 import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
 import { buildExport, toJsonl } from '../bin/lib/exportjsonl.mjs';
+import { run } from '../bin/commands/export.mjs';
 
 // Hand-write an entry directly to disk (mirroring capture/lint tests) so we can build
 // question entries with controlled state/answer_summary the fixture vault lacks.
@@ -105,4 +106,16 @@ test('export is read-only: vault unchanged and lint-clean afterward', () => {
 
   for (const [f, bytes] of before) assert.ok(readFileSync(f).equals(bytes), `entry unchanged: ${f}`);
   assert.equal(lintAndReport(dir, { check: true }).violations.length, 0, 'vault still lint-clean after export');
+});
+
+test('export --out refuses a path inside the vault and writes nothing; outside works', async () => {
+  const dir = freshVault();
+  seedQuestions(dir);
+  const inside = join(dir, 'sources', 'leak.jsonl');
+  const code = await run({ out: inside, vault: dir });
+  assert.equal(code, 1, 'in-vault --out must refuse');
+  assert.ok(!existsSync(inside), 'nothing written inside the vault');
+  const outside = join(mkdtempSync(join(tmpdir(), 'rv-out-')), 'train.jsonl');
+  assert.equal(await run({ out: outside, vault: dir }), 0, 'external --out still works');
+  assert.ok(existsSync(outside), 'external file written');
 });

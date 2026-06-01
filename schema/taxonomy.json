@@ -19,7 +19,7 @@
   },
   "confidence": ["high","medium","low"],
   "outcome": ["success","partial","failure","inconclusive"],
-  "verification_method": ["refetched-source","cross-referenced","existence-check","human-spot-check","inferred-stable"],
+  "verification_method": ["refetched-source","cross-referenced","existence-check","human-spot-check","inferred-stable","captured"],
   "verification_result": ["confirmed","changed-trivially","outdated","unreachable","inconclusive"],
   "by_type": ["human","agent"],
   "question_state": ["open","investigating","answered"],
