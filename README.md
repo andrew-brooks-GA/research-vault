@@ -1,6 +1,6 @@
 # 🗃️ research-vault
 
-**Stop re-researching the same things — and stop letting agents cite docs that went stale three versions ago.**
+**Stop re-researching the same things, and stop letting agents cite docs that went stale three versions ago.**
 
 `research-vault` turns the scattered, throwaway research you do with an LLM into a durable, **freshness-governed** knowledge base that any agent can search, navigate, and cite with confidence. Plain Markdown, zero dependencies, works in Claude Code or any other agent.
 
@@ -16,10 +16,10 @@
 
 LLM-assisted research has two failure modes:
 
-- **You lose it.** The answer you dug up last month is gone, so you ask again — and pay for the same research twice.
+- **You lose it.** The answer you dug up last month is gone, so you ask again, and pay for the same research twice.
 - **You trust it too long.** An agent confidently cites a tool's docs that changed three releases ago, because nothing told it the page had moved on.
 
-A plain notes folder fixes neither: it has no idea *how fast a fact goes stale* or *when you last checked it*. `research-vault` does — it's a cache **with an expiry policy**. A 2009 algorithm is still true; a "current best model" claim from last quarter probably isn't. The vault knows the difference and makes your agent act on it.
+A plain notes folder fixes neither: it has no idea *how fast a fact goes stale* or *when you last checked it*. `research-vault` does: it's a cache **with an expiry policy**. A 2009 algorithm is still true; a "current best model" claim from last quarter probably isn't. The vault knows the difference and makes your agent act on it.
 
 ## The magic moment
 
@@ -35,16 +35,16 @@ Claude: From your vault (vcluster 0.20 docs · volatility: fast · last verified
         ⚠ This entry is fast-moving and 21 days old — want me to re-verify against the live docs before you rely on it?
 ```
 
-You captured once. Weeks later, in a fresh session, the knowledge is there — **with a built-in staleness warning**. That's the whole point.
+You captured once. Weeks later, in a fresh session, the knowledge is there, **with a built-in staleness warning**. That's the whole point.
 
 ## What you get
 
 | | |
 |---|---|
-| 🧠 **Freshness-governed** | Every entry has a `volatility` tier and a verification log. Agents check both before citing and prefer live data when something's aged — no more silently-stale answers. |
+| 🧠 **Freshness-governed** | Every entry has a `volatility` tier and a verification log. Agents check both before citing and prefer live data when something's aged. No more silently-stale answers. |
 | 🗂️ **Version-aware** | Track `vcluster 0.19` and `0.20` as sibling entries that both stay valid. A new release is *new knowledge*, not a correction of the old. |
-| 🔌 **Agent-agnostic** | A Claude Code plugin *and* a standalone CLI. Codex, Gemini, or a bare file-reading agent all work — every vault is self-describing via a generated `AGENTS.md`. |
-| 🔍 **Instantly searchable** | A derived manifest gives one-read facet search and a backlink graph across the whole vault — no re-reading files. |
+| 🔌 **Agent-agnostic** | A Claude Code plugin *and* a standalone CLI. Codex, Gemini, or a bare file-reading agent all work. Every vault is self-describing via a generated `AGENTS.md`. |
+| 🔍 **Instantly searchable** | A derived manifest gives one-read facet search and a backlink graph across the whole vault. No re-reading files. |
 | 🛡️ **Self-consistent** | One JSON schema drives the linter, capture, and the generated docs. A lint guardrail enforces encoding, structure, and reference integrity on every platform. |
 | 🪶 **Zero-dependency** | Node ≥18, stdlib only. Nothing to `npm install`. Runs on Linux, macOS, and Windows. |
 
@@ -74,19 +74,19 @@ node bin/research-vault.mjs search --topic vcluster
 
 `research-vault` works in two modes, and most people mix them:
 
-- **Prose / skill-activated (default in Claude Code).** Just talk to your agent. The `research-vault-usage`, `research-capture`, `research-verify`, and `research-librarian` skills auto-activate on technical-research questions, describe the procedure, and shell out to the fast-path commands — degrading to plain glob/grep when Node isn't present. Reading, searching, citing-with-freshness, and guided capture/verify all happen this way.
-- **Manual (slash commands / CLI).** Run an operation deterministically yourself — `/research-capture`, `node bin/research-vault.mjs lint --check`, and so on.
+- **Prose / skill-activated (default in Claude Code).** Just talk to your agent. The `research-vault-usage`, `research-capture`, `research-verify`, and `research-librarian` skills auto-activate on technical-research questions, describe the procedure, and shell out to the fast-path commands, degrading to plain glob/grep when Node isn't present. Reading, searching, citing-with-freshness, and guided capture/verify all happen this way.
+- **Manual (slash commands / CLI).** Run an operation deterministically yourself: `/research-capture`, `node bin/research-vault.mjs lint --check`, and so on.
 
-Most operations **can be driven entirely by prose** — the command is just the faster, safer path: `search`, `related`, `capture`, `verify`, `advise`, `compile`, `obsidian`. A few **require a command**; prose can't substitute, by design:
+Most operations **can be driven entirely by prose** (the command is just the faster, safer path): `search`, `related`, `capture`, `verify`, `advise`, `compile`, `obsidian`. A few **require a command**; prose can't substitute, by design:
 
 | Requires a command | Why prose can't do it |
 |---|---|
 | `lint` / `lint --check` | The single authoritative correctness gate (CI / pre-commit). Correctness must be *checked*, not asserted. |
 | `init` | Scaffolds the vault and generates `AGENTS.md` from the schema. |
-| `refresh` | Network re-fetch, **double-gated** (`RESEARCH_VAULT_ALLOW_NETWORK=1` **and** the subcommand) — a deliberate consent control. |
+| `refresh` | Network re-fetch, **double-gated** (`RESEARCH_VAULT_ALLOW_NETWORK=1` **and** the subcommand). A deliberate consent control. |
 | `export` | Data egress; bodies are **double-gated** (`--include-bodies` **and** `--ack-data-egress`). |
 
-**Prose example** — no commands typed (full flow in [The magic moment](#the-magic-moment)):
+**Prose example** (no commands typed; full flow in [The magic moment](#the-magic-moment)):
 
 > **You:** capture the vcluster sleep-mode docs
 > **Claude:** Captured as a source · vcluster 0.20 · topics: kubernetes, vcluster …
@@ -94,7 +94,7 @@ Most operations **can be driven entirely by prose** — the command is just the 
 > **You:** how does vcluster sleep mode work again?
 > **Claude:** *(cites your entry, with a "this is 21 days old — re-verify against the live docs?" freshness warning)*
 
-**Command example** — the kind of thing prose can't do (network, double-gated):
+**Command example**, the kind of thing prose can't do (network, double-gated):
 
 ```text
 RESEARCH_VAULT_ALLOW_NETWORK=1 node bin/research-vault.mjs refresh --id 2026-05-31-vcluster-sleep-mode
@@ -111,24 +111,24 @@ Two facet tiers keep retrieval clean as the vault grows to hundreds of entries:
 
 | Folder | What it holds | You create one when… |
 |---|---|---|
-| `sources/` | Raw captures of external material — articles, papers, docs, talks (what it says, as-is) | you clip something worth keeping |
-| `notes/` | Your **distilled** take on one or more sources — the load-bearing claims + how you'd use them | you read a source and want a durable, skimmable version *(deliberate — capturing a source does not auto-create a note)* |
+| `sources/` | Raw captures of external material: articles, papers, docs, talks (what it says, as-is) | you clip something worth keeping |
+| `notes/` | Your **distilled** take on one or more sources: the load-bearing claims + how you'd use them | you read a source and want a durable, skimmable version *(deliberate — capturing a source does not auto-create a note)* |
 | `synthesis/` | **Cross-source themes** combining several notes/sources into a conclusion | you see a pattern across multiple entries worth stating once |
 | `snippets/` | Reusable, ideally tested code or prompt fragments | you have a fragment you'll reuse |
 | `experiments/` | Logged trial runs (an LLM/tool run) with task, parameters, and outcome | you run a trial worth recording |
 | `questions/` | Open questions driving research (`open → investigating → answered`) | you hit a question to track and answer over time |
 
-The spine is a deliberate distillation flow — **`sources/` → `notes/` → `synthesis/`** — that you (or the agent, on request) walk explicitly; nothing auto-promotes. `snippets/`, `experiments/`, and `questions/` stand alone.
+The spine is a deliberate distillation flow (**`sources/` → `notes/` → `synthesis/`**) that you (or the agent, on request) walk explicitly; nothing auto-promotes. `snippets/`, `experiments/`, and `questions/` stand alone.
 
-To change the controlled vocabulary, you edit exactly **one file**: `schema/taxonomy.json`. The linter, `capture`, the generated `AGENTS.md`, and each vault's copied `taxonomy.json` all derive from it — nothing to keep in sync by hand.
+To change the controlled vocabulary, you edit exactly **one file**: `schema/taxonomy.json`. The linter, `capture`, the generated `AGENTS.md`, and each vault's copied `taxonomy.json` all derive from it. Nothing to keep in sync by hand.
 
 ## Where the vault lives
 
-Tooling and data are separate — your notes never live in this repo. The vault is discovered in order: `--vault` flag → `$RESEARCH_VAULT_PATH` → a pointer written by `init` → OS default (`~/.local/share/research-vault` on Linux, `~/Library/Application Support/research-vault` on macOS, `%LOCALAPPDATA%\research-vault` on Windows).
+Tooling and data are separate; your notes never live in this repo. The vault is discovered in order: `--vault` flag → `$RESEARCH_VAULT_PATH` → a pointer written by `init` → OS default (`~/.local/share/research-vault` on Linux, `~/Library/Application Support/research-vault` on macOS, `%LOCALAPPDATA%\research-vault` on Windows).
 
 ## Team use
 
-A vault is just a folder of Markdown, so a **shared team knowledge base** is simply a vault kept in a git repo. Commit the entries, `schema/`, and the generated `AGENTS.md`; the derived caches (`.vault-manifest.json`, `_index/`, `_obsidian/`) are git-ignored by the bundled `vault-template/.gitignore` and rebuilt locally with `lint` / `compile`. Run `lint --check` in CI or a pre-commit hook as the shared correctness gate, and every teammate's agent reads the same `AGENTS.md` — so the whole team searches, cites, and verifies against one freshness-governed source of truth instead of re-researching in private silos. Coordination is plain git; the lint floor — not a server — is what keeps a multi-writer vault consistent.
+A vault is just a folder of Markdown, so a **shared team knowledge base** is simply a vault kept in a git repo. Commit the entries, `schema/`, and the generated `AGENTS.md`; the derived caches (`.vault-manifest.json`, `_index/`, `_obsidian/`) are git-ignored by the bundled `vault-template/.gitignore` and rebuilt locally with `lint` / `compile`. Run `lint --check` in CI or a pre-commit hook as the shared correctness gate, and every teammate's agent reads the same `AGENTS.md`, so the whole team searches, cites, and verifies against one freshness-governed source of truth instead of re-researching in private silos. Coordination is plain git; the lint floor (not a server) is what keeps a multi-writer vault consistent.
 
 ## Commands
 
@@ -141,11 +141,11 @@ A vault is just a folder of Markdown, so a **shared team knowledge base** is sim
 | `search` | Facet/text query over the manifest (`--domain`, `--topic`, `--series`, `--text`, `--body`). |
 | `related` | Forward links + computed backlinks for an entry (`--format mermaid`). |
 | `manifest` | Rebuild/print the derived index. |
-| `compile` | Regenerate a git-ignored `_index/` human-readable index (grouped by type) — a derived cache, never a source of truth. |
+| `compile` | Regenerate a git-ignored `_index/` human-readable index (grouped by type); a derived cache, never a source of truth. |
 | `advise` | Read-only curation report: stale entries, orphans, sources lacking a note, aliasable topics. Never mutates. |
 | `obsidian` | Regenerate a git-ignored `_obsidian/` wikilink view + Map-of-Content; never mutates canonical entries. |
 | `refresh` | Re-check source freshness over the network (off by default, double-gated). Reports `confirmed`/`changed`/`unreachable`; never mutates entries. |
-| `export` | Read-only JSONL for external finetuning/eval — metadata + answered-question summaries by default; entry bodies only behind `--include-bodies --ack-data-egress`. |
+| `export` | Read-only JSONL for external finetuning/eval: metadata + answered-question summaries by default; entry bodies only behind `--include-bodies --ack-data-egress`. |
 
 ## Security & privacy
 
@@ -154,23 +154,23 @@ A vault is just a folder of Markdown, so a **shared team knowledge base** is sim
 The `refresh` command is the **only** feature that touches the network, and it is **off by default**:
 
 - **Double-gated.** It refuses (non-zero exit, including `--dry-run`) unless you both run the `refresh` subcommand **and** set `RESEARCH_VAULT_ALLOW_NETWORK=1`.
-- **Hash-only.** It fetches a source URL, recomputes the SHA-256 of the raw bytes, and stores only that hash plus the HTTP status — **never the response body**, and it does no HTML→text conversion.
+- **Hash-only.** It fetches a source URL, recomputes the SHA-256 of the raw bytes, and stores only that hash plus the HTTP status (**never the response body**), and it does no HTML→text conversion.
 - **Never mutates.** It reports `confirmed`/`changed`/`unreachable` and defers all edits to `verify`; entries and the manifest are left byte-identical.
-- **SSRF-guarded.** HTTPS-only (plaintext and https→http redirect downgrades refused). Every resolved address must be public global-unicast — RFC 6890 private/loopback/link-local/CGNAT/ULA/doc/multicast/reserved ranges are rejected (including IPv4-mapped IPv6 and the cloud metadata address `169.254.169.254`, and alt-encoded numeric hosts). The socket is pinned to the pre-validated IP (no re-resolution, no pooling), redirects are re-validated per hop, and a body cap + timeout bound each request. No cookies or auth headers are sent.
+- **SSRF-guarded.** HTTPS-only (plaintext and https→http redirect downgrades refused). Every resolved address must be public global-unicast; RFC 6890 private/loopback/link-local/CGNAT/ULA/doc/multicast/reserved ranges are rejected (including IPv4-mapped IPv6 and the cloud metadata address `169.254.169.254`, and alt-encoded numeric hosts). The socket is pinned to the pre-validated IP (no re-resolution, no pooling), redirects are re-validated per hop, and a body cap + timeout bound each request. No cookies or auth headers are sent.
 
 ### Data export
 
 The `export` command is the only path that writes vault content to an external file, and it is conservative by default:
 
-- **Metadata-first.** By default it emits only answered-question summaries (`{input, output}`) plus per-entry metadata — **never entry bodies**, and never a `source` body.
+- **Metadata-first.** By default it emits only answered-question summaries (`{input, output}`) plus per-entry metadata (**never entry bodies**, and never a `source` body).
 - **Body egress is double-gated.** Including any entry body requires **both** `--include-bodies` **and** `--ack-data-egress`; either alone refuses and writes nothing.
 - **Deterministic, offline.** Output is stable, id-sorted JSONL for an external pipeline; nothing is sent over the network and the vault is never modified.
 
 ## Design notes
 
 - **Cache, not source of truth.** Staleness is the dominant failure mode of agent research; this vault makes it visible and actionable.
-- **Lint is the guarantee, not the hook.** Correctness lives in `lint` (runs anywhere, on any writer). `capture`/`verify` self-heal; the plugin ships two advisory Claude Code hooks (a `PostToolUse` lint-fix and a `SessionStart` vault summary), both non-blocking and non-load-bearing — convenience only.
-- **Everything human-facing is generated.** `AGENTS.md` and the per-vault `taxonomy.json` are derived from the schema, so they can't drift — CI enforces it.
+- **Lint is the guarantee, not the hook.** Correctness lives in `lint` (runs anywhere, on any writer). `capture`/`verify` self-heal; the plugin ships two advisory Claude Code hooks (a `PostToolUse` lint-fix and a `SessionStart` vault summary), both non-blocking and non-load-bearing (convenience only).
+- **Everything human-facing is generated.** `AGENTS.md` and the per-vault `taxonomy.json` are derived from the schema, so they can't drift; CI enforces it.
 - **Orchestration is out of scope, but contracted.** Skills that drive research (yours or third-party) compose with the vault rather than replacing it. See [`docs/ORCHESTRATOR-INTEGRATION.md`](docs/ORCHESTRATOR-INTEGRATION.md) for the lifecycle boundary, the capture-plan checklist, and the two lint warnings that make non-conforming output visible.
 
 ## Development
