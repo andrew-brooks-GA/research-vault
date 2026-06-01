@@ -198,7 +198,7 @@ Optional `sqlite-vec` semantic-search MCP, built from the same manifest — Stag
 ## 6. Claude Code plugin surface
 
 ### 6.1 `.claude-plugin/plugin.json`
-Declares name, version, description; points at `commands/`, `skills/`, and the **optional** hook (§9.6.3). Exposes `${CLAUDE_PLUGIN_ROOT}` to commands for locating `bin/`. The hook is opt-in and non-load-bearing — correctness never depends on it (§9.6).
+Declares name, description, author. `commands/` and `skills/` auto-discover by directory; `version` is omitted (CC falls back to the git SHA). The lint-fix hook is wired in `hooks/hooks.json` (§9.6.3); managed policy can block or force-enable it. Exposes `${CLAUDE_PLUGIN_ROOT}` to commands for locating `bin/`. The hook is opt-in and non-load-bearing — correctness never depends on it (§9.6).
 
 ### 6.2 Slash commands (thin wrappers)
 
@@ -276,7 +276,7 @@ Every mutating command (`capture`, `verify`, `manifest`, and `lint --fix`) ends 
 
 #### 9.6.3 Optional Claude Code hook (preventive, single-platform) — explicitly non-load-bearing
 A `PostToolUse` hook (matching `Edit`/`Write` on vault paths) runs idempotent `lint --fix` after agent-mediated edits in Claude Code. It is:
-- **Opt-in** — declared in the manifest but documented as optional; the plugin is fully functional without it.
+- **Ships enabled** via `hooks/hooks.json` (Claude Code auto-enables plugin hooks; managed settings can block them). Non-load-bearing: idempotent, loop-guarded, vault-scoped (resolved-path containment), no-op outside the vault; correctness never depends on it (§9.6.1). Disable by removing the hook entry.
 - **Single-platform** — Claude Code only; does not port to other agents and does not fire on human IDE edits. Never relied on for correctness.
 - **Loop-guarded** — the fix pass is idempotent and the hook no-ops when `lint --fix` produces no change, preventing write→hook→write cycles. A re-entrancy guard (skip if the triggering write originated from the tool) is required.
 

@@ -5,6 +5,7 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../bin/lib/resolve.mjs';
+import { isInsideVault } from '../bin/lib/containment.mjs';
 import { fixVault } from '../bin/lib/lintrules.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
 
@@ -17,7 +18,7 @@ process.stdin.on('end', () => {
     const evt = JSON.parse(input || '{}');
     const editedPath = evt.tool_input?.file_path || '';
     const { path: vaultPath } = resolveVault({});
-    if (!editedPath || !editedPath.startsWith(vaultPath)) { process.exit(0); } // not a vault edit; skip
+    if (!isInsideVault(vaultPath, editedPath)) { process.exit(0); } // not a vault edit; skip
     fixVault(vaultPath, REPO_ROOT);
     lintAndReport(vaultPath, { check: false }); // rebuild manifest
   } catch { /* never block edits */ }
