@@ -151,9 +151,13 @@ Tooling and data are separate; your notes never live in this repo. The vault is 
 
 ## Team use
 
-A vault is just a folder of Markdown, so a **shared team knowledge base** is simply a vault kept in a git repo. Commit the entries, `schema/`, and the generated `AGENTS.md`; the derived caches (`.vault-manifest.json`, `_index/`, `_obsidian/`) are git-ignored by the bundled `vault-template/.gitignore` and rebuilt locally with `lint` / `compile`. Run `lint --check` in CI or a pre-commit hook as the shared correctness gate, and every teammate's agent reads the same `AGENTS.md`, so the whole team searches, cites, and verifies against one freshness-governed source of truth instead of re-researching in private silos. Coordination is plain git; the lint floor (not a server) is what keeps a multi-writer vault consistent.
+A vault is just a folder of Markdown, so a **shared team knowledge base** is a vault kept in a git repo. Everyone's agent reads the same `AGENTS.md`, so the whole team searches, cites, and verifies against one freshness-governed source of truth instead of re-researching in private silos.
+
+To set one up: commit the entries, `schema/`, and the generated `AGENTS.md`. The derived caches (`.vault-manifest.json`, `_index/`, `_obsidian/`) are git-ignored by the bundled `vault-template/.gitignore` and rebuilt locally with `lint` / `compile`. Run `lint --check` in CI or a pre-commit hook as the shared correctness gate — that lint floor, not a server, is what keeps a multi-writer vault consistent.
 
 ## Commands
+
+The full CLI. In Claude Code your agent calls most of these for you; this is the reference for when you want to run one yourself.
 
 | Command | Does |
 |---|---|
@@ -170,24 +174,23 @@ A vault is just a folder of Markdown, so a **shared team knowledge base** is sim
 | `refresh` | Re-check source freshness over the network (off by default, double-gated). Reports `confirmed`/`changed`/`unreachable`; never mutates entries. |
 | `export` | Read-only JSONL for external finetuning/eval: by default only answered-question `{input, output}` pairs; `--scope <types>` widens to title+metadata for other types, and bodies need `--include-bodies --ack-data-egress`. See [`docs/FINETUNING.md`](docs/FINETUNING.md). |
 
+## Keeping captured sources fresh
+
+A source you captured months ago may have quietly changed. `refresh` checks **without making you re-read the page**: it re-fetches the URL, compares it against what you captured, and reports `confirmed`, `changed`, or `unreachable`. Reach for it when you're about to rely on an older source — then run `verify` on anything that came back `changed`.
+
+```text
+RESEARCH_VAULT_ALLOW_NETWORK=1 node bin/research-vault.mjs refresh --id 2026-05-31-vcluster-sleep-mode
+```
+
+It's the only feature that touches the network, so it's **off by default and read-only**. You opt in per run (the `refresh` subcommand *and* `RESEARCH_VAULT_ALLOW_NETWORK=1`), it never edits your entries, and it compares content hashes only — never storing the fetched page.
+
+## Exporting your vault
+
+Want to feed your answered research into a fine-tuning or eval pipeline? `export` writes a stable JSONL file. By default it emits only **answered questions** as `{input, output}` pairs — no bodies, nothing else — so the safe path is the default path. Widen it with `--scope <types>` for more entry types, or pull full bodies with `--include-bodies --ack-data-egress` when you genuinely need them. See [`docs/FINETUNING.md`](docs/FINETUNING.md).
+
 ## Security & privacy
 
-### Network refresh
-
-The `refresh` command is the **only** feature that touches the network, and it is **off by default**:
-
-- **Double-gated.** It refuses (non-zero exit, including `--dry-run`) unless you both run the `refresh` subcommand **and** set `RESEARCH_VAULT_ALLOW_NETWORK=1`.
-- **Hash-only.** It fetches a source URL, recomputes the SHA-256 of the raw bytes, and compares it to the entry's stored `content_hash` (**never the response body**); it does no HTML→text conversion. The fetched hash is used only for the comparison and is never written back.
-- **Never mutates.** It reports `confirmed`/`changed`/`unreachable` and defers all edits to `verify`; entries and the manifest are left byte-identical.
-- **SSRF-guarded.** HTTPS-only (plaintext and https→http redirect downgrades refused). Every resolved address must be public global-unicast; RFC 6890 private/loopback/link-local/CGNAT/ULA/doc/multicast/reserved ranges are rejected (including IPv4-mapped IPv6 and the cloud metadata address `169.254.169.254`, and alt-encoded numeric hosts). The socket is pinned to the pre-validated IP (no re-resolution, no pooling), redirects are re-validated per hop, and a body cap + timeout bound each request. No cookies or auth headers are sent.
-
-### Data export
-
-The `export` command is the only path that writes vault content to an external file, and it is conservative by default:
-
-- **Metadata-first.** By default it emits only **answered questions** as `{input, output}` pairs (each with per-record metadata) — no other entry types, **never entry bodies**, and never a `source` body. Use `--scope <types>` to include other types as title/metadata-only records.
-- **Body egress is double-gated.** Including any entry body requires **both** `--include-bodies` **and** `--ack-data-egress`; either alone refuses and writes nothing.
-- **Deterministic, offline.** Output is stable, id-sorted JSONL for an external pipeline; nothing is sent over the network and the vault is never modified.
+Everything is local and read-only by default. The two features that reach outside the vault — `refresh` (network) and `export` (file egress) — are off or conservative until you opt in per run, and neither ever mutates your entries. The full contract, including the SSRF hardening and double-gating rules, is in [`SECURITY.md`](SECURITY.md).
 
 ## Design notes
 
