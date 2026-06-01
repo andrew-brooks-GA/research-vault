@@ -1,4 +1,4 @@
-const BOOL = new Set(['json', 'check', 'fix', 'force', 'stale', 'rebuild', 'succession', 'tested', 'set-default', 'scaffold', 'stdout', 'store-body', 'ack-data-egress', 'dry-run']);
+const BOOL = new Set(['json', 'check', 'fix', 'force', 'stale', 'rebuild', 'succession', 'tested', 'set-default', 'scaffold', 'stdout', 'store-body', 'ack-data-egress', 'dry-run', 'include-bodies']);
 export function parseArgs(argv) {
   const out = { _: [] };
   for (let i = 0; i < argv.length; i++) {
