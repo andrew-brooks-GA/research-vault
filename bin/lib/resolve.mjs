@@ -1,6 +1,11 @@
 import path from 'node:path';
 import { homedir } from 'node:os';
 import { readFileSync, existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { loadSchema } from './schema.mjs';
+import { loadProjectConfig } from './projectconfig.mjs';
+
+const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 function pj(platform) { return platform === 'win32' ? path.win32 : path.posix; }
 
@@ -30,9 +35,16 @@ export function resolveVault(opts = {}) {
     env: opts.env ?? process.env,
     platform: opts.platform ?? process.platform,
     home: opts.home ?? homedir(),
+    cwd: opts.cwd ?? process.cwd(),
   };
   const readConfig = opts.readConfig ?? (() => readConfigPath(ctx));
+  const readProjectConfig = opts.readProjectConfig ?? (() => {
+    const hit = loadProjectConfig(ctx.cwd, { schema: loadSchema(REPO_ROOT) });
+    return hit ? hit.config : null;
+  });
   if (ctx.flag) return { path: ctx.flag, source: 'flag' };
+  const project = readProjectConfig();
+  if (project && project.vault) return { path: project.vault, source: 'project' };
   if (ctx.env.RESEARCH_VAULT_PATH) return { path: ctx.env.RESEARCH_VAULT_PATH, source: 'env' };
   const cfg = readConfig();
   if (cfg) return { path: cfg, source: 'config' };

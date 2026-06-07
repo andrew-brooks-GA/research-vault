@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/andrew-brooks-GA/research-vault/schema/project-config.schema.json",
+  "title": "research-vault project binding (.research-vault.json)",
+  "description": "Per-repo binding discovered by walking up from the working directory (the .editorconfig/.nvmrc pattern). Binds a repo to a vault and supplies capture defaults. The plugin ships the mechanism; every value here is repo-specific. Controlled values (domain, volatility) are validated against the vault's single taxonomy.json at load time.",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "vault": {
+      "type": "string",
+      "description": "Path to (or name of) the vault this repo binds to. Wins over $RESEARCH_VAULT_PATH and the global config pointer, but not over an explicit --vault flag."
+    },
+    "defaults": {
+      "type": "object",
+      "description": "Capture defaults applied when this repo's agent creates vault entries.",
+      "additionalProperties": true,
+      "properties": {
+        "domain": { "type": "string", "description": "A controlled domain from taxonomy.json (e.g. learning, software-engineering)." },
+        "topics": { "type": "array", "items": { "type": "string" }, "description": "Freeform default topics for entries captured from this repo." },
+        "volatility": { "type": "string", "description": "A controlled volatility tier from taxonomy.json (stable|slow|fast|volatile)." }
+      }
+    },
+    "references": {
+      "type": "object",
+      "description": "Where this repo keeps documents that cite external facts.",
+      "additionalProperties": true,
+      "properties": {
+        "globs": { "type": "array", "items": { "type": "string" }, "description": "Globs (repo-relative) for files the authoring skill and consumer-side check should treat as citation-bearing." }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "description": "Authoring-capture behavior for this repo.",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Whether authoring in this repo should consult-and-capture into the bound vault." }
+      }
+    }
+  }
+}
