@@ -86,11 +86,40 @@ export function expandFiles(patterns, cwd) {
   return out;
 }
 
+function tally(perFile) {
+  const s = { files: perFile.length, ok: 0, stale: 0, uncovered: 0 };
+  for (const f of perFile) for (const r of f.rows) s[r.status]++;
+  return s;
+}
+
+// Pure: render the full coverage/freshness matrix as markdown or JSON.
+export function renderReport(perFile, { format, now }) {
+  const summary = tally(perFile);
+  if (format === 'json') {
+    const rows = perFile.flatMap((f) => f.rows.map((r) => ({ file: f.file, ...r })));
+    return JSON.stringify({ generated: now, summary, rows }, null, 2);
+  }
+  const lines = [
+    `# research-vault check report (${now})`,
+    '',
+    '| file | citation | status | entry |',
+    '|---|---|---|---|',
+  ];
+  for (const f of perFile) {
+    for (const r of f.rows) {
+      const entry = r.id ? `${r.id} (${r.volatility})` : '';
+      lines.push(`| ${f.file} | ${r.value} | ${r.status} | ${entry} |`);
+    }
+  }
+  lines.push('', `ok: ${summary.ok}, stale: ${summary.stale}, uncovered: ${summary.uncovered} across ${summary.files} file(s)`);
+  return lines.join('\n') + '\n';
+}
+
 export async function run(args) {
   const cwd = args.cwd ?? process.cwd();
   const globs = args._.slice(1);
   if (!globs.length) {
-    process.stderr.write('usage: research-vault check <file|glob>... [--check] [--vault <path>]\n');
+    process.stderr.write('usage: research-vault check <file|glob>... [--check] [--report] [--json] [--vault <path>]\n');
     return 2;
   }
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd });
@@ -99,17 +128,23 @@ export async function run(args) {
   const now = args.now || new Date().toISOString().slice(0, 10);
   const files = expandFiles(globs, cwd);
 
-  let ok = 0, stale = 0, uncovered = 0;
-  for (const abs of files) {
-    const rows = checkCitations(extractCitations(readFileSync(abs, 'utf8')), entries, schema, now);
-    const rel = relative(cwd, abs).replace(/\\/g, '/');
-    for (const r of rows) {
-      if (r.status === 'ok') { ok++; continue; }
-      if (r.status === 'stale') stale++; else uncovered++;
-      const tag = r.id ? `  (${r.id}, ${r.volatility})` : '';
-      process.stdout.write(`${r.status.toUpperCase().padEnd(9)} ${rel}  ${r.value}${tag}\n`);
+  const perFile = files.map((abs) => ({
+    file: relative(cwd, abs).replace(/\\/g, '/'),
+    rows: checkCitations(extractCitations(readFileSync(abs, 'utf8')), entries, schema, now),
+  }));
+  const summary = tally(perFile);
+
+  if (args.report || args.json) {
+    process.stdout.write(renderReport(perFile, { format: args.json ? 'json' : 'md', now }));
+  } else {
+    for (const f of perFile) {
+      for (const r of f.rows) {
+        if (r.status === 'ok') continue;
+        const tag = r.id ? `  (${r.id}, ${r.volatility})` : '';
+        process.stdout.write(`${r.status.toUpperCase().padEnd(9)} ${f.file}  ${r.value}${tag}\n`);
+      }
     }
+    process.stdout.write(`check: ${summary.files} file(s); ${summary.ok} ok, ${summary.stale} stale, ${summary.uncovered} uncovered\n`);
   }
-  process.stdout.write(`check: ${files.length} file(s); ${ok} ok, ${stale} stale, ${uncovered} uncovered\n`);
-  return args.check && stale + uncovered > 0 ? 1 : 0;
+  return args.check && summary.stale + summary.uncovered > 0 ? 1 : 0;
 }

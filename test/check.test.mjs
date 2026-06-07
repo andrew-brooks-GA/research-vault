@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { normalizeUrl } from '../bin/lib/ids.mjs';
-import { checkCitations, globToRegExp, expandFiles, run } from '../bin/commands/check.mjs';
+import { checkCitations, globToRegExp, expandFiles, renderReport, run } from '../bin/commands/check.mjs';
 import { runInit } from '../bin/commands/init.mjs';
 
 const SCHEMA = {
@@ -76,6 +76,31 @@ test('expandFiles resolves a glob to matching files under cwd', () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ---- renderReport (P2a: coverage/freshness matrix) ----
+const PERFILE = [{
+  file: 'doc.md',
+  rows: [
+    { type: 'url', value: 'https://x.com/a', status: 'uncovered' },
+    { type: 'id', value: '2026-01-01-foo', status: 'ok', id: '2026-01-01-foo', volatility: 'fast' },
+    { type: 'url', value: 'https://y.com/b', status: 'stale', id: '2026-02-02-bar', volatility: 'volatile' },
+  ],
+}];
+
+test('renderReport markdown emits a table row per citation and a summary', () => {
+  const md = renderReport(PERFILE, { format: 'md', now: '2026-06-07' });
+  assert.match(md, /\| doc\.md \| https:\/\/x\.com\/a \| uncovered \|/);
+  assert.match(md, /\| doc\.md \| 2026-01-01-foo \| ok \| 2026-01-01-foo \(fast\) \|/);
+  assert.match(md, /ok: 1.*stale: 1.*uncovered: 1/);
+});
+
+test('renderReport json carries summary counts and one row per citation', () => {
+  const report = JSON.parse(renderReport(PERFILE, { format: 'json', now: '2026-06-07' }));
+  assert.equal(report.generated, '2026-06-07');
+  assert.deepEqual(report.summary, { files: 1, ok: 1, stale: 1, uncovered: 1 });
+  assert.equal(report.rows.length, 3);
+  assert.equal(report.rows[0].file, 'doc.md');
 });
 
 test('run exits non-zero under --check when a citation is uncovered', async () => {
