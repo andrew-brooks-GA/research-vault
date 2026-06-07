@@ -173,6 +173,7 @@ The full CLI. In Claude Code your agent calls most of these for you; this is the
 | `obsidian` | Regenerate a git-ignored `_obsidian/` wikilink view + Map-of-Content; never mutates canonical entries. |
 | `refresh` | Re-check source freshness over the network (off by default, double-gated). Reports `confirmed`/`changed`/`unreachable`; never mutates entries. |
 | `export` | Read-only JSONL for external finetuning/eval: by default only answered-question `{input, output}` pairs; `--scope <types>` widens to title+metadata for other types, and bodies need `--include-bodies --ack-data-egress`. See [`docs/FINETUNING.md`](docs/FINETUNING.md). |
+| `check` | Audit a document/glob **outside** the vault: report each citation (external URL or vault id) as `ok` / `stale` / `uncovered` against the manifest. `--report` / `--json` emit a coverage matrix; `--check` exits non-zero to gate a consuming repo's CI. Read-only, no network (freshness from recorded `last_verified`). |
 
 ## Keeping captured sources fresh
 

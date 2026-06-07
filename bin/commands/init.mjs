@@ -6,6 +6,7 @@ import { generateAgentsMd } from '../lib/agentsmd.mjs';
 import { resolveVault, configPath } from '../lib/resolve.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { compileVault } from './compile.mjs';
+import { scaffoldProjectConfig } from '../lib/projectconfig.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -45,6 +46,23 @@ function profileHint(platform, vaultPath) {
 }
 
 export async function run(args) {
+  // `init --project` binds the CURRENT repo to a vault by writing a .research-vault.json
+  // here; it does not scaffold a vault. The vault itself is resolved as usual.
+  if (args.project) {
+    const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
+    const topics = args.topics ? String(args.topics).split(',').map(s => s.trim()).filter(Boolean) : [];
+    const globs = args.globs ? String(args.globs).split(',').map(s => s.trim()).filter(Boolean) : [];
+    try {
+      const target = scaffoldProjectConfig(process.cwd(), {
+        vault: vaultPath, domain: args.domain, topics, globs, volatility: args.volatility,
+      });
+      process.stdout.write(`Bound this repo to ${vaultPath} via ${target}.\n`);
+      return 0;
+    } catch (e) {
+      process.stderr.write(e.message + '\n');
+      return 1;
+    }
+  }
   const { path: vaultPath, source } = resolveVault({ flag: args.vault ?? null });
   const r = runInit({ vaultPath, force: !!args.force });
   if (!r.created) { process.stderr.write(r.reason + '\n'); return 1; }

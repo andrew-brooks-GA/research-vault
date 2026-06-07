@@ -20,6 +20,12 @@ Three roles, three responsibilities:
 
 An orchestrator that produces only `sources/` and `synthesis/` entries (skipping `notes/`, `questions/`, `experiments/`, `snippets/`) is non-conforming, regardless of prose quality. The two lint warnings introduced for this contract (`WARN_SYNTHESIS_NO_NOTE_COVERAGE` and `WARN_SYNTHESIS_MONOLITHIC`) make this mechanically visible.
 
+## Authoring entry point (`research-authoring`)
+
+Research does not only enter the vault through an orchestrator answering a question. It also enters when someone *authors a document* — a brief, an ADR, a chapter, a docs page — that cites external facts. That write-side path has its own skill, `research-authoring`, and its own trigger: a citation (an external URL, a version pin, an asserted API behavior) about to land in prose, in a repo bound by a `.research-vault.json`.
+
+The boundary mirrors the orchestrator one. `research-vault-usage` owns answering a question *from* the vault; `research-authoring` owns the moment a citation enters a document; the `research-capture` skill and CLI own persistence for both. The authoring lifecycle is **consult → capture → verify**: search the vault before a citation lands (cite an existing entry, check its freshness), capture what is missing as the appropriate type (a versioned `source` with `subject.version`, a `question` for an unresolved assumption), then run `research-vault check` so the document's citations are confirmed `ok` rather than `uncovered`/`stale`. `check --check` gives the consuming repo the same correctness floor `lint --check` gives the vault — extended past the vault boundary to the documents that cite it.
+
 ## The capture plan (AGENTS.md §2.6)
 
 Before drafting a `synthesis`, an orchestrator must produce a plan covering four prompts. The plan is conceptual; it need not be persisted. What gets persisted is the entries it generates.

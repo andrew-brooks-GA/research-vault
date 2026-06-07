@@ -2,7 +2,7 @@
 import { parseArgs } from './lib/args.mjs';
 
 const USAGE = `research-vault <command> [options]
-commands: init|lint|capture|verify|search|related|manifest|compile|advise|obsidian|refresh|export`;
+commands: init|lint|capture|verify|search|related|manifest|compile|advise|obsidian|refresh|export|check`;
 
 const args = parseArgs(process.argv.slice(2));
 const cmd = args._[0];
@@ -21,6 +21,7 @@ const commands = {
   obsidian: () => import('./commands/obsidian.mjs'),
   refresh: () => import('./commands/refresh.mjs'),
   export: () => import('./commands/export.mjs'),
+  check: () => import('./commands/check.mjs'),
 };
 if (!commands[cmd]) { process.stderr.write(`unknown command: ${cmd}\n${USAGE}\n`); process.exit(1); }
 try {
