@@ -1,8 +1,16 @@
 # 🗃️ research-vault
 
-**Stop re-researching the same things, and stop letting agents cite docs that went stale three versions ago.**
+**Your coding agent guesses about your stack from a year-old training cutoff — then forgets whatever you taught it the moment the session ends.**
 
-`research-vault` turns the scattered, throwaway research you do with an LLM into a durable, **freshness-governed** knowledge base that any agent can search, navigate, and cite with confidence. Plain Markdown, zero dependencies, works in Claude Code or any other agent.
+`research-vault` gives the agent in your repo a knowledge base it runs itself: it searches what you've already learned about the exact tools you use, cites it, and checks whether each fact is still current before leaning on it. Bind it to a project and your agent stops hallucinating about your dependencies and starts working from notes you actually trust.
+
+- **It stops guessing.** Point a repo at a vault and the agent answers from your curated, current notes on *your* stack — not its training-cutoff memory.
+- **You can delegate.** Every fact carries a freshness check, so the agent's research is trustworthy enough to build on without re-verifying by hand.
+- **It compounds.** Research you do once stays. Session N+1 is smarter than N, instead of starting from zero.
+
+It isn't a code indexer and doesn't replace Claude's view of your repo. It's the layer for *external* facts — docs, API behaviors, tool-version claims, and the decisions you made because of them — the stuff that otherwise evaporates into chat history.
+
+Plain Markdown, zero dependencies, no human in the loop. Works in Claude Code or any other agent.
 
 ![CI](https://github.com/andrew-brooks-GA/research-vault/actions/workflows/ci.yml/badge.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
@@ -12,14 +20,36 @@
 
 ---
 
-## Why
+## See it work
 
-LLM-assisted research has two failure modes:
+```text
+You:    digging into vcluster sleep mode — capture https://docs.vcluster.com/sleep-mode
+Claude: Captured · vcluster 0.20 · topics: kubernetes, vcluster, cost-optimization
 
-- **You lose it.** The answer you dug up last month is gone, so you ask again, and pay for the same research twice.
-- **You trust it too long.** An agent confidently cites a tool's docs that changed three releases ago, because nothing told it the page had moved on.
+  …three weeks later, a brand-new session…
 
-A plain notes folder fixes neither: it has no idea *how fast a fact goes stale* or *when you last checked it*. `research-vault` does: it's a cache **with an expiry policy**. A 2009 algorithm is still true; a "current best model" claim from last quarter probably isn't. The vault knows the difference and makes your agent act on it.
+You:    how does vcluster sleep mode work again?
+Claude: From your vault (vcluster 0.20 · last verified 21 days ago):
+        sleep mode scales idle workloads to zero and wakes them on demand…
+        ⚠ fast-moving and 21 days old — want me to re-verify against the live docs first?
+```
+
+You captured once. Weeks later, in a fresh session, the knowledge is right there — and the agent flags on its own that it might have aged. No re-research, no silently-stale citation.
+
+## What your agent does for you
+
+| | |
+|---|---|
+| 🧠 **Refuses to trust a stale fact** | Before citing, the agent weighs each entry's `volatility` tier against when it was last verified, and prefers live data when something's aged. The thing a plain notes folder can't do. |
+| 🎯 **Works from your stack, not its training data** | Bind a repo to a vault and the agent answers from your curated notes on the exact tools you use — not a frozen, year-old guess about them. |
+| 🗂️ **Tracks versions as siblings** | `vcluster 0.19` and `0.20` both stay valid. A new release is *new knowledge*, not a correction of the old. |
+| 🔍 **Searches without re-reading** | A derived manifest gives one-read facet search and a backlink graph across the whole vault. The agent finds what it needs without re-opening files. |
+| 🔌 **Runs under any agent** | A Claude Code plugin *and* a standalone CLI. Codex, Gemini, or a bare file-reading agent all work — every vault is self-describing via a generated `AGENTS.md`. |
+| 🪶 **Adds nothing to install** | Node ≥18, stdlib only. Zero dependencies. Runs on Linux, macOS, and Windows. |
+
+## Why freshness is the whole game
+
+Delegating research to an agent only works if you can trust what it gives back. The moment a citation might be silently stale, you're back to verifying everything by hand — and the agent has saved you nothing. `research-vault` is a cache **with an expiry policy**: a 2009 algorithm is still true, but a "current best model" claim from last quarter probably isn't, and the vault knows the difference. That's what makes the agent's research safe to build on instead of something you re-check.
 
 ```mermaid
 flowchart LR
@@ -29,33 +59,6 @@ flowchart LR
   stale --> ver["verify: confirm or supersede"]
   ver --> ok
 ```
-
-## The magic moment
-
-```text
-You:    I'm digging into vcluster sleep mode — capture https://docs.vcluster.com/sleep-mode
-Claude: Captured as a source · vcluster 0.20 · topics: kubernetes, vcluster, cost-optimization
-
-  …three weeks later, a brand-new session…
-
-You:    how does vcluster sleep mode work again?
-Claude: From your vault (vcluster 0.20 docs · volatility: fast · last verified 21 days ago):
-        sleep mode scales a virtual cluster's workloads to zero when idle and wakes them on demand…
-        ⚠ This entry is fast-moving and 21 days old — want me to re-verify against the live docs before you rely on it?
-```
-
-You captured once. Weeks later, in a fresh session, the knowledge is there, **with a built-in staleness warning**. That's the whole point.
-
-## What you get
-
-| | |
-|---|---|
-| 🧠 **Freshness-governed** | Every entry has a `volatility` tier and a verification log. Agents check both before citing and prefer live data when something's aged. No more silently-stale answers. |
-| 🗂️ **Version-aware** | Track `vcluster 0.19` and `0.20` as sibling entries that both stay valid. A new release is *new knowledge*, not a correction of the old. |
-| 🔌 **Agent-agnostic** | A Claude Code plugin *and* a standalone CLI. Codex, Gemini, or a bare file-reading agent all work. Every vault is self-describing via a generated `AGENTS.md`. |
-| 🔍 **Instantly searchable** | A derived manifest gives one-read facet search and a backlink graph across the whole vault. No re-reading files. |
-| 🛡️ **Self-consistent** | One JSON schema drives the linter, capture, and the generated docs. A lint guardrail enforces encoding, structure, and reference integrity on every platform. |
-| 🪶 **Zero-dependency** | Node ≥18, stdlib only. Nothing to `npm install`. Runs on Linux, macOS, and Windows. |
 
 ## Install
 
@@ -81,12 +84,12 @@ node bin/research-vault.mjs search --topic vcluster
 
 ## Two ways to use it
 
-`research-vault` works in two modes, and most people mix them:
+Most people mix them:
 
-- **Prose / skill-activated (default in Claude Code).** Just talk to your agent. The `research-vault-usage`, `research-capture`, `research-verify`, and `research-librarian` skills auto-activate on technical-research questions, describe the procedure, and shell out to the fast-path commands, degrading to plain glob/grep when Node isn't present. Reading, searching, citing-with-freshness, and guided capture/verify all happen this way.
+- **Prose / skill-activated (default in Claude Code).** Just talk to your agent. The `research-vault-usage`, `research-capture`, `research-verify`, and `research-librarian` skills auto-activate on technical-research questions; `research-authoring` fires when a citation is about to land in prose you're writing in a vault-bound repo; and `research-review` drives a retroactive audit of an existing doc or corpus. They describe the procedure and shell out to the fast-path commands, degrading to plain glob/grep when Node isn't present. Reading, searching, citing-with-freshness, and guided capture/verify all happen this way.
 - **Manual (slash commands / CLI).** Run an operation deterministically yourself: `/research-capture`, `node bin/research-vault.mjs lint --check`, and so on.
 
-Most operations **can be driven entirely by prose** (the command is just the faster, safer path): `search`, `related`, `capture`, `verify`, `advise`, `compile`, `obsidian`. A few **require a command**; prose can't substitute, by design:
+Most operations **can be driven entirely by prose** — the command is just the faster, safer path. A few **require a command**; prose can't substitute, by design:
 
 | Requires a command | Why prose can't do it |
 |---|---|
@@ -94,20 +97,6 @@ Most operations **can be driven entirely by prose** (the command is just the fas
 | `init` | Scaffolds the vault and generates `AGENTS.md` from the schema. |
 | `refresh` | Network re-fetch, **double-gated** (`RESEARCH_VAULT_ALLOW_NETWORK=1` **and** the subcommand). A deliberate consent control. |
 | `export` | Data egress; bodies are **double-gated** (`--include-bodies` **and** `--ack-data-egress`). |
-
-**Prose example** (no commands typed; full flow in [The magic moment](#the-magic-moment)):
-
-> **You:** capture the vcluster sleep-mode docs
-> **Claude:** Captured as a source · vcluster 0.20 · topics: kubernetes, vcluster …
-> *…weeks later, a fresh session…*
-> **You:** how does vcluster sleep mode work again?
-> **Claude:** *(cites your entry, with a "this is 21 days old — re-verify against the live docs?" freshness warning)*
-
-**Command example**, the kind of thing prose can't do (network, double-gated):
-
-```text
-RESEARCH_VAULT_ALLOW_NETWORK=1 node bin/research-vault.mjs refresh --id 2026-05-31-vcluster-sleep-mode
-```
 
 ## How it's organized
 
@@ -147,13 +136,15 @@ To change the controlled vocabulary, you edit exactly **one file**: `schema/taxo
 
 ## Where the vault lives
 
-Tooling and data are separate; your notes never live in this repo. The vault is discovered in order: `--vault` flag → `$RESEARCH_VAULT_PATH` → a pointer written by `init` → OS default (`~/.local/share/research-vault` on Linux, `~/Library/Application Support/research-vault` on macOS, `%LOCALAPPDATA%\research-vault` on Windows).
+Tooling and data are separate; your notes never live in this repo. The vault is discovered in order: `--vault` flag → a repo's `.research-vault.json` (project binding, see below) → `$RESEARCH_VAULT_PATH` → the config pointer → OS default (`~/.local/share/research-vault` on Linux, `~/Library/Application Support/research-vault` on macOS, `%LOCALAPPDATA%\research-vault` on Windows).
 
-## Team use
+### Binding a repo to a vault
 
-A vault is just a folder of Markdown, so a **shared team knowledge base** is a vault kept in a git repo. Everyone's agent reads the same `AGENTS.md`, so the whole team searches, cites, and verifies against one freshness-governed source of truth instead of re-researching in private silos.
+This is what makes the agent work from *your* stack. Commit a `.research-vault.json` at a repo's root (`init` writes one for you) and three things compose into a write/consume loop around that repo:
 
-To set one up: commit the entries, `schema/`, and the generated `AGENTS.md`. The derived caches (`.vault-manifest.json`, `_index/`, `_obsidian/`) are git-ignored by the bundled `vault-template/.gitignore` and rebuilt locally with `lint` / `compile`. Run `lint --check` in CI or a pre-commit hook as the shared correctness gate — that lint floor, not a server, is what keeps a multi-writer vault consistent.
+- **Discovery** — every command run from inside the repo resolves to the bound vault automatically, no `--vault` flag or env var needed. The agent answers from your curated notes by default.
+- **`research-authoring`** — when you're writing prose in the repo and a citation is about to land, the skill consults the vault, captures what's missing, and verifies freshness first.
+- **`check`** — audits the repo's docs against the vault, reporting each citation as `ok` / `stale` / `uncovered`; `check --check` exits non-zero to gate the repo's own CI on citation freshness.
 
 ## Commands
 
@@ -172,26 +163,23 @@ The full CLI. In Claude Code your agent calls most of these for you; this is the
 | `advise` | Read-only curation report: stale entries, orphans, sources lacking a note, **unverified (captured-only) sources**, aliasable topics. Never mutates. |
 | `obsidian` | Regenerate a git-ignored `_obsidian/` wikilink view + Map-of-Content; never mutates canonical entries. |
 | `refresh` | Re-check source freshness over the network (off by default, double-gated). Reports `confirmed`/`changed`/`unreachable`; never mutates entries. |
-| `export` | Read-only JSONL for external finetuning/eval: by default only answered-question `{input, output}` pairs; `--scope <types>` widens to title+metadata for other types, and bodies need `--include-bodies --ack-data-egress`. See [`docs/FINETUNING.md`](docs/FINETUNING.md). |
-| `check` | Audit a document/glob **outside** the vault: report each citation (external URL or vault id) as `ok` / `stale` / `uncovered` against the manifest. `--report` / `--json` emit a coverage matrix; `--check` exits non-zero to gate a consuming repo's CI. Read-only, no network (freshness from recorded `last_verified`). |
+| `export` | Read-only JSONL for external finetuning/eval: by default only answered-question `{input, output}` pairs; `--scope <types>` widens to title+metadata, and bodies need `--include-bodies --ack-data-egress`. See [`docs/FINETUNING.md`](docs/FINETUNING.md). |
+| `check` | Audit a document/glob **outside** the vault: report each citation (external URL or vault id) as `ok` / `stale` / `uncovered` against the manifest. `--report` / `--json` emit a coverage matrix; `--check` exits non-zero to gate a consuming repo's CI. Read-only, no network. |
 
-## Keeping captured sources fresh
+## Safety: network & egress
 
-A source you captured months ago may have quietly changed. `refresh` checks **without making you re-read the page**: it re-fetches the URL, compares it against what you captured, and reports `confirmed`, `changed`, or `unreachable`. Reach for it when you're about to rely on an older source — then run `verify` on anything that came back `changed`.
+Everything is local and read-only by default. Exactly two features reach outside the vault, and both are off or conservative until you opt in per run — neither ever mutates your entries:
 
-```text
-RESEARCH_VAULT_ALLOW_NETWORK=1 node bin/research-vault.mjs refresh --id 2026-05-31-vcluster-sleep-mode
-```
+- **`refresh`** (network) re-fetches a source's URL to check whether it changed, comparing content hashes only and never storing the fetched page. It's double-gated: the `refresh` subcommand *and* `RESEARCH_VAULT_ALLOW_NETWORK=1`. Reach for it before relying on an older source, then run `verify` on anything that came back `changed`.
+- **`export`** (file egress) writes a stable JSONL file for a fine-tuning or eval pipeline — answered-question `{input, output}` pairs only, by default. Full bodies are double-gated behind `--include-bodies --ack-data-egress`.
 
-It's the only feature that touches the network, so it's **off by default and read-only**. You opt in per run (the `refresh` subcommand *and* `RESEARCH_VAULT_ALLOW_NETWORK=1`), it never edits your entries, and it compares content hashes only — never storing the fetched page.
+The full contract, including the SSRF hardening and double-gating rules, is in [`SECURITY.md`](SECURITY.md).
 
-## Exporting your vault
+## Team use
 
-Want to feed your answered research into a fine-tuning or eval pipeline? `export` writes a stable JSONL file. By default it emits only **answered questions** as `{input, output}` pairs — no bodies, nothing else — so the safe path is the default path. Widen it with `--scope <types>` for more entry types, or pull full bodies with `--include-bodies --ack-data-egress` when you genuinely need them. See [`docs/FINETUNING.md`](docs/FINETUNING.md).
+A vault is just a folder of Markdown, so a **shared team knowledge base** is a vault kept in a git repo. Everyone's agent reads the same `AGENTS.md`, so the whole team searches, cites, and verifies against one freshness-governed source of truth instead of re-researching in private silos.
 
-## Security & privacy
-
-Everything is local and read-only by default. The two features that reach outside the vault — `refresh` (network) and `export` (file egress) — are off or conservative until you opt in per run, and neither ever mutates your entries. The full contract, including the SSRF hardening and double-gating rules, is in [`SECURITY.md`](SECURITY.md).
+To set one up: commit the entries, `schema/`, and the generated `AGENTS.md`. The derived caches (`.vault-manifest.json`, `_index/`, `_obsidian/`) are git-ignored by the bundled `vault-template/.gitignore` and rebuilt locally with `lint` / `compile`. Run `lint --check` in CI or a pre-commit hook as the shared correctness gate — that lint floor, not a server, is what keeps a multi-writer vault consistent.
 
 ## Design notes
 
