@@ -6,6 +6,10 @@ description: Use when retroactively reviewing or auditing an existing document o
 
 A retroactive audit, not a write of new prose. It answers: *for this document, which of its load-bearing claims and assumptions are backed by a fresh vault entry, and which are floating?* A citation linter sees only what is written as a citation; this skill reaches the **uncited claim** and the **implicit assumption** a linter cannot. It is an orchestration skill — drive it document by document and obey the capture lifecycle in `docs/ORCHESTRATOR-INTEGRATION.md`.
 
+## 0. Iron law — fetch before you assert
+
+Every external-fact claim you classify or capture — a version, a release date, an API behavior, a "current best" — must be **verified by fetching the authoritative source** (web fetch / cross-reference), with the URL and date recorded as a `refetched-source` or `cross-referenced` verification. **Model recall is not verification**, and for version currency it is actively wrong: training lags reality, so a remembered "latest version" is stale by construction. A claim you cannot fetch is an open `question` or `unverified-offline` — **never** a reported defect and never a "backed" entry. An audit run without web access cannot assess currency at all; say so rather than guessing. Run the audit's subagents *with* web access. A `source` whose only provenance is `captured` is not authoritative and trips `WARN_SOURCE_UNVERIFIED` until a real verification is recorded.
+
 ## 1. Start mechanical
 Run `research-vault check --report "<glob>"` first. That matrix already classifies every citation and version pin as `ok` / `stale` / `uncovered` for free. Do not redo by hand what the report gives you; the semantic pass below is only for what the report cannot see.
 
@@ -18,10 +22,10 @@ Ignore incidental colour (a decorative link, an aside). Audit what the document 
 
 ## 3. Classify and capture the gaps
 For each load-bearing statement, search the vault and decide:
-- **backed-fresh** — a current entry covers it. Cite the id.
-- **backed-stale** — an entry covers it but is past its window. Record a `verify`.
-- **uncited claim** — no entry. Capture a `source` (and a `note` if it needs interpretation) to ground it.
-- **unvalidated assumption** — no entry and not confirmable now. Capture a `question` with `state: open`. An assumption is a `question` entry, never a parenthetical hedge.
+- **backed-fresh** — a current entry covers it *and that entry has a real (non-`captured`) verification*. Cite the id. A `captured`-only entry is not "backed" — verify it first.
+- **backed-stale** — an entry covers it but is past its window. Fetch the source and record a `verify`.
+- **uncited claim** — no entry. Fetch the authoritative source, then capture a `source` (verified, not just `captured`) — and a `note` if it needs interpretation — to ground it.
+- **unvalidated assumption** — no entry and not confirmable by fetch. Capture a `question` with `state: open`. An assumption is a `question` entry, never a parenthetical hedge — and never a guessed "fact."
 
 The durable outputs are these entries. Walk the four-prompt capture plan (`AGENTS.md` §2.6) before writing any synthesis of the audit.
 

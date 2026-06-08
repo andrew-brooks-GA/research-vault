@@ -64,6 +64,14 @@ export function lintVault(vaultPath, repoRoot) {
 
     if (data.type === 'source' && data.volatility === 'fast' && data.source_type === 'docs' && !(data.subject && data.subject.version))
       warn(abs, 'WARN_MISSING_VERSION', 'fast docs source without subject.version');
+
+    // Verification tenet: a source whose every verification is `captured` (capture-time
+    // provenance, never an independent check) is not authoritative — its only basis is
+    // that someone asserted it. Verify by fetch (refetched-source / cross-referenced) or
+    // human-spot-check before relying on it. See AGENTS.md §7.
+    if (data.type === 'source' && !(data.verifications || []).some(v => v.method && v.method !== 'captured'))
+      warn(abs, 'WARN_SOURCE_UNVERIFIED', 'source has only capture-time provenance and was never independently verified; verify by refetched-source / cross-referenced / human-spot-check before treating it as authoritative');
+
     for (const t of (data.topics || [])) if (schema.taxonomy.topic_aliases[t]) warn(abs, 'WARN_TOPIC_ALIAS', `topic '${t}' should be normalized to '${schema.taxonomy.topic_aliases[t]}'`);
 
     // Synthesis note-coverage: a synthesis whose contributing_ids contain only sources

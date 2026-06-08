@@ -169,7 +169,7 @@ The full CLI. In Claude Code your agent calls most of these for you; this is the
 | `related` | Forward links + computed backlinks for an entry (`--format mermaid`). |
 | `manifest` | Rebuild/print the derived index. |
 | `compile` | Regenerate a git-ignored `_index/` human-readable index (grouped by type); a derived cache, never a source of truth. |
-| `advise` | Read-only curation report: stale entries, orphans, sources lacking a note, aliasable topics. Never mutates. |
+| `advise` | Read-only curation report: stale entries, orphans, sources lacking a note, **unverified (captured-only) sources**, aliasable topics. Never mutates. |
 | `obsidian` | Regenerate a git-ignored `_obsidian/` wikilink view + Map-of-Content; never mutates canonical entries. |
 | `refresh` | Re-check source freshness over the network (off by default, double-gated). Reports `confirmed`/`changed`/`unreachable`; never mutates entries. |
 | `export` | Read-only JSONL for external finetuning/eval: by default only answered-question `{input, output}` pairs; `--scope <types>` widens to title+metadata for other types, and bodies need `--include-bodies --ack-data-egress`. See [`docs/FINETUNING.md`](docs/FINETUNING.md). |

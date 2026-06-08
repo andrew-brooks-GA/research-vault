@@ -41,6 +41,21 @@ test('clean vault has no warnings', () => {
   assert.equal(warnings.length, 0);
 });
 
+test('warns on a source whose only provenance is capture (never independently verified)', () => {
+  const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');
+  mkdirSync(join(dir, 'sources'), { recursive: true });
+  const entry = (slug, method) =>
+    `---\ntitle: ${slug}\ntype: source\ncreated: 2026-01-01\ndomain: [meta]\nstage: raw\ntopics: []\nstatus: active\nrelated: []\nvolatility: slow\n` +
+    `verifications:\n  - date: 2026-01-01\n    by_type: agent\n    by_id: ""\n    method: ${method}\n    result: confirmed\n    notes: ""\n` +
+    `source_type: article\nsource_url: https://e.com/${slug}\n---\n# ${slug}\n`;
+  writeFileSync(join(dir, 'sources', '2026-01-01-cap.md'), entry('cap', 'captured'), 'utf8');
+  writeFileSync(join(dir, 'sources', '2026-01-01-ver.md'), entry('ver', 'refetched-source'), 'utf8');
+  const { warnings } = lintVault(dir, process.cwd());
+  const flagged = warnings.filter(w => w.code === 'WARN_SOURCE_UNVERIFIED').map(w => w.file);
+  assert.equal(flagged.length, 1, 'exactly one unverified-source warning: ' + JSON.stringify(warnings));
+  assert.ok(flagged[0].includes('2026-01-01-cap'), 'warning is on the captured-only source, not the refetched one');
+});
+
 test('lint flags mojibake (runtime fixture, never committed)', () => {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');
   mkdirSync(join(dir, 'sources'), { recursive: true });

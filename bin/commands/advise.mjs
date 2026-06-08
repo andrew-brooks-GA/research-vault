@@ -13,6 +13,7 @@ export async function run(args) {
   process.stdout.write(`stale (${r.stale.length}): ${r.stale.length ? r.stale.map(s => s.id).join(', ') : '—'}\n`);
   section('orphans', r.orphans);
   section('sources without notes', r.sourcesWithoutNotes);
+  section('unverified sources (captured, never independently checked)', r.unverifiedSources);
   section('aliasable topics', r.aliasable);
   return 0;
 }
