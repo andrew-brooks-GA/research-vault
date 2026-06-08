@@ -26,6 +26,16 @@ Research does not only enter the vault through an orchestrator answering a quest
 
 The boundary mirrors the orchestrator one. `research-vault-usage` owns answering a question *from* the vault; `research-authoring` owns the moment a citation enters a document; the `research-capture` skill and CLI own persistence for both. The authoring lifecycle is **consult → capture → verify**: search the vault before a citation lands (cite an existing entry, check its freshness), capture what is missing as the appropriate type (a versioned `source` with `subject.version`, a `question` for an unresolved assumption), then run `research-vault check` so the document's citations are confirmed `ok` rather than `uncovered`/`stale`. `check --check` gives the consuming repo the same correctness floor `lint --check` gives the vault — extended past the vault boundary to the documents that cite it.
 
+## The verification tenet (fetch before you assert)
+
+An entry or a finding is authoritative only if its facts were **fetched**, not recalled. This is non-negotiable for any agent writing to or auditing the vault:
+
+- A version, release date, or API-behavior claim must be confirmed against the authoritative source (web fetch / cross-reference) and recorded as a `refetched-source` or `cross-referenced` verification with the URL and date. **Model recall is not verification** — and for version currency it is reliably *wrong*, because a model's training lags the present, so a remembered "latest version" is stale by construction.
+- `capture` seeds only a `captured` provenance marker, which is explicitly **not** a verification. A `source` whose every verification is `captured` is not authoritative; it trips the `WARN_SOURCE_UNVERIFIED` lint warning and is surfaced by `advise` until a real verification is recorded.
+- What cannot be fetched is an open `question` (or `unverified-offline`), **never** a `source` stated as fact and never a reported defect. An audit run without web access cannot assess currency at all and must say so rather than guess.
+
+A vault that records recalled facts as authoritative is worse than no vault: it launders a guess into something that looks verified. The lint warning is the mechanical floor; this tenet is why it exists.
+
 ## The capture plan (AGENTS.md §2.6)
 
 Before drafting a `synthesis`, an orchestrator must produce a plan covering four prompts. The plan is conceptual; it need not be persisted. What gets persisted is the entries it generates.

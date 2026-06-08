@@ -71,6 +71,8 @@ ${vols}
 
 Before citing: compute \`last_verified\` and compare to the window. **Offline mode:** only \`inferred-stable\` (volatility=stable + durable source) and \`human-spot-check\` (with explicit user confirmation) are valid; prefix stale-window answers with \`"unverified-offline"\` + id.
 
+**Verification tenet — fetch before you assert.** A version, date, or API-behavior claim is authoritative only when confirmed against the source (web fetch / cross-reference) and recorded as a \`refetched-source\` or \`cross-referenced\` verification. Model recall is **not** verification — for version currency it is reliably wrong, because training lags the present, so a remembered "latest version" is stale by construction. \`captured\` is capture-time provenance, not a verification: a \`source\` whose every verification is \`captured\` is not authoritative and trips \`WARN_SOURCE_UNVERIFIED\` (surfaced by \`advise\`) until verified. What cannot be fetched is a \`question\`, never a \`source\` stated as fact.
+
 ## 8. Versioned resources and source authority
 Use optional \`subject: {name, version}\` + \`series:\` for version-bearing sources. A new product version is a NEW entry sharing the same \`series\` — **not** a supersession. Supersede only when an entry is wrong/obsolete. Cite the version for version-bearing entries.
 

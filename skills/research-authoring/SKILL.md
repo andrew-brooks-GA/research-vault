@@ -20,6 +20,8 @@ If nothing covers the fact, capture it before (or as) you write the sentence. Ne
 
 Capture defaults (`domain`, `topics`) come from the `.research-vault.json`; pass `--subject-version`/`--series` for version-bearing sources so siblings stay distinct.
 
+**Verify what you capture — do not assert from memory.** A version, date, or API claim must be confirmed by fetching the authoritative source (its docs/releases page), not recalled: training lags reality, so a remembered "latest version" is stale by construction. `capture` seeds only a `captured` provenance marker, which is *not* a verification — record a real `verify` (`refetched-source`) once you've fetched, or the entry trips `WARN_SOURCE_UNVERIFIED` and is not authoritative. If you cannot fetch, capture it as a `question`, not a `source` stated as fact.
+
 ## 3. Verify after authoring
 Run `research-vault check "<file-or-reference-glob>"` to confirm the new citation reports `ok`, not `uncovered` or `stale`. A consuming repo gates CI on `research-vault check --check`, so this is the same correctness floor the vault's own `lint` provides, extended to the document.
 

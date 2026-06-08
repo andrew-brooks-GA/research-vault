@@ -14,12 +14,20 @@ function freshVault() {
   return dir;
 }
 
-test('advise returns the four signal arrays', () => {
+test('advise returns the signal arrays', () => {
   const dir = freshVault();
   const r = advise(dir, process.cwd());
-  for (const k of ['stale', 'orphans', 'sourcesWithoutNotes', 'aliasable']) {
+  for (const k of ['stale', 'orphans', 'sourcesWithoutNotes', 'aliasable', 'unverifiedSources']) {
     assert.ok(Array.isArray(r[k]), `${k} must be an array`);
   }
+});
+
+test('a source whose only verification is capture appears in unverifiedSources', () => {
+  const dir = freshVault();
+  const { id } = captureEntry(dir, { type: 'source', title: 'Captured Only', url: 'https://cap.example.com/x', now: '2026-05-27', repoRoot: process.cwd() });
+  const r = advise(dir, process.cwd());
+  assert.ok(r.unverifiedSources.includes(id), 'captured-only source should be flagged unverified');
+  assert.ok(!r.unverifiedSources.includes('2026-01-01-a'), 'the human-spot-check fixture source is verified, not flagged');
 });
 
 test('a source with no distilling note appears in sourcesWithoutNotes', () => {
