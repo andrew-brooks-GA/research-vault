@@ -72,6 +72,12 @@ export function lintVault(vaultPath, repoRoot) {
     if (data.type === 'source' && !(data.verifications || []).some(v => v.method && v.method !== 'captured'))
       warn(abs, 'WARN_SOURCE_UNVERIFIED', 'source has only capture-time provenance and was never independently verified; verify by refetched-source / cross-referenced / human-spot-check before treating it as authoritative');
 
+    // A note/synthesis without a one-line summary is opaque to the manifest: retrieval,
+    // advise, and export must open the body to know what it claims. Advisory only —
+    // the field is optional and the detective floor is unaffected. See AGENTS.md §9.
+    if ((data.type === 'note' || data.type === 'synthesis') && !(data.summary && String(data.summary).trim()))
+      warn(abs, 'WARN_MISSING_SUMMARY', 'no summary: one-line claim; add it so search/advise/export can use the entry without a body read');
+
     for (const t of (data.topics || [])) if (schema.taxonomy.topic_aliases[t]) warn(abs, 'WARN_TOPIC_ALIAS', `topic '${t}' should be normalized to '${schema.taxonomy.topic_aliases[t]}'`);
 
     // Synthesis note-coverage: a synthesis whose contributing_ids contain only sources

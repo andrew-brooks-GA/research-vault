@@ -56,6 +56,12 @@ test('warns on a source whose only provenance is capture (never independently ve
   assert.ok(flagged[0].includes('2026-01-01-cap'), 'warning is on the captured-only source, not the refetched one');
 });
 
+test('warns on note/synthesis without a one-line summary', () => {
+  const { warnings } = lintVault(WARN, process.cwd());
+  const codes = warnings.map(w => w.code);
+  assert.ok(codes.includes('WARN_MISSING_SUMMARY'), 'expected WARN_MISSING_SUMMARY: ' + codes.join(','));
+});
+
 test('lint flags mojibake (runtime fixture, never committed)', () => {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');
   mkdirSync(join(dir, 'sources'), { recursive: true });
