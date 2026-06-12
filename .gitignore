@@ -1,5 +1,6 @@
 node_modules/
 .vault-manifest.json
+!test/fixtures/**/.vault-manifest.json
 _index/
 _obsidian/
 .idea/

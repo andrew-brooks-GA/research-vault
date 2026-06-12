@@ -21,6 +21,31 @@ function writePlan(entries) {
 
 const NOW = { now: '2026-06-12', repoRoot: process.cwd() };
 
+test('batch: any invalid entry → nothing written, per-entry error report', () => {
+  const dir = freshVault();
+  const before = JSON.parse(readFileSync(join(dir, '.vault-manifest.json'), 'utf8')).entries.length;
+  const r = runBatch(dir, writePlan([
+    { type: 'source', title: 'Good one', url: 'https://ok.example.com/a' },
+    { type: 'note', title: 'Bad confidence', sources: ['2026-01-01-a'], confidence: 'certain' },
+    { type: 'nonsense', title: 'Bad type' },
+  ]), NOW);
+  assert.equal(r.created.length, 0);
+  assert.equal(r.errors.length, 2);
+  assert.deepEqual(r.errors.map(e => e.index), [1, 2]);
+  assert.match(r.errors[0].error, /unknown confidence/);
+  assert.match(r.errors[1].error, /invalid type/);
+  assert.ok(!existsSync(join(dir, 'sources', '2026-06-12-good-one.md')), 'valid sibling must not be written');
+  assert.equal(JSON.parse(readFileSync(join(dir, '.vault-manifest.json'), 'utf8')).entries.length, before, 'manifest untouched');
+});
+
+test('batch: unreadable or non-array plan reports index -1 and writes nothing', () => {
+  const dir = freshVault();
+  const notArray = writePlan([]).replace(/plan\.json$/, 'obj.json');
+  writeFileSync(notArray, JSON.stringify({ type: 'source' }), 'utf8');
+  assert.equal(runBatch(dir, notArray, NOW).errors[0].index, -1);
+  assert.equal(runBatch(dir, join(tmpdir(), 'rv-none', 'missing.json'), NOW).errors[0].index, -1);
+});
+
 test('batch: creates all entries, one manifest rebuild, lint-clean, JSON result', () => {
   const dir = freshVault();
   const r = runBatch(dir, writePlan([

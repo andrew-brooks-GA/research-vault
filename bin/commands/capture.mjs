@@ -129,9 +129,11 @@ export function runBatch(vaultPath, planPath, cliOpts = {}) {
   const manifestEntries = buildManifest(vaultPath).entries;
   const errors = [], skipped = [], pending = [];
   plan.forEach((spec, index) => {
-    const prep = prepareEntry(vaultPath, specToOpts(spec, cliOpts), { manifestEntries, pending });
-    if (prep.dedup) { skipped.push({ index, id: prep.dedup.id, reason: prep.dedup.reason }); return; }
-    pending.push(prep);
+    try {
+      const prep = prepareEntry(vaultPath, specToOpts(spec, cliOpts), { manifestEntries, pending });
+      if (prep.dedup) { skipped.push({ index, id: prep.dedup.id, reason: prep.dedup.reason }); return; }
+      pending.push(prep);
+    } catch (e) { errors.push({ index, error: e.message }); }
   });
   if (errors.length) return { errors, created: [], skipped };
 
