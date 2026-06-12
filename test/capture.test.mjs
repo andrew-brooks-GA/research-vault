@@ -291,3 +291,22 @@ test('capture seeds an honest `captured` verification, not a fake existence-chec
   assert.equal(v[0].method, 'captured');
   assert.equal(v[0].result, 'confirmed');
 });
+
+test('capture --summary persists on note and synthesis and stays lint-clean', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-sum-'));
+  captureEntry(dir, { type: 'source', title: 'Sock pinning', url: 'https://example.com/pin', now: '2026-01-01' });
+  const note = captureEntry(dir, {
+    type: 'note', title: 'Pin sockets', sources: '2026-01-01-sock-pinning',
+    summary: 'Pin the socket to the validated IP to defeat DNS rebinding.', now: '2026-01-02',
+  });
+  const syn = captureEntry(dir, {
+    type: 'synthesis', title: 'SSRF posture', contributingIds: '2026-01-02-pin-sockets',
+    summary: 'Allowlist global-unicast only; pin and re-validate every hop.', now: '2026-01-03',
+  });
+  assert.equal(readEntry(note.path).data.summary, 'Pin the socket to the validated IP to defeat DNS rebinding.');
+  assert.equal(readEntry(syn.path).data.summary, 'Allowlist global-unicast only; pin and re-validate every hop.');
+  // Without --summary the field is absent, not empty.
+  const bare = captureEntry(dir, { type: 'note', title: 'Bare note', sources: '2026-01-01-sock-pinning', now: '2026-01-04' });
+  assert.ok(!('summary' in readEntry(bare.path).data));
+  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+});

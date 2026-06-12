@@ -66,10 +66,12 @@ export function captureEntry(vaultPath, opts) {
   } else if (opts.type === 'note') {
     data.sources = opts.sources ? opts.sources.split(',') : [];
     data.confidence = opts.confidence || 'medium';
+    if (opts.summary) data.summary = opts.summary;
   } else if (opts.type === 'synthesis') {
     data.contributing_ids = opts.contributingIds ? opts.contributingIds.split(',') : [];
     if (opts.question) data.question = opts.question;
     if (opts.synthesisBasis) data.synthesis_basis = opts.synthesisBasis;
+    if (opts.summary) data.summary = opts.summary;
   } else if (opts.type === 'snippet') {
     data.language = opts.language || 'text';
     data.tested = opts.tested === true || opts.tested === 'true';
@@ -103,7 +105,7 @@ export async function run(args) {
     domain: args.domain, topics: args.topics, related: args.related, volatility: args.volatility,
     content: cfBuf ? cfBuf.toString('utf8') : args.content, contentBytes: cfBuf, contentHash: args['content-hash'],
     capturedVia: args['captured-via'], storeBody: !!args['store-body'], ackDataEgress: !!args['ack-data-egress'],
-    sources: args.sources, confidence: args.confidence,
+    sources: args.sources, confidence: args.confidence, summary: args.summary,
     contributingIds: args['contributing-ids'], question: args.question,
     synthesisBasis: args['synthesis-basis'],
     authorityTier: args['authority-tier'], authorityBasis: args['authority-basis'],
