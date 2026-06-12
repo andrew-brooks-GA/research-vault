@@ -9,6 +9,7 @@ import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
 import { buildExport, toJsonl } from '../bin/lib/exportjsonl.mjs';
 import { run } from '../bin/commands/export.mjs';
+import { captureEntry } from '../bin/commands/capture.mjs';
 
 // Hand-write an entry directly to disk (mirroring capture/lint tests) so we can build
 // question entries with controlled state/answer_summary the fixture vault lacks.
@@ -118,4 +119,14 @@ test('export --out refuses a path inside the vault and writes nothing; outside w
   const outside = join(mkdtempSync(join(tmpdir(), 'rv-out-')), 'train.jsonl');
   assert.equal(await run({ out: outside, vault: dir }), 0, 'external --out still works');
   assert.ok(existsSync(outside), 'external file written');
+});
+
+test('note summary exports as output without the body gate', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-esum-'));
+  captureEntry(dir, { type: 'source', title: 'Src', url: 'https://example.com/w', now: '2026-01-01' });
+  captureEntry(dir, { type: 'note', title: 'Crisp', sources: '2026-01-01-src', summary: 'A claim.', now: '2026-01-02' });
+  captureEntry(dir, { type: 'note', title: 'Bare', sources: '2026-01-01-src', now: '2026-01-03' });
+  const recs = buildExport(dir, { scope: ['note'] });   // no includeBodies, no ack
+  assert.equal(recs.find(r => r.input === 'Crisp').output, 'A claim.');
+  assert.equal(recs.find(r => r.input === 'Bare').output, '');   // unchanged: metadata-only
 });

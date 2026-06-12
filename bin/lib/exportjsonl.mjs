@@ -17,7 +17,7 @@ export function buildExport(vaultPath, opts = {}) {
         records.push({ input: data.question, output: data.answer_summary, meta });
       continue;
     }
-    records.push({ input: data.title || id, output: includeBodies ? body : '', meta });
+    records.push({ input: data.title || id, output: includeBodies ? body : (data.summary != null ? String(data.summary) : ''), meta });
   }
   records.sort((a, b) => a.meta.id.localeCompare(b.meta.id));
   return records;
