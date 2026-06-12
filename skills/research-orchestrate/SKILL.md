@@ -61,7 +61,7 @@ const extractions = (await pipeline(found,
 phase('Verify')
 const claims = extractions.flatMap(e => e.claims.map(c => ({ c, sid: e.sourceId })))
 const verdicts = (await parallel(claims.map(k => () =>
-  agent(`Adversarially verify against the live source (re-fetch; model recall is NOT verification): "${k.c}" from vault source ${k.sid}. Default verified=false if uncertain.`, { phase: 'Verify', schema: VERDICT })
+  agent(`Adversarially verify against the live source (re-fetch; model recall is NOT verification): "${k.c}" from vault source ${k.sid}. Default verified=false if uncertain. If verified=true, record it: ${CLI}verify --id ${k.sid} --method refetched-source --result confirmed --notes "orchestrator Verify phase".`, { phase: 'Verify', schema: VERDICT })
 ))).filter(Boolean)
 
 phase('Plan')
