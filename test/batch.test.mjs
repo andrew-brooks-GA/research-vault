@@ -93,3 +93,37 @@ test('batch: note without sources / synthesis without contributing_ids are error
   assert.match(r.errors[0].error, /note requires sources/);
   assert.match(r.errors[1].error, /synthesis requires contributingIds/);
 });
+
+test('batch: duplicate of an existing vault source is skipped, not a failure', () => {
+  const dir = freshVault();
+  runBatch(dir, writePlan([{ type: 'source', title: 'First', url: 'https://dup.example.com/x' }]), NOW);
+  const r = runBatch(dir, writePlan([
+    { type: 'source', title: 'Same again', url: 'https://dup.example.com/x/?utm_source=z' },
+    { type: 'question', title: 'Still lands?', state: 'open' },
+  ]), NOW);
+  assert.equal(r.errors.length, 0);
+  assert.equal(r.skipped.length, 1);
+  assert.equal(r.skipped[0].id, '2026-06-12-first');
+  assert.equal(r.created.length, 1, 'non-duplicate siblings still land');
+});
+
+test('batch: intra-batch duplicate source is skipped against the pending sibling', () => {
+  const dir = freshVault();
+  const r = runBatch(dir, writePlan([
+    { type: 'source', title: 'Original', url: 'https://intra.example.com/x' },
+    { type: 'source', title: 'Same url', url: 'https://intra.example.com/x' },
+  ]), NOW);
+  assert.equal(r.created.length, 1);
+  assert.equal(r.skipped.length, 1);
+  assert.equal(r.skipped[0].id, '2026-06-12-original');
+});
+
+test('batch: content-changed tripwire is an error, not a silent skip', () => {
+  const dir = freshVault();
+  runBatch(dir, writePlan([{ type: 'source', title: 'Hashed', url: 'https://trip.example.com/x', content: 'v1' }]), NOW);
+  const r = runBatch(dir, writePlan([
+    { type: 'source', title: 'Hashed again', url: 'https://trip.example.com/x', content: 'v2' },
+  ]), NOW);
+  assert.equal(r.created.length, 0);
+  assert.match(r.errors[0].error, /content changed at same url\+version/);
+});

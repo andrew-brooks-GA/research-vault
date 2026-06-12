@@ -134,7 +134,11 @@ export function runBatch(vaultPath, planPath, cliOpts = {}) {
     if (spec.type === 'synthesis' && !csv(spec.contributingIds)) { errors.push({ index, error: 'synthesis requires contributingIds' }); return; }
     try {
       const prep = prepareEntry(vaultPath, specToOpts(spec, cliOpts), { manifestEntries, pending });
-      if (prep.dedup) { skipped.push({ index, id: prep.dedup.id, reason: prep.dedup.reason }); return; }
+      if (prep.dedup) {
+        if (prep.dedup.ambiguous) errors.push({ index, error: `${prep.dedup.reason} (existing: ${prep.dedup.id})` });
+        else skipped.push({ index, id: prep.dedup.id, reason: prep.dedup.reason });
+        return;
+      }
       const refs = [...(prep.data.sources || []), ...(prep.data.contributing_ids || []), ...(prep.data.related || [])];
       for (const ref of refs) {
         if (!knownIds.has(ref) && !pending.some(p => p.id === ref))
