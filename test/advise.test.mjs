@@ -45,6 +45,19 @@ test('advise lists notes/synthesis lacking a summary', () => {
   assert.deepEqual(r.missingSummaries, ['2026-01-02-bare']);
 });
 
+test('advise flags scaffold-only and empty bodies on authored types, not sources', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-stub-'));
+  captureEntry(dir, { type: 'source', title: 'Src', url: 'https://example.com/st', now: '2026-01-01' });
+  captureEntry(dir, { type: 'note', title: 'Hollow', sources: '2026-01-01-src', scaffold: true, now: '2026-01-02', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'note', title: 'Bare', sources: '2026-01-01-src', now: '2026-01-03' });
+  captureEntry(dir, {
+    type: 'note', title: 'Full', sources: '2026-01-01-src',
+    body: '## Load-bearing claims\n- A real claim.', now: '2026-01-04',
+  });
+  const r = advise(dir, process.cwd());
+  assert.deepEqual(r.stubBodies.sort(), ['2026-01-02-hollow', '2026-01-03-bare']);
+});
+
 test('advise does not mutate the vault (lint-clean before and after)', () => {
   const dir = freshVault();
   lintAndReport(dir, { check: false }); // establish a clean baseline manifest

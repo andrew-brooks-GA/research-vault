@@ -15,6 +15,7 @@ export async function run(args) {
   section('sources without notes', r.sourcesWithoutNotes);
   section('unverified sources (captured, never independently checked)', r.unverifiedSources);
   section('notes/synthesis without a summary', r.missingSummaries);
+  section('stub bodies (scaffold or empty, no prose)', r.stubBodies);
   section('aliasable topics', r.aliasable);
   return 0;
 }
