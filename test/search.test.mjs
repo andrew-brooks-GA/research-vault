@@ -51,3 +51,12 @@ test('search --body matches entry body text, not just title/topics', () => {
   const viaText = searchVault(dir, { text: 'apf bucket' });
   assert.ok(!viaText.some(e => e.id === r.id), 'title/topic --text must NOT match body-only text');
 });
+
+test('--text matches a note summary without a body read', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-ssum-'));
+  captureEntry(dir, { type: 'source', title: 'Src', url: 'https://example.com/y', now: '2026-01-01' });
+  captureEntry(dir, { type: 'note', title: 'Note', sources: '2026-01-01-src', summary: 'Pin the socket to the validated IP.', now: '2026-01-02' });
+  const rows = searchVault(dir, { text: 'validated ip' });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].type, 'note');
+});

@@ -16,7 +16,7 @@ export function searchVault(vaultPath, q, repoRoot = REPO_ROOT) {
   if (q.domain) rows = rows.filter(e => e.domain.includes(q.domain));
   if (q.series) rows = rows.filter(e => e.series === q.series);
   if (q.topic) { const want = expand(q.topic); rows = rows.filter(e => e.topics.map(expand).includes(want)); }
-  if (q.text) { const t = q.text.toLowerCase(); rows = rows.filter(e => (e.title || '').toLowerCase().includes(t) || e.topics.join(' ').includes(t)); }
+  if (q.text) { const t = q.text.toLowerCase(); rows = rows.filter(e => (e.title || '').toLowerCase().includes(t) || e.topics.join(' ').includes(t) || (e.summary || '').toLowerCase().includes(t)); }
   if (q.body) {
     const needle = q.body.toLowerCase();
     const bodyById = new Map();
