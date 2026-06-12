@@ -159,6 +159,11 @@ export function runBatch(vaultPath, planPath, cliOpts = {}) {
 
 export async function run(args) {
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
+  if (args.batch) {
+    const r = runBatch(vaultPath, args.batch, { ackDataEgress: !!args['ack-data-egress'] });
+    process.stdout.write(JSON.stringify(r, null, 2) + '\n');
+    return r.errors.length ? 1 : 0;
+  }
   const cfBuf = args['content-file'] ? readFileSync(args['content-file']) : null;
   const r = captureEntry(vaultPath, {
     type: args.type, title: args.title, url: args.url, sourceType: args['source-type'],

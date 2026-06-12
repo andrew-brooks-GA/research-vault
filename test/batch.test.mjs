@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, cpSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runBatch } from '../bin/commands/capture.mjs';
+import { runBatch, run } from '../bin/commands/capture.mjs';
+import { makeId } from '../bin/lib/ids.mjs';
 import { lintVault } from '../bin/lib/lintrules.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 
@@ -126,4 +127,24 @@ test('batch: content-changed tripwire is an error, not a silent skip', () => {
   ]), NOW);
   assert.equal(r.created.length, 0);
   assert.match(r.errors[0].error, /content changed at same url\+version/);
+});
+
+test('capture --batch via run(): JSON to stdout, exit 0 clean / 1 on errors', async () => {
+  const dir = freshVault();
+  const good = writePlan([{ type: 'source', title: 'Via CLI', url: 'https://cli.example.com/x' }]);
+  const out = [];
+  const orig = process.stdout.write.bind(process.stdout);
+  process.stdout.write = s => { out.push(s); return true; };
+  let code;
+  try { code = await run({ batch: good, vault: dir }); }
+  finally { process.stdout.write = orig; }
+  assert.equal(code, 0);
+  const parsed = JSON.parse(out.join(''));
+  assert.equal(parsed.created[0].id, makeId(new Date().toISOString().slice(0, 10), 'Via CLI'));
+
+  const bad = writePlan([{ type: 'note', title: 'No sources' }]);
+  process.stdout.write = () => true;
+  try { code = await run({ batch: bad, vault: dir }); }
+  finally { process.stdout.write = orig; }
+  assert.equal(code, 1);
 });
