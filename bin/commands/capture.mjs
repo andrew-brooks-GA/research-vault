@@ -106,6 +106,43 @@ export function captureEntry(vaultPath, opts) {
   return { id: prep.id, path: prep.path, dedup: null };
 }
 
+const csv = v => Array.isArray(v) ? v.join(',') : v;
+
+function specToOpts(spec, cliOpts) {
+  const cfBuf = spec.contentFile ? readFileSync(spec.contentFile) : null;
+  return {
+    ...spec,
+    domain: csv(spec.domain), topics: csv(spec.topics), related: csv(spec.related),
+    sources: csv(spec.sources), contributingIds: csv(spec.contributingIds),
+    content: cfBuf ? cfBuf.toString('utf8') : spec.content, contentBytes: cfBuf,
+    ackDataEgress: !!cliOpts.ackDataEgress, now: cliOpts.now, repoRoot: cliOpts.repoRoot,
+  };
+}
+
+export function runBatch(vaultPath, planPath, cliOpts = {}) {
+  let plan;
+  try { plan = JSON.parse(readFileSync(planPath, 'utf8')); }
+  catch (e) { return { errors: [{ index: -1, error: `cannot read plan: ${e.message}` }], created: [], skipped: [] }; }
+  if (!Array.isArray(plan) || plan.length === 0)
+    return { errors: [{ index: -1, error: 'plan must be a non-empty JSON array' }], created: [], skipped: [] };
+
+  const manifestEntries = buildManifest(vaultPath).entries;
+  const errors = [], skipped = [], pending = [];
+  plan.forEach((spec, index) => {
+    const prep = prepareEntry(vaultPath, specToOpts(spec, cliOpts), { manifestEntries, pending });
+    if (prep.dedup) { skipped.push({ index, id: prep.dedup.id, reason: prep.dedup.reason }); return; }
+    pending.push(prep);
+  });
+  if (errors.length) return { errors, created: [], skipped };
+
+  for (const prep of pending) {
+    mkdirSync(join(vaultPath, prep.folder), { recursive: true });
+    writeEntry(prep.path, prep.data, prep.body, prep.order);
+  }
+  writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');
+  return { errors: [], created: pending.map(p => ({ id: p.id, path: p.path })), skipped };
+}
+
 export async function run(args) {
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
   const cfBuf = args['content-file'] ? readFileSync(args['content-file']) : null;
