@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runBatch } from '../bin/commands/capture.mjs';
 import { lintVault } from '../bin/lib/lintrules.mjs';
+import { buildManifest } from '../bin/lib/manifest.mjs';
 
 function freshVault() {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-batch-')), 'v');
@@ -23,7 +24,7 @@ const NOW = { now: '2026-06-12', repoRoot: process.cwd() };
 
 test('batch: any invalid entry → nothing written, per-entry error report', () => {
   const dir = freshVault();
-  const before = JSON.parse(readFileSync(join(dir, '.vault-manifest.json'), 'utf8')).entries.length;
+  const before = buildManifest(dir).entries.length;
   const r = runBatch(dir, writePlan([
     { type: 'source', title: 'Good one', url: 'https://ok.example.com/a' },
     { type: 'note', title: 'Bad confidence', sources: ['2026-01-01-a'], confidence: 'certain' },
@@ -35,7 +36,8 @@ test('batch: any invalid entry → nothing written, per-entry error report', () 
   assert.match(r.errors[0].error, /unknown confidence/);
   assert.match(r.errors[1].error, /invalid type/);
   assert.ok(!existsSync(join(dir, 'sources', '2026-06-12-good-one.md')), 'valid sibling must not be written');
-  assert.equal(JSON.parse(readFileSync(join(dir, '.vault-manifest.json'), 'utf8')).entries.length, before, 'manifest untouched');
+  assert.equal(buildManifest(dir).entries.length, before, 'no entries written');
+  assert.ok(!existsSync(join(dir, '.vault-manifest.json')), 'manifest not flushed on a failed batch');
 });
 
 test('batch: unreadable or non-array plan reports index -1 and writes nothing', () => {
