@@ -70,7 +70,7 @@ flowchart LR
 /reload-plugins
 ```
 
-Explicit slash commands are available too: `/research-vault:research-capture`, `…:research-search`, `…:research-verify`, `…:research-lint`, `…:research-related`, `…:research-init`, `…:research-advise`, `…:research-compile`, `…:research-obsidian`.
+Explicit slash commands are available too: `/research-vault:research-capture`, `…:research-search`, `…:research-verify`, `…:research-lint`, `…:research-related`, `…:research-init`, `…:research-advise`, `…:research-compile`, `…:research-obsidian`, `…:research`.
 
 **Standalone** — clone and run; no install, no dependencies:
 
@@ -153,7 +153,7 @@ The full CLI. In Claude Code your agent calls most of these for you; this is the
 | Command | Does |
 |---|---|
 | `init` | Scaffold a spec-conformant vault; generate its `AGENTS.md`. |
-| `capture` | Add an entry with correct frontmatter; dedupe by URL + version. Optional: `--scaffold` (per-type body skeleton), `--content-file` / `--captured-via` (local provenance), `--store-body` (requires `--ack-data-egress`). |
+| `capture` | Add an entry with correct frontmatter; dedupe by URL + version. Optional: `--scaffold` (per-type body skeleton), `--content-file` / `--captured-via` (local provenance), `--store-body` (requires `--ack-data-egress`). `--batch <plan.json>` captures an ordered set atomically (validate all, then write all; duplicates reported as skipped). |
 | `lint` | Validate the vault (the correctness floor) and rebuild the manifest. `--fix` normalizes safely. |
 | `verify` | List stale entries; record a verification; supersede or note version succession. |
 | `search` | Facet/text query over the manifest (`--domain`, `--topic`, `--series`, `--text`, `--body`). |
@@ -186,7 +186,7 @@ To set one up: commit the entries, `schema/`, and the generated `AGENTS.md`. The
 - **Cache, not source of truth.** Staleness is the dominant failure mode of agent research; this vault makes it visible and actionable.
 - **Lint is the guarantee, not the hook.** Correctness lives in `lint` (runs anywhere, on any writer). `capture`/`verify` self-heal; the plugin ships two advisory Claude Code hooks (a `PostToolUse` lint-fix and a `SessionStart` vault summary), both non-blocking and non-load-bearing (convenience only).
 - **Everything human-facing is generated.** `AGENTS.md` and the per-vault `taxonomy.json` are derived from the schema, so they can't drift; CI enforces it.
-- **Orchestration is out of scope, but contracted.** Skills that drive research (yours or third-party) compose with the vault rather than replacing it. See [`docs/ORCHESTRATOR-INTEGRATION.md`](docs/ORCHESTRATOR-INTEGRATION.md) for the lifecycle boundary, the capture-plan checklist, and the two lint warnings that make non-conforming output visible.
+- **Orchestration ships as a reference implementation, contracted for others.** The `research-orchestrate` skill (`/research`) drives vault-first research with eager source capture and an atomic `capture --batch` for the distilled layers. Third-party orchestration skills compose the same way — see [`docs/ORCHESTRATOR-INTEGRATION.md`](docs/ORCHESTRATOR-INTEGRATION.md) for the lifecycle boundary, the capture-plan checklist, and the two lint warnings that make non-conforming output visible.
 - **Migrating existing notes?** See [`docs/MIGRATION.md`](docs/MIGRATION.md) for moving an existing folder of entries into a managed vault.
 
 ## Development

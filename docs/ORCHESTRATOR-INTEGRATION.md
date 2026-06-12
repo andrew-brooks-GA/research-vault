@@ -114,7 +114,7 @@ Both are warnings, not errors; both can be silenced by either fixing the decompo
 
 ## Implementing your own orchestrator
 
-The plugin ships a reference implementation: the `research-orchestrate` skill (`skills/research-orchestrate/SKILL.md`), which captures sources eagerly at fetch time and persists the distilled layers atomically via `capture --batch <plan.json>` — a JSON array of camelCase capture specs, validated entry-by-entry (enums, required note/synthesis links, intra-batch id references) before anything is written. When writing your own orchestration skill instead:
+The plugin ships a reference implementation: the `research-orchestrate` skill (`skills/research-orchestrate/SKILL.md`), which captures sources eagerly at fetch time and persists the distilled layers atomically via `capture --batch <plan.json>`. The batch plan is a JSON array of camelCase capture specs, validated entry-by-entry (enums, required note/synthesis links, intra-batch id references) before anything is written. When writing your own orchestration skill instead:
 
 1. Narrow your skill description so it captures research-task entry points, not retrieval/citation/capture (those belong to `research-vault-usage`).
 2. After source intake, explicitly walk the four-prompt capture plan from AGENTS.md §2.6 before drafting any synthesis.
