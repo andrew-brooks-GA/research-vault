@@ -64,3 +64,32 @@ test('batch: creates all entries, one manifest rebuild, lint-clean, JSON result'
   assert.ok(manifest.entries.some(e => e.id === '2026-06-12-apf-essentials'));
   assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
 });
+
+test('batch: later entries may reference earlier batch ids; unresolved refs are errors', () => {
+  const dir = freshVault();
+  const ok = runBatch(dir, writePlan([
+    { type: 'source', title: 'Sleep mode docs', url: 'https://docs.vcluster.com/sleep' },
+    { type: 'note', title: 'Sleep mode essentials', sources: ['2026-06-12-sleep-mode-docs'], summary: 'Scales idle workloads to zero.' },
+    { type: 'synthesis', title: 'Tenant idle cost posture', contributingIds: ['2026-06-12-sleep-mode-essentials'], summary: 'Sleep mode is the cost lever.' },
+  ]), NOW);
+  assert.equal(ok.errors.length, 0);
+  assert.equal(ok.created.length, 3);
+  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+
+  const bad = runBatch(dir, writePlan([
+    { type: 'note', title: 'Dangling', sources: ['2026-06-12-no-such-entry'] },
+  ]), NOW);
+  assert.equal(bad.created.length, 0);
+  assert.match(bad.errors[0].error, /unresolved reference: 2026-06-12-no-such-entry/);
+});
+
+test('batch: note without sources / synthesis without contributing_ids are errors', () => {
+  const dir = freshVault();
+  const r = runBatch(dir, writePlan([
+    { type: 'note', title: 'No sources' },
+    { type: 'synthesis', title: 'No contributors' },
+  ]), NOW);
+  assert.equal(r.created.length, 0);
+  assert.match(r.errors[0].error, /note requires sources/);
+  assert.match(r.errors[1].error, /synthesis requires contributingIds/);
+});

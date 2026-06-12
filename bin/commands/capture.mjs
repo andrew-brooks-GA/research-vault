@@ -127,11 +127,19 @@ export function runBatch(vaultPath, planPath, cliOpts = {}) {
     return { errors: [{ index: -1, error: 'plan must be a non-empty JSON array' }], created: [], skipped: [] };
 
   const manifestEntries = buildManifest(vaultPath).entries;
+  const knownIds = new Set(manifestEntries.map(e => e.id));
   const errors = [], skipped = [], pending = [];
   plan.forEach((spec, index) => {
+    if (spec.type === 'note' && !csv(spec.sources)) { errors.push({ index, error: 'note requires sources' }); return; }
+    if (spec.type === 'synthesis' && !csv(spec.contributingIds)) { errors.push({ index, error: 'synthesis requires contributingIds' }); return; }
     try {
       const prep = prepareEntry(vaultPath, specToOpts(spec, cliOpts), { manifestEntries, pending });
       if (prep.dedup) { skipped.push({ index, id: prep.dedup.id, reason: prep.dedup.reason }); return; }
+      const refs = [...(prep.data.sources || []), ...(prep.data.contributing_ids || []), ...(prep.data.related || [])];
+      for (const ref of refs) {
+        if (!knownIds.has(ref) && !pending.some(p => p.id === ref))
+          errors.push({ index, error: `unresolved reference: ${ref}` });
+      }
       pending.push(prep);
     } catch (e) { errors.push({ index, error: e.message }); }
   });
