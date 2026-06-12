@@ -153,14 +153,14 @@ The full CLI. In Claude Code your agent calls most of these for you; this is the
 | Command | Does |
 |---|---|
 | `init` | Scaffold a spec-conformant vault; generate its `AGENTS.md`. |
-| `capture` | Add an entry with correct frontmatter; dedupe by URL + version. Optional: `--scaffold` (per-type body skeleton), `--content-file` / `--captured-via` (local provenance), `--store-body` (requires `--ack-data-egress`). `--batch <plan.json>` captures an ordered set atomically (validate all, then write all; duplicates reported as skipped). |
+| `capture` | Add an entry with correct frontmatter; dedupe by URL + version. Optional: `--scaffold` (per-type body skeleton), `--content-file` / `--captured-via` (local provenance), `--store-body` (requires `--ack-data-egress`). `--batch <plan.json>` captures an ordered set atomically (validate all, then write all; duplicates reported as skipped). `--body-file` writes author prose for non-source types. |
 | `lint` | Validate the vault (the correctness floor) and rebuild the manifest. `--fix` normalizes safely. |
 | `verify` | List stale entries; record a verification; supersede or note version succession. |
 | `search` | Facet/text query over the manifest (`--domain`, `--topic`, `--series`, `--text`, `--body`). |
 | `related` | Forward links + computed backlinks for an entry (`--format mermaid`). |
 | `manifest` | Rebuild/print the derived index. |
 | `compile` | Regenerate a git-ignored `_index/` human-readable index (grouped by type); a derived cache, never a source of truth. |
-| `advise` | Read-only curation report: stale entries, orphans, sources lacking a note, **unverified (captured-only) sources**, aliasable topics. Never mutates. |
+| `advise` | Read-only curation report: stale entries, orphans, sources lacking a note, **unverified (captured-only) sources**, aliasable topics, **stub bodies**. Never mutates. |
 | `obsidian` | Regenerate a git-ignored `_obsidian/` wikilink view + Map-of-Content; never mutates canonical entries. |
 | `refresh` | Re-check source freshness over the network (off by default, double-gated). Reports `confirmed`/`changed`/`unreachable`; never mutates entries. |
 | `export` | Read-only JSONL for external finetuning/eval: by default only answered-question `{input, output}` pairs; `--scope <types>` widens to title+metadata, and bodies need `--include-bodies --ack-data-egress`. See [`docs/FINETUNING.md`](docs/FINETUNING.md). |

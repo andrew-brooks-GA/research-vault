@@ -10,3 +10,4 @@ Run `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" advise` and present the
 - sources verified only at capture time (never independently checked)
 - notes/synthesis without a one-line `summary` (opaque to manifest-level retrieval)
 - aliasable topics (near-duplicate topic strings)
+- stub bodies (authored entries whose body is scaffold-only or empty)
