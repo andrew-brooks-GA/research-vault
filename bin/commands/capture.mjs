@@ -91,9 +91,15 @@ export function prepareEntry(vaultPath, opts, ctx = {}) {
   }
   assertControlledValues(data, schema);
   const order = fieldOrder(schema, opts.type);
-  const skel = opts.scaffold ? loadSkeleton(repoRoot, opts.type) : '';
-  let body = skel ? `# ${opts.title}\n\n${skel}\n` : `# ${opts.title}\n`;
-  if (opts.storeBody && opts.content) body += `\n${opts.content}\n`;
+  let body;
+  if (opts.body) {
+    if (opts.type === 'source') throw new Error('source bodies are gated: use --store-body with --ack-data-egress');
+    body = `# ${opts.title}\n\n${String(opts.body).trim()}\n`;
+  } else {
+    const skel = opts.scaffold ? loadSkeleton(repoRoot, opts.type) : '';
+    body = skel ? `# ${opts.title}\n\n${skel}\n` : `# ${opts.title}\n`;
+    if (opts.storeBody && opts.content) body += `\n${opts.content}\n`;
+  }
   return { id, path, folder, data, body, order, dedup: null };
 }
 
@@ -178,6 +184,7 @@ export async function run(args) {
     language: args.language, tested: args.tested,
     provider: args.provider, modelId: args['model-id'], dateRun: args['date-run'], task: args.task, outcome: args.outcome, state: args.state,
     scaffold: !!args.scaffold,
+    body: args['body-file'] ? readFileSync(args['body-file'], 'utf8') : undefined,
   });
   if (r.dedup) {
     const how = r.dedup.ambiguous ? 'ambiguous' : 'duplicate';

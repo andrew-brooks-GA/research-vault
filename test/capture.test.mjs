@@ -310,3 +310,31 @@ test('capture --summary persists on note and synthesis and stays lint-clean', ()
   assert.ok(!('summary' in readEntry(bare.path).data));
   assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
 });
+
+test('capture body: author prose lands in the body for authored types; source body is gated', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-body-'));
+  captureEntry(dir, { type: 'source', title: 'Src', url: 'https://example.com/b', now: '2026-01-01' });
+  const note = captureEntry(dir, {
+    type: 'note', title: 'Pinning', sources: '2026-01-01-src',
+    body: '## Load-bearing claims\n- Baselines floor versions.\n\n## How I\'d use this\n- Pin via overrides.',
+    now: '2026-01-02',
+  });
+  const text = readFileSync(note.path, 'utf8');
+  assert.match(text, /# Pinning\n\n## Load-bearing claims\n- Baselines floor versions\./);
+  assert.throws(
+    () => captureEntry(dir, { type: 'source', title: 'Gated', url: 'https://example.com/g', body: 'pasted text', now: '2026-01-03' }),
+    /store-body/,
+  );
+  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+});
+
+test('capture --body-file reads the body from disk', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-bodyf-'));
+  captureEntry(dir, { type: 'source', title: 'Src', url: 'https://example.com/bf', now: '2026-01-01' });
+  const bf = join(mkdtempSync(join(tmpdir(), 'rv-bf-')), 'body.md');
+  writeFileSync(bf, '## Load-bearing claims\n- From a file.', 'utf8');
+  const code = await run({ type: 'note', title: 'From File', sources: '2026-01-01-src', 'body-file': bf, vault: dir });
+  assert.equal(code, 0);
+  const id = makeId(new Date().toISOString().slice(0, 10), 'From File');
+  assert.match(readFileSync(join(dir, 'notes', `${id}.md`), 'utf8'), /- From a file\./);
+});

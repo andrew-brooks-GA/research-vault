@@ -129,6 +129,22 @@ test('batch: content-changed tripwire is an error, not a silent skip', () => {
   assert.match(r.errors[0].error, /content changed at same url\+version/);
 });
 
+test('batch: specs carry inline body prose; source body in a spec is a per-entry error', () => {
+  const dir = freshVault();
+  const ok = runBatch(dir, writePlan([
+    { type: 'source', title: 'Body docs', url: 'https://body.example.com/x' },
+    { type: 'note', title: 'Body note', sources: ['2026-06-12-body-docs'], summary: 'One claim.', body: '## Load-bearing claims\n- Real prose.' },
+  ]), NOW);
+  assert.equal(ok.errors.length, 0);
+  assert.match(readFileSync(ok.created[1].path, 'utf8'), /- Real prose\./);
+
+  const bad = runBatch(dir, writePlan([
+    { type: 'source', title: 'Gated batch', url: 'https://body.example.com/y', body: 'pasted' },
+  ]), NOW);
+  assert.equal(bad.created.length, 0);
+  assert.match(bad.errors[0].error, /store-body/);
+});
+
 test('capture --batch via run(): JSON to stdout, exit 0 clean / 1 on errors', async () => {
   const dir = freshVault();
   const good = writePlan([{ type: 'source', title: 'Via CLI', url: 'https://cli.example.com/x' }]);
