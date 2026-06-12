@@ -79,7 +79,7 @@ Use optional \`subject: {name, version}\` + \`series:\` for version-bearing sour
 Source entries may also set \`authority_tier\` (\`primary\`/\`secondary\`/\`tertiary\`) and \`authority_basis\` (e.g. \`official-docs\`, \`spec\`, \`source-code\`, \`release-notes\`, \`vendor-blog\`, \`benchmark\`). These are **defaults** — authority is ultimately *claim-relative*. A vendor docs page is primary for API behavior but weak for production tradeoffs; cite \`authority_basis\` when authority matters for a contested claim. When sources conflict, prefer higher-tier sources for the type of claim being made.
 
 ## 9. Authoring
-Filename \`<YYYY-MM-DD>-<slug>.md\` IS the id; never rename or delete — supersede. Controlled values from \`taxonomy.json\` (a verbatim copy of the plugin's schema); freeform tags in \`topics:\`. Retrieval: read \`.vault-manifest.json\` (one row per entry + computed backlinks) or glob/grep the folders — both cover the full set.
+Filename \`<YYYY-MM-DD>-<slug>.md\` IS the id; never rename or delete — supersede. Controlled values from \`taxonomy.json\` (a verbatim copy of the plugin's schema); freeform tags in \`topics:\`. Retrieval: read \`.vault-manifest.json\` (one row per entry + computed backlinks) or glob/grep the folders — both cover the full set. Give every note/synthesis a one-line \`summary:\` stating its load-bearing claim — it is indexed in the manifest and scanned by \`search --text\`, so retrieval works without opening bodies (missing summaries trip the advisory \`WARN_MISSING_SUMMARY\`).
 
 ## 10. Loader precedence
 This file is authoritative for vault content over any home-directory agent config.

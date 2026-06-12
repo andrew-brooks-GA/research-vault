@@ -7,7 +7,7 @@ Topic-agnostic: broad area goes in `domain`; specific tech (kubernetes, vcluster
 
 ## 1. Locate and retrieve
 1. Vault path: `$RESEARCH_VAULT_PATH`, else the OS default (see the vault's `AGENTS.md`).
-2. Retrieve via `.vault-manifest.json` (one row per entry + backlinks); fall back to glob/grep over the folders. If Node is available, `research-vault search`/`related` accelerate retrieval.
+2. Retrieve via `.vault-manifest.json` (one row per entry + backlinks); fall back to glob/grep over the folders. If Node is available, `research-vault search`/`related` accelerate retrieval. Note/synthesis manifest rows carry a `summary` field (the entry's load-bearing claim); `search --text` scans it, so relevance can be judged before opening any body.
 
 ## 2. Freshness before citing
 Compute `last_verified` (max of `verifications[].date`) and compare to the entry's `volatility` window (`meta/freshness-policy.md`). For `fast`/`volatile`, prefer live web; offline, prefix with `"unverified-offline"`. For versioned resources cite `subject.version`; sibling versions share a `series`.
