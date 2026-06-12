@@ -45,7 +45,7 @@ Any skill performing research that produces durable conclusions MUST decompose i
 - \`research-capture\` (skill + CLI) — owns persistence once artifact types are chosen.
 - **Orchestrators** — own running the capture plan from §2.6 before invoking synthesis capture.
 
-A monolithic report markdown file with no atomic entries is **non-conforming**, regardless of how good the prose is. See \`docs/ORCHESTRATOR-INTEGRATION.md\` (in the plugin repo) for the worked example.
+A monolithic report markdown file with no atomic entries is **non-conforming**, regardless of how good the prose is. See \`docs/ORCHESTRATOR-INTEGRATION.md\` (in the plugin repo) for the worked example, and the plugin's \`research-orchestrate\` skill for the reference implementation (eager source capture, then \`capture --batch\` for the distilled layers).
 
 ## 3. Domains
 Broad research areas (controlled). Specific tech (e.g. kubernetes, vcluster, istio) goes in freeform \`topics:\`, never here.

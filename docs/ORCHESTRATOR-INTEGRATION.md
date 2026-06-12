@@ -114,10 +114,10 @@ Both are warnings, not errors; both can be silenced by either fixing the decompo
 
 ## Implementing your own orchestrator
 
-When writing a new orchestration skill (or upgrading one like `deep-research-orchestrator`):
+The plugin ships a reference implementation: the `research-orchestrate` skill (`skills/research-orchestrate/SKILL.md`), which captures sources eagerly at fetch time and persists the distilled layers atomically via `capture --batch <plan.json>` — a JSON array of camelCase capture specs, validated entry-by-entry (enums, required note/synthesis links, intra-batch id references) before anything is written. When writing your own orchestration skill instead:
 
 1. Narrow your skill description so it captures research-task entry points, not retrieval/citation/capture (those belong to `research-vault-usage`).
 2. After source intake, explicitly walk the four-prompt capture plan from AGENTS.md §2.6 before drafting any synthesis.
-3. Persist each artifact via `research-vault capture --type <t> ...`. The CLI accepts every field needed for the lifecycle, including `--synthesis-basis`, `--authority-tier`, `--authority-basis`, `--contributing-ids`, `--sources`, `--state`, `--outcome`, `--confidence`.
+3. Persist each artifact via `research-vault capture --type <t> ...`. The CLI accepts every field needed for the lifecycle, including `--synthesis-basis`, `--authority-tier`, `--authority-basis`, `--contributing-ids`, `--sources`, `--state`, `--outcome`, `--confidence`. For multi-entry persistence, prefer one atomic `capture --batch <plan.json>` call; duplicates come back as `skipped`, validation failures as a per-entry error report with nothing written.
 4. Before the final synthesis capture, run `research-vault lint` mentally (or actually) and confirm no `WARN_SYNTHESIS_*` would fire. If they would, decompose more, or declare `synthesis_basis: primary-rollup` honestly.
 5. Make the resulting synthesis short. Cross-source claims and a recommendation, not a re-statement of the underlying material.

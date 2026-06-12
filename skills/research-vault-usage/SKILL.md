@@ -32,4 +32,4 @@ When writing the synthesis prose, for each load-bearing claim:
 5. Assign a `confidence` on the synthesis: `high` (multiple primary sources, no contradictions, version-checked, ran an experiment if applicable), `medium` (partial coverage or minor contradictions), `low` (community-only, unresolved contradictions, or compatibility unclear).
 
 ## 5. What this skill is not
-Not a general research-orchestration entry point. If you're entering a fresh research task (not yet at retrieval/citation/capture), an orchestrator skill owns the workflow; this skill owns the planning step and the persistence/citation discipline. See `docs/ORCHESTRATOR-INTEGRATION.md` in the plugin repo.
+Not a general research-orchestration entry point. If you're entering a fresh research task (not yet at retrieval/citation/capture), the `research-orchestrate` skill owns the workflow; this skill owns the planning step and the persistence/citation discipline. See `docs/ORCHESTRATOR-INTEGRATION.md` in the plugin repo for the contract.
