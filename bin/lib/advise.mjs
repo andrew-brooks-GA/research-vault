@@ -27,6 +27,7 @@ export function advise(vaultPath, repoRoot) {
       !(e.related.length + e.contributing_ids.length + e.sources.length)).map(e => e.id),
     sourcesWithoutNotes: m.entries.filter(e => e.type === 'source' && !noteSources.has(e.id)).map(e => e.id),
     unverifiedSources: listUnverifiedSources(vaultPath),
+    missingSummaries: m.entries.filter(e => (e.type === 'note' || e.type === 'synthesis') && !(e.summary && e.summary.trim())).map(e => e.id),
     aliasable: m.entries.filter(e => e.topics.some(t => aliases[t])).map(e => e.id),
   };
 }

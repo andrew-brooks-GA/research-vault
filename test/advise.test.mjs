@@ -36,6 +36,15 @@ test('a source with no distilling note appears in sourcesWithoutNotes', () => {
   assert.ok(advise(dir, process.cwd()).sourcesWithoutNotes.includes(id));
 });
 
+test('advise lists notes/synthesis lacking a summary', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-asum-'));
+  captureEntry(dir, { type: 'source', title: 'Src', url: 'https://example.com/z', now: '2026-01-01' });
+  captureEntry(dir, { type: 'note', title: 'Bare', sources: '2026-01-01-src', now: '2026-01-02' });
+  captureEntry(dir, { type: 'note', title: 'Crisp', sources: '2026-01-01-src', summary: 'A claim.', now: '2026-01-03' });
+  const r = advise(dir, process.cwd());
+  assert.deepEqual(r.missingSummaries, ['2026-01-02-bare']);
+});
+
 test('advise does not mutate the vault (lint-clean before and after)', () => {
   const dir = freshVault();
   lintAndReport(dir, { check: false }); // establish a clean baseline manifest

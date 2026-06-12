@@ -14,6 +14,7 @@ export async function run(args) {
   section('orphans', r.orphans);
   section('sources without notes', r.sourcesWithoutNotes);
   section('unverified sources (captured, never independently checked)', r.unverifiedSources);
+  section('notes/synthesis without a summary', r.missingSummaries);
   section('aliasable topics', r.aliasable);
   return 0;
 }
