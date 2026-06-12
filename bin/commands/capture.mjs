@@ -17,7 +17,7 @@ function loadSkeleton(repoRoot, type) {
   catch { return ''; }
 }
 
-export function captureEntry(vaultPath, opts) {
+export function prepareEntry(vaultPath, opts, ctx = {}) {
   const repoRoot = opts.repoRoot || REPO_ROOT;
   const schema = loadSchema(repoRoot);
   const now = opts.now || new Date().toISOString().slice(0, 10);
@@ -26,12 +26,15 @@ export function captureEntry(vaultPath, opts) {
   if (opts.storeBody && !opts.ackDataEgress)
     throw new Error('--store-body requires --ack-data-egress (storing source text is a data-egress / copyright surface)');
 
+  const pending = ctx.pending || [];
   const hashInput = opts.contentBytes ?? (opts.content || null);
   const newHash = hashInput != null ? sha256(hashInput) : (opts.contentHash || null);
   if (opts.type === 'source' && opts.url) {
     const normUrl = normalizeUrl(opts.url);
     const version = verKey(opts.subjectVersion);
-    for (const e of buildManifest(vaultPath).entries) {
+    const existing = ctx.manifestEntries || buildManifest(vaultPath).entries;
+    const candidates = [...existing, ...pending.map(p => ({ id: p.id, source_url: p.data.source_url, subject: p.data.subject, content_hash: p.data.content_hash }))];
+    for (const e of candidates) {
       if (e.source_url === normUrl && verKey(e.subject?.version) === version) {
         if (newHash && e.content_hash && newHash !== e.content_hash) {
           // §4.2 tripwire: same url+version but content changed → ambiguous (edit / new version / supersede)
@@ -44,7 +47,8 @@ export function captureEntry(vaultPath, opts) {
 
   const id = makeId(now, opts.title);
   const path = join(vaultPath, folder, `${id}.md`);
-  if (existsSync(path)) return { dedup: { id, ambiguous: false, reason: `entry id ${id} already exists (supersede via verify, do not overwrite)` } };
+  if (existsSync(path) || pending.some(p => p.id === id))
+    return { dedup: { id, ambiguous: false, reason: `entry id ${id} already exists (supersede via verify, do not overwrite)` } };
   const data = {
     title: opts.title, type: opts.type, created: now,
     domain: opts.domain ? opts.domain.split(',') : ['software-engineering'],
@@ -87,13 +91,19 @@ export function captureEntry(vaultPath, opts) {
   }
   assertControlledValues(data, schema);
   const order = fieldOrder(schema, opts.type);
-  mkdirSync(join(vaultPath, folder), { recursive: true });
   const skel = opts.scaffold ? loadSkeleton(repoRoot, opts.type) : '';
   let body = skel ? `# ${opts.title}\n\n${skel}\n` : `# ${opts.title}\n`;
   if (opts.storeBody && opts.content) body += `\n${opts.content}\n`;
-  writeEntry(path, data, body, order);
+  return { id, path, folder, data, body, order, dedup: null };
+}
+
+export function captureEntry(vaultPath, opts) {
+  const prep = prepareEntry(vaultPath, opts);
+  if (prep.dedup) return { dedup: prep.dedup };
+  mkdirSync(join(vaultPath, prep.folder), { recursive: true });
+  writeEntry(prep.path, prep.data, prep.body, prep.order);
   writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');
-  return { id, path, dedup: null };
+  return { id: prep.id, path: prep.path, dedup: null };
 }
 
 export async function run(args) {
