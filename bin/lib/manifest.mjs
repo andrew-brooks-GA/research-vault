@@ -11,6 +11,7 @@ export function buildManifest(vaultPath) {
     const last = (data.verifications || []).map(v => v.date).sort().pop() || null;
     entries.push({
       id, type: data.type, title: data.title,
+      summary: data.summary || null,
       domain: data.domain || [], topics: data.topics || [],
       source_url: data.source_url ? normalizeUrl(data.source_url) : null,
       content_hash: data.content_hash || null,
