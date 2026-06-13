@@ -42,6 +42,7 @@ You captured once. Weeks later, in a fresh session, the knowledge is right there
 |---|---|
 | 🧠 **Refuses to trust a stale fact** | Before citing, the agent weighs each entry's `volatility` tier against when it was last verified, and prefers live data when something's aged. The thing a plain notes folder can't do. |
 | 🎯 **Works from your stack, not its training data** | Bind a repo to a vault and the agent answers from your curated notes on the exact tools you use — not a frozen, year-old guess about them. |
+| 🔬 **Runs whole research tasks** | Ask a fresh question and `/research` answers from the vault when it can; otherwise it fans out to the web and lands every source, note, snippet, and open question as vault entries — not a throwaway report. |
 | 🗂️ **Tracks versions as siblings** | `vcluster 0.19` and `0.20` both stay valid. A new release is *new knowledge*, not a correction of the old. |
 | 🔍 **Searches without re-reading** | A derived manifest gives one-read facet search and a backlink graph across the whole vault. The agent finds what it needs without re-opening files. |
 | 🔌 **Runs under any agent** | A Claude Code plugin *and* a standalone CLI. Codex, Gemini, or a bare file-reading agent all work — every vault is self-describing via a generated `AGENTS.md`. |
@@ -86,7 +87,7 @@ node bin/research-vault.mjs search --topic vcluster
 
 Most people mix them:
 
-- **Prose / skill-activated (default in Claude Code).** Just talk to your agent. The `research-vault-usage`, `research-capture`, `research-verify`, and `research-librarian` skills auto-activate on technical-research questions; `research-authoring` fires when a citation is about to land in prose you're writing in a vault-bound repo; and `research-review` drives a retroactive audit of an existing doc or corpus. They describe the procedure and shell out to the fast-path commands, degrading to plain glob/grep when Node isn't present. Reading, searching, citing-with-freshness, and guided capture/verify all happen this way.
+- **Prose / skill-activated (default in Claude Code).** Just talk to your agent. The `research-vault-usage`, `research-capture`, `research-verify`, and `research-librarian` skills auto-activate on technical-research questions. `research-orchestrate` takes over a fresh research task end-to-end — vault-first, then web fan-out with every source and conclusion captured as entries. `research-authoring` fires when a citation is about to land in prose you're writing in a vault-bound repo, and `research-review` drives a retroactive audit of an existing doc or corpus. They describe the procedure and shell out to the fast-path commands, degrading to plain glob/grep when Node isn't present. Reading, searching, citing-with-freshness, and guided capture/verify all happen this way.
 - **Manual (slash commands / CLI).** Run an operation deterministically yourself: `/research-capture`, `node bin/research-vault.mjs lint --check`, and so on.
 
 Most operations **can be driven entirely by prose** — the command is just the faster, safer path. A few **require a command**; prose can't substitute, by design:
