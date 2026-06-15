@@ -1,11 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   PROJECT_CONFIG_FILENAME,
   findProjectConfig,
   parseProjectConfig,
   loadProjectConfig,
+  validateTaxonomyExtensions,
+  readTaxonomyExtensions,
 } from '../bin/lib/projectconfig.mjs';
 
 const SCHEMA = {
@@ -90,4 +92,47 @@ test('loadProjectConfig finds, parses, and validates in one call', () => {
 
 test('loadProjectConfig returns null when no config is found', () => {
   assert.equal(loadProjectConfig('/repo/plan', { schema: SCHEMA, ...fakeFs([]) }), null);
+});
+
+// --- taxonomy_extensions ---
+
+test('parseProjectConfig accepts additive taxonomy_extensions', () => {
+  const cfg = parseProjectConfig(
+    '{"vault":"/v","taxonomy_extensions":{"verification_method":["experiment","lab-run"],"verification_result":["partial"]}}',
+    SCHEMA,
+  );
+  assert.deepEqual(cfg.taxonomyExtensions.verification_method, ['experiment', 'lab-run']);
+  assert.deepEqual(cfg.taxonomyExtensions.verification_result, ['partial']);
+});
+
+test('parseProjectConfig defaults taxonomyExtensions to an empty object', () => {
+  const cfg = parseProjectConfig('{"vault":"/v"}', SCHEMA);
+  assert.deepEqual(cfg.taxonomyExtensions, {});
+});
+
+test('validateTaxonomyExtensions rejects a non-extensible field', () => {
+  assert.throws(() => validateTaxonomyExtensions({ volatility: ['glacial'] }), /not extensible/);
+  assert.throws(() => validateTaxonomyExtensions({ topics: ['x'] }), /not extensible/);
+});
+
+test('validateTaxonomyExtensions rejects non-array and non-string values', () => {
+  assert.throws(() => validateTaxonomyExtensions({ verification_method: 'experiment' }), /must be an array/);
+  assert.throws(() => validateTaxonomyExtensions({ verification_method: [''] }), /non-empty strings/);
+  assert.throws(() => validateTaxonomyExtensions({ verification_method: [1] }), /non-empty strings/);
+  assert.throws(() => validateTaxonomyExtensions(['verification_method']), /must be an object/);
+});
+
+test('validateTaxonomyExtensions returns {} for undefined', () => {
+  assert.deepEqual(validateTaxonomyExtensions(undefined), {});
+});
+
+test('readTaxonomyExtensions returns the merged-ready map for the nearest config', () => {
+  const dir = resolve('/repo');
+  const fs = fakeFs([dir], { [dir]: '{"vault":"/v","taxonomy_extensions":{"verification_method":["experiment"]}}' });
+  const ext = readTaxonomyExtensions(resolve('/repo/research'), fs);
+  assert.deepEqual(ext.verification_method, ['experiment']);
+});
+
+test('readTaxonomyExtensions returns {} when there is no config', () => {
+  assert.deepEqual(readTaxonomyExtensions(resolve('/repo'), fakeFs([])), {});
 });

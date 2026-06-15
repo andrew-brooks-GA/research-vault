@@ -8,7 +8,7 @@ const EDGE_FIELDS = ['related','contributing_ids','sources','source_id','prompt_
 const MONOLITHIC_SYNTHESIS_WORDS = 1500;
 
 export function lintVault(vaultPath, repoRoot) {
-  const schema = loadSchema(repoRoot);
+  const schema = loadSchema(repoRoot, { vaultPath });
   const files = walkEntries(vaultPath);
   const ids = new Set(files.map(f => f.split(/[\\/]/).pop().replace(/\.md$/, '')));
   const violations = [];
@@ -105,7 +105,7 @@ export function lintVault(vaultPath, repoRoot) {
 }
 
 export function fixVault(vaultPath, repoRoot) {
-  const schema = loadSchema(repoRoot);
+  const schema = loadSchema(repoRoot, { vaultPath });
   let fixed = 0;
   for (const abs of walkEntries(vaultPath)) {
     const raw = readFileSync(abs, 'utf8');
