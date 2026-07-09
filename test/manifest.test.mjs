@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildManifest } from '../bin/lib/manifest.mjs';
+import { buildManifest, lastVerified } from '../bin/lib/manifest.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
 
 const VAULT = fileURLToPath(new URL('./fixtures/vault', import.meta.url));
@@ -15,6 +15,23 @@ test('builds one row per entry with last_verified derived', () => {
   assert.equal(a.type, 'source');
   assert.equal(a.last_verified, '2026-01-01');
   assert.equal(a.source_url, 'https://example.com/a');
+});
+
+test('lastVerified counts only confirming results (confirmed/changed-trivially)', () => {
+  assert.equal(lastVerified([]), null, 'no verifications → null');
+  assert.equal(lastVerified(undefined), null, 'missing log → null');
+  // A later non-confirming check must not win over an earlier confirming one.
+  assert.equal(lastVerified([
+    { date: '2026-01-01', result: 'confirmed' },
+    { date: '2026-06-01', result: 'unreachable' },
+    { date: '2026-07-01', result: 'inconclusive' },
+    { date: '2026-08-01', result: 'outdated' },
+  ]), '2026-01-01');
+  assert.equal(lastVerified([
+    { date: '2026-01-01', result: 'confirmed' },
+    { date: '2026-06-01', result: 'changed-trivially' },
+  ]), '2026-06-01', 'changed-trivially confirms freshness');
+  assert.equal(lastVerified([{ date: '2026-06-01', result: 'unreachable' }]), null, 'non-confirming only → null');
 });
 
 test('computes backlinks from related/contributing_ids', () => {

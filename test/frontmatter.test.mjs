@@ -52,3 +52,60 @@ test('serializer emits no BOM, LF endings, no trailing whitespace', () => {
   assert.ok(!/\r/.test(out));
   assert.ok(!/ \n/.test(out));
 });
+
+test('scalar round-trip is idempotent for quotes, brackets, commas, type-looking strings', () => {
+  const tricky = [
+    'say "hi" now',
+    'he said "\\" backslash',
+    'a\\b',
+    '[2026 roadmap]',
+    '[]',
+    'one, two, three',
+    'true',
+    'false',
+    '42',
+    '-7',
+    'plain value',
+  ];
+  for (const title of tricky) {
+    const data = { title, type: 'note' };
+    const once = serializeFrontmatter(data, '# b\n');
+    const first = parseFrontmatter(once);
+    assert.equal(first.data.title, title, `parse(serialize(x)) === x for ${JSON.stringify(title)}`);
+    const twice = serializeFrontmatter(first.data, first.body);
+    assert.equal(twice, once, `serialize is idempotent for ${JSON.stringify(title)}`);
+  }
+});
+
+test('body trailing whitespace survives serialization byte-for-byte (minus CR)', () => {
+  const body = [
+    '# Notes',
+    'line with hard break  ',
+    'next line',
+    '',
+    '```',
+    'code with trailing spaces   ',
+    '\tindented\t',
+    '```',
+    '',
+  ].join('\n');
+  const out = serializeFrontmatter({ title: 'x', type: 'snippet' }, '\n' + body);
+  const emittedBody = out.slice(out.indexOf('\n---\n') + '\n---\n'.length);
+  assert.equal(emittedBody, body);
+  assert.ok(/  \n/.test(out), 'markdown hard break preserved');
+  assert.ok(/spaces   \n/.test(out), 'code-block trailing spaces preserved');
+});
+
+test('two serialize/parse cycles are byte-identical to one', () => {
+  const data = {
+    title: 'has "quotes" and [brackets]',
+    type: 'source',
+    topics: ['go', 'errors'],
+    count: 3,
+  };
+  const body = '# Body\nhard break  \nmore\n';
+  const once = serializeFrontmatter(data, body);
+  const reparsed = parseFrontmatter(once);
+  const twice = serializeFrontmatter(reparsed.data, reparsed.body);
+  assert.equal(twice, once);
+});

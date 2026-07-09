@@ -6,3 +6,7 @@ _obsidian/
 
 # design/process docs — not part of the published plugin
 docs/superpowers/
+.superpowers/
+
+# internal review/audit artifacts — kept locally, not shipped
+REVIEW.md

@@ -1,4 +1,4 @@
-const BOOL = new Set(['json', 'check', 'fix', 'force', 'stale', 'rebuild', 'succession', 'tested', 'set-default', 'scaffold', 'stdout', 'store-body', 'ack-data-egress', 'dry-run', 'include-bodies', 'report', 'project']);
+const BOOL = new Set(['json', 'check', 'fix', 'force', 'stale', 'rebuild', 'succession', 'tested', 'set-default', 'scaffold', 'stdout', 'store-body', 'ack-data-egress', 'dry-run', 'include-bodies', 'report', 'project', 'refresh-docs']);
 export function parseArgs(argv) {
   const out = { _: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -6,7 +6,11 @@ export function parseArgs(argv) {
     if (tok.startsWith('--')) {
       const key = tok.slice(2);
       if (BOOL.has(key)) out[key] = true;
-      else { out[key] = argv[++i]; }
+      else {
+        const next = argv[i + 1];
+        if (next === undefined || next.startsWith('--')) out[key] = undefined;
+        else out[key] = argv[++i];
+      }
     } else out._.push(tok);
   }
   return out;

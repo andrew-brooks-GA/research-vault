@@ -62,6 +62,14 @@ test('warns on note/synthesis without a one-line summary', () => {
   assert.ok(codes.includes('WARN_MISSING_SUMMARY'), 'expected WARN_MISSING_SUMMARY: ' + codes.join(','));
 });
 
+test('warns on an answered question with no answer_summary (silently exports nothing)', () => {
+  const { warnings, violations } = lintVault(WARN, process.cwd());
+  assert.equal(violations.length, 0, 'fixture should be lint-clean: ' + JSON.stringify(violations));
+  const flagged = warnings.filter(w => w.code === 'WARN_ANSWERED_NO_SUMMARY').map(w => w.file);
+  assert.equal(flagged.length, 1, 'exactly one answered-no-summary warning: ' + JSON.stringify(warnings));
+  assert.ok(flagged[0].includes('2026-03-01-answered-no-summary'), 'warning is on the answered question');
+});
+
 test('lint flags mojibake (runtime fixture, never committed)', () => {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');
   mkdirSync(join(dir, 'sources'), { recursive: true });

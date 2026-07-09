@@ -22,14 +22,14 @@ Without `--ack-data-egress`, `--include-bodies` refuses (exit 1, nothing written
 
 - **Default scope = `questions` only.** Only `question` entries with `state: answered`
   AND a non-empty `answer_summary` are exported, as
-  `{ input: question, output: answer_summary }`. `answer_summary` is the only built-in
-  summary field in the schema, which makes answered questions the one clean training
-  target the vault produces today.
-- `note` / `synthesis` (and other types) have **no summary field**, so they are NOT a
-  clean training target. With a broader `--scope` they export **title/metadata-only**
-  by default (empty `output`); their bodies appear only under
-  `--include-bodies --ack-data-egress`.
-- **No `source` body is ever emitted by default.**
+  `{ input: question, output: answer_summary }`. Set `answer_summary` with
+  `capture --answer-summary` (or by editing frontmatter) to produce these pairs.
+- With a broader `--scope`, other types export as `{ input: title, output: summary }`,
+  where `output` is the entry's `summary` frontmatter field (a `note`/`synthesis`
+  load-bearing claim) when present, else an empty string. This carries no body and
+  passes no egress gate.
+- Entry **bodies** — for any type, including `source` bodies — appear only under
+  `--include-bodies --ack-data-egress`, and are never emitted by default.
 
 ## Format
 

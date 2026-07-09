@@ -52,6 +52,14 @@ test('search --body matches entry body text, not just title/topics', () => {
   assert.ok(!viaText.some(e => e.id === r.id), 'title/topic --text must NOT match body-only text');
 });
 
+test('--text matches topics case-insensitively', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-topic-'));
+  captureEntry(dir, { type: 'source', title: 'K8s docs', url: 'https://example.com/k', topics: 'Kubernetes', now: '2026-01-01' });
+  const rows = searchVault(dir, { text: 'kubernetes' });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].topics[0], 'Kubernetes');
+});
+
 test('--text matches a note summary without a body read', () => {
   const dir = mkdtempSync(join(tmpdir(), 'rv-ssum-'));
   captureEntry(dir, { type: 'source', title: 'Src', url: 'https://example.com/y', now: '2026-01-01' });

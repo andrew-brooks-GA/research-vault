@@ -21,3 +21,13 @@ test('boolean flags do not swallow the following --option', () => {
   assert.equal(b.check, true);
   assert.deepEqual(b._.slice(1), ['plan/**/*.md']);
 });
+
+test('a value flag does not swallow a following --flag as its value', () => {
+  // --title has no value here; --url is a separate flag, not title's value.
+  const a = parseArgs(['capture', '--title', '--url', 'X']);
+  assert.equal(a.title, undefined);
+  assert.equal(a.url, 'X');
+  // A trailing value flag with nothing after it yields undefined, not a crash.
+  const b = parseArgs(['capture', '--title']);
+  assert.equal(b.title, undefined);
+});

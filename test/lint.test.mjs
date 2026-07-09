@@ -123,6 +123,80 @@ test('lint validates confidence / outcome / question state / verification by_typ
   assert.ok(codes.includes('ENUM_BY_TYPE'), 'expected ENUM_BY_TYPE: ' + codes.join(','));
 });
 
+// Raw single-folder vault + entry writer for probing codes that live outside the enum matrix:
+// parse failures, folder/type mismatch, presence rules, encodings. Bypasses the serializer so
+// BOM/CRLF/parse-broken bytes reach lint verbatim.
+function rawVault() {
+  const dir = join(mkdtempSync(join(tmpdir(), 'rv-lint-raw-')), 'v');
+  mkdirSync(join(dir, 'sources'), { recursive: true });
+  return dir;
+}
+const VALID_SOURCE = `---\ntitle: R\ntype: source\ncreated: 2026-01-01\ndomain: [meta]\nstage: raw\ntopics: []\nstatus: active\nrelated: []\nvolatility: slow\nverifications: []\nsource_type: article\nsource_url: https://e.com/r\n---\n# R\n`;
+
+test('lint emits PARSE for an entry with no frontmatter', () => {
+  const dir = rawVault();
+  writeFileSync(join(dir, 'sources', '2026-01-01-noyaml.md'), '# just a body, no frontmatter\n', 'utf8');
+  const codes = lintVault(dir, process.cwd()).violations.map(v => v.code);
+  assert.ok(codes.includes('PARSE'), 'expected PARSE: ' + codes.join(','));
+});
+
+test('lint emits TYPE_FOLDER when an entry type does not match its folder', () => {
+  const dir = freshVault();
+  handWrite(dir, 'notes', 'source', '2026-01-01-mistyped', { source_type: 'docs', source_url: 'https://x' });
+  const codes = lintVault(dir, process.cwd()).violations.map(v => v.code);
+  assert.ok(codes.includes('TYPE_FOLDER'), 'expected TYPE_FOLDER: ' + codes.join(','));
+});
+
+test('lint emits MISSING_REQUIRED for an absent AND an empty required field', () => {
+  const dir = freshVault();
+  // Absent: a snippet with no `tested`. Empty: a note with sources: [] (present but empty).
+  handWrite(dir, 'snippets', 'snippet', '2026-01-01-nofield', { language: 'js' });
+  handWrite(dir, 'notes', 'note', '2026-01-01-emptyarr', { sources: [], confidence: 'high' });
+  const files = lintVault(dir, process.cwd()).violations.filter(v => v.code === 'MISSING_REQUIRED').map(v => v.file);
+  assert.ok(files.some(f => f.includes('2026-01-01-nofield')), 'absent required field must flag MISSING_REQUIRED');
+  assert.ok(files.some(f => f.includes('2026-01-01-emptyarr')), 'empty required array must flag MISSING_REQUIRED');
+});
+
+test('lint emits SUPERSEDE when status is superseded without superseded_by', () => {
+  const dir = freshVault();
+  handWrite(dir, 'sources', 'source', '2026-01-01-gone', { source_type: 'docs', source_url: 'https://x', status: 'superseded' });
+  const codes = lintVault(dir, process.cwd()).violations.map(v => v.code);
+  assert.ok(codes.includes('SUPERSEDE'), 'expected SUPERSEDE: ' + codes.join(','));
+});
+
+test('lint emits SUBJECT_SHAPE when subject has no name', () => {
+  const dir = freshVault();
+  handWrite(dir, 'sources', 'source', '2026-01-01-nameless', { source_type: 'docs', source_url: 'https://x', subject: { version: '1.0' } });
+  const codes = lintVault(dir, process.cwd()).violations.map(v => v.code);
+  assert.ok(codes.includes('SUBJECT_SHAPE'), 'expected SUBJECT_SHAPE: ' + codes.join(','));
+});
+
+test('lint emits URL_INVALID for a non-empty unparsable source_url (and does not crash)', () => {
+  const dir = rawVault();
+  const bad = VALID_SOURCE.replace('source_url: https://e.com/r', 'source_url: not-a-url');
+  writeFileSync(join(dir, 'sources', '2026-01-01-badurl.md'), bad, 'utf8');
+  const codes = lintVault(dir, process.cwd()).violations.map(v => v.code);
+  assert.ok(codes.includes('URL_INVALID'), 'expected URL_INVALID: ' + codes.join(','));
+});
+
+test('lint emits FIELD_SHAPE (not per-char enum garbage) for a scalar domain', () => {
+  const dir = rawVault();
+  const bad = VALID_SOURCE.replace('domain: [meta]', 'domain: security');
+  writeFileSync(join(dir, 'sources', '2026-01-01-scalardomain.md'), bad, 'utf8');
+  const codes = lintVault(dir, process.cwd()).violations.map(v => v.code);
+  assert.ok(codes.includes('FIELD_SHAPE'), 'expected FIELD_SHAPE: ' + codes.join(','));
+  assert.ok(!codes.includes('ENUM_DOMAIN'), 'a scalar domain must not produce per-char ENUM_DOMAIN: ' + codes.join(','));
+});
+
+test('lint emits ENCODING_BOM and ENCODING_CRLF directly (not just via the fix path)', () => {
+  const dir = rawVault();
+  writeFileSync(join(dir, 'sources', '2026-01-01-bom.md'), String.fromCharCode(0xFEFF) + VALID_SOURCE, 'utf8');
+  writeFileSync(join(dir, 'sources', '2026-01-01-crlf.md'), VALID_SOURCE.replace(/\n/g, '\r\n'), 'utf8');
+  const codes = lintVault(dir, process.cwd()).violations.map(v => v.code);
+  assert.ok(codes.includes('ENCODING_BOM'), 'expected ENCODING_BOM: ' + codes.join(','));
+  assert.ok(codes.includes('ENCODING_CRLF'), 'expected ENCODING_CRLF: ' + codes.join(','));
+});
+
 test('lint --check flags MANIFEST_STALE when only backlinks go stale (not just entries)', () => {
   const dir = freshVault();
   lintAndReport(dir, { check: false });

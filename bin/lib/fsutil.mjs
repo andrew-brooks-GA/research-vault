@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, existsSync, renameSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.mjs';
 
@@ -28,5 +28,7 @@ export function readEntry(absPath) {
 }
 
 export function writeEntry(absPath, data, body, order) {
-  writeFileSync(absPath, serializeFrontmatter(data, body, order), 'utf8');
+  const tmp = absPath + '.tmp';
+  writeFileSync(tmp, serializeFrontmatter(data, body, order), 'utf8');
+  renameSync(tmp, absPath);
 }

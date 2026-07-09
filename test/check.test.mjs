@@ -116,3 +116,30 @@ test('run exits non-zero under --check when a citation is uncovered', async () =
     rmSync(repo, { recursive: true, force: true });
   }
 });
+
+test('run falls back to .research-vault.json references.globs when no positional globs given', async () => {
+  const vault = mkdtempSync(join(tmpdir(), 'rv-vault-'));
+  const repo = mkdtempSync(join(tmpdir(), 'rv-repo-'));
+  try {
+    runInit({ vaultPath: vault });
+    writeFileSync(join(repo, '.research-vault.json'), JSON.stringify({ vault, references: { globs: ['*.md'] } }));
+    writeFileSync(join(repo, 'doc.md'), 'cites https://nobody.example/page that is not in the vault.');
+    // No positional glob: the config's references.globs must supply doc.md, so the uncovered
+    // citation still trips --check.
+    const code = await run({ _: ['check'], vault, cwd: repo, check: true });
+    assert.equal(code, 1);
+  } finally {
+    rmSync(vault, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test('run errors with usage (exit 2) when neither positional globs nor config globs exist', async () => {
+  const repo = mkdtempSync(join(tmpdir(), 'rv-repo-'));
+  try {
+    const code = await run({ _: ['check'], cwd: repo });
+    assert.equal(code, 2);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});

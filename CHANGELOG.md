@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-07-07
 
 ### Changed
 - **Manifest rows now carry `summary`.** Existing on-disk manifests will report `MANIFEST_STALE` once after upgrading; run `research-vault lint` to rebuild.
@@ -20,6 +20,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`SECURITY.md`** — the full security contract for the two outward-facing features (`refresh`, `export`), plus a vulnerability-reporting contact.
 - **`capture --batch <plan.json>`.** Atomic multi-entry capture: every entry is validated (enums, required note `sources` / synthesis `contributingIds`, unresolved references) before anything is written. Later entries may reference earlier ones by deterministic id; duplicates come back as `skipped`, the content-changed tripwire as an error; one manifest rebuild per batch; JSON result on stdout.
 - **`research-orchestrate` skill + `/research` command.** The reference implementation of `docs/ORCHESTRATOR-INTEGRATION.md`: vault-first lookup, multi-agent workflow (Recon → Sweep → Fetch+Seed → Verify → Plan → Persist+Gate) with eager source capture, the §2.6 capture plan batched through `capture --batch`, and a lint-gated synthesis. Degrades to an inline sequential lifecycle without the Workflow tool. Supersedes generic deep-research skills in vault-bound contexts.
+- **`capture --answer-summary`** (and a batch `answer-summary` key) writes the question `answer_summary` field, making the default `export` reachable via tooling; a new `WARN_ANSWERED_NO_SUMMARY` lint warning nudges answered questions that would export nothing.
+- **`init --refresh-docs`** regenerates an existing vault's `AGENTS.md` + `taxonomy.json` after a plugin upgrade — never touching entries, `meta/`, or `.gitignore`.
+- **`advise` quote-residue signal** flags frontmatter scalars carrying baked-in `\"` from the pre-0.3.0 serializer.
+- **Golden `AGENTS.md` snapshot** (`schema/AGENTS.golden.md`) makes the drift CI check real (generator vs. committed golden, not generator vs. itself).
+- **`.research-vault.json` `defaults` + `references.globs` are now consumed** by `capture`/`check` (previously validated but inert).
+
+### Fixed
+- **Frontmatter serializer is now lossless.** `parseScalar` un-escapes `\"` (the emit side already escaped it), ending the compounding quote-corruption every parse→serialize cycle used to add — automated by the PostToolUse hook. `[`-leading and comma-containing scalars are now quoted on emit so titles no longer round-trip into arrays.
+- **Body bytes are preserved.** Trailing-whitespace normalization now applies to frontmatter lines only, not the body — Markdown hard breaks and trailing-space-significant snippet code survive capture/verify/fix/hook writes.
+- **Freshness derives from confirming verifications only.** `unreachable`/`inconclusive` no longer reset the freshness clock; `last_verified` is computed from `confirmed`/`changed-trivially` results in one shared helper.
+- **Lint no longer crashes on a malformed `source_url`** — it reports `URL_INVALID` instead of dying (exit 2) and discarding all other diagnostics. Scalar `domain:` is shape-checked (`FIELD_SHAPE`) before enum iteration. `MISSING_REQUIRED` now rejects empty strings/arrays.
+- **Intra-batch dedup normalizes the pending side**, so normalization-equivalent URLs in one batch no longer create duplicate entries.
+
+### Upgrading an existing vault
+
+A vault created under 0.2.x is validated by the **current** plugin's schema (the tool never reads a vault's own `taxonomy.json`), so this release's lint tightening applies retroactively. Expect the following on first use after upgrading:
+
+- **New hard-fail lint codes.** `MISSING_REQUIRED` now rejects *empty* values (not just absent ones), and `required_by_type` demands `source_url` (source), `sources` (note), `contributing_ids` (synthesis). Entries the **old tooling itself wrote** — an empty `source_url` when `--url` was omitted, or empty-array note/synthesis — now fail `lint --check` (exit 2). `URL_INVALID` and `FIELD_SHAPE` (scalar `domain:`) are likewise new. None are `lint --fix`-able; each needs a human edit (supply the missing URL/sources/contributors, or supersede the entry). This breaks the team-vault CI gate until fixed — audit with `research-vault lint` before upgrading CI.
+- **Widened dangling-ref sweep.** Question `contributing` links are now dangling-checked; previously-invisible broken refs may surface.
+- **One-time `MANIFEST_STALE`.** `last_verified` is now derived from *confirming* verifications only, so the on-disk manifest recomputes once — run any `lint`/`capture`/`verify` to rebuild. Side effect: entries whose latest verification was `unreachable`/`inconclusive` correctly **reappear** in `verify --stale`.
+- **Quote-residue sweep (run BEFORE any post-upgrade write).** The pre-0.3.0 serializer escaped `"` on emit but never un-escaped on read, so repeatedly-rewritten scalars accumulated `\"`. The 0.3.0 parser strips exactly one level per read; the new lossless serializer then preserves whatever remains as genuine content — permanently — on the first `lint --fix`, `capture`, `verify`, or PostToolUse-hook write. Detect residue first:
+
+  ```bash
+  grep -rnF '\"' sources notes synthesis snippets experiments questions
+  ```
+
+  `research-vault advise` also lists affected entries under **quote residue**. Fix by hand before the first write.
+- **Refresh docs.** Run `research-vault init --refresh-docs` to regenerate this vault's `AGENTS.md` + `taxonomy.json` so agents see the new `--answer-summary` flag, corrected export semantics, and `WARN_ANSWERED_NO_SUMMARY`.
+- **Body trailing whitespace already stripped by an older write is unrecoverable** — the 0.3.0 serializer preserves bodies going forward, but cannot restore hard breaks a prior write destroyed.
 
 ## [0.2.1] - 2026-06-01
 

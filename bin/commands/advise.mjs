@@ -17,5 +17,6 @@ export async function run(args) {
   section('notes/synthesis without a summary', r.missingSummaries);
   section('stub bodies (scaffold or empty, no prose)', r.stubBodies);
   section('aliasable topics', r.aliasable);
+  section('quote residue (baked-in \\" — see upgrade notes)', r.quoteResidue);
   return 0;
 }

@@ -40,6 +40,19 @@ export function runInit({ vaultPath, repoRoot = REPO_ROOT, force = false }) {
   return { created: true, vaultPath };
 }
 
+// Doc-resync for an EXISTING vault: regenerate the two derived-from-schema artifacts
+// (AGENTS.md + taxonomy.json) after a plugin upgrade, without the destructive full re-init.
+// Never touches entries, meta/, .gitignore, or the manifest.
+export function refreshDocs({ vaultPath, repoRoot = REPO_ROOT }) {
+  if (!existsSync(vaultPath) || !hasVaultContent(vaultPath)) {
+    return { refreshed: false, reason: 'target is not an existing vault (nothing to refresh)', vaultPath };
+  }
+  const schema = loadSchema(repoRoot);
+  writeFileSync(join(vaultPath, 'AGENTS.md'), generateAgentsMd(schema), 'utf8');
+  cpSync(join(repoRoot, 'schema', 'taxonomy.json'), join(vaultPath, 'taxonomy.json'));
+  return { refreshed: true, vaultPath };
+}
+
 function profileHint(platform, vaultPath) {
   if (platform === 'win32') return `Set vault path (PowerShell):\n  [Environment]::SetEnvironmentVariable("RESEARCH_VAULT_PATH","${vaultPath}","User")`;
   return `Add to your shell profile:\n  export RESEARCH_VAULT_PATH="${vaultPath}"`;
@@ -62,6 +75,13 @@ export async function run(args) {
       process.stderr.write(e.message + '\n');
       return 1;
     }
+  }
+  if (args['refresh-docs']) {
+    const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
+    const r = refreshDocs({ vaultPath });
+    if (!r.refreshed) { process.stderr.write(r.reason + '\n'); return 1; }
+    process.stdout.write(`Refreshed AGENTS.md + taxonomy.json at ${vaultPath} (entries, meta/, .gitignore untouched).\n`);
+    return 0;
   }
   const { path: vaultPath, source } = resolveVault({ flag: args.vault ?? null });
   const r = runInit({ vaultPath, force: !!args.force });

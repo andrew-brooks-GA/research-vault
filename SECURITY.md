@@ -10,12 +10,16 @@ Email **andrew.brooks.aob@gmail.com** with details and a reproduction. Please do
 
 Everything is local and read-only by default. The only network feature (`refresh`) and the only egress feature (`export`) are off or conservative until you opt in per run, and neither ever mutates your entries.
 
+## Local writers
+
+One local process writes your entries without a per-run prompt: the advisory `PostToolUse` hook re-runs `lint --fix` and a manifest rebuild on the vault after a vault-file edit. It touches only local files inside the vault, never the network, and is convenience-only — the `lint` correctness gate does not depend on it.
+
 ## Network refresh (`refresh`)
 
 `refresh` is the only feature that opens a network connection, and it is off by default.
 
 - **Double-gated.** It refuses — non-zero exit, including under `--dry-run` — unless you both invoke the `refresh` subcommand *and* set `RESEARCH_VAULT_ALLOW_NETWORK=1`. Either alone does nothing.
-- **Hash-only.** It fetches the source URL, computes the SHA-256 of the raw bytes, and compares that to the entry's stored `content_hash`. It never reads the response body, does no HTML-to-text conversion, and never writes the fetched hash back.
+- **Hash-only.** It fetches the source URL and buffers the response solely to hash it: it computes the SHA-256 of the raw bytes and compares that to the entry's stored `content_hash`. It never parses, stores, or writes back the fetched bytes, and does no HTML-to-text conversion.
 - **Never mutates.** It reports `confirmed`, `changed`, or `unreachable` and defers every edit to `verify`. Entries and the manifest are left byte-identical.
 - **SSRF-hardened:**
   - HTTPS only. Plaintext URLs and `https`-to-`http` redirect downgrades are refused.
@@ -28,8 +32,8 @@ Everything is local and read-only by default. The only network feature (`refresh
 
 `export` is the only path that writes vault content to an external file, and it is conservative by default.
 
-- **Metadata-first.** By default it emits only **answered questions** as `{input, output}` pairs, each with per-record metadata — no other entry types, never any entry body, never a `source` body. `--scope <types>` widens it to title-and-metadata-only records for other types.
-- **Body egress is double-gated.** Including any entry body requires both `--include-bodies` *and* `--ack-data-egress`. Either alone refuses and writes nothing.
+- **Metadata-first.** By default it emits only **answered questions** as `{input, output}` pairs, each with per-record metadata — no other entry types, never any entry body, never a `source` body. `--scope <types>` widens it to other types as `{input: title, output: summary}` records — the entry's `summary` field when present, empty otherwise; still no entry body.
+- **Body egress is double-gated.** Including any entry body requires both `--include-bodies` *and* `--ack-data-egress`. `--include-bodies` without the ack refuses and writes nothing; `--ack-data-egress` alone is inert — the export proceeds but emits only the default metadata and `summary` records, no bodies.
 - **Deterministic and offline.** Output is stable, id-sorted JSONL for an external pipeline. Nothing is sent over the network and the vault is never modified.
 
 See [`docs/FINETUNING.md`](docs/FINETUNING.md) for the export format and intended pipeline.

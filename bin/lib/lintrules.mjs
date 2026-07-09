@@ -2,13 +2,45 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { walkEntries, readEntry } from './fsutil.mjs';
 import { loadSchema, stageAllowedInFolder, fieldOrder } from './schema.mjs';
 import { serializeFrontmatter } from './frontmatter.mjs';
+import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS } from './validate.mjs';
 
 const FOLDER_TYPE = { sources:'source', notes:'note', synthesis:'synthesis', snippets:'snippet', experiments:'experiment', questions:'question' };
-const EDGE_FIELDS = ['related','contributing_ids','sources','source_id','prompt_id','superseded_by'];
 const MONOLITHIC_SYNTHESIS_WORDS = 1500;
+
+// lint's enum coverage is driven from the same CONTROLLED_FIELDS / VERIFICATION_CONTROLLED_FIELDS
+// maps the fail-fast validator (validate.mjs) uses, so the two cannot silently diverge. These
+// tables only supply the emitted violation code + human label per field; the field list itself
+// (hence coverage) comes from validate.mjs.
+const ENUM_META = {
+  domain:          { code: 'ENUM_DOMAIN',          label: 'domain' },
+  volatility:      { code: 'ENUM_VOLATILITY',      label: 'volatility' },
+  status:          { code: 'ENUM_STATUS',          label: 'status' },
+  confidence:      { code: 'ENUM_CONFIDENCE',      label: 'confidence' },
+  outcome:         { code: 'ENUM_OUTCOME',         label: 'outcome' },
+  state:           { code: 'ENUM_QUESTION_STATE',  label: 'question state' },
+  synthesis_basis: { code: 'ENUM_SYNTHESIS_BASIS', label: 'synthesis_basis' },
+  authority_tier:  { code: 'ENUM_AUTHORITY_TIER',  label: 'authority_tier' },
+  authority_basis: { code: 'ENUM_AUTHORITY_BASIS', label: 'authority_basis' },
+};
+// method/result are required-valid: an absent value lints as `unknown method: undefined`
+// (lint is detective, so it flags the hole); validate skips absent fields. by_type is optional.
+const VERIFICATION_ENUM_META = {
+  method:  { code: 'ENUM_METHOD',  label: 'method',             required: true },
+  result:  { code: 'ENUM_RESULT',  label: 'result',             required: true },
+  by_type: { code: 'ENUM_BY_TYPE', label: 'verification by_type', required: false },
+};
+
+const allowedValues = (schema, key) => {
+  const t = schema.taxonomy[key];
+  return Array.isArray(t) ? t : Object.keys(t);
+};
+const isParsableUrl = (u) => { try { new URL(u); return true; } catch { return false; } };
 
 export function lintVault(vaultPath, repoRoot) {
   const schema = loadSchema(repoRoot);
+  // Dangling-ref coverage = every declared edge field (backlink-forming + reference-only),
+  // shared with the manifest's backlink builder via schema/frontmatter.schema.json.
+  const edgeFields = [...schema.fields.edge_fields.backlink, ...schema.fields.edge_fields.reference_only];
   const files = walkEntries(vaultPath);
   const ids = new Set(files.map(f => f.split(/[\\/]/).pop().replace(/\.md$/, '')));
   const violations = [];
@@ -39,26 +71,41 @@ export function lintVault(vaultPath, repoRoot) {
     for (const f of schema.fields.derived_forbidden) if (f in data) add(abs, 'STORED_DERIVED', `stored derived field: ${f}`);
     if (FOLDER_TYPE[folder] && data.type !== FOLDER_TYPE[folder]) add(abs, 'TYPE_FOLDER', `type ${data.type} in folder ${folder}`);
     if (data.stage && !stageAllowedInFolder(schema, folder, data.stage)) add(abs, 'STAGE_FOLDER', `stage ${data.stage} not allowed in ${folder}`);
-    if (data.domain) for (const d of data.domain) if (!schema.taxonomy.domain.includes(d)) add(abs, 'ENUM_DOMAIN', `unknown domain: ${d}`);
-    if (data.volatility && !(data.volatility in schema.taxonomy.volatility)) add(abs, 'ENUM_VOLATILITY', `unknown volatility: ${data.volatility}`);
-    if (data.status && !schema.taxonomy.status.includes(data.status)) add(abs, 'ENUM_STATUS', `unknown status: ${data.status}`);
-    if (data.confidence && !schema.taxonomy.confidence.includes(data.confidence)) add(abs, 'ENUM_CONFIDENCE', `unknown confidence: ${data.confidence}`);
-    if (data.outcome && !schema.taxonomy.outcome.includes(data.outcome)) add(abs, 'ENUM_OUTCOME', `unknown outcome: ${data.outcome}`);
-    if (data.state && !schema.taxonomy.question_state.includes(data.state)) add(abs, 'ENUM_QUESTION_STATE', `unknown question state: ${data.state}`);
-    if (data.synthesis_basis && !schema.taxonomy.synthesis_basis.includes(data.synthesis_basis)) add(abs, 'ENUM_SYNTHESIS_BASIS', `unknown synthesis_basis: ${data.synthesis_basis}`);
-    if (data.authority_tier && !schema.taxonomy.authority_tier.includes(data.authority_tier)) add(abs, 'ENUM_AUTHORITY_TIER', `unknown authority_tier: ${data.authority_tier}`);
-    if (data.authority_basis && !schema.taxonomy.authority_basis.includes(data.authority_basis)) add(abs, 'ENUM_AUTHORITY_BASIS', `unknown authority_basis: ${data.authority_basis}`);
-    for (const v of (data.verifications || [])) {
-      if (!schema.taxonomy.verification_method.includes(v.method)) add(abs, 'ENUM_METHOD', `unknown method: ${v.method}`);
-      if (!schema.taxonomy.verification_result.includes(v.result)) add(abs, 'ENUM_RESULT', `unknown result: ${v.result}`);
-      if (v.by_type && !schema.taxonomy.by_type.includes(v.by_type)) add(abs, 'ENUM_BY_TYPE', `unknown verification by_type: ${v.by_type}`);
+    // Enum checks driven from CONTROLLED_FIELDS (validate.mjs). Shape-check array-valued
+    // controlled fields (domain) BEFORE enum iteration, or a bare scalar `domain: security`
+    // would be walked character-by-character into garbage per-char violations.
+    for (const [field, key] of Object.entries(CONTROLLED_FIELDS)) {
+      const val = data[field]; if (!val) continue;
+      const meta = ENUM_META[field];
+      if (field === 'domain') {
+        if (!Array.isArray(val)) { add(abs, 'FIELD_SHAPE', 'domain must be a list'); continue; }
+        for (const d of val) if (!allowedValues(schema, key).includes(d)) add(abs, meta.code, `unknown ${meta.label}: ${d}`);
+      } else if (!allowedValues(schema, key).includes(val)) {
+        add(abs, meta.code, `unknown ${meta.label}: ${val}`);
+      }
     }
-    for (const f of EDGE_FIELDS) {
+    for (const v of (data.verifications || [])) {
+      for (const [field, key] of Object.entries(VERIFICATION_CONTROLLED_FIELDS)) {
+        const meta = VERIFICATION_ENUM_META[field];
+        const val = v[field];
+        if (!meta.required && (val === undefined || val === null || val === '')) continue;
+        if (!allowedValues(schema, key).includes(val)) add(abs, meta.code, `unknown ${meta.label}: ${val}`);
+      }
+    }
+    if (data.type === 'source' && data.source_url && !isParsableUrl(data.source_url))
+      add(abs, 'URL_INVALID', `source_url is not a valid URL: ${data.source_url}`);
+    for (const f of edgeFields) {
       const val = data[f]; if (!val) continue;
       for (const ref of Array.isArray(val) ? val : [val]) if (ref && !ids.has(ref)) add(abs, 'DANGLING_REF', `${f} -> missing id ${ref}`);
     }
     const required = schema.fields.required_by_type[data.type] || [];
-    for (const f of required) if (!(f in data)) add(abs, 'MISSING_REQUIRED', `missing required field: ${f}`);
+    // Presence-only is not enough: a required field present but empty ('' or []) is as broken
+    // as an absent one. Capture refuses to emit these; hand-authored entries still can.
+    for (const f of required) {
+      const v = data[f];
+      if (!(f in data) || v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0))
+        add(abs, 'MISSING_REQUIRED', `missing required field: ${f}`);
+    }
     if (data.status === 'superseded' && !data.superseded_by) add(abs, 'SUPERSEDE', 'superseded without superseded_by');
     if (data.subject && !(data.subject.name)) add(abs, 'SUBJECT_SHAPE', 'subject requires name');
 
@@ -77,6 +124,11 @@ export function lintVault(vaultPath, repoRoot) {
     // the field is optional and the detective floor is unaffected. See AGENTS.md §9.
     if ((data.type === 'note' || data.type === 'synthesis') && !(data.summary && String(data.summary).trim()))
       warn(abs, 'WARN_MISSING_SUMMARY', 'no summary: one-line claim; add it so search/advise/export can use the entry without a body read');
+
+    // An answered question with no answer_summary exports nothing — the default export emits
+    // only answered questions carrying a non-empty answer_summary. Advisory; exit code unaffected.
+    if (data.type === 'question' && data.state === 'answered' && !(data.answer_summary && String(data.answer_summary).trim()))
+      warn(abs, 'WARN_ANSWERED_NO_SUMMARY', 'answered question has no answer_summary; it exports nothing — add one (capture --answer-summary) so the answer is emitted');
 
     for (const t of (data.topics || [])) if (schema.taxonomy.topic_aliases[t]) warn(abs, 'WARN_TOPIC_ALIAS', `topic '${t}' should be normalized to '${schema.taxonomy.topic_aliases[t]}'`);
 

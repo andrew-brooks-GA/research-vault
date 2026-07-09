@@ -11,7 +11,7 @@ function parseScalar(raw) {
   if (s.startsWith('[') && s.endsWith(']')) {
     return s.slice(1, -1).split(',').map(x => parseScalar(x)).filter(x => x !== '');
   }
-  if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1);
+  if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1).replace(/\\(["\\])/g, '$1');
   if (s === 'true') return true;
   if (s === 'false') return false;
   if (/^-?\d+$/.test(s)) return Number(s);
@@ -76,7 +76,10 @@ export function parseFrontmatter(text) {
 function emitScalar(v) {
   if (Array.isArray(v)) return `[${v.map(emitScalar).join(', ')}]`;
   if (typeof v === 'string') {
-    if (v === '' || /[:#"]|^\s|\s$/.test(v)) return `"${v.replace(/"/g, '\\"')}"`;
+    if (v === '' || /[:#"]|^\s|\s$/.test(v) || /^\[/.test(v) ||
+        v === 'true' || v === 'false' || /^-?\d+$/.test(v)) {
+      return `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    }
     return v;
   }
   return String(v);
@@ -104,5 +107,5 @@ export function serializeFrontmatter(data, body, order = null) {
   }
   out.push('---');
   const text = out.join('\n') + '\n' + (body.startsWith('\n') ? body.slice(1) : body);
-  return text.replace(/[ \t]+\n/g, '\n').replace(/\r/g, '');
+  return text.replace(/\r/g, '');
 }

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, cpSync, existsSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runBatch, run } from '../bin/commands/capture.mjs';
@@ -117,6 +117,36 @@ test('batch: intra-batch duplicate source is skipped against the pending sibling
   assert.equal(r.created.length, 1);
   assert.equal(r.skipped.length, 1);
   assert.equal(r.skipped[0].id, '2026-06-12-original');
+});
+
+test('batch: intra-batch dedup normalizes both sides (trailing slash vs tracking param)', () => {
+  const dir = freshVault();
+  const r = runBatch(dir, writePlan([
+    { type: 'source', title: 'Canonical', url: 'https://normeq.example.com/page/' },
+    { type: 'source', title: 'Tracked', url: 'https://normeq.example.com/page?utm_source=x' },
+  ]), NOW);
+  assert.equal(r.created.length, 1, 'normalization-equivalent URLs must collapse to one entry');
+  assert.equal(r.skipped.length, 1);
+  assert.equal(r.skipped[0].id, '2026-06-12-canonical');
+});
+
+test('batch: a mid-loop write failure reports created-so-far and rebuilds the manifest', () => {
+  const dir = freshVault();
+  // Pre-create a directory where the second entry's temp file would be written, so its
+  // writeFileSync throws EISDIR (portable across win/mac/linux) after the first is on disk.
+  mkdirSync(join(dir, 'sources'), { recursive: true });
+  mkdirSync(join(dir, 'sources', '2026-06-12-second.md.tmp'), { recursive: true });
+  const r = runBatch(dir, writePlan([
+    { type: 'source', title: 'First', url: 'https://fault.example.com/a' },
+    { type: 'source', title: 'Second', url: 'https://fault.example.com/b' },
+  ]), NOW);
+  assert.equal(r.created.length, 1, 'entries written before the failure are reported');
+  assert.equal(r.created[0].id, '2026-06-12-first');
+  assert.equal(r.errors.length, 1);
+  assert.match(r.errors[0].error, /write failed/);
+  assert.ok(existsSync(join(dir, 'sources', '2026-06-12-first.md')), 'first entry persisted (tmp+rename)');
+  const manifest = JSON.parse(readFileSync(join(dir, '.vault-manifest.json'), 'utf8'));
+  assert.ok(manifest.entries.some(e => e.id === '2026-06-12-first'), 'manifest rebuilt to include the written entry');
 });
 
 test('batch: content-changed tripwire is an error, not a silent skip', () => {

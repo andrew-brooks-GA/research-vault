@@ -7,10 +7,12 @@ import { buildManifest } from '../lib/manifest.mjs';
 import { writeEntry } from '../lib/fsutil.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { assertControlledValues } from '../lib/validate.mjs';
+import { loadProjectConfig } from '../lib/projectconfig.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const TYPE_FOLDER = { source:'sources', note:'notes', synthesis:'synthesis', snippet:'snippets', experiment:'experiments', question:'questions' };
 const verKey = v => (v == null || v === '') ? null : String(v);
+const normUrlSafe = u => { if (!u) return null; try { return normalizeUrl(u); } catch { return u; } };
 
 function loadSkeleton(repoRoot, type) {
   try { return readFileSync(join(repoRoot, 'vault-template', 'meta', 'entry-skeletons', `${type}.md`), 'utf8').trimEnd(); }
@@ -25,6 +27,9 @@ export function prepareEntry(vaultPath, opts, ctx = {}) {
   if (!folder) throw new Error(`invalid type: ${opts.type}`);
   if (opts.storeBody && !opts.ackDataEgress)
     throw new Error('--store-body requires --ack-data-egress (storing source text is a data-egress / copyright surface)');
+  if (opts.type === 'source' && !opts.url) throw new Error('source requires url');
+  if (opts.type === 'note' && !(opts.sources && String(opts.sources).length)) throw new Error('note requires sources');
+  if (opts.type === 'synthesis' && !(opts.contributingIds && String(opts.contributingIds).length)) throw new Error('synthesis requires contributingIds');
 
   const pending = ctx.pending || [];
   const hashInput = opts.contentBytes ?? (opts.content || null);
@@ -33,7 +38,7 @@ export function prepareEntry(vaultPath, opts, ctx = {}) {
     const normUrl = normalizeUrl(opts.url);
     const version = verKey(opts.subjectVersion);
     const existing = ctx.manifestEntries || buildManifest(vaultPath).entries;
-    const candidates = [...existing, ...pending.map(p => ({ id: p.id, source_url: p.data.source_url, subject: p.data.subject, content_hash: p.data.content_hash }))];
+    const candidates = [...existing, ...pending.map(p => ({ id: p.id, source_url: normUrlSafe(p.data.source_url), subject: p.data.subject, content_hash: p.data.content_hash }))];
     for (const e of candidates) {
       if (e.source_url === normUrl && verKey(e.subject?.version) === version) {
         if (newHash && e.content_hash && newHash !== e.content_hash) {
@@ -88,6 +93,7 @@ export function prepareEntry(vaultPath, opts, ctx = {}) {
   } else if (opts.type === 'question') {
     data.question = opts.question || opts.title;
     data.state = opts.state || 'open';
+    if (opts.answerSummary) data.answer_summary = opts.answerSummary;
   }
   assertControlledValues(data, schema);
   const order = fieldOrder(schema, opts.type);
@@ -136,8 +142,6 @@ export function runBatch(vaultPath, planPath, cliOpts = {}) {
   const knownIds = new Set(manifestEntries.map(e => e.id));
   const errors = [], skipped = [], pending = [];
   plan.forEach((spec, index) => {
-    if (spec.type === 'note' && !csv(spec.sources)) { errors.push({ index, error: 'note requires sources' }); return; }
-    if (spec.type === 'synthesis' && !csv(spec.contributingIds)) { errors.push({ index, error: 'synthesis requires contributingIds' }); return; }
     try {
       const prep = prepareEntry(vaultPath, specToOpts(spec, cliOpts), { manifestEntries, pending });
       if (prep.dedup) {
@@ -155,26 +159,46 @@ export function runBatch(vaultPath, planPath, cliOpts = {}) {
   });
   if (errors.length) return { errors, created: [], skipped };
 
-  for (const prep of pending) {
-    mkdirSync(join(vaultPath, prep.folder), { recursive: true });
-    writeEntry(prep.path, prep.data, prep.body, prep.order);
+  const created = [];
+  let failing = null;
+  try {
+    for (const prep of pending) {
+      failing = prep;
+      mkdirSync(join(vaultPath, prep.folder), { recursive: true });
+      writeEntry(prep.path, prep.data, prep.body, prep.order);
+      created.push({ id: prep.id, path: prep.path });
+    }
+  } catch (e) {
+    return { errors: [{ index: -1, error: `write failed at ${failing ? failing.path : '?'}: ${e.message}` }], created, skipped };
+  } finally {
+    if (created.length) writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');
   }
-  writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');
-  return { errors: [], created: pending.map(p => ({ id: p.id, path: p.path })), skipped };
+  return { errors: [], created, skipped };
+}
+
+function captureDefaults(cwd) {
+  try {
+    const hit = loadProjectConfig(cwd, { schema: loadSchema(REPO_ROOT) });
+    return hit ? (hit.config.defaults || {}) : {};
+  } catch { return {}; }
 }
 
 export async function run(args) {
-  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
+  const cwd = args.cwd ?? process.cwd();
+  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd });
   if (args.batch) {
     const r = runBatch(vaultPath, args.batch, { ackDataEgress: !!args['ack-data-egress'] });
     process.stdout.write(JSON.stringify(r, null, 2) + '\n');
     return r.errors.length ? 1 : 0;
   }
+  const defaults = captureDefaults(cwd);
   const cfBuf = args['content-file'] ? readFileSync(args['content-file']) : null;
   const r = captureEntry(vaultPath, {
     type: args.type, title: args.title, url: args.url, sourceType: args['source-type'],
     subjectName: args['subject-name'], subjectVersion: args['subject-version'], series: args.series,
-    domain: args.domain, topics: args.topics, related: args.related, volatility: args.volatility,
+    domain: args.domain ?? defaults.domain,
+    topics: args.topics ?? (defaults.topics && defaults.topics.length ? defaults.topics.join(',') : undefined),
+    related: args.related, volatility: args.volatility ?? defaults.volatility,
     content: cfBuf ? cfBuf.toString('utf8') : args.content, contentBytes: cfBuf, contentHash: args['content-hash'],
     capturedVia: args['captured-via'], storeBody: !!args['store-body'], ackDataEgress: !!args['ack-data-egress'],
     sources: args.sources, confidence: args.confidence, summary: args.summary,
@@ -182,7 +206,7 @@ export async function run(args) {
     synthesisBasis: args['synthesis-basis'],
     authorityTier: args['authority-tier'], authorityBasis: args['authority-basis'],
     language: args.language, tested: args.tested,
-    provider: args.provider, modelId: args['model-id'], dateRun: args['date-run'], task: args.task, outcome: args.outcome, state: args.state,
+    provider: args.provider, modelId: args['model-id'], dateRun: args['date-run'], task: args.task, outcome: args.outcome, state: args.state, answerSummary: args['answer-summary'],
     scaffold: !!args.scaffold,
     body: args['body-file'] ? readFileSync(args['body-file'], 'utf8') : undefined,
   });

@@ -32,7 +32,15 @@ function check(schema, field, key, value) {
 export function assertControlledValues(data, schema) {
   for (const [field, key] of Object.entries(CONTROLLED_FIELDS)) {
     if (data[field] === undefined || data[field] === null || data[field] === '') continue;
-    const vals = field === 'domain' ? data[field] : [data[field]];
+    let vals;
+    if (field === 'domain') {
+      // Shape before values: a bare scalar `domain: security` must fail once here, not get
+      // iterated character-by-character into `unknown domain: s`, `e`, `c`, …
+      if (!Array.isArray(data[field])) throw new Error('domain must be a list');
+      vals = data[field];
+    } else {
+      vals = [data[field]];
+    }
     for (const v of vals) check(schema, field, key, v);
   }
   for (const v of (data.verifications || [])) {

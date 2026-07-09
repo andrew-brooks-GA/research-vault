@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync } from 'node:fs';
+import { mkdtempSync, cpSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { advise } from '../bin/lib/advise.mjs';
@@ -65,4 +65,18 @@ test('advise does not mutate the vault (lint-clean before and after)', () => {
   assert.equal(lintAndReport(dir, { check: true }).violations.length, 0, 'clean before');
   advise(dir, process.cwd());
   assert.equal(lintAndReport(dir, { check: true }).violations.length, 0, 'clean after');
+});
+
+test('advise flags entries with baked-in quote residue in frontmatter', () => {
+  const dir = freshVault();
+  writeFileSync(join(dir, 'sources', '2026-01-01-residue.md'),
+    '---\ntitle: say \\"hi\\" now\ntype: source\n---\nbody\n', 'utf8');
+  const r = advise(dir, process.cwd());
+  assert.ok(r.quoteResidue.includes('2026-01-01-residue'));
+});
+
+test('advise reports no residue for clean frontmatter', () => {
+  const dir = freshVault();
+  const r = advise(dir, process.cwd());
+  assert.equal(r.quoteResidue.length, 0);
 });

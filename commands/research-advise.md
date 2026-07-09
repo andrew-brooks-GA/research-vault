@@ -11,3 +11,4 @@ Run `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" advise` and present the
 - notes/synthesis without a one-line `summary` (opaque to manifest-level retrieval)
 - aliasable topics (near-duplicate topic strings)
 - stub bodies (authored entries whose body is scaffold-only or empty)
+- quote residue (frontmatter scalars containing a baked-in `\"` — pre-0.3.0 corruption, see upgrade notes)

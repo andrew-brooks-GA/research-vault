@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runInit } from '../bin/commands/init.mjs';
+import { runInit, refreshDocs } from '../bin/commands/init.mjs';
 
 test('init scaffolds vault, generates AGENTS.md, is idempotent', () => {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'vault');
@@ -34,4 +34,24 @@ test('init refuses to overwrite a vault with custom non-entry files (no entries)
   assert.equal(r2.created, false);
   assert.match(r2.reason, /non-empty/);
   assert.equal(readFileSync(readme, 'utf8'), 'CUSTOM README keep this', 'custom file untouched');
+});
+
+test('refreshDocs regenerates AGENTS.md but leaves entries untouched', () => {
+  const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');
+  runInit({ vaultPath: dir });                 // scaffold a real vault
+  writeFileSync(join(dir, 'AGENTS.md'), 'STALE', 'utf8');
+  const entryPath = join(dir, 'sources', '2026-01-01-keep.md');
+  writeFileSync(entryPath, '---\ntitle: keep\n---\nbody\n', 'utf8');
+  const r = refreshDocs({ vaultPath: dir });
+  assert.equal(r.refreshed, true);
+  assert.notEqual(readFileSync(join(dir, 'AGENTS.md'), 'utf8'), 'STALE');   // regenerated
+  assert.match(readFileSync(join(dir, 'AGENTS.md'), 'utf8'), /research vault/i);
+  assert.equal(readFileSync(entryPath, 'utf8'), '---\ntitle: keep\n---\nbody\n'); // entry untouched
+});
+
+test('refreshDocs refuses a non-vault target', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-empty-'));
+  const r = refreshDocs({ vaultPath: dir });
+  assert.equal(r.refreshed, false);
+  assert.match(r.reason, /not an existing vault/);
 });

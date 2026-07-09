@@ -26,15 +26,15 @@ Plain Markdown, zero dependencies, no human in the loop. Works in Claude Code or
 You:    digging into vcluster sleep mode — capture https://docs.vcluster.com/sleep-mode
 Claude: Captured · vcluster 0.20 · topics: kubernetes, vcluster, cost-optimization
 
-  …three weeks later, a brand-new session…
+  …four months later, a brand-new session…
 
 You:    how does vcluster sleep mode work again?
-Claude: From your vault (vcluster 0.20 · last verified 21 days ago):
+Claude: From your vault (vcluster 0.20 · last verified 4 months ago):
         sleep mode scales idle workloads to zero and wakes them on demand…
-        ⚠ fast-moving and 21 days old — want me to re-verify against the live docs first?
+        ⚠ fast-moving and past its 90-day window — want me to re-verify against the live docs first?
 ```
 
-You captured once. Weeks later, in a fresh session, the knowledge is right there — and the agent flags on its own that it might have aged. No re-research, no silently-stale citation.
+You captured once. Months later, in a fresh session, the knowledge is right there — and the agent flags on its own that it might have aged. No re-research, no silently-stale citation.
 
 ## What your agent does for you
 
@@ -145,7 +145,7 @@ This is what makes the agent work from *your* stack. Commit a `.research-vault.j
 
 - **Discovery** — every command run from inside the repo resolves to the bound vault automatically, no `--vault` flag or env var needed. The agent answers from your curated notes by default.
 - **`research-authoring`** — when you're writing prose in the repo and a citation is about to land, the skill consults the vault, captures what's missing, and verifies freshness first.
-- **`check`** — audits the repo's docs against the vault, reporting each citation as `ok` / `stale` / `uncovered`; `check --check` exits non-zero to gate the repo's own CI on citation freshness.
+- **`check`** — audits the repo's docs against the vault, reporting each citation as `ok` / `stale` / `uncovered`; `check --check` exits non-zero to gate the repo's own CI on stale or uncovered citations.
 
 ## Commands
 
@@ -164,7 +164,7 @@ The full CLI. In Claude Code your agent calls most of these for you; this is the
 | `advise` | Read-only curation report: stale entries, orphans, sources lacking a note, **unverified (captured-only) sources**, aliasable topics, **stub bodies**. Never mutates. |
 | `obsidian` | Regenerate a git-ignored `_obsidian/` wikilink view + Map-of-Content; never mutates canonical entries. |
 | `refresh` | Re-check source freshness over the network (off by default, double-gated). Reports `confirmed`/`changed`/`unreachable`; never mutates entries. |
-| `export` | Read-only JSONL for external finetuning/eval: by default only answered-question `{input, output}` pairs; `--scope <types>` widens to title+metadata, and bodies need `--include-bodies --ack-data-egress`. See [`docs/FINETUNING.md`](docs/FINETUNING.md). |
+| `export` | Read-only JSONL for external finetuning/eval: by default only answered-question `{input, output}` pairs; `--scope <types>` widens to other types' title + `summary` field, and bodies need `--include-bodies --ack-data-egress`. See [`docs/FINETUNING.md`](docs/FINETUNING.md). |
 | `check` | Audit a document/glob **outside** the vault: report each citation (external URL or vault id) as `ok` / `stale` / `uncovered` against the manifest. `--report` / `--json` emit a coverage matrix; `--check` exits non-zero to gate a consuming repo's CI. Read-only, no network. |
 
 ## Safety: network & egress
@@ -180,13 +180,13 @@ The full contract, including the SSRF hardening and double-gating rules, is in [
 
 A vault is just a folder of Markdown, so a **shared team knowledge base** is a vault kept in a git repo. Everyone's agent reads the same `AGENTS.md`, so the whole team searches, cites, and verifies against one freshness-governed source of truth instead of re-researching in private silos.
 
-To set one up: commit the entries, `schema/`, and the generated `AGENTS.md`. The derived caches (`.vault-manifest.json`, `_index/`, `_obsidian/`) are git-ignored by the bundled `vault-template/.gitignore` and rebuilt locally with `lint` / `compile`. Run `lint --check` in CI or a pre-commit hook as the shared correctness gate — that lint floor, not a server, is what keeps a multi-writer vault consistent.
+To set one up: commit the entries, `taxonomy.json`, and the generated `AGENTS.md`. The derived caches (`.vault-manifest.json`, `_index/`, `_obsidian/`) are git-ignored by the bundled `vault-template/.gitignore` and rebuilt locally with `lint` / `compile`. Run `lint --check` in CI or a pre-commit hook as the shared correctness gate — that lint floor, not a server, is what keeps a multi-writer vault consistent.
 
 ## Design notes
 
 - **Cache, not source of truth.** Staleness is the dominant failure mode of agent research; this vault makes it visible and actionable.
 - **Lint is the guarantee, not the hook.** Correctness lives in `lint` (runs anywhere, on any writer). `capture`/`verify` self-heal; the plugin ships two advisory Claude Code hooks (a `PostToolUse` lint-fix and a `SessionStart` vault summary), both non-blocking and non-load-bearing (convenience only).
-- **Everything human-facing is generated.** `AGENTS.md` and the per-vault `taxonomy.json` are derived from the schema, so they can't drift; CI enforces it.
+- **Everything human-facing is generated.** `AGENTS.md` and the per-vault `taxonomy.json` are generated from the schema at `init`; CI checks the generator against a committed golden snapshot (`schema/AGENTS.golden.md`), and an existing vault refreshes its copies with `init --refresh-docs` (regenerates `AGENTS.md` + `taxonomy.json` only — never entries or `meta/`).
 - **Orchestration ships as a reference implementation, contracted for others.** The `research-orchestrate` skill (`/research`) drives vault-first research with eager source capture and an atomic `capture --batch` for the distilled layers. Third-party orchestration skills compose the same way — see [`docs/ORCHESTRATOR-INTEGRATION.md`](docs/ORCHESTRATOR-INTEGRATION.md) for the lifecycle boundary, the capture-plan checklist, and the two lint warnings that make non-conforming output visible.
 - **Migrating existing notes?** See [`docs/MIGRATION.md`](docs/MIGRATION.md) for moving an existing folder of entries into a managed vault.
 

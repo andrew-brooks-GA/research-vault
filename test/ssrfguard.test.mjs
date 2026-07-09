@@ -73,6 +73,16 @@ test('assertSafeUrl accepts a canonical public IPv4 literal host', () => {
   assert.doesNotThrow(() => assertSafeUrl('https://8.8.8.8/'));
 });
 
+test('assertSafeUrl refuses non-public bracketed IPv6 literals', () => {
+  assert.throws(() => assertSafeUrl('https://[::1]/'), /host/i);
+  assert.throws(() => assertSafeUrl('https://[fe80::1]/'), /host/i);
+  assert.throws(() => assertSafeUrl('https://[::ffff:169.254.169.254]/'), /host/i);
+});
+
+test('assertSafeUrl accepts a global-unicast bracketed IPv6 literal', () => {
+  assert.doesNotThrow(() => assertSafeUrl('https://[2606:4700:4700::1111]/'));
+});
+
 test('resolveSafe throws if any resolved address is private', async () => {
   const lookup = async () => [{ address: '8.8.8.8', family: 4 }, { address: '10.0.0.1', family: 4 }];
   await assert.rejects(() => resolveSafe('evil.example', { lookup }), /private|public|address/i);

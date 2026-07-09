@@ -11,6 +11,7 @@ import { lintVault } from '../bin/lib/lintrules.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
 import { refreshVault } from '../bin/commands/refresh.mjs';
 import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
+import { buildExport } from '../bin/lib/exportjsonl.mjs';
 
 // Hand-write an entry to disk (mimicking a non-tooling writer that bypasses fail-fast
 // capture) so the detective floor can be exercised on bad controlled values.
@@ -326,6 +327,73 @@ test('capture body: author prose lands in the body for authored types; source bo
     /store-body/,
   );
   assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+});
+
+test('capture --answer-summary writes an answered question the default export emits', () => {
+  const dir = freshVault();
+  const r = captureEntry(dir, {
+    type: 'question', title: 'Does X hold?', state: 'answered',
+    answerSummary: 'Yes, under contention the syncer shares the bucket.',
+    now: '2026-05-27', repoRoot: process.cwd(),
+  });
+  const e = readEntry(r.path);
+  assert.equal(e.data.state, 'answered');
+  assert.equal(e.data.answer_summary, 'Yes, under contention the syncer shares the bucket.');
+  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+  const recs = buildExport(dir);
+  assert.ok(recs.some(x => x.input === 'Does X hold?' && x.output === 'Yes, under contention the syncer shares the bucket.'),
+    'default export must emit the answered question: ' + JSON.stringify(recs));
+  // Without the flag the field is absent (export would drop the question).
+  const bare = captureEntry(dir, { type: 'question', title: 'Open one?', now: '2026-05-27', repoRoot: process.cwd() });
+  assert.ok(!('answer_summary' in readEntry(bare.path).data));
+});
+
+test('single capture enforces the batch requirements: note/synthesis/source', () => {
+  const dir = freshVault();
+  assert.throws(
+    () => captureEntry(dir, { type: 'note', title: 'No sources', now: '2026-05-27', repoRoot: process.cwd() }),
+    /note requires sources/,
+  );
+  assert.throws(
+    () => captureEntry(dir, { type: 'synthesis', title: 'No contributors', now: '2026-05-27', repoRoot: process.cwd() }),
+    /synthesis requires contributingIds/,
+  );
+  assert.throws(
+    () => captureEntry(dir, { type: 'source', title: 'No url', now: '2026-05-27', repoRoot: process.cwd() }),
+    /source requires url/,
+  );
+  assert.ok(!existsSync(join(dir, 'sources', makeId('2026-05-27', 'No url') + '.md')), 'nothing written on rejection');
+});
+
+test('capture consumes .research-vault.json defaults; explicit flags win; no config unchanged', async () => {
+  const cfgDir = mkdtempSync(join(tmpdir(), 'rv-cfgd-'));
+  const vault = mkdtempSync(join(tmpdir(), 'rv-cfgv-'));
+  writeFileSync(join(cfgDir, '.research-vault.json'), JSON.stringify({
+    vault, defaults: { domain: 'security', topics: ['ssrf', 'pinning'], volatility: 'fast' },
+  }), 'utf8');
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Flags absent → defaults fill domain / topics / volatility.
+  await run({ type: 'source', title: 'Cfg src', url: 'https://example.com/cfg', vault, cwd: cfgDir });
+  const d = readEntry(join(vault, 'sources', makeId(today, 'Cfg src') + '.md')).data;
+  assert.deepEqual(d.domain, ['security']);
+  assert.equal(d.volatility, 'fast');
+  assert.ok(d.topics.includes('ssrf') && d.topics.includes('pinning'));
+
+  // Explicit flags override the defaults; topics are NOT merged.
+  await run({ type: 'source', title: 'Cfg override', url: 'https://example.com/o', domain: 'learning', volatility: 'slow', topics: 'go', vault, cwd: cfgDir });
+  const o = readEntry(join(vault, 'sources', makeId(today, 'Cfg override') + '.md')).data;
+  assert.deepEqual(o.domain, ['learning']);
+  assert.equal(o.volatility, 'slow');
+  assert.deepEqual(o.topics, ['go']);
+
+  // No project config → hardcoded fallbacks unchanged.
+  const plainVault = mkdtempSync(join(tmpdir(), 'rv-plainv-'));
+  const plainCwd = mkdtempSync(join(tmpdir(), 'rv-plainc-'));
+  await run({ type: 'source', title: 'Plain', url: 'https://example.com/p', vault: plainVault, cwd: plainCwd });
+  const p = readEntry(join(plainVault, 'sources', makeId(today, 'Plain') + '.md')).data;
+  assert.deepEqual(p.domain, ['software-engineering']);
+  assert.equal(p.volatility, 'slow');
 });
 
 test('capture --body-file reads the body from disk', async () => {

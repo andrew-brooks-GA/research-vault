@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { loadSchema } from '../bin/lib/schema.mjs';
 import { generateAgentsMd } from '../bin/lib/agentsmd.mjs';
 
@@ -20,4 +22,11 @@ test('AGENTS.md introduces every artifact type and the distillation lifecycle', 
     assert.ok(md.includes('`' + folder + '`'), `AGENTS.md should describe ${folder}`);
   }
   assert.match(md, /distill/i);
+});
+
+test('generator output matches the committed golden snapshot', () => {
+  // De-circularizes the drift gate: a schema/generator edit that forgets to regenerate
+  // schema/AGENTS.golden.md fails here (and in scripts/check-agentsmd-drift.mjs).
+  const golden = readFileSync(join(process.cwd(), 'schema', 'AGENTS.golden.md'), 'utf8');
+  assert.equal(generateAgentsMd(loadSchema(process.cwd())), golden);
 });

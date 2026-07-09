@@ -17,5 +17,9 @@
     "experiment": ["provider","model_id","date_run","task","outcome"],
     "question": ["question","state"]
   },
-  "verification_subfields": ["date","by_type","by_id","method","result","notes"]
+  "verification_subfields": ["date","by_type","by_id","method","result","notes"],
+  "edge_fields": {
+    "backlink": ["related","contributing_ids","sources","source_id","prompt_id","contributing"],
+    "reference_only": ["superseded_by"]
+  }
 }

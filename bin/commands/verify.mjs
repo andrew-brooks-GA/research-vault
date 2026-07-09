@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { writeFileSync } from 'node:fs';
 import { loadSchema, fieldOrder } from '../lib/schema.mjs';
 import { walkEntries, readEntry, writeEntry } from '../lib/fsutil.mjs';
-import { buildManifest } from '../lib/manifest.mjs';
+import { buildManifest, CONFIRMING_RESULTS } from '../lib/manifest.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { assertControlledValues } from '../lib/validate.mjs';
 import { listStale } from '../lib/stale.mjs';
@@ -34,8 +34,6 @@ export function applyVerification(vaultPath, opts) {
     if (entry.data.volatility !== 'stable' || !durable)
       throw new Error('inferred-stable requires volatility=stable AND a durable source type');
   }
-  if (opts.result === 'inconclusive') return { action: 'none' };
-
   entry.data.verifications = entry.data.verifications || [];
   entry.data.verifications.push({ date: now, by_type: opts.byId ? 'agent' : 'human', by_id: opts.byId || '', method: opts.method, result: opts.result, notes: opts.notes || '' });
   assertControlledValues(entry.data, schema);
@@ -52,12 +50,15 @@ export function applyVerification(vaultPath, opts) {
   if (opts.result === 'outdated') {
     entry.data.status = 'superseded';
     if (opts.supersededBy) entry.data.superseded_by = opts.supersededBy;
-  } else {
+  } else if (CONFIRMING_RESULTS.includes(opts.result)) {
     entry.data.updated = now;
   }
+  // Non-confirming results (unreachable, inconclusive) are recorded for audit but never bump
+  // `updated` — a failed or indeterminate check must not reset the freshness clock.
   writeEntry(abs, entry.data, entry.body, fieldOrder(schema, entry.data.type));
   writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');
-  return { action: opts.result === 'outdated' ? 'superseded' : 'updated' };
+  if (opts.result === 'outdated') return { action: 'superseded' };
+  return { action: CONFIRMING_RESULTS.includes(opts.result) ? 'updated' : 'recorded' };
 }
 
 export async function run(args) {

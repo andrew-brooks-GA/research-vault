@@ -1,6 +1,5 @@
 import { walkEntries, readEntry } from './fsutil.mjs';
-
-function lastVerified(data) { return (data.verifications || []).map(v => v.date).sort().pop() || null; }
+import { lastVerified } from './manifest.mjs';
 
 export function buildExport(vaultPath, opts = {}) {
   const scope = opts.scope && opts.scope.length ? opts.scope : ['question'];
@@ -11,7 +10,7 @@ export function buildExport(vaultPath, opts = {}) {
   for (const abs of walkEntries(vaultPath)) {
     const { id, data, body } = readEntry(abs);
     if (!scope.includes(data.type)) continue;
-    const meta = { id, type: data.type, last_verified: lastVerified(data) };
+    const meta = { id, type: data.type, last_verified: lastVerified(data.verifications) };
     if (data.type === 'question') {
       if (data.state === 'answered' && data.answer_summary && data.answer_summary.trim())
         records.push({ input: data.question, output: data.answer_summary, meta });

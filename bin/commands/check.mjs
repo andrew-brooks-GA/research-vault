@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { loadSchema } from '../lib/schema.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
+import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { normalizeUrl } from '../lib/ids.mjs';
 import { extractCitations } from '../lib/citations.mjs';
 
@@ -117,13 +118,19 @@ export function renderReport(perFile, { format, now }) {
 
 export async function run(args) {
   const cwd = args.cwd ?? process.cwd();
-  const globs = args._.slice(1);
+  const schema = loadSchema(REPO_ROOT);
+  let globs = args._.slice(1);
+  // No positional globs: fall back to the bound repo's `.research-vault.json` references.globs
+  // (same discovery resolve.mjs uses). Only error with usage when neither is available.
+  if (!globs.length) {
+    const cfg = loadProjectConfig(cwd, { schema });
+    globs = cfg?.config?.references?.globs ?? [];
+  }
   if (!globs.length) {
     process.stderr.write('usage: research-vault check <file|glob>... [--check] [--report] [--json] [--vault <path>]\n');
     return 2;
   }
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd });
-  const schema = loadSchema(REPO_ROOT);
   const entries = buildManifest(vaultPath).entries;
   const now = args.now || new Date().toISOString().slice(0, 10);
   const files = expandFiles(globs, cwd);

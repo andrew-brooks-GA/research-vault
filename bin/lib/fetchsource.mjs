@@ -1,4 +1,5 @@
 import https from 'node:https';
+import net from 'node:net';
 import { sha256 } from './ids.mjs';
 import { assertSafeUrl, resolveSafe } from './ssrfguard.mjs';
 
@@ -13,6 +14,19 @@ function pinnedLookup(address, family) {
   };
 }
 
+// A URL host that is already an IP literal has been vetted as public by
+// assertSafeUrl; skip DNS and pin the socket to the literal. Bracketed [..]
+// hosts are IPv6 whose brackets must be stripped for the socket address, and
+// dns.lookup rejects the bracketed form on glibc — so resolving it would make
+// every IPv6-literal URL report unreachable.
+function literalAddress(hostname) {
+  const inner = hostname.startsWith('[') && hostname.endsWith(']')
+    ? hostname.slice(1, -1)
+    : hostname;
+  const family = net.isIP(inner);
+  return family ? { address: inner, family } : null;
+}
+
 function once(url, { request, lookup }) {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -20,7 +34,9 @@ function once(url, { request, lookup }) {
     const ok = done(resolve);
     const fail = done(reject);
     const u = assertSafeUrl(url);
-    resolveSafe(u.hostname, { lookup }).then(addrs => {
+    const literal = literalAddress(u.hostname);
+    const resolved = literal ? Promise.resolve([literal]) : resolveSafe(u.hostname, { lookup });
+    resolved.then(addrs => {
       const { address, family } = addrs[0];
       const req = request({
         protocol: 'https:',
