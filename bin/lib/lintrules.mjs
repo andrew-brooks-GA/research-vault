@@ -37,7 +37,7 @@ const allowedValues = (schema, key) => {
 const isParsableUrl = (u) => { try { new URL(u); return true; } catch { return false; } };
 
 export function lintVault(vaultPath, repoRoot) {
-  const schema = loadSchema(repoRoot);
+  const schema = loadSchema(repoRoot, { vaultPath });
   // Dangling-ref coverage = every declared edge field (backlink-forming + reference-only),
   // shared with the manifest's backlink builder via schema/frontmatter.schema.json.
   const edgeFields = [...schema.fields.edge_fields.backlink, ...schema.fields.edge_fields.reference_only];
@@ -157,7 +157,7 @@ export function lintVault(vaultPath, repoRoot) {
 }
 
 export function fixVault(vaultPath, repoRoot) {
-  const schema = loadSchema(repoRoot);
+  const schema = loadSchema(repoRoot, { vaultPath });
   let fixed = 0;
   for (const abs of walkEntries(vaultPath)) {
     const raw = readFileSync(abs, 'utf8');

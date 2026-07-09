@@ -18,7 +18,7 @@ function findEntry(vaultPath, id) {
 
 export function applyVerification(vaultPath, opts) {
   const repoRoot = opts.repoRoot || REPO_ROOT;
-  const schema = loadSchema(repoRoot);
+  const schema = loadSchema(repoRoot, { vaultPath });
   const now = opts.now || new Date().toISOString().slice(0, 10);
   const abs = findEntry(vaultPath, opts.id);
   const entry = readEntry(abs);

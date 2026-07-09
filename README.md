@@ -147,6 +147,26 @@ This is what makes the agent work from *your* stack. Commit a `.research-vault.j
 - **`research-authoring`** — when you're writing prose in the repo and a citation is about to land, the skill consults the vault, captures what's missing, and verifies freshness first.
 - **`check`** — audits the repo's docs against the vault, reporting each citation as `ok` / `stale` / `uncovered`; `check --check` exits non-zero to gate the repo's own CI on stale or uncovered citations.
 
+### Extending the controlled vocabulary
+
+The schema enums are intentionally small, but a vault often needs its own terms: a lab that records `experiment` and `lab-run` verification methods, or a team with an extra `domain`. Add them in `.research-vault.json` under `taxonomy_extensions` rather than forking the plugin:
+
+```json
+{
+  "vault": "research",
+  "taxonomy_extensions": {
+    "verification_method": ["experiment", "lab-run"],
+    "verification_result": ["partial"]
+  }
+}
+```
+
+Rules that keep this safe:
+
+- **Additive only.** You can add values; you cannot remove or redefine a built-in. A built-in value means the same thing in every vault, so entries stay portable.
+- **Extensible fields:** `domain`, `confidence`, `outcome`, `question_state`, `verification_method`, `verification_result`. The map-valued taxonomy (`volatility`, `stage_by_folder`, `topic_aliases`) and the open `topics:` tag space are not extensible, since `topics:` already accepts any tag.
+- **Keyed on the vault.** Discovery walks up from the bound vault, not your shell's working directory, so the vocabulary is identical wherever a command runs. `lint`, `capture`, and `verify` honor it.
+
 ## Commands
 
 The full CLI. In Claude Code your agent calls most of these for you; this is the reference for when you want to run one yourself.
