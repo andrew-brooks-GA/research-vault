@@ -25,7 +25,7 @@ Use the Workflow tool with the reference script below, adapted to the question. 
 | Recon | Map existing vault coverage and gaps |
 | Sweep | Parallel multi-modal search: official docs, release notes, issue trackers, community |
 | Fetch+Seed | Per URL: fetch, capture a `source` eagerly via the CLI, return a structured extraction |
-| Verify | Adversarial check of load-bearing claims — fetched, not recalled |
+| Verify | Adversarial check of load-bearing claims — fetched, not recalled; tool-bearing claims also probed per `meta/prompt-templates/probe-tool.md` when a manifest exists |
 | Plan | Walk the §2.6 four prompts; emit the batch plan JSON (notes, questions, snippets, experiments, synthesis) |
 | Persist+Gate | `capture --batch` the plan, then `lint`; decompose further if a `WARN_SYNTHESIS_*` fires |
 
@@ -61,7 +61,7 @@ const extractions = (await pipeline(found,
 phase('Verify')
 const claims = extractions.flatMap(e => e.claims.map(c => ({ c, sid: e.sourceId })))
 const verdicts = (await parallel(claims.map(k => () =>
-  agent(`Adversarially verify against the live source (re-fetch; model recall is NOT verification): "${k.c}" from vault source ${k.sid}. Default verified=false if uncertain. If verified=true, record it: ${CLI}verify --id ${k.sid} --method refetched-source --result confirmed --notes "orchestrator Verify phase".`, { phase: 'Verify', schema: VERDICT })
+  agent(`Adversarially verify against the live source (re-fetch; model recall is NOT verification): If the claim concerns a tool with a meta/probe-manifests/ manifest, also run the matching read-only probe per meta/prompt-templates/probe-tool.md and prefer --method tool-probe. "${k.c}" from vault source ${k.sid}. Default verified=false if uncertain. If verified=true, record it: ${CLI}verify --id ${k.sid} --method refetched-source --result confirmed --notes "orchestrator Verify phase".`, { phase: 'Verify', schema: VERDICT })
 ))).filter(Boolean)
 
 phase('Plan')

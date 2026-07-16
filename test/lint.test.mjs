@@ -233,3 +233,20 @@ test('lint --check flags MANIFEST_STALE after an out-of-band entry edit on a pop
     'an out-of-band entry edit must make lint --check report MANIFEST_STALE',
   );
 });
+
+test('tool-output source without subject.version is a violation; with version passes', () => {
+  const dir = freshVault();
+  handWrite(dir, 'sources', 'source', '2026-07-16-probe-noversion', {
+    source_type: 'tool-output', source_url: 'cli://vcluster/create-help',
+    authority_tier: 'primary', authority_basis: 'tool-output',
+  });
+  handWrite(dir, 'sources', 'source', '2026-07-16-probe-versioned', {
+    source_type: 'tool-output', source_url: 'cli://vcluster/create-help',
+    authority_tier: 'primary', authority_basis: 'tool-output',
+    subject: { name: 'vcluster', version: '0.26.0' },
+  });
+  const { violations } = lintVault(dir, process.cwd());
+  const hits = violations.filter(v => v.code === 'TOOL_OUTPUT_VERSION');
+  assert.equal(hits.length, 1);
+  assert.match(hits[0].file, /probe-noversion/);
+});

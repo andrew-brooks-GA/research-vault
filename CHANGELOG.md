@@ -5,6 +5,10 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+- feat: tool-probe cross-validation — treat a tool's own CLI/help/schema output as a re-derivable primary source. New taxonomy values `tool-probe` (verification_method, offline-valid, same-version-gated) and `tool-output` (authority_basis); probe-manifest convention (`meta/probe-manifests/<tool>.md`, read-only commands only) with shared procedure `meta/prompt-templates/probe-tool.md`; lint `TOOL_OUTPUT_VERSION` requires `subject.version` on tool-output sources; capture/verify/orchestrate skills and AGENTS.md updated.
+
 ## [0.3.0] - 2026-07-07
 
 ### Changed

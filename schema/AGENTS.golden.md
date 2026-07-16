@@ -79,9 +79,11 @@ All intra-vault references are stored as **ids**, never paths. Resolve an id by 
 | `fast` | Specific tool APIs, framework versions, LLM capabilities. | 90 days |
 | `volatile` | Pricing, rate limits, current best model, availability. | always re-check |
 
-Before citing: compute `last_verified` and compare to the window. **Offline mode:** only `inferred-stable` (volatility=stable + durable source) and `human-spot-check` (with explicit user confirmation) are valid; prefix stale-window answers with `"unverified-offline"` + id.
+Before citing: compute `last_verified` and compare to the window. **Offline mode:** only `inferred-stable` (volatility=stable + durable source), `human-spot-check` (with explicit user confirmation), and `tool-probe` (probes run locally) are valid; prefix stale-window answers with `"unverified-offline"` + id.
 
 **Verification tenet — fetch before you assert.** A version, date, or API-behavior claim is authoritative only when confirmed against the source (web fetch / cross-reference) and recorded as a `refetched-source` or `cross-referenced` verification. Model recall is **not** verification — for version currency it is reliably wrong, because training lags the present, so a remembered "latest version" is stale by construction. `captured` is capture-time provenance, not a verification: a `source` whose every verification is `captured` is not authoritative and trips `WARN_SOURCE_UNVERIFIED` (surfaced by `advise`) until verified. What cannot be fetched is a `question`, never a `source` stated as fact.
+
+**Tool probes.** For tools with a manifest in `meta/probe-manifests/`, the tool itself (CLI help, version output, API schemas) is a re-derivable **primary** source that can outrank lagging docs. Follow `meta/prompt-templates/probe-tool.md`: run only manifest-listed read-only commands, capture output as a `source` with `authority_basis: tool-output` + `subject.version` (one entry per tool+version+probe), and verify with method `tool-probe` — valid only when the probed version matches the entry's pinned version; a version mismatch is version succession (§8), not a contradiction.
 
 ## 8. Versioned resources and source authority
 Use optional `subject: {name, version}` + `series:` for version-bearing sources. A new product version is a NEW entry sharing the same `series` — **not** a supersession. Supersede only when an entry is wrong/obsolete. Cite the version for version-bearing entries.
