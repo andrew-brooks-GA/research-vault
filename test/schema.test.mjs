@@ -30,6 +30,12 @@ test('verification_method includes the capture-time seed method', () => {
   assert.ok(s.taxonomy.verification_method.includes('captured'));
 });
 
+test('taxonomy includes tool-probe method and tool-output authority basis', () => {
+  const s = loadSchema(process.cwd());
+  assert.ok(s.taxonomy.verification_method.includes('tool-probe'));
+  assert.ok(s.taxonomy.authority_basis.includes('tool-output'));
+});
+
 // --- taxonomy_extensions ---
 
 test('applyTaxonomyExtensions appends additively, dedupes, and keeps built-ins first', () => {

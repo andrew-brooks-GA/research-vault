@@ -7,6 +7,7 @@ description: Use when adding a new entry to the research vault by hand. Ensures 
 - For notes and syntheses, include `--summary "<one-line load-bearing claim>"` — it is indexed in the manifest and scanned by `search --text`; omitting it trips `WARN_MISSING_SUMMARY`.
 - By hand: filename `<YYYY-MM-DD>-<slug>.md` IS the id; never store `id`/`last_verified`. Use folder-appropriate `stage`. Add an initial `verifications[]` line. Validate any `related`/`contributing_ids` resolve.
 - Dedup: before capturing a source, check the manifest for the normalized url + `subject.version`. A new product version is a NEW entry sharing the `series` (not a supersession).
+- **Tool-bearing claims:** if the claim concerns a tool with a `meta/probe-manifests/<tool>.md` manifest, cross-validate against the tool itself before capturing — follow `meta/prompt-templates/probe-tool.md` (run manifest probes, capture output as a `tool-output` primary source pinned to `subject.version`, reconcile; probe wins a same-version conflict with docs).
 - Never rename or delete; supersede instead.
 
 ## Before capturing a `synthesis`: self-check

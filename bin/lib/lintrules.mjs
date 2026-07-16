@@ -94,6 +94,12 @@ export function lintVault(vaultPath, repoRoot) {
     }
     if (data.type === 'source' && data.source_url && !isParsableUrl(data.source_url))
       add(abs, 'URL_INVALID', `source_url is not a valid URL: ${data.source_url}`);
+    // A tool-output source is ground truth only for the tool version that produced it;
+    // without subject.version it cannot participate in version-pinned reconciliation
+    // (tool-probe verification, version succession). Hard violation, unlike the advisory
+    // WARN_MISSING_VERSION for docs. See meta/prompt-templates/probe-tool.md.
+    if (data.authority_basis === 'tool-output' && !(data.subject && data.subject.version))
+      add(abs, 'TOOL_OUTPUT_VERSION', 'authority_basis tool-output requires subject.version (the probed tool version)');
     for (const f of edgeFields) {
       const val = data[f]; if (!val) continue;
       for (const ref of Array.isArray(val) ? val : [val]) if (ref && !ids.has(ref)) add(abs, 'DANGLING_REF', `${f} -> missing id ${ref}`);

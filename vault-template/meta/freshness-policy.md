@@ -31,12 +31,12 @@ Before citing any entry, compute `last_verified := max(verifications[].date)` (i
 
 1. Do NOT silently rely on stored values for `fast` or `volatile` entries.
 2. Prefix any answer that depends on an out-of-window entry with `"unverified-offline"` and the entry id.
-3. Do NOT add a `verifications[]` entry of any method other than `inferred-stable` (within its restrictions, §5) or `human-spot-check` (with explicit user confirmation).
+3. Do NOT add a `verifications[]` entry of any method other than `inferred-stable` (within its restrictions, §5), `human-spot-check` (with explicit user confirmation), or `tool-probe` (probes run locally; §5).
 4. `stable` and `slow` entries within their window may be used normally.
 
 ## 5. What counts as verification
 
-Methods: `refetched-source` (re-fetched original; strong), `cross-referenced` (independent current source; strong), `existence-check` (URL resolves; weak), `human-spot-check` (human confirmed; strong), `inferred-stable` (no fetch; weakest — ONLY for `volatility: stable` AND a durable source type book/paper/talk), `captured` (the seed `capture` writes at creation time: provenance only, not verification; `verify` rejects it).
+Methods: `refetched-source` (re-fetched original; strong), `cross-referenced` (independent current source; strong), `existence-check` (URL resolves; weak), `human-spot-check` (human confirmed; strong), `inferred-stable` (no fetch; weakest — ONLY for `volatility: stable` AND a durable source type book/paper/talk), `tool-probe` (re-ran a `meta/probe-manifests/` probe and reconciled; strong, and the preferred method for entries about CLI-bearing tools — valid only when the probed version matches the entry's pinned version, else §8 applies; see `meta/prompt-templates/probe-tool.md`), `captured` (the seed `capture` writes at creation time: provenance only, not verification; `verify` rejects it).
 
 Results: `confirmed` (append; no body change), `changed-trivially` (cosmetic source change, claims unaffected → update in place), `outdated` (claims no longer match → supersede), `unreachable` (404/paywall; archive if persistent), `inconclusive` (do NOT append a confirming verification).
 

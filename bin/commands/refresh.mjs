@@ -3,6 +3,18 @@ import { buildManifest } from '../lib/manifest.mjs';
 import { listStale } from '../lib/stale.mjs';
 import { fetchSource } from '../lib/fetchsource.mjs';
 
+// Only http(s) source_urls are fetchable. Probe sources (authority_basis: tool-output,
+// e.g. source_url: cli://...) are re-derived locally via the tool-probe verification
+// method and must never be handed to fetchSource.
+function isWebFetchable(sourceUrl) {
+  try {
+    const scheme = new URL(sourceUrl).protocol;
+    return scheme === 'http:' || scheme === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 function gather(vaultPath, opts) {
   const manifest = buildManifest(vaultPath);
   const byId = new Map(manifest.entries.map(e => [e.id, e]));
@@ -13,7 +25,7 @@ function gather(vaultPath, opts) {
     return [e];
   }
   const staleIds = new Set(listStale(vaultPath, { now: opts.now }).map(s => s.id));
-  return manifest.entries.filter(e => e.type === 'source' && e.source_url && staleIds.has(e.id));
+  return manifest.entries.filter(e => e.type === 'source' && e.source_url && isWebFetchable(e.source_url) && staleIds.has(e.id));
 }
 
 export async function refreshVault(vaultPath, opts = {}) {

@@ -24,6 +24,12 @@ test('AGENTS.md introduces every artifact type and the distillation lifecycle', 
   assert.match(md, /distill/i);
 });
 
+test('AGENTS.md documents tool-probe as offline-valid and version-gated', () => {
+  const md = generateAgentsMd(loadSchema(process.cwd()));
+  assert.match(md, /tool-probe/);
+  assert.match(md, /probe-manifests/);
+});
+
 test('generator output matches the committed golden snapshot', () => {
   // De-circularizes the drift gate: a schema/generator edit that forgets to regenerate
   // schema/AGENTS.golden.md fails here (and in scripts/check-agentsmd-drift.mjs).

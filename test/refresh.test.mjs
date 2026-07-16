@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, readFileSync } from 'node:fs';
+import { mkdtempSync, cpSync, readFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
@@ -9,6 +9,8 @@ import { refreshVault, run } from '../bin/commands/refresh.mjs';
 import { fetchSource } from '../bin/lib/fetchsource.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
+import { writeEntry } from '../bin/lib/fsutil.mjs';
+import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
 
 function freshVault() {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');
@@ -19,6 +21,22 @@ function freshVault() {
 function sourceTarget(dir) {
   const e = buildManifest(dir).entries.find(x => x.type === 'source' && x.source_url);
   return e;
+}
+
+// Hand-write a stale (fast volatility, last verified 2026-01-01) source directly to
+// disk, mirroring the handWrite helper used in lint.test.mjs/capture.test.mjs.
+function handWriteStaleSource(dir, id, sourceUrl, extra = {}) {
+  const schema = loadSchema(process.cwd());
+  const data = {
+    title: id, type: 'source', created: '2026-01-01',
+    domain: ['software-engineering'], stage: schema.taxonomy.stage_by_folder.sources.default,
+    topics: ['x'], status: 'active', related: [], volatility: 'fast',
+    source_type: 'article', source_url: sourceUrl,
+    verifications: [{ date: '2026-01-01', by_type: 'agent', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }],
+    ...extra,
+  };
+  mkdirSync(join(dir, 'sources'), { recursive: true });
+  writeEntry(join(dir, 'sources', `${id}.md`), data, `# ${id}\n`, fieldOrder(schema, 'source'));
 }
 
 test('matching hash -> confirmed', async () => {
@@ -104,4 +122,38 @@ test('run() refuses without RESEARCH_VAULT_ALLOW_NETWORK and never fetches', asy
     process.stderr.write = origWrite;
     if (prev !== undefined) process.env.RESEARCH_VAULT_ALLOW_NETWORK = prev;
   }
+});
+
+test('dry-run excludes cli:// probe sources (tool-probe, re-derived locally) but keeps stale https sources', async () => {
+  const dir = freshVault();
+  handWriteStaleSource(dir, '2020-01-01-probe', 'cli://vcluster/create-help', {
+    source_type: 'tool-output', authority_basis: 'tool-output',
+    subject: { name: 'vcluster', version: '0.20.0' },
+    verifications: [{ date: '2026-01-01', by_type: 'agent', by_id: 'vcluster-cli', method: 'tool-probe', result: 'confirmed', notes: '' }],
+  });
+  // A stale https source alongside it: proves the guard filters by scheme rather
+  // than accidentally excluding every source.
+  handWriteStaleSource(dir, '2020-01-02-web', 'https://example.com/stale-web');
+  lintAndReport(dir, { check: false });
+
+  const prev = process.env.RESEARCH_VAULT_ALLOW_NETWORK;
+  process.env.RESEARCH_VAULT_ALLOW_NETWORK = '1';
+  const lines = [];
+  const origWrite = process.stdout.write;
+  process.stdout.write = (chunk) => { lines.push(String(chunk)); return true; };
+  try {
+    // Both hand-written sources have volatility fast (refresh_after_days 90) and
+    // last_verified 2026-01-01, well past today's date, so both are stale; the probe
+    // source would be a gather() candidate but for the scheme guard under test.
+    const code = await run({ vault: dir, 'dry-run': true });
+    assert.equal(code, 0);
+  } finally {
+    process.stdout.write = origWrite;
+    if (prev !== undefined) process.env.RESEARCH_VAULT_ALLOW_NETWORK = prev;
+    else delete process.env.RESEARCH_VAULT_ALLOW_NETWORK;
+  }
+  const output = lines.join('');
+  assert.ok(!output.includes('cli://vcluster/create-help'), 'cli:// probe source must not be a would-fetch candidate:\n' + output);
+  assert.ok(output.includes('would-fetch  2020-01-02-web  https://example.com/stale-web'),
+    'stale https source must still be a would-fetch candidate:\n' + output);
 });
