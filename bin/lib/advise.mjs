@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { basename } from 'node:path';
 import { buildManifest } from './manifest.mjs';
 import { listStale } from './stale.mjs';
 import { loadSchema } from './schema.mjs';
@@ -59,7 +60,7 @@ function listQuoteResidue(vaultPath) {
   for (const abs of walkEntries(vaultPath)) {
     const raw = readFileSync(abs, 'utf8');
     const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-    if (m && m[1].includes('\\"')) out.push(abs.split(/[\\/]/).pop().replace(/\.md$/, ''));
+    if (m && m[1].includes('\\"')) out.push(basename(abs, '.md'));
   }
   return out;
 }

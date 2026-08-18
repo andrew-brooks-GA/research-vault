@@ -4,8 +4,8 @@
 // the vault; no network (freshness from recorded last_verified only). `--check` exits
 // non-zero so a consuming repo can gate CI on it — the "lint is the guarantee"
 // principle extended past the vault boundary.
-import { readdirSync, statSync, readFileSync } from 'node:fs';
-import { join, relative, dirname } from 'node:path';
+import { globSync, statSync, readFileSync } from 'node:fs';
+import { join, relative, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSchema } from '../lib/schema.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
@@ -13,18 +13,10 @@ import { resolveVault } from '../lib/resolve.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { normalizeUrl } from '../lib/ids.mjs';
 import { extractCitations } from '../lib/citations.mjs';
+import { staleness } from '../lib/stale.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.idea', '_obsidian', '_index', '_attachments']);
-
-function freshnessOf(entry, schema, now) {
-  const win = schema.taxonomy.volatility[entry.volatility]?.refresh_after_days;
-  if (win === undefined) return 'ok'; // unknown/absent volatility — not assessable
-  if (win === 0) return 'stale'; // volatile — always re-check
-  const last = entry.last_verified ? new Date(entry.last_verified) : null;
-  const ageDays = last ? (new Date(now) - last) / 86400000 : Infinity;
-  return ageDays > win ? 'stale' : 'ok';
-}
 
 // Pure: classify each citation as ok | stale | uncovered against the manifest entries.
 export function checkCitations(citations, entries, schema, now) {
@@ -44,47 +36,18 @@ export function checkCitations(citations, entries, schema, now) {
       entry = byId.get(c.value);
     }
     if (!entry) return { type: c.type, value: c.value, status: 'uncovered' };
-    const status = freshnessOf(entry, schema, now) === 'stale' ? 'stale' : 'ok';
+    const status = staleness(entry, schema, new Date(now)) ? 'stale' : 'ok';
     return { type: c.type, value: c.value, status, id: entry.id, volatility: entry.volatility };
   });
 }
 
-// Pure: a minimal glob (** spans path segments, * stops at a separator, ? one char).
-export function globToRegExp(glob) {
-  const g = glob.replace(/\\/g, '/');
-  let re = '';
-  for (let i = 0; i < g.length; i++) {
-    const c = g[i];
-    if (c === '*') {
-      if (g[i + 1] === '*') {
-        i++;
-        if (g[i + 1] === '/') { i++; re += '(?:.*/)?'; } else { re += '.*'; }
-      } else { re += '[^/]*'; }
-    } else if (c === '?') {
-      re += '[^/]';
-    } else if ('.+^${}()|[]\\'.includes(c)) {
-      re += '\\' + c;
-    } else {
-      re += c;
-    }
-  }
-  return new RegExp('^' + re + '$');
-}
-
-// Walk cwd, returning absolute paths whose cwd-relative path matches any pattern.
+// Expand patterns to sorted absolute file paths under cwd, pruning SKIP_DIRS.
+// exclude receives a path string or a Dirent depending on Node version; basename covers both.
 export function expandFiles(patterns, cwd) {
-  const regexps = patterns.map(globToRegExp);
-  const out = [];
-  (function walk(dir) {
-    for (const name of readdirSync(dir).sort()) {
-      if (SKIP_DIRS.has(name)) continue;
-      const abs = join(dir, name);
-      if (statSync(abs).isDirectory()) { walk(abs); continue; }
-      const rel = relative(cwd, abs).replace(/\\/g, '/');
-      if (regexps.some((re) => re.test(rel))) out.push(abs);
-    }
-  })(cwd);
-  return out;
+  return globSync(patterns, { cwd, exclude: (e) => SKIP_DIRS.has(basename(typeof e === 'string' ? e : e.name)) })
+    .map((rel) => join(cwd, rel))
+    .filter((abs) => statSync(abs).isFile())
+    .sort();
 }
 
 function tally(perFile) {

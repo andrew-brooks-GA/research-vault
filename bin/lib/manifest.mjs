@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { walkEntries, readEntry } from './fsutil.mjs';
-import { normalizeUrl } from './ids.mjs';
+import { normalizeUrlSafe } from './ids.mjs';
 
 // Backlink-forming edge fields are declared once in the schema (see edge_fields) and shared
 // with lint's dangling-ref check; read the plugin's own schema so buildManifest(vaultPath)
@@ -20,14 +20,6 @@ export function lastVerified(verifications) {
     .map(v => v.date).sort().pop() || null;
 }
 
-// A hand-authored source_url can be un-parsable. Normalizing keeps manifest URLs comparable,
-// but must not throw here — a crash would take down the whole lint run (lint reports the bad
-// URL as a URL_INVALID violation instead). Keep the raw value when it will not normalize.
-function safeNormalizeUrl(url) {
-  if (!url) return null;
-  try { return normalizeUrl(url); } catch { return url; }
-}
-
 export function buildManifest(vaultPath) {
   const entries = [];
   const backlinks = {};
@@ -38,7 +30,7 @@ export function buildManifest(vaultPath) {
       id, type: data.type, title: data.title,
       summary: data.summary != null ? String(data.summary) : null,
       domain: data.domain || [], topics: data.topics || [],
-      source_url: safeNormalizeUrl(data.source_url),
+      source_url: normalizeUrlSafe(data.source_url),
       content_hash: data.content_hash || null,
       volatility: data.volatility || null, last_verified: last,
       status: data.status || 'active',

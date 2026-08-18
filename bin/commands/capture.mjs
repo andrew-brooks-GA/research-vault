@@ -2,24 +2,22 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { loadSchema, fieldOrder } from '../lib/schema.mjs';
-import { makeId, normalizeUrl, sha256 } from '../lib/ids.mjs';
+import { makeId, normalizeUrl, normalizeUrlSafe, sha256 } from '../lib/ids.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
-import { writeEntry } from '../lib/fsutil.mjs';
+import { writeEntry, TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { assertControlledValues } from '../lib/validate.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const TYPE_FOLDER = { source:'sources', note:'notes', synthesis:'synthesis', snippet:'snippets', experiment:'experiments', question:'questions' };
 const verKey = v => (v == null || v === '') ? null : String(v);
-const normUrlSafe = u => { if (!u) return null; try { return normalizeUrl(u); } catch { return u; } };
 
 function loadSkeleton(repoRoot, type) {
   try { return readFileSync(join(repoRoot, 'vault-template', 'meta', 'entry-skeletons', `${type}.md`), 'utf8').trimEnd(); }
   catch { return ''; }
 }
 
-export function prepareEntry(vaultPath, opts, ctx = {}) {
+function prepareEntry(vaultPath, opts, ctx = {}) {
   const repoRoot = opts.repoRoot || REPO_ROOT;
   const schema = loadSchema(repoRoot, { vaultPath });
   const now = opts.now || new Date().toISOString().slice(0, 10);
@@ -38,7 +36,7 @@ export function prepareEntry(vaultPath, opts, ctx = {}) {
     const normUrl = normalizeUrl(opts.url);
     const version = verKey(opts.subjectVersion);
     const existing = ctx.manifestEntries || buildManifest(vaultPath).entries;
-    const candidates = [...existing, ...pending.map(p => ({ id: p.id, source_url: normUrlSafe(p.data.source_url), subject: p.data.subject, content_hash: p.data.content_hash }))];
+    const candidates = [...existing, ...pending.map(p => ({ id: p.id, source_url: normalizeUrlSafe(p.data.source_url), subject: p.data.subject, content_hash: p.data.content_hash }))];
     for (const e of candidates) {
       if (e.source_url === normUrl && verKey(e.subject?.version) === version) {
         if (newHash && e.content_hash && newHash !== e.content_hash) {

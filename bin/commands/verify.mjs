@@ -7,12 +7,11 @@ import { buildManifest, CONFIRMING_RESULTS } from '../lib/manifest.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { assertControlledValues } from '../lib/validate.mjs';
 import { listStale } from '../lib/stale.mjs';
-export { listStale } from '../lib/stale.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 function findEntry(vaultPath, id) {
-  for (const abs of walkEntries(vaultPath)) if (basename(abs).replace(/\.md$/, '') === id) return abs;
+  for (const abs of walkEntries(vaultPath)) if (basename(abs, '.md') === id) return abs;
   throw new Error(`entry not found: ${id}`);
 }
 

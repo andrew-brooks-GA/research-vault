@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { normalizeUrl } from '../bin/lib/ids.mjs';
-import { checkCitations, globToRegExp, expandFiles, renderReport, run } from '../bin/commands/check.mjs';
+import { checkCitations, expandFiles, renderReport, run } from '../bin/commands/check.mjs';
 import { runInit } from '../bin/commands/init.mjs';
 
 const SCHEMA = {
@@ -46,21 +46,6 @@ test('a volatile entry is always stale', () => {
 });
 test('an unknown id citation is uncovered', () => {
   assert.equal(checkCitations([{ type: 'id', value: '2099-01-01-nope' }], ENTRIES, SCHEMA, NOW)[0].status, 'uncovered');
-});
-
-// ---- globToRegExp (pure) ----
-test('globToRegExp: ** spans zero or more dirs', () => {
-  const re = globToRegExp('plan/**/*.md');
-  assert.ok(re.test('plan/c.md'));
-  assert.ok(re.test('plan/a/b.md'));
-  assert.ok(re.test('plan/a/b/c.md'));
-  assert.ok(!re.test('other/x.md'));
-  assert.ok(!re.test('plan/a.txt'));
-});
-test('globToRegExp: single * does not cross a path separator', () => {
-  const re = globToRegExp('*.md');
-  assert.ok(re.test('x.md'));
-  assert.ok(!re.test('a/x.md'));
 });
 
 // ---- expandFiles + run (integration) ----

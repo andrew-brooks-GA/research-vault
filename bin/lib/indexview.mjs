@@ -1,4 +1,4 @@
-const FOLDER = { source:'sources', note:'notes', synthesis:'synthesis', snippet:'snippets', experiment:'experiments', question:'questions' };
+import { TYPE_FOLDER as FOLDER } from './fsutil.mjs';
 function row(e) { return `- ${e.id} — ${e.title || '(untitled)'} [${e.status}] (verified ${e.last_verified || 'never'})`; }
 export function rootIndex(manifest) {
   const byType = {};

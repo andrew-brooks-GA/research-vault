@@ -19,13 +19,13 @@ export const VERIFICATION_CONTROLLED_FIELDS = {
   by_type: 'by_type',
 };
 
-function allowed(schema, key) {
+export function allowedValues(schema, key) {
   const t = schema.taxonomy[key];
   return Array.isArray(t) ? t : Object.keys(t);
 }
 
 function check(schema, field, key, value) {
-  const allow = allowed(schema, key);
+  const allow = allowedValues(schema, key);
   if (!allow.includes(value)) throw new Error(`unknown ${field}: ${value} (allowed: ${allow.join(', ')})`);
 }
 

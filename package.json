@@ -3,7 +3,7 @@
   "version": "0.4.0",
   "description": "Portable research-vault scaffold and tooling for Claude Code and any agent.",
   "type": "module",
-  "engines": { "node": ">=18" },
+  "engines": { "node": ">=22" },
   "bin": { "research-vault": "bin/research-vault.mjs" },
   "scripts": { "test": "node --test", "lint:self": "node bin/research-vault.mjs lint --vault vault-template" },
   "license": "MIT"

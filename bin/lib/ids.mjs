@@ -23,4 +23,11 @@ export function normalizeUrl(url) {
   return s;
 }
 
+// A hand-authored source_url can be un-parsable; keep the raw value rather than throw
+// (callers like the manifest builder must not crash a whole run on one bad URL).
+export function normalizeUrlSafe(url) {
+  if (!url) return null;
+  try { return normalizeUrl(url); } catch { return url; }
+}
+
 export function sha256(text) { return 'sha256:' + createHash('sha256').update(text).digest('hex'); }

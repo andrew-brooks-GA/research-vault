@@ -2,7 +2,9 @@ import { readdirSync, readFileSync, writeFileSync, existsSync, renameSync } from
 import { join, sep } from 'node:path';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.mjs';
 
-export const ENTRY_FOLDERS = ['sources','notes','synthesis','snippets','experiments','questions'];
+export const TYPE_FOLDER = { source:'sources', note:'notes', synthesis:'synthesis', snippet:'snippets', experiment:'experiments', question:'questions' };
+export const FOLDER_TYPE = Object.fromEntries(Object.entries(TYPE_FOLDER).map(([t, f]) => [f, t]));
+export const ENTRY_FOLDERS = Object.values(TYPE_FOLDER);
 
 export function walkEntries(vaultPath) {
   const files = [];

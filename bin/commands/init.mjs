@@ -5,6 +5,7 @@ import { loadSchema } from '../lib/schema.mjs';
 import { generateAgentsMd } from '../lib/agentsmd.mjs';
 import { resolveVault, configPath } from '../lib/resolve.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
+import { ENTRY_FOLDERS } from '../lib/fsutil.mjs';
 import { compileVault } from './compile.mjs';
 import { scaffoldProjectConfig } from '../lib/projectconfig.mjs';
 
@@ -12,7 +13,7 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const VAULT_MARKERS = ['AGENTS.md', 'taxonomy.json', 'README.md', 'CLAUDE.md', 'GEMINI.md', 'meta'];
 function hasVaultContent(dir) {
-  for (const f of ['sources','notes','synthesis','snippets','experiments','questions']) {
+  for (const f of ENTRY_FOLDERS) {
     const p = join(dir, f);
     if (existsSync(p) && readdirSync(p).some(n => n.endsWith('.md') && n !== 'INDEX.md')) return true;
   }
@@ -27,7 +28,7 @@ export function runInit({ vaultPath, repoRoot = REPO_ROOT, force = false }) {
   cpSync(join(repoRoot, 'vault-template'), vaultPath, { recursive: true });
   // Create the six entry folders (+ attachments) explicitly — there are no INDEX.md
   // placeholders; the manifest is the index.
-  for (const f of ['sources', 'notes', 'synthesis', 'snippets', 'experiments', 'questions']) {
+  for (const f of ENTRY_FOLDERS) {
     mkdirSync(join(vaultPath, f), { recursive: true });
   }
   mkdirSync(join(vaultPath, 'sources', '_attachments'), { recursive: true });

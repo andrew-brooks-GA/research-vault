@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **BREAKING: Node ≥22 required** (was ≥18; Node 18 is end-of-life). `check` now uses the stdlib `fs.globSync` instead of a hand-rolled glob matcher; CI matrix is Node {22, 24}.
+- **SSRF guard rewritten on `net.BlockList`.** Same allowlist posture (IPv4 RFC 6890 denylist; IPv6 global-unicast 2000::/3 minus 2001::/23, 2001:db8::/32, 2002::/16), ~100 fewer hand-rolled parsing lines; test suite unchanged.
+- Internal dedup from a repo-wide over-engineering audit: canonical type↔folder map in `fsutil.mjs`, shared staleness/`allowedValues`/`normalizeUrlSafe` helpers, `basename(path, '.md')` for id extraction, session-start summary inlined into the hook. No behavior change.
+
 ## [0.4.0] - 2026-07-16
 
 - feat: tool-probe cross-validation — treat a tool's own CLI/help/schema output as a re-derivable primary source. New taxonomy values `tool-probe` (verification_method, offline-valid, same-version-gated) and `tool-output` (authority_basis); probe-manifest convention (`meta/probe-manifests/<tool>.md`, read-only commands only) with shared procedure `meta/prompt-templates/probe-tool.md`; lint `TOOL_OUTPUT_VERSION` requires `subject.version` on tool-output sources; capture/verify/orchestrate skills and AGENTS.md updated.

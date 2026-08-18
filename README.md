@@ -14,7 +14,7 @@ Plain Markdown, zero dependencies, no human in the loop. Works in Claude Code or
 
 ![CI](https://github.com/andrew-brooks-GA/research-vault/actions/workflows/ci.yml/badge.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
-![Node ≥18](https://img.shields.io/badge/node-%E2%89%A518-brightgreen.svg)
+![Node ≥22](https://img.shields.io/badge/node-%E2%89%A522-brightgreen.svg)
 ![dependencies: 0](https://img.shields.io/badge/dependencies-0-brightgreen.svg)
 ![platforms](https://img.shields.io/badge/platform-linux%20%7C%20macOS%20%7C%20windows-lightgrey.svg)
 
@@ -46,7 +46,7 @@ You captured once. Months later, in a fresh session, the knowledge is right ther
 | 🗂️ **Tracks versions as siblings** | `vcluster 0.19` and `0.20` both stay valid. A new release is *new knowledge*, not a correction of the old. |
 | 🔍 **Searches without re-reading** | A derived manifest gives one-read facet search and a backlink graph across the whole vault. The agent finds what it needs without re-opening files. |
 | 🔌 **Runs under any agent** | A Claude Code plugin *and* a standalone CLI. Codex, Gemini, or a bare file-reading agent all work — every vault is self-describing via a generated `AGENTS.md`. |
-| 🪶 **Adds nothing to install** | Node ≥18, stdlib only. Zero dependencies. Runs on Linux, macOS, and Windows. |
+| 🪶 **Adds nothing to install** | Node ≥22, stdlib only. Zero dependencies. Runs on Linux, macOS, and Windows. |
 
 ## Why freshness is the whole game
 
@@ -216,7 +216,7 @@ To set one up: commit the entries, `taxonomy.json`, and the generated `AGENTS.md
 npm test     # node --test — unit + integration, zero test-framework deps
 ```
 
-CI runs the suite plus `init` / `lint --check` / AGENTS.md-anti-drift / encoding gates across **{Linux, macOS, Windows} × Node {18, 20, 22}**.
+CI runs the suite plus `init` / `lint --check` / AGENTS.md-anti-drift / encoding gates across **{Linux, macOS, Windows} × Node {22, 24}**.
 
 ## License
 

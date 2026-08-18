@@ -1,10 +1,10 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { walkEntries, readEntry } from './fsutil.mjs';
+import { basename } from 'node:path';
+import { walkEntries, readEntry, FOLDER_TYPE } from './fsutil.mjs';
 import { loadSchema, stageAllowedInFolder, fieldOrder } from './schema.mjs';
 import { serializeFrontmatter } from './frontmatter.mjs';
-import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS } from './validate.mjs';
+import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, allowedValues } from './validate.mjs';
 
-const FOLDER_TYPE = { sources:'source', notes:'note', synthesis:'synthesis', snippets:'snippet', experiments:'experiment', questions:'question' };
 const MONOLITHIC_SYNTHESIS_WORDS = 1500;
 
 // lint's enum coverage is driven from the same CONTROLLED_FIELDS / VERIFICATION_CONTROLLED_FIELDS
@@ -30,10 +30,6 @@ const VERIFICATION_ENUM_META = {
   by_type: { code: 'ENUM_BY_TYPE', label: 'verification by_type', required: false },
 };
 
-const allowedValues = (schema, key) => {
-  const t = schema.taxonomy[key];
-  return Array.isArray(t) ? t : Object.keys(t);
-};
 const isParsableUrl = (u) => { try { new URL(u); return true; } catch { return false; } };
 
 export function lintVault(vaultPath, repoRoot) {
@@ -42,7 +38,7 @@ export function lintVault(vaultPath, repoRoot) {
   // shared with the manifest's backlink builder via schema/frontmatter.schema.json.
   const edgeFields = [...schema.fields.edge_fields.backlink, ...schema.fields.edge_fields.reference_only];
   const files = walkEntries(vaultPath);
-  const ids = new Set(files.map(f => f.split(/[\\/]/).pop().replace(/\.md$/, '')));
+  const ids = new Set(files.map(f => basename(f, '.md')));
   const violations = [];
   const add = (file, code, msg) => violations.push({ file, code, msg });
   const warnings = [];
@@ -53,8 +49,7 @@ export function lintVault(vaultPath, repoRoot) {
   for (const abs of files) {
     try {
       const e = readEntry(abs);
-      const id = abs.split(/[\\/]/).pop().replace(/\.md$/, '');
-      if (e.data && e.data.type) idType.set(id, e.data.type);
+      if (e.data && e.data.type) idType.set(basename(abs, '.md'), e.data.type);
     } catch { /* PARSE will surface in the main loop */ }
   }
 
