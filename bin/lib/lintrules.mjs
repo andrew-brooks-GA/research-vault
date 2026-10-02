@@ -32,6 +32,35 @@ const VERIFICATION_ENUM_META = {
 
 const isParsableUrl = (u) => { try { new URL(u); return true; } catch { return false; } };
 
+// Quote artifact: a string value that is itself a complete single-quoted scalar, e.g. a title
+// stored as `"'Tool: X'"`. The parser used to keep single quotes as literal text, and any
+// rewrite then double-quoted the whole value. Returns the unwrapped value, or null. The inner
+// text must be a valid single-quoted body (every `'` doubled), so `'a' and 'b'` is left alone.
+export function unwrapQuoteArtifact(v) {
+  if (typeof v !== 'string' || v.length < 2 || v[0] !== "'" || v.at(-1) !== "'") return null;
+  const inner = v.slice(1, -1);
+  return /^(?:[^']|'')*$/.test(inner) ? inner.replace(/''/g, "'") : null;
+}
+
+// Every string scalar in an entry with a setter, so lint and fix walk the same set.
+function* stringSlots(data) {
+  for (const [k, v] of Object.entries(data)) {
+    if (typeof v === 'string') yield { field: k, get: () => data[k], set: x => { data[k] = x; } };
+    else if (Array.isArray(v)) {
+      for (let i = 0; i < v.length; i++) {
+        const item = v[i];
+        if (typeof item === 'string') yield { field: `${k}[${i}]`, get: () => v[i], set: x => { v[i] = x; } };
+        else if (item && typeof item === 'object')
+          for (const ik of Object.keys(item)) if (typeof item[ik] === 'string')
+            yield { field: `${k}[${i}].${ik}`, get: () => item[ik], set: x => { item[ik] = x; } };
+      }
+    } else if (v && typeof v === 'object') {
+      for (const ik of Object.keys(v)) if (typeof v[ik] === 'string')
+        yield { field: `${k}.${ik}`, get: () => v[ik], set: x => { v[ik] = x; } };
+    }
+  }
+}
+
 export function lintVault(vaultPath, repoRoot) {
   const schema = loadSchema(repoRoot, { vaultPath });
   // Dangling-ref coverage = every declared edge field (backlink-forming + reference-only),
@@ -131,6 +160,10 @@ export function lintVault(vaultPath, repoRoot) {
     if (data.type === 'question' && data.state === 'answered' && !(data.answer_summary && String(data.answer_summary).trim()))
       warn(abs, 'WARN_ANSWERED_NO_SUMMARY', 'answered question has no answer_summary; it exports nothing — add one (capture --answer-summary) so the answer is emitted');
 
+    for (const slot of stringSlots(data))
+      if (unwrapQuoteArtifact(slot.get()) !== null)
+        warn(abs, 'WARN_QUOTE_ARTIFACT', `${slot.field} value is itself wrapped in quotes (${slot.get()}); run lint --fix to unwrap`);
+
     for (const t of (data.topics || [])) if (schema.taxonomy.topic_aliases[t]) warn(abs, 'WARN_TOPIC_ALIAS', `topic '${t}' should be normalized to '${schema.taxonomy.topic_aliases[t]}'`);
 
     // Synthesis note-coverage: a synthesis whose contributing_ids contain only sources
@@ -167,8 +200,12 @@ export function fixVault(vaultPath, repoRoot) {
     let entry;
     try { entry = readEntry(abs); } catch { }
     if (entry) {
+      for (const slot of stringSlots(entry.data)) {
+        const u = unwrapQuoteArtifact(slot.get());
+        if (u !== null) slot.set(u);
+      }
       const order = fieldOrder(schema, entry.data.type);
-      out = serializeFrontmatter(entry.data, entry.body, order);
+      out = serializeFrontmatter(entry.data, entry.body, order, { preserve: false });
     }
     if (out !== raw) { writeFileSync(abs, out, 'utf8'); fixed++; }
   }

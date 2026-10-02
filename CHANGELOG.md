@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Single-quoted scalars are parsed.** `title: 'Tool: X'` used to be read with its quotes as literal text, and the next rewrite (`verify`, `lint --fix`) stored it as `title: "'Tool: X'"`. Quotes are now stripped and `''` decodes to `'`. Frontmatter written by other YAML tools was the common trigger: yq 4.53.2, for example, writes a string containing `: ` single-quoted.
+- **Flow sequences respect quotes.** `topics: ["a, b", c]` is two items, not three fragments.
+- **Inline comments are dropped.** `status: active # note` is `active`, as in YAML. A `#` with no space before it (`https://host/a#frag`) is still content.
+- **Block scalars parse.** Top-level `|` and `>` values, with `-`/`+` chomping and an indentation indicator, no longer fail the whole entry with `unparseable frontmatter line`. A top-level multi-line string is written back as a literal block. Block scalars inside `subject` or `verifications` items remain unsupported and now fail with a clear error instead of reading the next line as a sibling key.
+
+### Changed
+- **Rewrites keep unchanged frontmatter byte-identical.** `verify` re-emits the original lines of every key they did not change, in the original order; a new key (for example `updated`) is placed at its canonical position. Previously one `verify` reserialized every key: block lists became flow lists and keys were put into canonical order. `lint --fix` still normalizes everything, deliberately.
+- **Writes outside a project binding say where they went.** When `capture`, `verify` or `lint --fix` resolves the vault through the user config pointer or the OS default, it prints a one-line notice with the vault path to stderr. Run from the wrong directory, these commands no longer write silently into another vault.
+- **`AGENTS.md` header** now says it is generated from the plugin's `schema/`, not a `schema/` inside the vault.
+
+### Added
+- **`WARN_QUOTE_ARTIFACT` lint warning, fixed by `lint --fix`.** Flags a string value that is itself a complete single-quoted scalar (the damage the parsing bug above left behind) and unwraps it. A value like `'a' and 'b'` is not a valid single-quoted body and is left alone.
+
+### Upgrading an existing vault
+- Run `research-vault lint` and look for `WARN_QUOTE_ARTIFACT`; `lint --fix` repairs those values. Review the diff: `lint --fix` also normalizes formatting across the vault, as before.
+- A plain value that contained ` #` (space then hash) is now read as ending at the `#`, per YAML. Search hand-written frontmatter for ` #` before upgrading if that matters to you.
+
 ## [0.5.0] - 2026-08-18
 
 ### Changed

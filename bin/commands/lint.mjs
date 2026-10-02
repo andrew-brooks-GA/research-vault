@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { lintVault, fixVault } from '../lib/lintrules.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
-import { resolveVault } from '../lib/resolve.mjs';
+import { resolveVault, reportFallback } from '../lib/resolve.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -22,8 +22,10 @@ export function lintAndReport(vaultPath, { check = false } = {}) {
 }
 
 export async function run(args) {
-  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
+  const resolved = resolveVault({ flag: args.vault ?? null });
+  const vaultPath = resolved.path;
   if (args.fix) {
+    reportFallback(resolved);
     const { fixed } = fixVault(vaultPath, REPO_ROOT);
     if (!args.json) process.stdout.write(`fixed ${fixed} file(s)\n`);
   }
