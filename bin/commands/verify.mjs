@@ -4,7 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { loadSchema, fieldOrder } from '../lib/schema.mjs';
 import { walkEntries, readEntry, writeEntry } from '../lib/fsutil.mjs';
 import { buildManifest, CONFIRMING_RESULTS } from '../lib/manifest.mjs';
-import { resolveVault } from '../lib/resolve.mjs';
+import { resolveVault, reportFallback } from '../lib/resolve.mjs';
 import { assertControlledValues } from '../lib/validate.mjs';
 import { listStale } from '../lib/stale.mjs';
 
@@ -61,13 +61,15 @@ export function applyVerification(vaultPath, opts) {
 }
 
 export async function run(args) {
-  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
+  const resolved = resolveVault({ flag: args.vault ?? null });
+  const vaultPath = resolved.path;
   if (args.stale || !args.id) {
     const stale = listStale(vaultPath, {});
     if (args.json) process.stdout.write(JSON.stringify(stale, null, 2) + '\n');
     else stale.forEach(s => process.stdout.write(`${s.id}  ${s.volatility}  ${s.reason || s.ageDays + 'd'}\n`));
     return 0;
   }
+  reportFallback(resolved);
   const r = applyVerification(vaultPath, { id: args.id, method: args.method, result: args.result, byId: args['by-id'], notes: args.notes, supersededBy: args['superseded-by'], succession: !!args.succession });
   process.stdout.write(`verify: ${r.action}\n`);
   if (r.action === 'version-succeeded') process.stdout.write(`Entry kept active. Capture the new version as a sibling: research-vault capture --type source --title "..." --subject-version <new> --series <same-series>\n`);

@@ -5,7 +5,7 @@ import { loadSchema, fieldOrder } from '../lib/schema.mjs';
 import { makeId, normalizeUrl, normalizeUrlSafe, sha256 } from '../lib/ids.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { writeEntry, TYPE_FOLDER } from '../lib/fsutil.mjs';
-import { resolveVault } from '../lib/resolve.mjs';
+import { resolveVault, reportFallback } from '../lib/resolve.mjs';
 import { assertControlledValues } from '../lib/validate.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 
@@ -183,7 +183,9 @@ function captureDefaults(cwd) {
 
 export async function run(args) {
   const cwd = args.cwd ?? process.cwd();
-  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd });
+  const resolved = resolveVault({ flag: args.vault ?? null, cwd });
+  const vaultPath = resolved.path;
+  reportFallback(resolved);
   if (args.batch) {
     const r = runBatch(vaultPath, args.batch, { ackDataEgress: !!args['ack-data-egress'] });
     process.stdout.write(JSON.stringify(r, null, 2) + '\n');
