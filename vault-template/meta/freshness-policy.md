@@ -27,6 +27,8 @@ Before citing any entry, compute `last_verified := max(verifications[].date)` (i
 4. `stable` → trust unless something specific cues a re-check.
 5. After verification: append to `verifications[]`. A substantive contradiction → supersede (§7); otherwise update in place.
 
+A note or synthesis is only as fresh as its evidence: before citing one, check that its `sources`/`contributing_ids` chain is within window (`advise` lists violations as `staleEvidence`).
+
 ## 4. Offline mode (no web fetch)
 
 1. Do NOT silently rely on stored values for `fast` or `volatile` entries.

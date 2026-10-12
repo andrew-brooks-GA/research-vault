@@ -10,9 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Scalar edge fields were iterated as strings (spec 01).** `source_id` (snippet) and `prompt_id` (experiment) are scalars; the manifest's backlink builder spread them character by character, so the referenced source or prompt never received the backlink and `related`, the Obsidian stub, and `advise` orphan detection all missed it. Scalars are now wrapped before iteration; empty values are skipped.
 
+### Added
+- **Bounded traversal for `related` (spec 03).** `related <id> [--depth N] [--direction out|in|both] [--rel a,b]` walks the typed graph with a breadth-first search (shared helper `bin/lib/graph.mjs`): `--depth 2 --direction out <synthesis>` returns the evidence chain, `--direction in <source>` returns what depends on it, `--rel` restricts the relations followed. JSON output gains `depth`, `direction`, and `nodes` (`id`, `distance`, plus `type`/`title`/`status`/`volatility`/`last_verified` from the manifest row, or `missing: true` for a dangling id); `edges` is now the induced subgraph over the reached nodes. `forward`/`backlinks` stay the depth-1 unfiltered compatibility arrays. Invalid `--depth`/`--direction`/`--rel` exit 2 with a usage message. Mermaid output labels every edge (`a -->|rel| b`) and renders an isolated root as a lone node.
+- **Stale evidence in `advise` (spec 04).** New `staleEvidence` section: for every active note/synthesis, the `sources`/`contributing_ids` chain is walked transitively and each reached entry that is `superseded` or past its volatility window is reported with its shortest path (`{ id, via: [{ id, reason: "stale"|"superseded", path }] }`). The dependent's own `last_verified` is not rewritten; advisory only, no lint rule, `check --check` unchanged. `advise(vaultPath, repoRoot, { now })` and `listStale(vaultPath, { now, manifest })` share one clock and one manifest.
+
 ### Changed
 - **Typed edges in the manifest (spec 02).** `.vault-manifest.json` gains a top-level `edges` array of `{from, rel, to}` triples, one per stored reference across all seven edge fields (`related`, `contributing_ids`, `sources`, `source_id`, `prompt_id`, `contributing`, `superseded_by`), sorted by `(from, rel, to)` and deduplicated. `backlinks` is now derived from the backlink-forming rels (policy unchanged: `superseded_by` forms no backlink). Rows are unchanged.
-- `related`: `forward` now covers all seven rels (previously only `related`/`contributing_ids`/`sources`) and is sorted; JSON output gains `edges` (every edge incident to the id, including an incoming `superseded_by`); mermaid edges are labelled `a -->|rel| b`.
+- `related`: `forward` now covers all seven rels (previously only `related`/`contributing_ids`/`sources`) and is sorted; JSON output gains `edges` (including an incoming `superseded_by`, which never appears in `backlinks`). At the defaults (`--depth 1 --direction both`) the reached set is `forward ∪ backlinks ∪ {entries naming this id in superseded_by}`; the last term and the root node at distance 0 are new.
 - `obsidian`: the stub's Links section groups wikilinks under one `### <rel>` heading per relation.
 - `advise`: orphan detection reads `edges` instead of re-walking the vault.
 
@@ -20,7 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Run `research-vault lint` once; until then `lint --check` reports `MANIFEST_STALE` (the manifest gained `edges`, and vaults with populated `source_id`/`prompt_id` get corrected `backlinks`).
 - Run `research-vault init --refresh-docs` to pick up the AGENTS.md §9 wording (`edges` list). No `meta/` file changed.
 - Re-run `research-vault obsidian` to regenerate `_obsidian/` with the per-relation Links layout.
-- Consumers of `related` output: `forward` membership grows and is now sorted rather than in field order.
+- Consumers of `related` output: `forward` membership grows and is now sorted rather than in field order; the default traversal additionally reaches entries that name the id in `superseded_by`.
+- `advise` text output gains a `stale evidence (N)` section; `--json` output gains the `staleEvidence` key.
+- Run `research-vault init --refresh-docs` to pick up the AGENTS.md §7 sentence on evidence freshness. `init --refresh-docs` never touches `meta/`, so hand-add the same sentence to `meta/freshness-policy.md` §3 (after item 5):
+
+  > A note or synthesis is only as fresh as its evidence: before citing one, check that its `sources`/`contributing_ids` chain is within window (`advise` lists violations as `staleEvidence`).
 
 ## [0.5.0] - 2026-08-18
 

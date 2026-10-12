@@ -19,6 +19,7 @@ export function put(dir, type, id, extra = {}, body = `# ${id}\n`) {
     verifications: [{ date, by_type: 'human', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }],
     ...extra,
   };
+  for (const k of Object.keys(data)) if (data[k] === undefined) delete data[k]; // `x: undefined` drops a default
   mkdirSync(join(dir, folder), { recursive: true });
   writeEntry(join(dir, folder, `${id}.md`), data, body, fieldOrder(schema, type));
   return id;

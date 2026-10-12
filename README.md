@@ -178,7 +178,7 @@ The full CLI. In Claude Code your agent calls most of these for you; this is the
 | `lint` | Validate the vault (the correctness floor) and rebuild the manifest. `--fix` normalizes safely. |
 | `verify` | List stale entries; record a verification; supersede or note version succession. |
 | `search` | Facet/text query over the manifest (`--domain`, `--topic`, `--series`, `--text`, `--body`). |
-| `related` | Typed forward links + backlinks for an entry (`--format mermaid`). |
+| `related` | Typed forward links + backlinks for an entry; `--depth N --direction out|in|both --rel a,b` walks evidence chains and blast radius (`--format mermaid`). |
 | `manifest` | Rebuild/print the derived index. |
 | `compile` | Regenerate a git-ignored `_index/` human-readable index (grouped by type); a derived cache, never a source of truth. |
 | `advise` | Read-only curation report: stale entries, orphans, sources lacking a note, **unverified (captured-only) sources**, aliasable topics, **stub bodies**. Never mutates. |

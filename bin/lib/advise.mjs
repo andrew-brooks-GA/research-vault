@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { buildManifest } from './manifest.mjs';
-import { listStale } from './stale.mjs';
+import { listStale, staleness } from './stale.mjs';
+import { traverse, DEPENDENCY_RELS } from './graph.mjs';
 import { loadSchema } from './schema.mjs';
 import { walkEntries, readEntry } from './fsutil.mjs';
 
@@ -47,15 +48,47 @@ function listQuoteResidue(vaultPath) {
   return out;
 }
 
-export function advise(vaultPath, repoRoot) {
+// Notes/syntheses whose evidence chain (sources/contributing_ids, transitively) reaches a stale
+// or superseded entry. The dependent's own staleness is reported under `stale`, not here.
+function listStaleEvidence(m, schema, now) {
+  const rows = new Map(m.entries.map(e => [e.id, e]));
+  const assessed = new Map();
+  const reasonFor = id => {
+    if (!assessed.has(id)) {
+      const r = rows.get(id);
+      assessed.set(id, r.status === 'superseded' ? 'superseded' : staleness(r, schema, now) ? 'stale' : null);
+    }
+    return assessed.get(id);
+  };
+  const out = [];
+  for (const e of m.entries) {
+    if (!(e.type === 'note' || e.type === 'synthesis') || e.status !== 'active') continue;
+    const t = traverse(m, e.id, { direction: 'out', depth: Infinity, rels: DEPENDENCY_RELS });
+    const via = [];
+    for (const n of t.nodes) {
+      if (n.distance === 0 || n.missing) continue; // dangling refs are lint's job
+      const reason = reasonFor(n.id);
+      if (!reason) continue;
+      const path = [n.id];
+      while (path[0] !== e.id) path.unshift(t.parents[path[0]]);
+      via.push({ id: n.id, reason, path });
+    }
+    if (via.length) out.push({ id: e.id, via: via.sort((a, b) => a.id.localeCompare(b.id)) });
+  }
+  return out;
+}
+
+export function advise(vaultPath, repoRoot, { now } = {}) {
   const m = buildManifest(vaultPath);
   const schema = loadSchema(repoRoot);
+  const date = new Date(now || new Date().toISOString().slice(0, 10));
   const aliases = schema.taxonomy.topic_aliases;
   const noteSources = new Set(m.entries.filter(e => e.type === 'note').flatMap(e => e.sources));
   // Orphan = no backlinks and no outgoing edge of any rel (incl. superseded_by).
   const outgoing = new Set(m.edges.map(e => e.from));
   return {
-    stale: listStale(vaultPath, { repoRoot }),
+    stale: listStale(vaultPath, { repoRoot, now: date, manifest: m }),
+    staleEvidence: listStaleEvidence(m, schema, date),
     orphans: m.entries.filter(e => !(m.backlinks[e.id]?.length) && !outgoing.has(e.id)).map(e => e.id),
     sourcesWithoutNotes: m.entries.filter(e => e.type === 'source' && !noteSources.has(e.id)).map(e => e.id),
     unverifiedSources: listUnverifiedSources(vaultPath),
