@@ -406,3 +406,16 @@ test('capture --body-file reads the body from disk', async () => {
   const id = makeId(new Date().toISOString().slice(0, 10), 'From File');
   assert.match(readFileSync(join(dir, 'notes', `${id}.md`), 'utf8'), /- From a file\./);
 });
+
+test('capture persists a source summary and a synthesis confidence; synthesis confidence has no default (spec 08)', () => {
+  const dir = freshVault();
+  const s = captureEntry(dir, { type: 'source', title: 'Src with summary', url: 'https://example.com/ss', summary: 'The one claim.', now: '2026-05-28', repoRoot: process.cwd() });
+  assert.equal(readEntry(s.path).data.summary, 'The one claim.');
+  const y = captureEntry(dir, { type: 'synthesis', title: 'Y conf', contributingIds: '2026-01-01-a', confidence: 'high', now: '2026-05-28', repoRoot: process.cwd() });
+  assert.equal(readEntry(y.path).data.confidence, 'high');
+  const z = captureEntry(dir, { type: 'synthesis', title: 'Z no conf', contributingIds: '2026-01-01-a', now: '2026-05-28', repoRoot: process.cwd() });
+  assert.ok(!('confidence' in readEntry(z.path).data));
+  assert.throws(() => captureEntry(dir, { type: 'synthesis', title: 'Bad', contributingIds: '2026-01-01-a', confidence: 'certain', now: '2026-05-28', repoRoot: process.cwd() }), /confidence/);
+  const { violations } = lintVault(dir, process.cwd());
+  assert.equal(violations.length, 0, JSON.stringify(violations));
+});

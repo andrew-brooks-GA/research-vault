@@ -129,3 +129,32 @@ test('manifest edges cover all seven rels, sorted and deduplicated; backlinks ex
   // superseded_by forms no backlink
   assert.deepEqual(m.backlinks['2026-01-05-y'], ['2026-01-06-q']);
 });
+
+test('manifest row carries per-type facets and superseded_by, null when absent (spec 08)', () => {
+  const dir = tmpVault('rv-facets-');
+  put(dir, 'source', '2026-01-01-s', { source_type: 'paper', source_url: 'https://e.com/s', authority_tier: 'primary', authority_basis: 'spec', summary: 'Claim worth knowing.' });
+  put(dir, 'question', '2026-01-02-q', { question: 'q', state: 'open' });
+  put(dir, 'experiment', '2026-01-03-e', { provider: 'p', model_id: 'm', date_run: '2026-01-03', task: 't', outcome: 'success' });
+  put(dir, 'synthesis', '2026-01-04-y', { contributing_ids: [], confidence: 'high' });
+  put(dir, 'synthesis', '2026-01-05-o', { contributing_ids: [], status: 'superseded', superseded_by: '2026-01-04-y' });
+  put(dir, 'note', '2026-01-06-n', { sources: ['2026-01-01-s'], confidence: 'low', stage: undefined });
+  put(dir, 'snippet', '2026-01-07-p', { language: 'js', tested: false });
+  const m = Object.fromEntries(buildManifest(dir).entries.map(e => [e.id, e]));
+  const FACETS = ['stage', 'state', 'confidence', 'outcome', 'authority_tier', 'authority_basis', 'superseded_by'];
+  for (const row of Object.values(m)) for (const k of FACETS) assert.ok(Object.hasOwn(row, k), `${row.id} has ${k}`);
+  assert.equal(m['2026-01-06-n'].confidence, 'low');
+  assert.strictEqual(m['2026-01-06-n'].stage, null, 'absent stage is null, not undefined');
+  assert.strictEqual(m['2026-01-07-p'].stage, 'distilled', 'snippet default stage from the schema');
+  assert.equal(m['2026-01-01-s'].authority_tier, 'primary');
+  assert.equal(m['2026-01-01-s'].authority_basis, 'spec');
+  assert.equal(m['2026-01-01-s'].summary, 'Claim worth knowing.');
+  assert.equal(m['2026-01-01-s'].stage, 'raw');
+  assert.equal(m['2026-01-02-q'].state, 'open');
+  assert.equal(m['2026-01-03-e'].outcome, 'success');
+  assert.equal(m['2026-01-04-y'].confidence, 'high');
+  assert.equal(m['2026-01-05-o'].superseded_by, '2026-01-04-y');
+  for (const k of ['state', 'outcome', 'authority_tier', 'authority_basis', 'superseded_by'])
+    assert.strictEqual(m['2026-01-04-y'][k], null, k);
+  for (const k of ['state', 'confidence', 'outcome', 'authority_tier', 'authority_basis', 'superseded_by'])
+    assert.strictEqual(m['2026-01-07-p'][k], null, k);
+});

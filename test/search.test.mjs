@@ -68,3 +68,34 @@ test('--text matches a note summary without a body read', () => {
   assert.equal(rows.length, 1);
   assert.equal(rows[0].type, 'note');
 });
+
+test('search hides superseded entries unless --include-superseded (spec 09)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-gate-'));
+  captureEntry(dir, { type: 'source', title: 'A first', url: 'https://example.com/a', now: '2026-01-01' });
+  captureEntry(dir, { type: 'source', title: 'Old', url: 'https://example.com/old', now: '2026-01-02' });
+  captureEntry(dir, { type: 'source', title: 'New', url: 'https://example.com/new', now: '2026-01-03' });
+  captureEntry(dir, { type: 'source', title: 'Z last', url: 'https://example.com/z', now: '2026-01-04' });
+  const { applyVerification } = await import('../bin/commands/verify.mjs');
+  applyVerification(dir, { id: '2026-01-02-old', method: 'refetched-source', result: 'outdated', supersededBy: '2026-01-03-new', now: '2026-01-05', repoRoot: process.cwd() });
+  const ACTIVE = ['2026-01-01-first', '2026-01-03-new', '2026-01-04-z-last'];
+  const ALL = ['2026-01-01-first', '2026-01-02-old', '2026-01-03-new', '2026-01-04-z-last'];
+  assert.deepEqual(searchVault(dir, { type: 'source' }).map(e => e.id), ACTIVE, 'default drops only the superseded row, order preserved');
+  const all = searchVault(dir, { type: 'source', includeSuperseded: true });
+  assert.deepEqual(all.map(e => e.id), ALL);
+  assert.equal(all[1].superseded_by, '2026-01-03-new');
+  const { run } = await import('../bin/commands/search.mjs');
+  const cli = async args => {
+    const out = [];
+    const so = process.stdout.write; process.stdout.write = c => { out.push(String(c)); return true; };
+    try { await run({ _: ['search'], vault: dir, type: 'source', ...args }); } finally { process.stdout.write = so; }
+    return out.join('');
+  };
+  const text = await cli({});
+  assert.ok(!text.includes('2026-01-02-old'), 'text default hides superseded');
+  assert.ok(!text.includes('superseded by'), 'no suffix without the flag');
+  const textAll = await cli({ 'include-superseded': true });
+  assert.match(textAll, /2026-01-02-old  \[source\]  Old \(superseded by 2026-01-03-new\)/);
+  assert.ok(!/A first \(superseded/.test(textAll), 'active rows get no suffix');
+  assert.deepEqual(JSON.parse(await cli({ json: true })).map(e => e.id), ACTIVE, 'json default hides superseded');
+  assert.deepEqual(JSON.parse(await cli({ json: true, 'include-superseded': true })).map(e => e.id), ALL);
+});

@@ -11,7 +11,7 @@ const S = '2026-01-01-s', N = '2026-01-02-n', Y = '2026-01-03-y', Q = '2026-01-0
 function chain({ yRelatedN = false } = {}) {
   const dir = tmpVault('rv-related-');
   put(dir, 'source', S, { source_type: 'article', source_url: 'https://e.com/s' });
-  put(dir, 'note', N, { sources: [S], confidence: 'medium' });
+  put(dir, 'note', N, { sources: [S], confidence: 'medium', summary: 'N load-bearing claim' });
   put(dir, 'synthesis', Y, { contributing_ids: [N], related: yRelatedN ? [N] : [] });
   put(dir, 'question', Q, { question: 'q', state: 'open', contributing: [Y] });
   put(dir, 'snippet', P, { language: 'js', tested: false, source_id: S });
@@ -28,6 +28,18 @@ async function cli(args) {
   finally { process.stdout.write = so; process.stderr.write = se; }
 }
 const ids = (r, pred = () => true) => r.nodes.filter(pred).map(n => n.id).sort();
+
+test('nodes carry the row facets: summary, state, confidence, superseded_by (spec 08)', () => {
+  const r = relatedTo(chain(), Y, { depth: 2, direction: 'both' });
+  const by = Object.fromEntries(r.nodes.map(n => [n.id, n]));
+  assert.equal(by[Q].state, 'open');
+  assert.equal(by[O].status, 'superseded');
+  assert.equal(by[O].superseded_by, Y);
+  assert.equal(by[N].confidence, 'medium');
+  assert.equal(by[N].summary, 'N load-bearing claim');
+  assert.ok('summary' in by[Y] && 'authority_tier' in by[Y] && 'subject' in by[Y], 'facet keys present even when null');
+  assert.equal(by[Y].summary, null);
+});
 
 test('related <snippet> forward contains its source via source_id', () => {
   assert.deepEqual(relatedTo(chain(), P).forward, [S]);

@@ -18,7 +18,9 @@ export function relatedTo(vaultPath, id, { depth = 1, direction = 'both', rels =
   const t = traverse(m, id, { depth, direction, rels });
   const nodes = t.nodes.map(n => {
     const r = rows.get(n.id);
-    return r ? { id: n.id, distance: n.distance, type: r.type, title: r.title, status: r.status, volatility: r.volatility, last_verified: r.last_verified } : n;
+    if (!r) return n;
+    const { id: _id, type, title, status, volatility, last_verified, summary, stage, state, confidence, outcome, authority_tier, authority_basis, subject, series, superseded_by } = r;
+    return { id: n.id, distance: n.distance, type, title, status, volatility, last_verified, summary, stage, state, confidence, outcome, authority_tier, authority_basis, subject, series, superseded_by };
   });
   return { id, depth, direction, forward, backlinks: m.backlinks[id] || [], nodes, edges: t.edges };
 }

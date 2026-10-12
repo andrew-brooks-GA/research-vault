@@ -22,6 +22,12 @@ test('boolean flags do not swallow the following --option', () => {
   assert.deepEqual(b._.slice(1), ['plan/**/*.md']);
 });
 
+test('--include-superseded is boolean and does not swallow the next token', () => {
+  const a = parseArgs(['search', '--include-superseded', '--type', 'source']);
+  assert.equal(a['include-superseded'], true);
+  assert.equal(a.type, 'source');
+});
+
 test('a value flag does not swallow a following --flag as its value', () => {
   // --title has no value here; --url is a separate flag, not title's value.
   const a = parseArgs(['capture', '--title', '--url', 'X']);

@@ -70,6 +70,7 @@ function prepareEntry(vaultPath, opts, ctx = {}) {
     if (opts.authorityTier) data.authority_tier = opts.authorityTier;
     if (opts.authorityBasis) data.authority_basis = opts.authorityBasis;
     if (opts.capturedVia) data.captured_via = opts.capturedVia;
+    if (opts.summary) data.summary = opts.summary;
   } else if (opts.type === 'note') {
     data.sources = opts.sources ? opts.sources.split(',') : [];
     data.confidence = opts.confidence || 'medium';
@@ -79,6 +80,7 @@ function prepareEntry(vaultPath, opts, ctx = {}) {
     if (opts.question) data.question = opts.question;
     if (opts.synthesisBasis) data.synthesis_basis = opts.synthesisBasis;
     if (opts.summary) data.summary = opts.summary;
+    if (opts.confidence) data.confidence = opts.confidence; // no default: an unstated synthesis confidence stays visible
   } else if (opts.type === 'snippet') {
     data.language = opts.language || 'text';
     data.tested = opts.tested === true || opts.tested === 'true';

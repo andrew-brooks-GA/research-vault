@@ -71,6 +71,22 @@ ${refs}
 
 A reference points from the declaring entry to the referenced entry. For the evidence relations (\`sources\`, \`contributing_ids\`) that is the reverse of the lifecycle flow (source → note → synthesis); \`related\` is association and \`superseded_by\` is replacement, not evidence. "Intended" columns are documentation: lint checks that every reference resolves, not its type. \`.vault-manifest.json\` lists every reference as a typed edge (\`edges[]\`) and the backlink-forming ones inverted (\`backlinks\`).
 
+### 5.2 Asking the graph
+| you want to know | run | notes |
+|---|---|---|
+| what the vault says about X | \`search --text X\` (titles, topics, summaries) or \`search --body X\` | single-fact lookup stops here; do not traverse |
+| what evidence a note/synthesis Y rests on | \`related Y --depth 2 --direction out --rel sources,contributing_ids\` | the evidence chain; read \`nodes[]\` before any body |
+| what depends on source Z (what is affected if Z is stale or wrong) | \`related Z --depth 2 --direction in --rel sources,contributing_ids\` | depth 2 reaches syntheses through their notes |
+| which notes already cite source Z (conflict candidates before writing a new note) | \`related Z --depth 1 --direction in --rel sources\` | compare their claims and \`subject.version\`, not only summaries |
+| what replaced W | the \`superseded_by\` field on W's row (\`search --json --include-superseded\`, \`related\` nodes) | never cite a superseded entry |
+| whether Y is current | Y's row (\`status\`, \`last_verified\` against its window; \`advise\` → \`stale\` lists violations) AND \`advise\` → \`staleEvidence\` for Y's evidence chain | neither alone is enough: the row is Y's own freshness, \`staleEvidence\` is only the chain under active notes/syntheses |
+| everything near Y, any relation | \`related Y\` (defaults: depth 1, both directions, all relations) | exploration only |
+
+- **Route first.** Single-fact questions use \`search\` only. Traverse for provenance, dependency, supersession and multi-hop questions.
+- **Plan, then run.** Pick start nodes from \`search\` hits deliberately, state which hops you intend and why, run them, then read bodies last. Do not wander hop by hop.
+- **Read the node row before the body.** \`related\` nodes and manifest rows carry \`summary\`, \`stage\`, \`state\` (question), \`confidence\` (note, synthesis), \`outcome\` (experiment), \`authority_tier\`/\`authority_basis\` (source), \`subject\`, \`series\`, \`status\` and \`superseded_by\`.
+- **Relation meanings.** \`sources\`: a note's evidence. \`contributing_ids\`: what a synthesis was built from. \`source_id\`: the source a snippet was taken from. \`prompt_id\`: the snippet an experiment ran. \`contributing\`: evidence toward a question's answer. \`related\`: association, not evidence. \`superseded_by\`: replacement, never evidence.
+
 ## 6. Folder ↔ stage
 | Folder | Allowed stage | Default |
 |---|---|---|
@@ -94,8 +110,10 @@ Use optional \`subject: {name, version}\` + \`series:\` for version-bearing sour
 
 Source entries may also set \`authority_tier\` (\`primary\`/\`secondary\`/\`tertiary\`) and \`authority_basis\` (e.g. \`official-docs\`, \`spec\`, \`source-code\`, \`release-notes\`, \`vendor-blog\`, \`benchmark\`). These are **defaults** — authority is ultimately *claim-relative*. A vendor docs page is primary for API behavior but weak for production tradeoffs; cite \`authority_basis\` when authority matters for a contested claim. When sources conflict, prefer higher-tier sources for the type of claim being made.
 
+**Recording a supersession.** Capture the replacement first, then \`verify --id OLD --method <method> --result outdated --superseded-by NEW --notes "<why>"\`. That appends the dated row, sets \`status: superseded\` and \`superseded_by\`; \`last_verified\` ignores \`outdated\`. The row's date is when the supersession was recorded, not when the claim became false. \`search\` hides superseded entries unless \`--include-superseded\`; \`related\` keeps them so provenance stays visible.
+
 ## 9. Authoring
-Filename \`<YYYY-MM-DD>-<slug>.md\` IS the id; never rename or delete — supersede. Controlled values from \`taxonomy.json\` (a verbatim copy of the plugin's schema); freeform tags in \`topics:\`. Retrieval: read \`.vault-manifest.json\` (one row per entry, a typed \`edges\` list, and computed backlinks) or glob/grep the folders — both cover the full set. Give every note/synthesis a one-line \`summary:\` stating its load-bearing claim — it is indexed in the manifest and scanned by \`search --text\`, so retrieval works without opening bodies (missing summaries trip the advisory \`WARN_MISSING_SUMMARY\`).
+Filename \`<YYYY-MM-DD>-<slug>.md\` IS the id; never rename or delete — supersede. Controlled values from \`taxonomy.json\` (a verbatim copy of the plugin's schema); freeform tags in \`topics:\`. Retrieval: read \`.vault-manifest.json\` (one row per entry, a typed \`edges\` list, and computed backlinks) or glob/grep the folders — both cover the full set. Give every note/synthesis a one-line \`summary:\` stating its load-bearing claim — it is indexed in the manifest and scanned by \`search --text\`, so retrieval works without opening bodies (missing summaries trip the advisory \`WARN_MISSING_SUMMARY\`). A \`source\` may carry a one-line \`summary:\` too (the claim worth knowing before fetching it); it is optional and never linted.
 
 ## 10. Loader precedence
 This file is authoritative for vault content over any home-directory agent config.
