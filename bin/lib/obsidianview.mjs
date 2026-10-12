@@ -3,14 +3,18 @@ import { FOLDER } from './indexview.mjs';
 function wikilinks(ids) { return [...new Set(ids)].map(id => `- [[${id}]]`); }
 
 export function entryNote(manifest, e) {
-  const forward = [...new Set([...(e.related || []), ...(e.contributing_ids || []), ...(e.sources || [])])];
+  const byRel = {};
+  for (const x of manifest.edges) if (x.from === e.id) (byRel[x.rel] ||= []).push(x.to);
   const back = manifest.backlinks[e.id] || [];
   const out = [
     `# ${e.title || e.id}`, '',
     `_Derived Obsidian view — do not edit. Canonical: ${FOLDER[e.type]}/${e.id}.md_`, '',
     `- type: ${e.type}`, `- status: ${e.status}`, `- verified: ${e.last_verified || 'never'}`, '',
   ];
-  if (forward.length) out.push('## Links', '', ...wikilinks(forward), '');
+  if (Object.keys(byRel).length) {
+    out.push('## Links', '');
+    for (const [rel, ids] of Object.entries(byRel)) out.push(`### ${rel}`, '', ...wikilinks(ids), '');
+  }
   if (back.length) out.push('## Backlinks', '', ...wikilinks(back), '');
   return out.join('\n').trimEnd() + '\n';
 }

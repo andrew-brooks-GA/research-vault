@@ -5,6 +5,23 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Scalar edge fields were iterated as strings (spec 01).** `source_id` (snippet) and `prompt_id` (experiment) are scalars; the manifest's backlink builder spread them character by character, so the referenced source or prompt never received the backlink and `related`, the Obsidian stub, and `advise` orphan detection all missed it. Scalars are now wrapped before iteration; empty values are skipped.
+
+### Changed
+- **Typed edges in the manifest (spec 02).** `.vault-manifest.json` gains a top-level `edges` array of `{from, rel, to}` triples, one per stored reference across all seven edge fields (`related`, `contributing_ids`, `sources`, `source_id`, `prompt_id`, `contributing`, `superseded_by`), sorted by `(from, rel, to)` and deduplicated. `backlinks` is now derived from the backlink-forming rels (policy unchanged: `superseded_by` forms no backlink). Rows are unchanged.
+- `related`: `forward` now covers all seven rels (previously only `related`/`contributing_ids`/`sources`) and is sorted; JSON output gains `edges` (every edge incident to the id, including an incoming `superseded_by`); mermaid edges are labelled `a -->|rel| b`.
+- `obsidian`: the stub's Links section groups wikilinks under one `### <rel>` heading per relation.
+- `advise`: orphan detection reads `edges` instead of re-walking the vault.
+
+### Upgrading an existing vault
+- Run `research-vault lint` once; until then `lint --check` reports `MANIFEST_STALE` (the manifest gained `edges`, and vaults with populated `source_id`/`prompt_id` get corrected `backlinks`).
+- Run `research-vault init --refresh-docs` to pick up the AGENTS.md §9 wording (`edges` list). No `meta/` file changed.
+- Re-run `research-vault obsidian` to regenerate `_obsidian/` with the per-relation Links layout.
+- Consumers of `related` output: `forward` membership grows and is now sorted rather than in field order.
+
 ## [0.5.0] - 2026-08-18
 
 ### Changed

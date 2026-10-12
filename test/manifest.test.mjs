@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildManifest, lastVerified } from '../bin/lib/manifest.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
+import { tmpVault, put } from './helpers.mjs';
 
 const VAULT = fileURLToPath(new URL('./fixtures/vault', import.meta.url));
 
@@ -81,4 +82,50 @@ confidence: medium
 `, 'utf8');
   const row = buildManifest(dir).entries.find(e => e.id === '2026-01-02-arr');
   assert.equal(typeof row.summary, 'string');
+});
+
+// Spec 01: scalar edge fields (source_id, prompt_id) must not be iterated character by character.
+test('backlinks from scalar source_id/prompt_id are exact (no char keys, no duplicates)', () => {
+  const dir = tmpVault();
+  put(dir, 'source', '2026-01-01-s', { source_type: 'article', source_url: 'https://e.com/s' });
+  put(dir, 'snippet', '2026-01-02-p', { language: 'js', tested: false, source_id: '2026-01-01-s' });
+  put(dir, 'experiment', '2026-01-03-e', { provider: 'p', model_id: 'm', date_run: '2026-01-03', task: 't', outcome: 'success', prompt_id: '2026-01-02-p' });
+  put(dir, 'note', '2026-01-04-n', { sources: ['2026-01-01-s', '2026-01-01-s'], related: ['2026-01-01-s'], confidence: 'medium' });
+  assert.deepEqual(buildManifest(dir).backlinks, {
+    '2026-01-01-s': ['2026-01-02-p', '2026-01-04-n'],
+    '2026-01-02-p': ['2026-01-03-e'],
+  });
+});
+
+test('an empty scalar source_id adds no backlink key', () => {
+  const dir = tmpVault();
+  put(dir, 'snippet', '2026-01-02-p', { language: 'js', tested: false, source_id: '' });
+  assert.deepEqual(buildManifest(dir).backlinks, {});
+});
+
+// Spec 02: typed edges over all seven edge fields.
+test('manifest edges cover all seven rels, sorted and deduplicated; backlinks exclude superseded_by', () => {
+  const dir = tmpVault();
+  put(dir, 'source', '2026-01-01-s', { source_type: 'article', source_url: 'https://e.com/s' });
+  put(dir, 'snippet', '2026-01-02-p', { language: 'js', tested: false, source_id: '2026-01-01-s' });
+  put(dir, 'experiment', '2026-01-03-e', { provider: 'p', model_id: 'm', date_run: '2026-01-03', task: 't', outcome: 'success', prompt_id: '2026-01-02-p' });
+  put(dir, 'note', '2026-01-04-n', { sources: ['2026-01-01-s', '2026-01-01-s'], related: ['2026-01-01-s'], confidence: 'medium' });
+  put(dir, 'synthesis', '2026-01-05-y', { contributing_ids: ['2026-01-04-n'] });
+  put(dir, 'question', '2026-01-06-q', { question: 'q', state: 'open', contributing: ['2026-01-05-y'] });
+  put(dir, 'synthesis', '2026-01-07-o', { contributing_ids: ['2026-01-04-n'], status: 'superseded', superseded_by: '2026-01-05-y' });
+  const m = buildManifest(dir);
+  assert.deepEqual(m.edges, [
+    { from: '2026-01-02-p', rel: 'source_id', to: '2026-01-01-s' },
+    { from: '2026-01-03-e', rel: 'prompt_id', to: '2026-01-02-p' },
+    { from: '2026-01-04-n', rel: 'related', to: '2026-01-01-s' },
+    { from: '2026-01-04-n', rel: 'sources', to: '2026-01-01-s' },
+    { from: '2026-01-05-y', rel: 'contributing_ids', to: '2026-01-04-n' },
+    { from: '2026-01-06-q', rel: 'contributing', to: '2026-01-05-y' },
+    { from: '2026-01-07-o', rel: 'contributing_ids', to: '2026-01-04-n' },
+    { from: '2026-01-07-o', rel: 'superseded_by', to: '2026-01-05-y' },
+  ]);
+  // two rels between n and s → two edges, one backlink
+  assert.deepEqual(m.backlinks['2026-01-01-s'], ['2026-01-02-p', '2026-01-04-n']);
+  // superseded_by forms no backlink
+  assert.deepEqual(m.backlinks['2026-01-05-y'], ['2026-01-06-q']);
 });

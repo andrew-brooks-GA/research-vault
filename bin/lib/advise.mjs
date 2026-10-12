@@ -33,24 +33,6 @@ function listUnverifiedSources(vaultPath) {
   return out;
 }
 
-// An entry is an orphan only if nothing links to it AND it links to nothing. "Links to
-// nothing" must weigh every declared edge field (incl. source_id / prompt_id / contributing /
-// superseded_by), not just the three backlink arrays the manifest row happens to carry.
-function idsWithOutgoingEdges(vaultPath, schema) {
-  const fields = [...schema.fields.edge_fields.backlink, ...schema.fields.edge_fields.reference_only];
-  const out = new Set();
-  for (const abs of walkEntries(vaultPath)) {
-    try {
-      const { id, data } = readEntry(abs);
-      for (const f of fields) {
-        const val = data[f];
-        if (Array.isArray(val) ? val.length : val) { out.add(id); break; }
-      }
-    } catch { /* parse errors surface via lint */ }
-  }
-  return out;
-}
-
 // Multi-cycle quote residue: a frontmatter scalar containing a literal backslash-doublequote
 // (`\"`) is almost certainly the baked-in remnant of the pre-0.3.0 emit-only escaping (see
 // CHANGELOG "Upgrading an existing vault"). Read-only surfacing so residue stays visible for
@@ -70,7 +52,8 @@ export function advise(vaultPath, repoRoot) {
   const schema = loadSchema(repoRoot);
   const aliases = schema.taxonomy.topic_aliases;
   const noteSources = new Set(m.entries.filter(e => e.type === 'note').flatMap(e => e.sources));
-  const outgoing = idsWithOutgoingEdges(vaultPath, schema);
+  // Orphan = no backlinks and no outgoing edge of any rel (incl. superseded_by).
+  const outgoing = new Set(m.edges.map(e => e.from));
   return {
     stale: listStale(vaultPath, { repoRoot }),
     orphans: m.entries.filter(e => !(m.backlinks[e.id]?.length) && !outgoing.has(e.id)).map(e => e.id),

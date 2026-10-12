@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { advise } from '../bin/lib/advise.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
+import { tmpVault, put } from './helpers.mjs';
 
 function freshVault() {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');
@@ -79,4 +80,14 @@ test('advise reports no residue for clean frontmatter', () => {
   const dir = freshVault();
   const r = advise(dir, process.cwd());
   assert.equal(r.quoteResidue.length, 0);
+});
+
+test('orphans weigh every edge rel: source_id and superseded_by links are not orphans', () => {
+  const dir = tmpVault();
+  put(dir, 'source', '2026-01-01-s', { source_type: 'article', source_url: 'https://e.com/s' });
+  put(dir, 'snippet', '2026-01-02-p', { language: 'js', tested: false, source_id: '2026-01-01-s' });
+  put(dir, 'note', '2026-01-03-old', { sources: [], confidence: 'medium', status: 'superseded', superseded_by: '2026-01-04-new' });
+  put(dir, 'note', '2026-01-04-new', { sources: [], confidence: 'medium' });
+  put(dir, 'note', '2026-01-05-alone', { sources: [], confidence: 'medium' });
+  assert.deepEqual(advise(dir, process.cwd()).orphans, ['2026-01-04-new', '2026-01-05-alone']);
 });
