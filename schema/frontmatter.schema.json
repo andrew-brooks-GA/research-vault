@@ -20,6 +20,11 @@
   "verification_subfields": ["date","by_type","by_id","method","result","notes"],
   "edge_fields": {
     "backlink": ["related","contributing_ids","sources","source_id","prompt_id","contributing"],
-    "reference_only": ["superseded_by"]
+    "reference_only": ["superseded_by"],
+    "intended_targets": {
+      "sources": "source", "contributing_ids": "note, source, experiment, question, snippet",
+      "source_id": "source", "prompt_id": "snippet", "contributing": "any",
+      "related": "any", "superseded_by": "same type"
+    }
   }
 }

@@ -260,3 +260,10 @@ test('tool-output source without subject.version is a violation; with version pa
   assert.equal(hits.length, 1);
   assert.match(hits[0].file, /probe-noversion/);
 });
+
+test('intended_targets is documentation only: a note whose sources names a question lints clean', () => {
+  const dir = freshVault();
+  handWrite(dir, 'questions', 'question', '2026-01-02-q', { question: 'q?', state: 'open' });
+  handWrite(dir, 'notes', 'note', '2026-01-03-n', { sources: ['2026-01-02-q'], confidence: 'medium' });
+  assert.deepEqual(lintVault(dir, process.cwd()).violations, []);
+});

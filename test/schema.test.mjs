@@ -77,3 +77,8 @@ test('loadSchema without opts returns the bundled taxonomy unchanged', () => {
   const s = loadSchema(process.cwd());
   assert.ok(!s.taxonomy.verification_method.includes('experiment'));
 });
+
+test('every edge field has an intended_targets entry, and vice versa (doc-only map, spec 06)', () => {
+  const ef = loadSchema(process.cwd()).fields.edge_fields;
+  assert.deepEqual(Object.keys(ef.intended_targets).sort(), [...ef.backlink, ...ef.reference_only].sort());
+});

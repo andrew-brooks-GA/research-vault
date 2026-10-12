@@ -9,11 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Scalar edge fields were iterated as strings (spec 01).** `source_id` (snippet) and `prompt_id` (experiment) are scalars; the manifest's backlink builder spread them character by character, so the referenced source or prompt never received the backlink and `related`, the Obsidian stub, and `advise` orphan detection all missed it. Scalars are now wrapped before iteration; empty values are skipped.
+- **`last_verified` definition now matches the code (spec 06).** AGENTS.md §4, `meta/freshness-policy.md` §3, and the `research-vault-usage` skill §2 said `max(verifications[].date)`; the tool counts only verifications whose `result` is `confirmed` or `changed-trivially`. The docs now say so.
 
 ### Added
-- **Bounded traversal for `related` (spec 03).** `related <id> [--depth N] [--direction out|in|both] [--rel a,b]` walks the typed graph with a breadth-first search (shared helper `bin/lib/graph.mjs`): `--depth 2 --direction out <synthesis>` returns the evidence chain, `--direction in <source>` returns what depends on it, `--rel` restricts the relations followed. JSON output gains `depth`, `direction`, and `nodes` (`id`, `distance`, plus `type`/`title`/`status`/`volatility`/`last_verified` from the manifest row, or `missing: true` for a dangling id); `edges` is now the induced subgraph over the reached nodes. `forward`/`backlinks` stay the depth-1 unfiltered compatibility arrays. Invalid `--depth`/`--direction`/`--rel` exit 2 with a usage message. Mermaid output labels every edge (`a -->|rel| b`) and renders an isolated root as a lone node.
-- **Tags on Obsidian stubs (spec 05).** Every `_obsidian/` stub now opens with a `tags:` frontmatter block: `type/<type>`, `status/<status>`, one `domain/<d>` per domain, `volatility/<v>` when set, `freshness/<fresh|stale|unassessed>` (a snapshot as of the run), and one `topic/<t>` per topic normalised to Obsidian-safe ASCII (`C++ Build Tools` → `topic/c-build-tools`, duplicates collapse, empty results skipped). The "_Derived Obsidian view_" header line states the freshness date. `obsidianView(vaultPath, outDir, { now })` accepts a `Date` for tests. Obsidian graph groups and filters (`tag:#freshness/stale`) now colour the graph by what matters; `meta/obsidian-view.md` gains a "Graph groups" section.
-- **Stale evidence in `advise` (spec 04).** New `staleEvidence` section: for every active note/synthesis, the `sources`/`contributing_ids` chain is walked transitively and each reached entry that is `superseded` or past its volatility window is reported with its shortest path (`{ id, via: [{ id, reason: "stale"|"superseded", path }] }`). The dependent's own `last_verified` is not rewritten; advisory only, no lint rule, `check --check` unchanged. `advise(vaultPath, repoRoot, { now })` and `listStale(vaultPath, { now, manifest })` share one clock and one manifest.
+- **Bounded traversal for `related` (spec 03).** `related <id> [--depth N] [--direction out|in|both] [--rel a,b]` walks the typed graph with a breadth-first search (shared helper `bin/lib/graph.mjs`): `--depth 2 --direction out <synthesis>` returns the evidence chain, `--direction in <source>` returns what depends on it, `--rel` restricts the relations followed. JSON output gains `depth`, `direction`, and `nodes` (`id`, `distance`, plus `type`/`title`/`status`/`volatility`/`last_verified` from the manifest row, or `missing: true` for a dangling id); `edges` is the induced subgraph over the reached nodes. `forward`/`backlinks` stay the depth-1 unfiltered compatibility arrays. Invalid `--depth`/`--direction`/`--rel` exit 2 with a usage message. Mermaid output labels every edge (`a -->|rel| b`) and renders an isolated root as a lone node.
+- **Stale evidence in `advise` (spec 04).** New `staleEvidence` section: for every active note/synthesis, the `sources`/`contributing_ids` chain is walked transitively and each reached entry that is `superseded` or past its volatility window is reported with its shortest path (`{ id, via: [{ id, reason: "stale"|"superseded", path }] }`). The dependent's own `last_verified` is not rewritten; advisory only, no lint rule, `check --check` unchanged. `advise(vaultPath, repoRoot, { now })` and `listStale(vaultPath, { now, manifest })` share one clock and one manifest. The text renderer gains a `stale evidence (N)` section.
+- **Tags on Obsidian stubs (spec 05).** Every `_obsidian/` stub now opens with a `tags:` frontmatter block: `type/<type>`, `status/<status>`, one `domain/<d>` per domain, `volatility/<v>` when set, `freshness/<fresh|stale|unassessed>` (a snapshot as of the run), and one `topic/<t>` per topic normalised to Obsidian-safe ASCII (`C++ Build Tools` → `topic/c-build-tools`, duplicates collapse, empty results skipped). The "_Derived Obsidian view_" header line states the freshness date. `obsidianView(vaultPath, outDir, { now })` accepts a `Date`. Obsidian graph groups and filters (`tag:#freshness/stale`) colour the graph by what matters; `meta/obsidian-view.md` gains a "Graph groups" section.
+- **Edge model in the docs (spec 06).** `schema/frontmatter.schema.json` gains a documentation-only `edge_fields.intended_targets` map (lint and capture do not read it; enforcement remains an open question). The generated AGENTS.md gains §5.1 "Reference fields (the vault graph)", a table of every reference field with the type it is intended on, its intended target, and whether it forms a backlink, plus a note that stored references point from the declaring entry to the referenced one (the reverse of the lifecycle flow for `sources`/`contributing_ids`). The README gains the stored-reference diagram after the lifecycle diagram.
 
 ### Changed
 - **Typed edges in the manifest (spec 02).** `.vault-manifest.json` gains a top-level `edges` array of `{from, rel, to}` triples, one per stored reference across all seven edge fields (`related`, `contributing_ids`, `sources`, `source_id`, `prompt_id`, `contributing`, `superseded_by`), sorted by `(from, rel, to)` and deduplicated. `backlinks` is now derived from the backlink-forming rels (policy unchanged: `superseded_by` forms no backlink). Rows are unchanged.
@@ -22,9 +24,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `advise`: orphan detection reads `edges` instead of re-walking the vault.
 
 ### Upgrading an existing vault
-- Run `research-vault lint` once; until then `lint --check` reports `MANIFEST_STALE` (the manifest gained `edges`, and vaults with populated `source_id`/`prompt_id` get corrected `backlinks`).
+
+**Specs 01 + 02 (scalar edge fix, typed edges)**
+- Run `research-vault lint` once; until then `lint --check` reports `MANIFEST_STALE` (the manifest gained `edges`, and vaults with a populated `source_id`/`prompt_id` get corrected `backlinks`).
 - Run `research-vault init --refresh-docs` to pick up the AGENTS.md §9 wording (`edges` list). No `meta/` file changed.
-- Re-run `research-vault obsidian` to regenerate `_obsidian/` with the per-relation Links layout and the new `tags:` block. No manifest or AGENTS.md change for spec 05.
+- Re-run `research-vault obsidian` to regenerate `_obsidian/` with the per-relation Links layout.
+- Consumers of `related` output: `forward` membership grows and is now sorted rather than in field order; the default traversal additionally reaches entries that name the id in `superseded_by`.
+
+**Specs 03 + 04 (traversal, stale evidence)**
+- No manifest change. `advise` text output gains a `stale evidence (N)` section; `--json` output gains the `staleEvidence` key.
+- Run `research-vault init --refresh-docs` to pick up the AGENTS.md §7 sentence on evidence freshness. `init --refresh-docs` never touches `meta/`, so hand-add the same sentence to `meta/freshness-policy.md` §3 (after item 5):
+
+  > A note or synthesis is only as fresh as its evidence: before citing one, check that its `sources`/`contributing_ids` chain is within window (`advise` lists violations as `staleEvidence`).
+
+**Spec 05 (Obsidian tags)**
+- No manifest or AGENTS.md change. Re-run `research-vault obsidian` to get the `tags:` block.
 - No command refreshes `meta/`, so hand-add this section to `meta/obsidian-view.md` (before "## Rules"):
 
   ```
@@ -46,11 +60,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reflect stored-reference direction or relation type. For that use
   `research-vault related --format mermaid`.
   ```
-- Consumers of `related` output: `forward` membership grows and is now sorted rather than in field order; the default traversal additionally reaches entries that name the id in `superseded_by`.
-- `advise` text output gains a `stale evidence (N)` section; `--json` output gains the `staleEvidence` key.
-- Run `research-vault init --refresh-docs` to pick up the AGENTS.md §7 sentence on evidence freshness. `init --refresh-docs` never touches `meta/`, so hand-add the same sentence to `meta/freshness-policy.md` §3 (after item 5):
 
-  > A note or synthesis is only as fresh as its evidence: before citing one, check that its `sources`/`contributing_ids` chain is within window (`advise` lists violations as `staleEvidence`).
+**Spec 06 (edge model docs, `last_verified` fix)**
+- No manifest change. Run `research-vault init --refresh-docs` to pick up AGENTS.md §5.1 (reference-field table) and the corrected §4 `last_verified` definition. `init --refresh-docs` rewrites AGENTS.md and taxonomy.json only; it never touches `meta/`, so hand-replace the first sentence of `meta/freshness-policy.md` §3 with:
+
+  > Before citing any entry, compute `last_verified` ← the latest `verifications[].date` whose `result` is `confirmed` or `changed-trivially`; `outdated`, `unreachable`, and `inconclusive` do not reset the clock, and an entry with no confirming verification has no `last_verified` (null). It is NOT stored.
 
 ## [0.5.0] - 2026-08-18
 

@@ -19,7 +19,7 @@ Tier definitions live in `schema/taxonomy.json` (the single source of truth; `in
 
 ## 3. Per-tier behavior
 
-Before citing any entry, compute `last_verified := max(verifications[].date)` (it is NOT stored).
+Before citing any entry, compute `last_verified` ← the latest `verifications[].date` whose `result` is `confirmed` or `changed-trivially`; `outdated`, `unreachable`, and `inconclusive` do not reset the clock, and an entry with no confirming verification has no `last_verified` (null). It is NOT stored.
 
 1. `volatile` → never quote stored values as current; cite as historical context only; web-search the live value.
 2. `fast` and `last_verified` >90 days → flag stale; prefer web; on re-check append a verification and either keep or supersede.

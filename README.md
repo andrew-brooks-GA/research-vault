@@ -129,6 +129,19 @@ flowchart LR
   end
 ```
 
+Stored references run the other way. Arrows are stored references, pointing from the declaring entry to the referenced one; for `sources` and `contributing_ids` that is the reverse of the distillation flow above.
+
+```mermaid
+flowchart LR
+  note -->|"sources"| source
+  synthesis -->|"contributing_ids"| note
+  snippet -->|"source_id"| source
+  experiment -->|"prompt_id"| snippet
+  question -->|"contributing"| any
+  any -->|"related"| any
+  any -->|"superseded_by"| any
+```
+
 To change the controlled vocabulary, you edit exactly **one file**: `schema/taxonomy.json`. The linter, `capture`, the generated `AGENTS.md`, and each vault's copied `taxonomy.json` all derive from it. Nothing to keep in sync by hand.
 
 ![Obsidian graph view of a research vault: entries as nodes, backlinks as edges](docs/img/obsidian-graph.png)

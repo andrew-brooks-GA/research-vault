@@ -55,11 +55,24 @@ Broad research areas (controlled). Specific tech (e.g. kubernetes, vcluster, ist
 
 ## 4. Derived fields (NEVER stored)
 - `id` ← filename without `.md`
-- `last_verified` ← max(verifications[].date), computed at read time
+- `last_verified` ← the latest `verifications[].date` whose `result` is `confirmed` or `changed-trivially`; `outdated`, `unreachable`, and `inconclusive` do not reset the clock, and an entry with no confirming verification has no `last_verified` (null)
 - `folder` ← parent directory
 
 ## 5. Reference resolution
 All intra-vault references are stored as **ids**, never paths. Resolve an id by glob `**/<id>.md`. Paths allowed only in `attachments:`.
+
+### 5.1 Reference fields (the vault graph)
+| field | intended on | intended target | forms backlink |
+|---|---|---|---|
+| `sources` | note | source | yes |
+| `contributing_ids` | synthesis | note, source, experiment, question, snippet | yes |
+| `source_id` | snippet | source | yes |
+| `prompt_id` | experiment | snippet | yes |
+| `contributing` | question | any | yes |
+| `related` | any | any | yes |
+| `superseded_by` | any | same type | no (reference only) |
+
+A reference points from the declaring entry to the referenced entry. For the evidence relations (`sources`, `contributing_ids`) that is the reverse of the lifecycle flow (source → note → synthesis); `related` is association and `superseded_by` is replacement, not evidence. "Intended" columns are documentation: lint checks that every reference resolves, not its type. `.vault-manifest.json` lists every reference as a typed edge (`edges[]`) and the backlink-forming ones inverted (`backlinks`).
 
 ## 6. Folder ↔ stage
 | Folder | Allowed stage | Default |
