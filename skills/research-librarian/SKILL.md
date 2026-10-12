@@ -3,9 +3,10 @@ name: research-librarian
 description: Use when you want read-only curation guidance for the research vault. Surfaces stale entries, orphans, sources lacking a distilling note, and aliasable topics without changing anything.
 ---
 # Advisory librarian
-- `research-vault advise [--json]` aggregates EXISTING signals into eight sections:
+- `research-vault advise [--json]` aggregates EXISTING signals into nine sections:
   - **stale** — entries past their volatility refresh window (see `verify`).
-  - **orphans** — entries with no backlinks and no outgoing edges (`related`/`contributing_ids`/`sources`).
+  - **stale evidence** — notes/syntheses whose dependencies (`sources`/`contributing_ids`, transitively) are past their window or superseded; the dependent's own `last_verified` is not rewritten.
+  - **orphans** — entries with no backlinks and no outgoing edges (any reference field).
   - **sources without notes** — `source` entries no `note` distills.
   - **unverified sources** — sources captured but never independently verified (`captured` provenance only).
   - **notes/synthesis without a summary** — missing the load-bearing `summary` field.

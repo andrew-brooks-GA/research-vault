@@ -7,7 +7,7 @@ Topic-agnostic: broad area goes in `domain`; specific tech (kubernetes, vcluster
 
 ## 1. Locate and retrieve
 1. Vault path resolves in order: `--vault` flag → a repo's `.research-vault.json` binding (which outranks the env var) → `$RESEARCH_VAULT_PATH` → the global config pointer → the OS default. In a bound repo, run commands from inside it and the binding wins.
-2. Retrieve via `.vault-manifest.json` (one row per entry, a typed `edges` list of every stored reference as `{from, rel, to}`, and computed backlinks); fall back to glob/grep over the folders. If Node is available, `research-vault search`/`related` accelerate retrieval. Note/synthesis manifest rows carry a `summary` field (the entry's load-bearing claim); `search --text` scans it, so relevance can be judged before opening any body.
+2. Retrieve via `.vault-manifest.json` (one row per entry, a typed `edges` list of every stored reference as `{from, rel, to}`, and computed backlinks); fall back to glob/grep over the folders. If Node is available, `research-vault search`/`related` accelerate retrieval; `related --depth 2 --direction out <synthesis>` returns the evidence chain, `--direction in <source>` returns what depends on it. Note/synthesis manifest rows carry a `summary` field (the entry's load-bearing claim); `search --text` scans it, so relevance can be judged before opening any body.
 
 ## 2. Freshness before citing
 Compute `last_verified` (max of `verifications[].date`) and compare to the entry's `volatility` window (`meta/freshness-policy.md`). `volatile` always prefers live web; `fast` prefers live only once past its 90-day window. Offline, prefix with `"unverified-offline"`. For versioned resources cite `subject.version`; sibling versions share a `series`.

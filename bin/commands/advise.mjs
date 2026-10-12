@@ -11,6 +11,9 @@ export async function run(args) {
   if (args.json) { process.stdout.write(JSON.stringify(r, null, 2) + '\n'); return 0; }
   const section = (label, ids) => process.stdout.write(`${label} (${ids.length}): ${ids.length ? ids.join(', ') : '—'}\n`);
   process.stdout.write(`stale (${r.stale.length}): ${r.stale.length ? r.stale.map(s => s.id).join(', ') : '—'}\n`);
+  process.stdout.write(`stale evidence (${r.staleEvidence.length})\n`);
+  const w = Math.max(0, ...r.staleEvidence.map(d => d.id.length));
+  for (const d of r.staleEvidence) for (const v of d.via) process.stdout.write(`  ${d.id.padEnd(w)} <- ${v.reason} ${v.id}  via ${v.path.join(' -> ')}\n`);
   section('orphans', r.orphans);
   section('sources without notes', r.sourcesWithoutNotes);
   section('unverified sources (captured, never independently checked)', r.unverifiedSources);

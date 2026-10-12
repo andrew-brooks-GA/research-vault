@@ -1,10 +1,11 @@
 ---
-description: Surface read-only curation guidance: stale entries, orphans, sources without notes, unverified sources, missing summaries, aliasable topics.
+description: Surface read-only curation guidance: stale entries, stale evidence, orphans, sources without notes, unverified sources, missing summaries, aliasable topics.
 argument-hint: [--json]
 ---
 Run `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" advise` and present the signal sections as suggestions; never mutate the vault. Signals include:
 
 - stale entries (last_verified older than the volatility window)
+- stale evidence (notes/syntheses whose `sources`/`contributing_ids` chain reaches a stale or superseded entry, with the path)
 - orphaned entries (no backlinks and not referenced)
 - sources without a distilling note
 - sources verified only at capture time (never independently checked)

@@ -20,7 +20,7 @@ export function listStale(vaultPath, opts = {}) {
   const schema = loadSchema(opts.repoRoot || REPO_ROOT);
   const now = new Date(opts.now || new Date().toISOString().slice(0, 10));
   const out = [];
-  for (const e of buildManifest(vaultPath).entries) {
+  for (const e of (opts.manifest || buildManifest(vaultPath)).entries) {
     const s = staleness(e, schema, now);
     if (s) out.push({ id: e.id, volatility: e.volatility, ...s });
   }
