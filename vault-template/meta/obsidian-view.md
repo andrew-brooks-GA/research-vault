@@ -29,6 +29,26 @@ real entry.
 > canonical entries (`<id>.md`), so opening the whole vault makes `[[id]]` links
 > ambiguous between a stub and its canonical file.
 
+## Graph groups
+
+Every stub carries frontmatter `tags:` (`type/<type>`, `status/<status>`, `domain/<d>`,
+`volatility/<v>`, `freshness/<fresh|stale|unassessed>`, `topic/<t>`), so the graph view
+can colour and filter by them.
+
+```
+Open the graph view's settings (the cog) → Groups → New group. Suggested:
+  tag:#freshness/stale        red
+  tag:#type/synthesis         blue
+  tag:#type/question          yellow
+Filter the whole graph with the same syntax, e.g. tag:#domain/security.
+Freshness tags are a snapshot from the last `research-vault obsidian` run.
+Obsidian can draw link arrows, but each stub also lists its backlinks as
+wikilinks, so every backlink-forming relation appears as a link in both
+directions (only `superseded_by` stays one-way). The arrows therefore do not
+reflect stored-reference direction or relation type. For that use
+`research-vault related --format mermaid`.
+```
+
 ## Rules
 
 - **Do not edit the stubs.** They are overwritten on the next run; edits are lost. Edit

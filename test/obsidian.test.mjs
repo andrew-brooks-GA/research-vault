@@ -8,6 +8,8 @@ import { obsidianView } from '../bin/commands/obsidian.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { tmpVault, put } from './helpers.mjs';
 
+const NOW = new Date('2026-06-01');
+
 function freshVault() {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');
   cpSync(fileURLToPath(new URL('./fixtures/vault', import.meta.url)), dir, { recursive: true });
@@ -16,10 +18,15 @@ function freshVault() {
 
 test('obsidian writes a derived stub note with a backlink wikilink', () => {
   const dir = freshVault();
-  obsidianView(dir);
+  obsidianView(dir, '_obsidian', { now: NOW });
   const p = join(dir, '_obsidian', '2026-01-01-a.md');
   assert.ok(existsSync(p), 'expected _obsidian/2026-01-01-a.md to exist');
-  assert.ok(readFileSync(p, 'utf8').includes('[[2026-01-02-b]]'), 'note should include backlink wikilink');
+  const body = readFileSync(p, 'utf8');
+  assert.ok(body.includes('[[2026-01-02-b]]'), 'note should include backlink wikilink');
+  assert.ok(body.startsWith('---\ntags:\n'), 'stub starts with a tags frontmatter block');
+  assert.ok(body.includes('  - type/source\n'));
+  assert.ok(body.includes('  - freshness/fresh\n'), 'fixture source verified in-window is fresh');
+  assert.ok(body.includes('Freshness as of 2026-06-01'));
 });
 
 test('obsidian never mutates the canonical entry (byte-identical)', () => {
@@ -70,4 +77,27 @@ test('obsidian --out refuses canonical folders / escapes; default still works', 
   assert.throws(() => obsidianView(dir, '..'), /refused/);
   assert.throws(() => obsidianView(dir, '.'), /refused/);
   assert.doesNotThrow(() => obsidianView(dir), 'default _obsidian still works');
+});
+
+const stub = (dir, id) => readFileSync(join(dir, '_obsidian', `${id}.md`), 'utf8');
+const ver = date => [{ date, by_type: 'human', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }];
+
+test('freshness tag: fast entry 200 days old is stale, volatile is stale, no volatility is unassessed', () => {
+  const dir = tmpVault('rv-tags-');
+  put(dir, 'source', '2026-01-01-old', { source_type: 'article', source_url: 'https://e.com/old', volatility: 'fast', verifications: ver('2026-01-01') });
+  put(dir, 'source', '2026-01-02-vol', { source_type: 'article', source_url: 'https://e.com/vol', volatility: 'volatile', verifications: ver('2026-07-19') });
+  put(dir, 'source', '2026-01-03-nov', { source_type: 'article', source_url: 'https://e.com/nov', volatility: undefined });
+  obsidianView(dir, '_obsidian', { now: new Date('2026-07-20') });
+  assert.ok(stub(dir, '2026-01-01-old').includes('  - freshness/stale\n'), 'string-vs-Date regression: 200 days past a 90-day window is stale');
+  assert.ok(stub(dir, '2026-01-02-vol').includes('  - freshness/stale\n'));
+  assert.ok(stub(dir, '2026-01-03-nov').includes('  - freshness/unassessed\n'));
+});
+
+test('topic tags are normalised to Obsidian-safe ASCII, deduplicated and sorted', () => {
+  const dir = tmpVault('rv-tags-');
+  put(dir, 'source', '2026-01-01-t', { source_type: 'article', source_url: 'https://e.com/t',
+    topics: ['C++ Build Tools', 'a/b', 'snake_case-ok', 'Kubernetes', 'kubernetes!', '???', 'café'] });
+  obsidianView(dir, '_obsidian', { now: NOW });
+  const topics = stub(dir, '2026-01-01-t').split('---')[1].split('\n').filter(l => l.includes('topic/')).map(l => l.trim().slice(2));
+  assert.deepEqual(topics, ['topic/a-b', 'topic/c-build-tools', 'topic/caf', 'topic/kubernetes', 'topic/snake_case-ok']);
 });

@@ -133,7 +133,7 @@ To change the controlled vocabulary, you edit exactly **one file**: `schema/taxo
 
 ![Obsidian graph view of a research vault: entries as nodes, backlinks as edges](docs/img/obsidian-graph.png)
 
-*The vault as a navigable graph in Obsidian. Regenerate the view with `research-vault obsidian`, then open the `_obsidian/` folder (see each vault's `meta/obsidian-view.md`).*
+*The vault as a navigable graph in Obsidian. Regenerate the view with `research-vault obsidian`, then open the `_obsidian/` folder (see each vault's `meta/obsidian-view.md`). Each stub carries `tags:` (`type/…`, `status/…`, `domain/…`, `volatility/…`, `freshness/…`, `topic/…`), so graph groups and filters such as `tag:#freshness/stale` colour the graph by what matters.*
 
 ## Where the vault lives
 

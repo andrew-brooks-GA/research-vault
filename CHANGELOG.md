@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Bounded traversal for `related` (spec 03).** `related <id> [--depth N] [--direction out|in|both] [--rel a,b]` walks the typed graph with a breadth-first search (shared helper `bin/lib/graph.mjs`): `--depth 2 --direction out <synthesis>` returns the evidence chain, `--direction in <source>` returns what depends on it, `--rel` restricts the relations followed. JSON output gains `depth`, `direction`, and `nodes` (`id`, `distance`, plus `type`/`title`/`status`/`volatility`/`last_verified` from the manifest row, or `missing: true` for a dangling id); `edges` is now the induced subgraph over the reached nodes. `forward`/`backlinks` stay the depth-1 unfiltered compatibility arrays. Invalid `--depth`/`--direction`/`--rel` exit 2 with a usage message. Mermaid output labels every edge (`a -->|rel| b`) and renders an isolated root as a lone node.
+- **Tags on Obsidian stubs (spec 05).** Every `_obsidian/` stub now opens with a `tags:` frontmatter block: `type/<type>`, `status/<status>`, one `domain/<d>` per domain, `volatility/<v>` when set, `freshness/<fresh|stale|unassessed>` (a snapshot as of the run), and one `topic/<t>` per topic normalised to Obsidian-safe ASCII (`C++ Build Tools` → `topic/c-build-tools`, duplicates collapse, empty results skipped). The "_Derived Obsidian view_" header line states the freshness date. `obsidianView(vaultPath, outDir, { now })` accepts a `Date` for tests. Obsidian graph groups and filters (`tag:#freshness/stale`) now colour the graph by what matters; `meta/obsidian-view.md` gains a "Graph groups" section.
 - **Stale evidence in `advise` (spec 04).** New `staleEvidence` section: for every active note/synthesis, the `sources`/`contributing_ids` chain is walked transitively and each reached entry that is `superseded` or past its volatility window is reported with its shortest path (`{ id, via: [{ id, reason: "stale"|"superseded", path }] }`). The dependent's own `last_verified` is not rewritten; advisory only, no lint rule, `check --check` unchanged. `advise(vaultPath, repoRoot, { now })` and `listStale(vaultPath, { now, manifest })` share one clock and one manifest.
 
 ### Changed
@@ -23,7 +24,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Upgrading an existing vault
 - Run `research-vault lint` once; until then `lint --check` reports `MANIFEST_STALE` (the manifest gained `edges`, and vaults with populated `source_id`/`prompt_id` get corrected `backlinks`).
 - Run `research-vault init --refresh-docs` to pick up the AGENTS.md §9 wording (`edges` list). No `meta/` file changed.
-- Re-run `research-vault obsidian` to regenerate `_obsidian/` with the per-relation Links layout.
+- Re-run `research-vault obsidian` to regenerate `_obsidian/` with the per-relation Links layout and the new `tags:` block. No manifest or AGENTS.md change for spec 05.
+- No command refreshes `meta/`, so hand-add this section to `meta/obsidian-view.md` (before "## Rules"):
+
+  ```
+  ## Graph groups
+
+  Every stub carries frontmatter `tags:` (`type/<type>`, `status/<status>`, `domain/<d>`,
+  `volatility/<v>`, `freshness/<fresh|stale|unassessed>`, `topic/<t>`), so the graph view
+  can colour and filter by them.
+
+  Open the graph view's settings (the cog) → Groups → New group. Suggested:
+    tag:#freshness/stale        red
+    tag:#type/synthesis         blue
+    tag:#type/question          yellow
+  Filter the whole graph with the same syntax, e.g. tag:#domain/security.
+  Freshness tags are a snapshot from the last `research-vault obsidian` run.
+  Obsidian can draw link arrows, but each stub also lists its backlinks as
+  wikilinks, so every backlink-forming relation appears as a link in both
+  directions (only `superseded_by` stays one-way). The arrows therefore do not
+  reflect stored-reference direction or relation type. For that use
+  `research-vault related --format mermaid`.
+  ```
 - Consumers of `related` output: `forward` membership grows and is now sorted rather than in field order; the default traversal additionally reaches entries that name the id in `superseded_by`.
 - `advise` text output gains a `stale evidence (N)` section; `--json` output gains the `staleEvidence` key.
 - Run `research-vault init --refresh-docs` to pick up the AGENTS.md §7 sentence on evidence freshness. `init --refresh-docs` never touches `meta/`, so hand-add the same sentence to `meta/freshness-policy.md` §3 (after item 5):
