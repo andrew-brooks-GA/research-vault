@@ -211,6 +211,16 @@ test('lint --check flags MANIFEST_STALE when only backlinks go stale (not just e
   );
 });
 
+test('lint --check flags MANIFEST_STALE when only edges go stale', () => {
+  const dir = freshVault();
+  lintAndReport(dir, { check: false });
+  const mfPath = join(dir, '.vault-manifest.json');
+  const m = JSON.parse(readFileSync(mfPath, 'utf8'));
+  m.edges = m.edges.filter(e => e.rel !== 'related');
+  writeFileSync(mfPath, JSON.stringify(m, null, 2), 'utf8');
+  assert.ok(lintAndReport(dir, { check: true }).violations.some(v => v.code === 'MANIFEST_STALE'));
+});
+
 test('lint --check flags MANIFEST_STALE after an out-of-band entry edit on a populated vault', () => {
   const dir = freshVault();
   // Make the on-disk manifest match reality, then confirm it is clean under --check.
