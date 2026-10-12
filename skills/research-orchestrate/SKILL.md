@@ -46,7 +46,7 @@ const VERDICT = { type: 'object', required: ['claim', 'verified'], properties: {
 const PLAN = { type: 'object', required: ['planJson'], properties: { planJson: { type: 'string' } } };
 
 phase('Recon')
-const recon = await agent(`Search the research vault for coverage of: ${args.question}. Run ${CLI}search with relevant --topic/--text facets. Return gaps needing web research.`, { phase: 'Recon' })
+const recon = await agent(`Search the research vault for coverage of: ${args.question}. Run ${CLI}search with relevant --topic/--text facets, then for each source found run ${CLI}related <id> --depth 2 --direction in --rel sources,contributing_ids so existing notes and syntheses count as coverage. Return gaps needing web research.`, { phase: 'Recon' })
 
 phase('Sweep')
 const lanes = ['official documentation', 'release notes and changelogs', 'issue trackers and bug reports', 'community posts and practitioner writeups']
@@ -55,7 +55,7 @@ const found = (await parallel(lanes.map(l => () =>
 ))).filter(Boolean).flatMap(r => r.urls)
 
 const extractions = (await pipeline(found,
-  (u, _, i) => agent(`Fetch ${u.url} (relevant to: ${u.why}). Then capture it eagerly: ${CLI}capture --type source --title "<concise title>" --url "${u.url}" --domain <domain> --topics <topics> --authority-tier <tier> --authority-basis <basis> [--subject-name/--subject-version if version-bearing]. If it reports a duplicate, reuse the existing id. Return the source id and the claims relevant to: ${args.question}.`, { phase: 'Fetch+Seed', schema: EXTRACT, label: `fetch:${i}` })
+  (u, _, i) => agent(`Fetch ${u.url} (relevant to: ${u.why}). Then capture it eagerly: ${CLI}capture --type source --title "<concise title>" --url "${u.url}" --domain <domain> --topics <topics> --authority-tier <tier> --authority-basis <basis> --summary "<the one load-bearing claim>" [--subject-name/--subject-version if version-bearing]. If it reports a duplicate, reuse the existing id. Return the source id and the claims relevant to: ${args.question}.`, { phase: 'Fetch+Seed', schema: EXTRACT, label: `fetch:${i}` })
 )).filter(Boolean)
 
 phase('Verify')

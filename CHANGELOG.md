@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tags on Obsidian stubs (spec 05).** Every `_obsidian/` stub now opens with a `tags:` frontmatter block: `type/<type>`, `status/<status>`, one `domain/<d>` per domain, `volatility/<v>` when set, `freshness/<fresh|stale|unassessed>` (a snapshot as of the run), and one `topic/<t>` per topic normalised to Obsidian-safe ASCII (`C++ Build Tools` → `topic/c-build-tools`, duplicates collapse, empty results skipped). The "_Derived Obsidian view_" header line states the freshness date. `obsidianView(vaultPath, outDir, { now })` accepts a `Date`. Obsidian graph groups and filters (`tag:#freshness/stale`) colour the graph by what matters; `meta/obsidian-view.md` gains a "Graph groups" section.
 - **Edge model in the docs (spec 06).** `schema/frontmatter.schema.json` gains a documentation-only `edge_fields.intended_targets` map (lint and capture do not read it; enforcement remains an open question). The generated AGENTS.md gains §5.1 "Reference fields (the vault graph)", a table of every reference field with the type it is intended on, its intended target, and whether it forms a backlink, plus a note that stored references point from the declaring entry to the referenced one (the reverse of the lifecycle flow for `sources`/`contributing_ids`). The README gains the stored-reference diagram after the lifecycle diagram.
 
+### Added (round 2 graph specs)
+- **Graph playbook in AGENTS.md (spec 07).** Generated §5.2 "Asking the graph": a question-to-command table (evidence chain out, dependents in, conflict candidates, replacement, currency), the route-first and plan-then-run rules, what each node row carries, and one-line relation meanings. §8 gains the supersession recipe (`verify --result outdated --superseded-by`). The `research-vault-usage`, `research-orchestrate` and `research-capture` skills point at it; capture adds a pairwise conflict-review step before writing a note.
+- **Node metadata (spec 08).** `schema/frontmatter.schema.json`: optional `summary` on `source`, optional `confidence` on `synthesis`; `capture` persists both (no default for synthesis confidence). Manifest rows gain `stage`, `state`, `confidence`, `outcome`, `authority_tier`, `authority_basis`, `superseded_by` (`null` when absent). `related` `nodes[]` gain those plus `summary`, `subject`, `series`. `search --json` inherits the row fields.
+- **Superseded entries hidden from `search` (spec 09).** Rows with `status: superseded` are dropped unless `--include-superseded` (a boolean flag); with the flag the text line ends ` (superseded by <id>)`. `related`, `advise`, `check` unchanged.
+- **Paired evaluation protocol (spec 10).** `docs/EVALUATION.md`: frozen inputs, 20-question pilot, two conditions, metrics, offline ranking and link-candidate checks. Results gate any further graph feature.
+
 ### Changed
 - **Rewrites keep unchanged frontmatter byte-identical.** `verify` re-emits the original lines of every key they did not change, in the original order; a new key (for example `updated`) is placed at its canonical position. Previously one `verify` reserialized every key: block lists became flow lists and keys were put into canonical order. `lint --fix` still normalizes everything, deliberately.
 - **Writes outside a project binding say where they went.** When `capture`, `verify` or `lint --fix` resolves the vault through the user config pointer or the OS default, it prints a one-line notice with the vault path to stderr. Run from the wrong directory, these commands no longer write silently into another vault.
@@ -33,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `advise`: orphan detection reads `edges` instead of re-walking the vault.
 
 ### Upgrading an existing vault
+
+**Round 2 graph specs**
+- Run `init --refresh-docs` (AGENTS.md gains §5.2 and the supersession recipe).
+- Run `lint` once; until then `lint --check` reports `MANIFEST_STALE` because rows gained fields.
 
 **Frontmatter YAML fidelity**
 - Run `research-vault lint` and look for `WARN_QUOTE_ARTIFACT`; `lint --fix` repairs those values. Review the diff: `lint --fix` also normalizes formatting across the vault, as before.

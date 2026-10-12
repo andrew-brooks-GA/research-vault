@@ -37,6 +37,10 @@ export function buildManifest(vaultPath) {
       volatility: data.volatility || null, last_verified: last,
       status: data.status || 'active',
       subject: data.subject || null, series: data.series || null,
+      // Per-type facets an agent needs to judge a node without opening it (spec 08); null when absent.
+      stage: data.stage || null, state: data.state || null, confidence: data.confidence || null,
+      outcome: data.outcome || null, authority_tier: data.authority_tier || null,
+      authority_basis: data.authority_basis || null, superseded_by: data.superseded_by || null,
       related: data.related || [], contributing_ids: data.contributing_ids || [],
       sources: data.sources || [],
     });

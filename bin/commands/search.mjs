@@ -12,6 +12,8 @@ export function searchVault(vaultPath, q, repoRoot = REPO_ROOT) {
   const aliases = schema.taxonomy.topic_aliases;
   const expand = t => aliases[t] || t;
   let rows = buildManifest(vaultPath).entries;
+  // Validity gate: superseded entries are retired from search; traversal (`related`) still sees them.
+  if (!q.includeSuperseded) rows = rows.filter(e => e.status !== 'superseded');
   if (q.type) rows = rows.filter(e => e.type === q.type);
   if (q.domain) rows = rows.filter(e => e.domain.includes(q.domain));
   if (q.series) rows = rows.filter(e => e.series === q.series);
@@ -28,8 +30,8 @@ export function searchVault(vaultPath, q, repoRoot = REPO_ROOT) {
 
 export async function run(args) {
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
-  const rows = searchVault(vaultPath, { type: args.type, domain: args.domain, topic: args.topic, series: args.series, text: args.text, body: args.body });
+  const rows = searchVault(vaultPath, { type: args.type, domain: args.domain, topic: args.topic, series: args.series, text: args.text, body: args.body, includeSuperseded: !!args['include-superseded'] });
   if (args.json) process.stdout.write(JSON.stringify(rows, null, 2) + '\n');
-  else rows.forEach(e => process.stdout.write(`${e.id}  [${e.type}]  ${e.title}\n`));
+  else rows.forEach(e => process.stdout.write(`${e.id}  [${e.type}]  ${e.title}${e.status === 'superseded' ? ` (superseded by ${e.superseded_by})` : ''}\n`));
   return 0;
 }

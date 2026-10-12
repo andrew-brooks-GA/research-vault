@@ -221,6 +221,18 @@ test('lint --check flags MANIFEST_STALE when only edges go stale', () => {
   assert.ok(lintAndReport(dir, { check: true }).violations.some(v => v.code === 'MANIFEST_STALE'));
 });
 
+test('lint --check flags MANIFEST_STALE when stored rows lack the spec-08 facet fields (pre-upgrade manifest)', () => {
+  const dir = freshVault();
+  lintAndReport(dir, { check: false });
+  const mfPath = join(dir, '.vault-manifest.json');
+  const m = JSON.parse(readFileSync(mfPath, 'utf8'));
+  for (const row of m.entries) for (const k of ['stage', 'state', 'confidence', 'outcome', 'authority_tier', 'authority_basis', 'superseded_by']) delete row[k];
+  writeFileSync(mfPath, JSON.stringify(m, null, 2), 'utf8');
+  assert.ok(lintAndReport(dir, { check: true }).violations.some(v => v.code === 'MANIFEST_STALE'), 'old row shape must read as stale');
+  lintAndReport(dir, { check: false });
+  assert.ok(!lintAndReport(dir, { check: true }).violations.some(v => v.code === 'MANIFEST_STALE'), 'rebuild clears it');
+});
+
 test('lint --check flags MANIFEST_STALE after an out-of-band entry edit on a populated vault', () => {
   const dir = freshVault();
   // Make the on-disk manifest match reality, then confirm it is clean under --check.
