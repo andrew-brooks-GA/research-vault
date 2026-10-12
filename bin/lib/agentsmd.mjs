@@ -14,7 +14,7 @@ export function generateAgentsMd(schema) {
     .map(([f, target]) => `| \`${f}\` | ${intendedOn(f)} | ${target} | ${ef.backlink.includes(f) ? 'yes' : 'no (reference only)'} |`).join('\n');
   return `# Research Vault — Agent Instructions
 
-Canonical instructions for any agent (Claude, Codex, Gemini, …) reading or writing this vault. Generated from \`schema/\`; do not hand-edit.
+Canonical instructions for any agent (Claude, Codex, Gemini, …) reading or writing this vault. Generated from the research-vault plugin's \`schema/\`; do not hand-edit.
 
 ## 1. Purpose
 A type-organized cache of research artifacts. Markdown + YAML frontmatter; folders partition by artifact type. Treat the vault as a cache, not a source of truth — apply freshness rules in \`meta/freshness-policy.md\` before citing.

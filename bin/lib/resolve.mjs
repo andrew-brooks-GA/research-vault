@@ -50,3 +50,12 @@ export function resolveVault(opts = {}) {
   if (cfg) return { path: cfg, source: 'config' };
   return { path: defaultVaultPath(ctx), source: 'default' };
 }
+
+// A write that resolved through the user config or the OS default did not come from the
+// project the caller is standing in. Say where it went, so a capture run from the wrong
+// directory does not land silently in another vault.
+export function reportFallback({ path: vaultPath, source }, stream = process.stderr) {
+  if (source !== 'config' && source !== 'default') return;
+  const from = source === 'config' ? 'the user config' : 'the OS default';
+  stream.write(`research-vault: no .research-vault.json found from the working directory; writing to ${vaultPath} (from ${from})\n`);
+}
