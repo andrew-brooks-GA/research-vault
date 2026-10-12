@@ -27,8 +27,8 @@ if (!commands[cmd]) { process.stderr.write(`unknown command: ${cmd}\n${USAGE}\n`
 try {
   const mod = await commands[cmd]();
   const code = await mod.run(args);
-  process.exit(code ?? 0);
+  process.exitCode = code ?? 0; // not process.exit(): that truncates piped stdout at 64 KB
 } catch (err) {
   process.stderr.write(`error: ${err.message}\n`);
-  process.exit(2);
+  process.exitCode = 2;
 }
