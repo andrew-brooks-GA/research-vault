@@ -7,6 +7,11 @@ export function generateAgentsMd(schema) {
     .map(([f, e]) => `| \`${f}/\` | ${e.allowed.join(', ')} | ${e.default} |`).join('\n');
   const types = Object.entries(t.artifact_purpose)
     .map(([f, p]) => `- \`${f}/\` — ${p}`).join('\n');
+  const ef = schema.fields.edge_fields;
+  const intendedOn = f => schema.fields.common.includes(f) ? 'any'
+    : Object.entries(schema.fields.by_type).filter(([, fs]) => fs.includes(f)).map(([ty]) => ty).join(', ');
+  const refs = Object.entries(ef.intended_targets)
+    .map(([f, target]) => `| \`${f}\` | ${intendedOn(f)} | ${target} | ${ef.backlink.includes(f) ? 'yes' : 'no (reference only)'} |`).join('\n');
   return `# Research Vault — Agent Instructions
 
 Canonical instructions for any agent (Claude, Codex, Gemini, …) reading or writing this vault. Generated from \`schema/\`; do not hand-edit.
@@ -53,11 +58,18 @@ ${t.domain.map(d => `- ${d}`).join('\n')}
 
 ## 4. Derived fields (NEVER stored)
 - \`id\` ← filename without \`.md\`
-- \`last_verified\` ← max(verifications[].date), computed at read time
+- \`last_verified\` ← the latest \`verifications[].date\` whose \`result\` is \`confirmed\` or \`changed-trivially\`; \`outdated\`, \`unreachable\`, and \`inconclusive\` do not reset the clock, and an entry with no confirming verification has no \`last_verified\` (null)
 - \`folder\` ← parent directory
 
 ## 5. Reference resolution
 All intra-vault references are stored as **ids**, never paths. Resolve an id by glob \`**/<id>.md\`. Paths allowed only in \`attachments:\`.
+
+### 5.1 Reference fields (the vault graph)
+| field | intended on | intended target | forms backlink |
+|---|---|---|---|
+${refs}
+
+A reference points from the declaring entry to the referenced entry. For the evidence relations (\`sources\`, \`contributing_ids\`) that is the reverse of the lifecycle flow (source → note → synthesis); \`related\` is association and \`superseded_by\` is replacement, not evidence. "Intended" columns are documentation: lint checks that every reference resolves, not its type. \`.vault-manifest.json\` lists every reference as a typed edge (\`edges[]\`) and the backlink-forming ones inverted (\`backlinks\`).
 
 ## 6. Folder ↔ stage
 | Folder | Allowed stage | Default |
