@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`research-teach` skill and `/research-teach` command.** A multi-session teaching workspace (mission, lessons, reference docs, learning records; pedagogy adapted from Matt Pocock's MIT `teach` skill) wired to the vault: resources are `source` entries, gaps are `question` entries, reference facts are `note` entries, and every behaviour claim is probed with the run kept under `evidence/`.
+- **Pre-web hook.** Before every `WebFetch` or `WebSearch`, `hooks/pre-web.mjs` searches the vault for the URL and the query terms and hands up to five matching entries (stale ones flagged) to the model as context, or says nothing matched and to capture before citing. It never blocks the call.
+- **`claims-reviewer` agent.** A fresh, read-only reviewer that enumerates a draft's claims against the recorded evidence only and returns `PASS` or `FAIL-as-sent`. The vault is the only evidence: `source`/`note` entries for what a document says, `snippet` entries for code, `experiment` entries for the log of a local run. A cited URL or file counts only through its entry; the reviewer never fetches or runs anything.
+
 ### Fixed
 - **Single-quoted scalars are parsed.** `title: 'Tool: X'` used to be read with its quotes as literal text, and the next rewrite (`verify`, `lint --fix`) stored it as `title: "'Tool: X'"`. Quotes are now stripped and `''` decodes to `'`. Frontmatter written by other YAML tools was the common trigger: yq 4.53.2, for example, writes a string containing `: ` single-quoted.
 - **Flow sequences respect quotes.** `topics: ["a, b", c]` is two items, not three fragments.

@@ -29,8 +29,9 @@ Skills load when a request matches their job; none of them fires for every techn
 | `research-orchestrate` (`/research`) | A fresh research task end to end: vault first, then the web, every finding filed as entries |
 | `research-authoring` | Fires when a citation is about to land in prose you're writing in a vault-bound repo |
 | `research-review` | Auditing an existing document or corpus against the vault |
+| `research-teach` (`/research-teach`) | Teaching a topic over sessions: resources and facts in the vault, probed evidence, a fresh `claims-reviewer` agent gates every lesson |
 
-Slash commands, all under `/research-vault:`: `research-init`, `research-capture`, `research-search`, `research-related`, `research-verify`, `research-lint`, `research-advise`, `research-compile`, `research-obsidian`, `research`.
+Slash commands, all under `/research-vault:`: `research-init`, `research-capture`, `research-search`, `research-related`, `research-verify`, `research-lint`, `research-advise`, `research-compile`, `research-obsidian`, `research`, `research-teach`.
 
 ## Binding a repo to a vault
 
@@ -158,7 +159,7 @@ A vault is a folder of Markdown, so a shared team vault is one kept in a git rep
 ## Design notes
 
 - **Cache, not source of truth.** Staleness is the dominant failure mode of agent research; the vault makes it visible and actionable.
-- **Lint is the guarantee, not the hook.** Correctness lives in `lint`, which runs anywhere on any writer. The plugin's two Claude Code hooks (a post-edit lint-fix and a session-start summary) are conveniences.
+- **Lint is the guarantee, not the hook.** Correctness lives in `lint`, which runs anywhere on any writer. The plugin's three Claude Code hooks (a post-edit lint-fix, a session-start summary, and a pre-web-fetch vault lookup that hands matching entries to the model before it searches) are conveniences.
 - **Everything agent-facing is generated.** `AGENTS.md` and each vault's `taxonomy.json` come from the schema at `init`; CI checks the generator against `schema/AGENTS.golden.md`.
 - **Orchestration is a reference implementation with a contract.** `research-orchestrate` drives vault-first research with eager source capture and a batch for the distilled layers; other orchestrators compose the same way. See [ORCHESTRATOR-INTEGRATION.md](ORCHESTRATOR-INTEGRATION.md).
 - **Graph work** is specified in [specs/](specs/README.md) and measured by [EVALUATION.md](EVALUATION.md).
