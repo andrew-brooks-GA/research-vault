@@ -4,7 +4,7 @@ import { writeFileSync, appendFileSync, existsSync, readFileSync, mkdirSync } fr
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { tmpVault, put } from './helpers.mjs';
+import { tmpVault, put, fixtureVault } from './helpers.mjs';
 import {
   LEDGER_FILENAME, contentHash, ledgerKey, recordVerdict, gateStatus,
   evidenceFor, renderEvidence, findWorkspaces, gatedFiles,
@@ -75,21 +75,6 @@ test('ledgerKey is repo-relative with forward slashes', () => {
   assert.equal(ledgerKey(root, './docs/drafts/a.md'), 'docs/drafts/a.md');
   assert.equal(ledgerKey(root, 'docs\\drafts\\a.md'), 'docs/drafts/a.md');
 });
-
-const ver = (date) => [{ date, by_type: 'human', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }];
-const LONG = 'The fixture function reads an integer and prints a value. '.repeat(5);
-
-// Fixture vault: the ids the gate fixtures cite, plus one stale note.
-function fixtureVault() {
-  const dir = tmpVault('rv-gate-vault-');
-  put(dir, 'source', '2026-01-01-fx-doc', { source_type: 'article', source_url: 'https://example.org/fx' },
-    `# 2026-01-01-fx-doc\n\n${LONG}\n`);
-  put(dir, 'source', '2026-01-01-fx-doc-nobody', { source_type: 'article', source_url: 'https://example.org/nobody' });
-  put(dir, 'experiment', '2026-01-01-fx-experiment', {}, `# 2026-01-01-fx-experiment\n\nRan it with 7; it printed 42.\n`);
-  put(dir, 'note', '2026-01-01-old', { sources: [], confidence: 'medium', volatility: 'fast', verifications: ver('2020-01-01') },
-    `# 2026-01-01-old\n\n${LONG}\n`);
-  return dir;
-}
 
 test('evidenceFor resolves cited ids and URLs, flags stale and no-body, lists uncovered', () => {
   const vault = fixtureVault();

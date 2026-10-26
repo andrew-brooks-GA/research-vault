@@ -16,7 +16,7 @@ The vault is the only evidence. Three kinds of entry support three kinds of clai
 
 An entry flagged `no-body` supports only the claim that the document exists and concerns the subject. A behaviour claim or a "the docs say X" claim resting on it is `exceeds-evidence`; the fix is re-capturing the source with `--store-body --ack-data-egress`.
 
-You may `grep -rF` the vault for the draft's subject name and for each URL the draft cites, to find entries the list omits. Read an entry found that way only to check it against the draft; it never supports a claim. If it contradicts the draft, report the claim `contradicted (not on evidence list)` and name the entry id.
+You may `grep -rF` the entry folders (`<vault>/{sources,notes,snippets,experiments,synthesis,questions}`, never the vault root, `_index/` or manifests) for the draft's subject name and for each URL the draft cites, to find entries the list omits. Read an entry found that way only to check it against the draft; it never supports a claim. If it contradicts the draft, report the claim `contradicted (not on evidence list)` and name the entry id.
 
 A URL in the draft is a claim that the source says something; its evidence is the `source` entry recording that URL (`grep -rF "<url>" <vault>/sources`). No entry, no evidence. A file path in the draft is a claim about that file; its evidence is a `snippet` quoting it, or an experiment Result that quotes it verbatim.
 
