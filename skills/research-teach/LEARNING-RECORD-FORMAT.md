@@ -68,8 +68,8 @@ A record is superseded, never rewritten or deleted. When a later record contradi
 node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" teach record supersede <old id> --by <new id> [--reason "<text>"]
 ```
 
-It sets `status: superseded` and `superseded_by` on the old record and appends `Superseded by <new id>: <reason>` to its body. That is the only edit a record ever receives. The history of how understanding evolved is itself useful signal.
+It sets `status: superseded` and `superseded_by` on the old record and appends `Superseded by <new id>: <reason>` to its body. After `teach lint --fix`'s one-off migration, that is the only edit a record receives. The history of how understanding evolved is itself useful signal.
 
 ## Upgrading older records
 
-Records written before this format have no frontmatter and may carry a `Status: superseded by LR-NNNN` line. Run `teach lint --fix` once in the workspace: it adds the frontmatter (`kind: understanding`, `date` from the file's modification time) and turns the old status line into `status: superseded` and `superseded_by`. A second run changes nothing.
+Records written before this format have no frontmatter and may carry a `Status: superseded by LR-NNNN` line. Run `teach lint --fix` once in the workspace: it adds the frontmatter (`kind: understanding`, `date` from the file's modification time) and, when the record numbered `LR-NNNN` exists, sets `status: superseded` and `superseded_by`; otherwise the record stays `active` and the old line stays in the body. A second run changes nothing.

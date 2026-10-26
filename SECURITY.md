@@ -8,7 +8,7 @@ Email **andrew.brooks.aob@gmail.com** with details and a reproduction. Please do
 
 ## Threat model in one line
 
-Everything is local and read-only by default. The only network feature that fetches from outside the machine (`refresh`) and the only egress feature (`export`) are off or conservative until you opt in per run, and neither ever mutates your entries. The second network feature, `teach serve`, listens on `127.0.0.1` only and writes only inside the teaching workspace it serves.
+Everything is local. The features that reach outside the vault are off or conservative until you opt in per run. `refresh` and `export` never mutate entries. `teach serve` writes only in the teaching workspace it serves.
 
 ## Local writers
 
@@ -21,7 +21,7 @@ A second local process, `teach serve`, writes learner data, not entries: one att
 `teach serve [workspace]` serves one teaching workspace to a browser so a lesson's quiz can record an attempt. It runs until it is stopped.
 
 - **Loopback only.** It listens on `127.0.0.1` on a port the operating system assigns (`listen(0, '127.0.0.1')`) and prints `serving <workspace> at http://127.0.0.1:<port>/`. It never listens on another interface.
-- **Exact `Host`, before any work.** Every request, of any method, must carry `Host: 127.0.0.1:<port>` with the server's own port. Anything else, a missing `Host` included, is 403 before the path is read. A DNS-rebound name arrives as a different `Host`, so this closes DNS rebinding for reads as well as writes.
+- **Exact `Host`, before any work.** Every request, of any method, must carry `Host: 127.0.0.1:<port>` with the server's own port. Anything else, a missing `Host` included, is 403 before the path is read. A request whose `Host` is any other value is refused, for GET and POST alike.
 - **Static reads from an allowlist.** `GET` and `HEAD` serve files only from `lessons/`, `reference/` and `assets/`, each path checked with `isInsideVault` against that directory, plus the exact file `GLOSSARY.md`. `GET /` answers with a plain-text list of the lesson URLs (`/lessons/<id>.html`, one per line) and reads nothing else. Everything else is 404, including `NOTES.md`, `MISSION.md`, learning records, attempts, `evidence/`, `.teach-serve.json`, a directory, a path with a NUL byte and any path segment that starts with `.` (so `..` escapes, encoded or not). A path that does not URL-decode is 400. A method other than `GET`, `HEAD` or `POST` is 405. Every response carries `X-Content-Type-Options: nosniff`.
 - **One write, `POST /attempt`.** A `POST` to any other path is 404. Before the body is read, the request must carry `Origin` equal to the server's own `http://127.0.0.1:<port>`, `Content-Type: application/json` (optionally with `; charset=utf-8`), and, when `Content-Length` is present, a length of at most `ATTEMPT_BODY_MAX` (4096) bytes. Anything else is 403. A body sent without `Content-Length` is counted as it arrives and is refused with 403 once it passes 4096 bytes.
 - **Validated body.** The body must be the JSON object `{ "lesson": "<lesson id>", "answers": [integers] }`. The lesson id must match `^\d{4}-[a-z][a-z0-9-]*$` and name an existing `lessons/<id>.html`, and `answers` must hold one integer per quiz item, each an index of that item's options. Anything else is 400 and no attempt file is written. A lesson whose quiz data does not parse, or a failed write, is 500.

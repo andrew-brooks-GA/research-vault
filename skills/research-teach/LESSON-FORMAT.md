@@ -6,7 +6,7 @@ A lesson is one HTML page the learner opens in a browser. It is built from block
 
 ## Files and ids
 
-- Lessons: `lessons/NNNN-slug.html`, next number after the highest present. The id is the file name without `.html` (`0001-what-fx-returns`). The slug starts with a letter, so a lesson id is never taken for a vault citation id.
+- Lessons: `lessons/NNNN-slug.html`, next number after the highest present. The id is the file name without `.html` (`0001-what-fx-returns`). The slug starts with a letter, so the id does not begin with the `YYYY-MM-DD-` prefix of a vault id; do not embed a date in the slug.
 - Review lessons: `lessons/NNNN-review-slug.html`, numbered in the same sequence.
 - Reference docs: `reference/<slug>.html`.
 - The page loads the shared components with `<link rel="stylesheet" href="../assets/lesson.css">` in the head and `<script type="module" src="../assets/quiz.js"></script>` before `</body>`, and the body carries the lesson id: `<body data-lesson="<id>">`, where `data-lesson` equals the file name without `.html`. The widget takes the id from the served path `/lessons/<id>.html` first and falls back to `data-lesson`.
@@ -34,7 +34,7 @@ In `step`, state the command exactly as the experiment's Result quotes it, so th
 
 A claim is cited with `<a data-cite="<vault id>">`, placed at the end of the paragraph that makes the claim. Every `<p>` in `fact` needs at least one. The id must resolve to a vault entry; a stale entry still resolves, because freshness is the claims gate's job.
 
-In the `sources` block, an anchor whose vault entry is a `source` with a `source_url` also carries `href="<that URL>"`, so the learner can open it from the lesson. The recommended read is such a source, and its anchor always carries the `href`. Anchors in `fact` and `example` keep `data-cite` only.
+In the `sources` block, an anchor whose vault entry is a `source` with a `source_url` also carries `href="<that URL>"`, so the learner can open it from the lesson. The recommended read is such a source: put `href="<source_url>"` on its anchor so the learner can open it. The lint does not check URL hrefs. Anchors in `fact` and `example` keep `data-cite` only.
 
 ## Quiz data
 
@@ -54,7 +54,7 @@ The `quiz` block holds one `<script type="application/json" data-quiz>` element:
 - Answer length spread, the longest option divided by the shortest, is at most 1.6. Pad the short options or cut the long one.
 - No formatting tells: format every option alike.
 
-Lessons are opened through `teach serve`: Chrome blocks `<script type="module">` on `file://`, so a lesson opened from disk there renders no quiz. Served, the widget posts the answers after the last item and shows `recorded <id>: <score>/<total>`. On any other origin (a browser that allows module scripts on `file://`, or another static server) it shows the score and "Tell me your score in the terminal."; record it with `teach attempt add --lesson <id> --answers <comma list>`.
+Lessons are opened through `teach serve`: Chrome blocks `<script type="module">` on `file://`, so a lesson opened from disk there renders no quiz. Served, the widget posts the answers after the last item and shows `recorded <id>: <score>/<total>`. It posts only when the page origin matches `http://127.0.0.1:<port>`; otherwise, or when the POST fails or returns an error, it shows the score and "Tell me your score in the terminal."; record it with `teach attempt add --lesson <id> --answers <comma list>`.
 
 ## Review lessons
 
@@ -62,7 +62,7 @@ A review lesson is retrieval practice for records already written. Blocks: `miss
 
 ## Reference docs
 
-A reference doc renders one vault note. The note body goes in `<div data-block="note" data-cite="<vault note id>">`, then a `sources` block. Store no freshness date in the page; the note's `last_verified` is derived, and a stale note surfaces through the session brief and `check`.
+A reference doc renders one vault note. The note body goes in `<div data-block="note" data-cite="<vault note id>">`, then a `sources` block. Store no freshness date in the page; the note's `last_verified` is in the vault schema's `derived_forbidden` list (`schema/frontmatter.schema.json`), so the doc stores no freshness date, and a stale note surfaces through the session brief and `check`.
 
 ## Plan before probe
 
@@ -74,7 +74,7 @@ Before any probe or draft, write `evidence/NNNN/PLAN.md` for lesson NNNN, in fiv
 4. The probe: what to run and what output would support each claim.
 5. The step: the real-world action and its observable result.
 
-Write the probe against the claim lines. The `fact` block states only claims the plan lists. When a probe contradicts a claim line, or the claims gate narrows one, never edit the line: append a `## Revisions` section naming the line, the result or finding, and the replacement claim. An `evidence/NNNN/` folder with no `PLAN.md` is a lint finding.
+Write the probe against the claim lines. The `fact` block states only claims the plan lists. When a probe contradicts a claim line, or the claims gate narrows one, never edit the line: append a `## Revisions` section naming the line, the result or finding, and the replacement claim. For a lesson NNNN that has a `fact` block (not a review lesson), an `evidence/NNNN/` folder with no `PLAN.md` is a lint finding.
 
 ## Example
 

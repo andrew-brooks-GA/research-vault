@@ -48,7 +48,7 @@ Suggested PRs: 01+02, then 03+04, then 05 and 06 independently after 02 has merg
 
 ## Shared rules
 
-- No new dependencies, no new runtime services (one exception: `teach serve`, a loopback server a learner starts and stops, because a lesson opened in a browser cannot write the attempt to the workspace any other way), no vault-schema fields that lint enforces (only one doc-only map in 06; the teach schema in `schema/teach.schema.json` governs the teaching workspace, not the vault).
+- No new dependencies, no new runtime services (one exception: `teach serve`, a loopback server a learner starts and stops, because, as the spec argues, a lesson opened in a browser cannot write the attempt to the workspace any other way), no vault-schema fields that lint enforces (only one doc-only map in 06; the teach schema in `schema/teach.schema.json` governs the teaching workspace, not the vault).
 - Edges are never inferred. If the frontmatter does not declare it, it is not an edge.
 - `backlinks` keeps its current policy: formed only by `edge_fields.backlink`; `superseded_by` stays reference-only.
 - Every change that alters `.vault-manifest.json` content makes `lint --check` report `MANIFEST_STALE` on existing vaults until `lint` runs once. Each such spec says so in CHANGELOG under "Upgrading an existing vault".
