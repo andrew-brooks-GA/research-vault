@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What fx returns</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body data-lesson="0001-good">
+<h1>What fx returns</h1>
+
+<section data-block="prereq">
+<p>Read <a href="../GLOSSARY.md#term">Term</a> first. The reference page is <a href="../reference/good.html">the fixture note</a>.</p>
+</section>
+
+<section data-block="mission">
+<p>This lesson gets you to predict what fx prints for a given input.</p>
+</section>
+
+<section data-block="fact">
+<p>The body of fx is <code>return n * 6;</code>. <a data-cite="2026-01-01-fx-snippet">2026-01-01-fx-snippet</a></p>
+<p>Called with 7, fx returns 42. <a data-cite="2026-01-01-fx-experiment">2026-01-01-fx-experiment</a></p>
+</section>
+
+<section data-block="example">
+<p>The source of fx, from <a data-cite="2026-01-01-fx-snippet">2026-01-01-fx-snippet</a>:</p>
+<pre><code>export function fx(n) { return n * 6; }</code></pre>
+<p>Input <code>7</code>, output <code>42</code>, from <a data-cite="2026-01-01-fx-experiment">2026-01-01-fx-experiment</a>.</p>
+</section>
+
+<section data-block="quiz">
+<script type="application/json" data-quiz>
+{ "items": [
+  { "q": "What does fx(7) return?", "options": ["42", "13", "49"], "correct": 0,
+    "why": ["Seven times six is 42.", "That adds six, fx multiplies.", "That squares seven."] },
+  { "q": "What does fx do to its input?", "options": ["adds six to the value", "multiplies it by six", "squares the number"], "correct": 1,
+    "why": ["Adding six would give 13 for 7.", "Right: n * 6.", "Squaring would give 49 for 7."] },
+  { "q": "What does fx(3) return?", "options": ["12", "36", "24", "18"], "correct": 3,
+    "why": ["That is three times four.", "That is six squared.", "That is three times eight.", "Three times six is 18."] }
+] }
+</script>
+</section>
+
+<section data-block="step">
+<p>Run <code>fx(3)</code> in a Node shell. You should see <code>18</code> printed.</p>
+</section>
+
+<section data-block="sources">
+<ul>
+<li><a data-cite="2026-01-01-fx-doc" href="https://example.org/fx">2026-01-01-fx-doc</a> (recommended read)</li>
+<li><a data-cite="2026-01-01-fx-snippet">2026-01-01-fx-snippet</a></li>
+<li><a data-cite="2026-01-01-fx-experiment">2026-01-01-fx-experiment</a></li>
+</ul>
+</section>
+
+<section data-block="followup">
+<p>You can ask follow-up questions in the terminal.</p>
+</section>
+
+<script type="module" src="../assets/quiz.js"></script>
+</body>
+</html>

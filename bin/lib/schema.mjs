@@ -39,3 +39,10 @@ export function stageAllowedInFolder(schema, folder, stage) {
 export function fieldOrder(schema, type) {
   return [...schema.fields.common, ...(schema.fields.by_type[type] || [])];
 }
+
+// The research-teach workspace schema: field lists from teach.schema.json at the top level,
+// controlled values under `taxonomy`. Separate from the vault schema; nothing here touches it.
+export function loadTeachSchema(repoRoot) {
+  const read = (f) => JSON.parse(readFileSync(join(repoRoot, 'schema', f), 'utf8'));
+  return { ...read('teach.schema.json'), taxonomy: read('teach-taxonomy.json') };
+}

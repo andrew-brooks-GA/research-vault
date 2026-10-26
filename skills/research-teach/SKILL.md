@@ -10,7 +10,7 @@ The pedagogy here is adapted from Matt Pocock's `teach` skill (mattpocock/skills
 
 - CLI: `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs"`. Resolve `${CLAUDE_PLUGIN_ROOT}` to an absolute path now; subagents do not inherit it.
 - The repo must be vault-bound (`.research-vault.json`). If it is not, run `init --project` first and set `defaults.topics` to the topic.
-- Format files for the workspace documents live next to this file: `MISSION-FORMAT.md`, `LEARNING-RECORD-FORMAT.md`, `GLOSSARY-FORMAT.md`.
+- Format files for the workspace documents live next to this file: `MISSION-FORMAT.md`, `LEARNING-RECORD-FORMAT.md`, `GLOSSARY-FORMAT.md`, `LESSON-FORMAT.md`. The shared lesson components are in `assets/` next to this file.
 
 ## 1. The workspace
 
@@ -20,13 +20,16 @@ The directory `/research-teach` was run in. One mission per workspace.
 |---|---|---|
 | `MISSION.md` | Why the learner wants this; grounds every decision | learner state |
 | `GLOSSARY.md` | Terms the learner can already use correctly | learner state |
-| `learning-records/NNNN-slug.md` | What the learner has demonstrated; sets the zone of proximal development | learner state |
+| `learning-records/NNNN-slug.md` | What the learner has demonstrated; sets the zone of proximal development. Frontmatter the teach schema validates; written by `teach record add` | learner state |
+| `attempts/` | What the learner scored; written by `teach serve` or `teach attempt add`, never edited | learner state |
 | `NOTES.md` | Preferences, chapter progress | learner state |
 | `GATE-LOG.md` | Claims-gate merit decisions, append-only | gate record |
 | `lessons/NNNN-slug.html` | One tightly scoped win each; the unit of teaching | view |
 | `reference/*.html` | Compressed essence, printable, revisited | view of vault notes |
-| `assets/` | Shared stylesheet, quiz widget, other reusable components | view |
+| `assets/` | `lesson.css`, `quiz.js` (copied from the skill), other reusable components | view |
 | `evidence/NNNN/` | Probe programs and `run.sh` for lesson NNNN; a working folder, not evidence until captured | scratch |
+| `evidence/NNNN/PLAN.md` | The plan written before the probe | scratch |
+| `.teach-serve.json` | The running server's port and pid; gitignored | scratch |
 
 There is no `RESOURCES.md`. Trusted sources are vault `source` entries (communities too, as `source_type: community-report`); gaps are vault `question` entries; `search --topic <topic>` is the resource list. The facts a reference doc compresses live in a vault `note` so they carry a review date; the HTML is a rendering of that note.
 
@@ -36,10 +39,12 @@ If `MISSION.md` is missing or vague, interview the learner before anything else 
 
 ## 3. Knowledge comes from the vault or the probe, never memory
 
+Plan before you probe. Write `evidence/NNNN/PLAN.md` first, in the five parts `LESSON-FORMAT.md` names: the win, the fact, the claims (one per line), the probe, the step. Write the probe against the claim lines. Never edit a claim line; when a probe contradicts one, or the claims gate narrows one, append a `## Revisions` section naming the line, the result or finding, and the replacement claim.
+
 1. Search the vault before the web: `search --topic`, `--text`, `--body`. Fresh entries answer; stale ones get re-verified (research-vault-usage §2) before they are taught.
    The vault is the source of truth. The web is where sources are found, not a source. A page you fetch is captured as a `source` entry before anything from it is taught or cited (`--store-body --ack-data-egress` when the quoted text matters); a page you did not capture does not exist as far as the lesson, the reference doc or the reviewer is concerned.
 2. Capture every resource you rely on, with `summary` saying what to use it for, `subject` name and version, and the workspace's topic. Dedup is automatic.
-3. Evidence is exactly three kinds of vault entry: `source`/`note` for what a document says, `snippet` for locally verifiable code, `experiment` for the log of a local run. Every claim about what a program prints, what a compiler or runtime says, what an API is named or what a version does is verified by running it, and the run is persisted: the probes under `evidence/NNNN/` are captured as one `snippet` (`--language`, `--tested true`), and `run.sh`'s output as one `experiment` (`--date-run`, `--outcome`, `--related <snippet id>`, Result verbatim, then `verify --method tool-probe`). A `run.sh` that fails gets one line in `evidence/NNNN/RERUNS.md` before any rerun: `harness-infra` or `hypothesis-relevant`, and the fix. A run that exists only on disk is not evidence; a web page is evidence only once captured as a `source`, so capture before you cite. Non-software topics keep the quoted passage or measurement in the entry body.
+3. Evidence is exactly three kinds of vault entry: `source`/`note` for what a document says, `snippet` for locally verifiable code, `experiment` for the log of a local run. Every claim about what a program prints, what a compiler or runtime says, what an API is named or what a version does is verified by running it, and the run is persisted: the probes under `evidence/NNNN/` are captured as one `snippet` (`--language`, `--tested true`, `--body-file <file holding the probes as fenced code>`), and `run.sh`'s output as one `experiment` (`--date-run`, `--outcome`, `--related <snippet id>`, `--provider local --model-id none` for a local tool run, `--body-file <file holding a Result section with the run log verbatim>`), then `verify --id <experiment id> --method tool-probe --result confirmed --by-id <your agent id>`. `--body-file` is how the code and the log reach the entry; `--content-file` is for sources. `--by-id` records the row as `by_type: agent`. A `run.sh` that fails gets one line in `evidence/NNNN/RERUNS.md` before any rerun: `harness-infra` or `hypothesis-relevant`, and the fix. A run that exists only on disk is not evidence; a web page is evidence only once captured as a `source`, so capture before you cite. Non-software topics keep the quoted passage or measurement in the entry body.
 
 ## 4. Build the lesson
 
@@ -55,15 +60,37 @@ Pedagogy, in brief. Read the full source skill if you want the reasoning.
 - **Wisdom is delegated.** Questions about idiom or real-world practice get an answer and a pointer to a community (a captured `community-report` source). Respect an opt-out recorded in `NOTES.md`.
 - **Reminder in every lesson** that the learner can ask follow-up questions in the terminal.
 
-Number lessons `NNNN-slug.html`, next number after the highest present. If possible, open the lesson for the learner with a CLI command, after the gate.
+Procedure, in order:
+
+1. Run `teach next` and read its output: the mission criteria, the active records with their last attempt, and the `review-due:` and `review-failed:` lines. It prints inputs only; you do the matching. Records in `review-due` or `review-failed` come first, as a review lesson (§6). Otherwise take the first criterion no record evidences whose prerequisites (glossary terms, earlier lessons) are covered. The learner's explicit request overrides this.
+2. Write `evidence/NNNN/PLAN.md` (§3), with the chosen criterion on its first line. NNNN is the next lesson number after the highest present.
+3. Probe and capture per §3.
+4. First lesson in a workspace only: copy the components and ignore the server file, from the workspace root.
+   ```sh
+   mkdir -p assets && cp -n "${CLAUDE_PLUGIN_ROOT}/skills/research-teach/assets/lesson.css" "${CLAUDE_PLUGIN_ROOT}/skills/research-teach/assets/quiz.js" assets/
+   grep -qxF .teach-serve.json .gitignore 2>/dev/null || echo .teach-serve.json >> .gitignore
+   ```
+   `cp -n` never overwrites a copy the workspace has edited.
+5. Write `lessons/NNNN-slug.html` per `LESSON-FORMAT.md`.
+6. Run `teach lint`. Fix every finding and lint again until it prints `lint: clean`. Warnings are advisory.
 
 ## 5. Claims gate, before the learner sees it
 
-Run the `research-claims-gate` skill on the lesson (extra ids: its snippet and experiment). Reference docs go through the same gate.
+`teach lint` must be clean first. Then run the `research-claims-gate` skill on the lesson (extra ids: its snippet and experiment). Reference docs go through the same lint and gate. After any revision, lint and gate again.
+
+After the gate records `PASS` or `MERIT`, open the lesson:
+
+1. Read `.teach-serve.json` in the workspace. When it is absent, or its `pid` is not alive (`kill -0 <pid>` fails), start `teach serve <workspace>` in the background (`&`, or the Bash tool's background mode). It prints `serving <workspace> at http://127.0.0.1:<port>/` and writes `.teach-serve.json`; read the port from either.
+2. Print the lesson URL, `http://127.0.0.1:<port>/lessons/<id>.html`.
+3. Open it with `open` on macOS or `xdg-open` elsewhere. With no browser available, print the lesson's path instead.
+
+Always open lessons through `teach serve`: Chrome blocks module scripts on `file://`, so a lesson opened from disk there shows no quiz. Served this way, the quiz records the attempt itself. The widget posts only when the page origin matches `http://127.0.0.1:<port>`; otherwise, or when the POST fails or returns an error, it shows the score and "Tell me your score in the terminal."; record that score with `teach attempt add --lesson <id> --answers <comma list>`.
 
 ## 6. After the lesson
 
-- Write a learning record only on evidence of understanding, disclosed prior knowledge, a corrected misconception, or a mission shift (format file). Coverage is not learning.
+- Write a learning record only on evidence of understanding, disclosed prior knowledge, a corrected misconception, or a mission shift (format file). Coverage is not learning. Use `teach record add --title <t> --kind <kind>` with `kind` `understanding`, `prior-knowledge`, `misconception` or `mission-shift`, plus `--lesson <id>` when a lesson produced the evidence.
+- A record that turns out wrong is superseded, never edited: write the new record, then `teach record supersede <old id> --by <new id> --reason <text>`.
 - Promote a term to `GLOSSARY.md` only once the learner uses it correctly.
 - Record preferences and progress in `NOTES.md`.
-- Spacing: at the start of a session, learning records older than a few weeks are candidates for a retrieval-practice lesson; vault notes behind a reference doc that `verify --stale` lists are re-verified before the doc is trusted again. Same mechanism, two kinds of decay.
+- Spacing: the session brief counts `review-due` records (older than 21 days and not attempted in the last 21); `teach next` lists `review-due` and `review-failed` (records whose last attempt got their item wrong), derived from the records and attempts. These are candidates for a review lesson. Vault notes behind a reference doc that `verify --stale` lists are re-verified before the doc is trusted again. Same mechanism, two kinds of decay.
+- A review lesson is `lessons/NNNN-review-slug.html`: items drawn from two or three records, each item naming its record (`LESSON-FORMAT.md`). A wrong answer is a corrected-misconception candidate for that record.

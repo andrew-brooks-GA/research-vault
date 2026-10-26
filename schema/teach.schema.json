@@ -1,0 +1,16 @@
+{
+  "common": ["title","type","date"],
+  "derived_forbidden": ["score","evidence","last_verified"],
+  "by_type": {
+    "learning-record": ["status","superseded_by","lesson","kind"],
+    "attempt": ["lesson","total","wrong","records"]
+  },
+  "required_by_type": {
+    "learning-record": ["title","type","date","status","kind"],
+    "attempt": ["type","date","lesson","total","wrong","records"]
+  },
+  "edge_fields": {
+    "backlink": ["records"],
+    "reference_only": ["superseded_by","lesson"]
+  }
+}

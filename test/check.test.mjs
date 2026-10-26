@@ -91,6 +91,25 @@ test('renderReport json carries summary counts and one row per citation', () => 
   assert.equal(report.rows[0].file, 'doc.md');
 });
 
+test('check --check takes an absolute path and a relative one to the same file', async () => {
+  const vault = mkdtempSync(join(tmpdir(), 'rv-vault-'));
+  const repo = mkdtempSync(join(tmpdir(), 'rv-repo-'));
+  try {
+    runInit({ vaultPath: vault });
+    const abs = join(repo, 'doc.md');
+    writeFileSync(abs, 'No citations here.');
+    for (const pattern of [abs, 'doc.md']) {
+      const files = expandFiles([pattern], repo);
+      console.log(`${pattern}: ${files.length} file(s): ${files.join(', ')}`);
+      assert.deepEqual(files, [abs], pattern);
+      assert.equal(await run({ _: ['check', pattern], vault, cwd: repo, check: true }), 0, pattern);
+    }
+  } finally {
+    rmSync(vault, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
 test('run exits non-zero under --check when a citation is uncovered', async () => {
   const vault = mkdtempSync(join(tmpdir(), 'rv-vault-'));
   const repo = mkdtempSync(join(tmpdir(), 'rv-repo-'));
