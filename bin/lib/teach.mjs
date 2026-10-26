@@ -152,22 +152,27 @@ export function writeAttempt(workspaceDir, { lesson, answers, now }, schema) {
   }
 }
 
-// `teach lint --fix` upgrade for a record with no frontmatter at all. A file with malformed
-// frontmatter is left alone (the lint reports PARSE); `now` is unused, the date is the mtime.
+// `teach lint --fix` upgrade for a legacy record: no frontmatter, or frontmatter without `type`
+// (the old `Status:` line). Malformed frontmatter is left alone (the lint reports PARSE) and a
+// record that carries `type` is untouched. `now` is unused, the date is the mtime.
 export function fixRecordFrontmatter(workspaceDir, file, now) {
   const dir = join(workspaceDir, 'learning-records');
   const path = resolve(dir, file);
-  const text = readFileSync(path, 'utf8');
-  if (/^﻿?---\r?\n/.test(text)) return false;
+  let text = readFileSync(path, 'utf8');
+  let old = {};
+  if (/^\uFEFF?---\r?\n/.test(text)) {
+    try { ({ data: old, body: text } = parseFrontmatter(text)); } catch { return false; }
+    if (!empty(old.type)) return false;
+  }
   const slug = basename(path, '.md').replace(/^\d{4}-/, '');
   const data = {
-    title: /^#\s+(.+?)\s*$/m.exec(text)?.[1] ?? slug,
+    title: empty(old.title) ? (/^#\s+(.+?)\s*$/m.exec(text)?.[1] ?? slug) : old.title,
     type: 'learning-record',
     date: isoDate(statSync(path).mtime),
     status: 'active',
     kind: 'understanding',
   };
-  const lr = /Status:\s*superseded by LR-(\d{4})/.exec(text);
+  const lr = /superseded by LR-(\d{4})/i.exec(String(old.Status ?? old.status ?? '')) ?? /Status:\s*superseded by LR-(\d{4})/.exec(text);
   const target = lr && mdFiles(dir).find((f) => f.startsWith(`${lr[1]}-`));
   if (target) {
     data.status = 'superseded';
@@ -200,6 +205,13 @@ function parsedRows(dir, nameRe) {
   return rows;
 }
 
+// Chronological attempt order: the base id, then the collision suffix as a number (none = 1).
+export function attemptOrder(a, b) {
+  const key = (id) => { const m = /^(.*-\d{4})(?:-(\d+))?$/.exec(id); return [m[1], Number(m[2] ?? 1)]; };
+  const [ab, an] = key(a), [bb, bn] = key(b);
+  return ab < bb ? -1 : ab > bb ? 1 : an - bn;
+}
+
 export function teachIndex(workspaceDir, { now }) {
   const lessonsDir = join(workspaceDir, 'lessons');
   const lessons = (existsSync(lessonsDir) ? readdirSync(lessonsDir).sort() : [])
@@ -212,7 +224,7 @@ export function teachIndex(workspaceDir, { now }) {
       return { id, number: id.slice(0, 4), class: id.slice(5).startsWith('review-') ? 'review' : 'lesson', title: lessonTitle(html, id), cites: extractCites(html), records };
     });
   const tests = Object.fromEntries(lessons.map((l) => [l.id, l.records]));
-  const attempts = parsedRows(join(workspaceDir, 'attempts'), ATTEMPT_ID_RE);
+  const attempts = parsedRows(join(workspaceDir, 'attempts'), ATTEMPT_ID_RE).sort((a, b) => attemptOrder(a.id, b.id));
   const backlinks = {};
   for (const a of attempts) for (const r of (Array.isArray(a.records) ? a.records : [])) (backlinks[r] ??= []).push(a.id);
 
@@ -276,6 +288,14 @@ export function serveFile(workspaceDir, urlPath) {
   }
 }
 
+// GET / lists the lesson URLs, one per line, so the printed root URL is not a 404.
+function lessonUrls(ws) {
+  const dir = join(ws, 'lessons');
+  return (existsSync(dir) ? readdirSync(dir).sort() : [])
+    .filter((f) => f.endsWith('.html') && LESSON_ID_RE.test(f.slice(0, -5)))
+    .map((f) => `/lessons/${f}\n`).join('');
+}
+
 function postAttempt(req, res, workspaceDir, origin, schema, now) {
   const type = req.headers['content-type'];
   const length = req.headers['content-length'];
@@ -323,6 +343,7 @@ export function createServer(workspaceDir, { schema, now = () => new Date() } = 
       return postAttempt(req, res, ws, `http://${base}`, schema, clock);
     }
     if (!isBodyless) return send(req, res, 405, 'method not allowed\n', undefined, true);
+    if (path === '/') return send(req, res, 200, lessonUrls(ws));
     const f = serveFile(ws, path);
     if (f.status !== 200) return send(req, res, f.status, f.status === 400 ? 'bad request\n' : 'not found\n');
     send(req, res, 200, f.body, f.type); // HEAD: node:http drops the body itself

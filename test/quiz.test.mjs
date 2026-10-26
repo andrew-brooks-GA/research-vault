@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { shuffleOptions, grade, answerLengthSpread } from '../skills/research-teach/assets/quiz.js';
+import { shuffleOptions, grade, answerLengthSpread, lessonIdFrom } from '../skills/research-teach/assets/quiz.js';
 
 const QUIZ = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills/research-teach/assets/quiz.js');
 
@@ -35,6 +35,16 @@ test('answerLengthSpread is longest over shortest and 1 for one option', () => {
   assert.equal(answerLengthSpread({ options: ['only one'] }), 1);
 });
 
+test('lessonIdFrom prefers the served path, falls back to data-lesson, else null', () => {
+  assert.equal(lessonIdFrom('/lessons/0002-tls.html', '0001-other'), '0002-tls');
+  assert.equal(lessonIdFrom('/lessons/0002-tls.html', undefined), '0002-tls');
+  for (const p of ['/', '/lessons/0002-tls.htm', '/lessons/x/0002-tls.html', '/reference/0002-tls.html', '/lessons/0002-TLS.html', '']) {
+    assert.equal(lessonIdFrom(p, '0001-other'), '0001-other', p);
+  }
+  assert.equal(lessonIdFrom('/index.html', undefined), null);
+  assert.equal(lessonIdFrom(undefined, undefined), null);
+});
+
 test('importing quiz.js in Node touches no DOM', () => {
   // A child process with no document and counting getters on window, location and fetch.
   // document stays undefined so the module's typeof guard is what is under test.
@@ -49,7 +59,7 @@ test('importing quiz.js in Node touches no DOM', () => {
   `;
   const out = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }));
   console.log(`exports=${out.exports.length} dom_accesses=${out.touched}`);
-  assert.deepEqual(out.exports, ['answerLengthSpread', 'grade', 'renderQuiz', 'shuffleOptions']);
+  assert.deepEqual(out.exports, ['answerLengthSpread', 'grade', 'lessonIdFrom', 'renderQuiz', 'shuffleOptions']);
   assert.equal(out.touched, 0);
   assert.equal(out.hasDocument, false);
 });

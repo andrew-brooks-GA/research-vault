@@ -48,8 +48,11 @@ test('CLI teach lint on the workspace exits 1 and prints the bad codes in the va
   const violations = lines.filter((l) => !l.startsWith('warning '));
   const warnings = lines.filter((l) => l.startsWith('warning '));
   console.log(`violations ${violations.length}, warnings ${warnings.length}`);
-  for (const l of violations) assert.match(l, /^[A-Z_]+ {2}lessons\/0002-bad\.html: \S/);
-  assert.deepEqual(violations.map((l) => l.split(' ')[0]).sort(), [
+  const recordLine = 'MISSING_REQUIRED  learning-records/0003-legacy-frontmatter.md: missing required field: type';
+  assert.ok(violations.includes(recordLine));
+  const lessonLines = violations.filter((l) => l !== recordLine);
+  for (const l of lessonLines) assert.match(l, /^[A-Z_]+ {2}lessons\/0002-bad\.html: \S/);
+  assert.deepEqual(lessonLines.map((l) => l.split(' ')[0]).sort(), [
     'EVIDENCE_PLAN_MISSING', 'LESSON_BLOCK_MISSING', 'LESSON_CITE_UNRESOLVED', 'LESSON_CLAIM_UNCITED', 'LESSON_LINK_DANGLING',
     'QUIZ_ANSWER_SPREAD', 'QUIZ_CORRECT_RANGE', 'QUIZ_TOO_FEW', 'QUIZ_WHY_MISSING',
   ]);
@@ -90,8 +93,9 @@ test('CLI teach lint --fix migrates the legacy record and is idempotent', () => 
   const ws = copyFixture();
   const legacy = join(ws, 'learning-records', '0002-legacy.md');
   const r1 = cli(['lint', '--fix', ws]);
-  assert.equal(r1.stdout.split('\n')[0], 'fixed 1 record(s)');
+  assert.equal(r1.stdout.split('\n')[0], 'fixed 2 record(s)');
   assert.ok(!r1.stdout.includes('WARN_RECORD_FRONTMATTER_MISSING'));
+  assert.ok(!r1.stdout.includes('learning-records/'));
   const after = readFileSync(legacy, 'utf8');
   assert.match(after, /^---\n/);
   assert.match(after, /^status: superseded$/m);
@@ -109,20 +113,20 @@ test('CLI teach record add then supersede round-trips', () => {
   writeFileSync(body, 'The learner thought fx was linear in general.\n');
   const add = cli(['record', 'add', '--title', 'fx is linear', '--kind', 'misconception', '--lesson', '0001-good', '--body-file', body, ws]);
   assert.equal(add.stderr, '');
-  assert.equal(add.stdout, '0003-fx-linear\n');
+  assert.equal(add.stdout, '0004-fx-linear\n');
   assert.equal(add.status, 0);
-  const rec = readFileSync(join(ws, 'learning-records', '0003-fx-linear.md'), 'utf8');
+  const rec = readFileSync(join(ws, 'learning-records', '0004-fx-linear.md'), 'utf8');
   assert.match(rec, /^kind: misconception$/m);
   assert.match(rec, /^lesson: 0001-good$/m);
   assert.match(rec, /The learner thought fx was linear in general\./);
 
-  const sup = cli(['record', 'supersede', '0001-known', '--by', '0003-fx-linear', '--reason', 'learner revised', ws]);
-  assert.equal(sup.stdout, 'superseded 0001-known by 0003-fx-linear\n');
+  const sup = cli(['record', 'supersede', '0001-known', '--by', '0004-fx-linear', '--reason', 'learner revised', ws]);
+  assert.equal(sup.stdout, 'superseded 0001-known by 0004-fx-linear\n');
   assert.equal(sup.status, 0);
   const old = readFileSync(join(ws, 'learning-records', '0001-known.md'), 'utf8');
   assert.match(old, /^status: superseded$/m);
-  assert.match(old, /^superseded_by: 0003-fx-linear$/m);
-  assert.match(old, /Superseded by 0003-fx-linear: learner revised/);
+  assert.match(old, /^superseded_by: 0004-fx-linear$/m);
+  assert.match(old, /Superseded by 0004-fx-linear: learner revised/);
 
   // Missing --kind is usage; an invalid kind is a lib error; neither writes.
   const before = readdirSync(join(ws, 'learning-records')).length;
@@ -191,6 +195,21 @@ test('CLI teach usage exits 2; cwd without MISSION.md exits 2', () => {
   }
   // Positive control: the same verb from a cwd holding MISSION.md runs.
   assert.equal(cli(['lint'], copyFixture()).status, 1);
+});
+
+test('CLI teach lint with a positional path that is missing or lacks MISSION.md exits 2', () => {
+  const empty = mkdtempSync(join(tmpdir(), 'rv-teach-nomission-'));
+  for (const ws of [join(empty, 'does-not-exist'), empty]) {
+    const r = cli(['lint', ws]);
+    console.log(`lint ${ws} -> ${r.status}, stdout ${r.stdout.length} bytes`);
+    assert.equal(r.status, 2, ws);
+    assert.equal(r.stderr, USAGE, ws);
+    assert.equal(r.stdout, '', ws);
+  }
+  // Positive control: the fixture copy, which holds MISSION.md, lints.
+  const ok = cli(['lint', copyFixture()]);
+  assert.equal(ok.status, 1);
+  assert.match(ok.stdout, /LESSON_BLOCK_MISSING/);
 });
 
 test('session brief names review-due, stale docs and the last attempt', () => {

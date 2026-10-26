@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, utimesSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadTeachSchema } from '../bin/lib/schema.mjs';
@@ -258,4 +258,49 @@ test('teachIndex derives evidence, lastAttempt, reviewDue and reviewFailed', () 
   assert.deepEqual(due, ['0001-old-unreviewed', '0005-old-reviewed-long-ago']);
   assert.deepEqual(failed, ['0003-failed']);
   for (const r of ix.records) for (const f of STORED_DERIVED) if (f !== 'evidence') assert.ok(!(f in r), `${r.id} carries ${f}`);
+});
+
+test('fixRecordFrontmatter migrates frontmatter that has only the old Status line', () => {
+  const dir = ws();
+  cpSync(join(process.cwd(), 'test', 'fixtures', 'teach', 'learning-records'), join(dir, 'learning-records'), { recursive: true });
+  const lr = join(dir, 'learning-records');
+  // A lowercase status pointing at a record that does not exist stays active.
+  writeFileSync(join(lr, '0004-dangling-fm.md'), '---\ntitle: Kept title\nstatus: superseded by LR-0099\n---\nbody\n');
+  const knownBytes = readFileSync(join(lr, '0001-known.md'), 'utf8');
+  const files = readdirSync(lr).sort();
+  const first = files.map((f) => fixRecordFrontmatter(dir, f, NOW));
+  console.log(`--fix first run: ${files.map((f, i) => `${f}=${first[i]}`).join(' ')}`);
+  assert.deepEqual(first, [false, true, true, true]);
+  assert.equal(readFileSync(join(lr, '0001-known.md'), 'utf8'), knownBytes);
+  const fm = parseFrontmatter(readFileSync(join(lr, '0003-legacy-frontmatter.md'), 'utf8'));
+  const { date, ...rest } = fm.data;
+  assert.match(date, /^\d{4}-\d{2}-\d{2}$/);
+  assert.deepEqual(rest, { title: 'Legacy with frontmatter', type: 'learning-record', status: 'superseded', superseded_by: '0001-known', kind: 'understanding' });
+  assert.equal(fm.body, '# Legacy with frontmatter\n\nbody\n');
+  const dangling = parseFrontmatter(readFileSync(join(lr, '0004-dangling-fm.md'), 'utf8')).data;
+  assert.equal(dangling.title, 'Kept title');
+  assert.equal(dangling.status, 'active');
+  assert.ok(!('superseded_by' in dangling) && !('Status' in dangling));
+  for (const f of files) assert.deepEqual(validateEntry(parseFrontmatter(readFileSync(join(lr, f), 'utf8')).data, schema), [], f);
+
+  const snap = Object.fromEntries(files.map((f) => [f, readFileSync(join(lr, f), 'utf8')]));
+  const second = files.map((f) => fixRecordFrontmatter(dir, f, NOW));
+  const changed = files.filter((f) => readFileSync(join(lr, f), 'utf8') !== snap[f]).length;
+  console.log(`--fix second run: ${second.filter(Boolean).length} reported changed, ${changed} file(s) differ`);
+  assert.deepEqual(second, [false, false, false, false]);
+  assert.equal(changed, 0);
+});
+
+test('teachIndex orders same-second attempts by numeric suffix', () => {
+  const dir = ws();
+  lesson(dir, '0001-x', [item(0, '0001-r')]);
+  mkdirSync(join(dir, 'learning-records'), { recursive: true });
+  writeFileSync(join(dir, 'learning-records', '0001-r.md'), '---\ntitle: r\ntype: learning-record\ndate: 2026-10-01\nstatus: active\nkind: understanding\n---\n# r\n');
+  mkdirSync(join(dir, 'attempts'), { recursive: true });
+  const att = '---\ntype: attempt\ndate: 2026-10-26\nlesson: 0001-x\ntotal: 1\nwrong: []\nrecords: []\n---\n';
+  for (const id of ['a-20261026-123456-0001-10', 'a-20261026-123456-0001', 'a-20261026-123456-0001-2']) writeFileSync(join(dir, 'attempts', `${id}.md`), att);
+  const ix = teachIndex(dir, { now: NOW });
+  console.log(`attempt order: ${ix.attempts.map((a) => a.id).join(', ')}`);
+  assert.deepEqual(ix.attempts.map((a) => a.id), ['a-20261026-123456-0001', 'a-20261026-123456-0001-2', 'a-20261026-123456-0001-10']);
+  assert.equal(ix.records[0].lastAttempt.id, 'a-20261026-123456-0001-10');
 });

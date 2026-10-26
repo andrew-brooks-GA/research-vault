@@ -211,6 +211,7 @@ test('lintStore reports PARSE, MISSING_REQUIRED, ENUM, DANGLING_REF, SUPERSEDE, 
   for (const x of f) (byFile[x.file] ??= []).push(x.code);
   assert.deepEqual(byFile, {
     'learning-records/0002-legacy.md': ['WARN_RECORD_FRONTMATTER_MISSING'],
+    'learning-records/0003-legacy-frontmatter.md': ['MISSING_REQUIRED'],
     'learning-records/0010-parse.md': ['PARSE'],
     'learning-records/0011-missing.md': ['MISSING_REQUIRED'],
     'learning-records/0012-enum.md': ['ENUM_KIND'],
@@ -241,6 +242,7 @@ test('lintWorkspace walks lessons, reference, records and attempts', () => {
   for (const r of rows) console.log(r);
   assert.deepEqual(rows, [
     'learning-records/0002-legacy.md WARN_RECORD_FRONTMATTER_MISSING',
+    'learning-records/0003-legacy-frontmatter.md MISSING_REQUIRED',
     'lessons/0002-bad.html EVIDENCE_PLAN_MISSING',
     'lessons/0002-bad.html LESSON_BLOCK_MISSING',
     'lessons/0002-bad.html LESSON_CITE_UNRESOLVED',
@@ -261,6 +263,7 @@ test('lintWorkspace walks lessons, reference, records and attempts', () => {
   assert.deepEqual(g, [
     'attempts/a-20260101-120000-0001.md MISSING_REQUIRED',
     'learning-records/0002-legacy.md WARN_RECORD_FRONTMATTER_MISSING',
+    'learning-records/0003-legacy-frontmatter.md MISSING_REQUIRED',
     'reference/good.html LESSON_BLOCK_MISSING',
   ]);
 });

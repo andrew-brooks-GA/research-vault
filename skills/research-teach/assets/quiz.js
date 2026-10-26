@@ -24,6 +24,11 @@ export function grade(items, answers) {
   return { total: items.length, wrong };
 }
 
+// The lesson id from a served path (/lessons/<id>.html), else the fallback, else null.
+export function lessonIdFrom(pathname, fallback) {
+  return /^\/lessons\/(\d{4}-[a-z][a-z0-9-]*)\.html$/.exec(pathname ?? '')?.[1] ?? fallback ?? null;
+}
+
 export function answerLengthSpread(item) {
   const lens = item.options.map((o) => o.length);
   return Math.max(...lens) / Math.max(1, Math.min(...lens));
@@ -76,7 +81,7 @@ export function renderQuiz(container, data, { rand = Math.random, submit = postA
         if (++answered < items.length) return;
         const { total, wrong } = grade(items, answers);
         result.textContent = `Score: ${total - wrong.length}/${total}`;
-        const reply = await submit({ lesson: document.body.dataset.lesson, answers });
+        const reply = await submit({ lesson: lessonIdFrom(location.pathname, document.body.dataset.lesson), answers });
         result.append(el('span', null, ` ${reply ?? TERMINAL}`));
       });
       box.append(btn);

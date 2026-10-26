@@ -74,7 +74,7 @@ test('serves a lesson and the glossary; returns 404 for NOTES.md, a record, an a
     const hidden = [
       '/NOTES.md', '/MISSION.md', '/learning-records/0001-known.md', '/attempts/a-20260101-120000-0001.md',
       '/lessons/../MISSION.md', '/lessons/%2e%2e/MISSION.md', '/lessons/..%2fMISSION.md', '/../../etc/passwd',
-      '/evidence/0001/PLAN.md', '/', '/lessons', '/lessons/', '/lessons/0001-good.html%00.png', '/.teach-serve.json',
+      '/evidence/0001/PLAN.md', '/lessons', '/lessons/', '/lessons/0001-good.html%00.png', '/.teach-serve.json',
       '/lessons/.hidden.html',
     ];
     let ok = 0;
@@ -95,6 +95,12 @@ test('serves a lesson and the glossary; returns 404 for NOTES.md, a record, an a
       assert.ok(!r.text.includes('Success looks like') && !r.text.includes('type: attempt'), p);
       notFound++;
     }
+    const root = await req(port, { path: '/' });
+    console.log(`GET / -> ${root.status} ${JSON.stringify(root.text)}`);
+    assert.equal(root.status, 200);
+    assert.equal(root.headers['content-type'], 'text/plain; charset=utf-8');
+    assert.equal(root.text, '/lessons/0001-good.html\n/lessons/0002-bad.html\n/lessons/0003-review-good.html\n');
+    assert.ok(!root.text.includes('Success looks like') && !root.text.includes('learning-records') && !root.text.includes('.hidden'));
     const bad = await req(port, { path: '/lessons/%E0%A4%A' });
     console.log(`GET /lessons/%E0%A4%A -> ${bad.status}`);
     assert.equal(bad.status, 400);

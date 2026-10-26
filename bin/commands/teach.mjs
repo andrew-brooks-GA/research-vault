@@ -14,10 +14,10 @@ const USAGE = 'usage: research-vault teach record add|supersede ... | attempt ad
 const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
 const out = (s) => process.stdout.write(s + '\n');
 
-// The positional path, else the cwd when it holds MISSION.md, else null (usage).
+// The positional path, else the cwd; either must hold MISSION.md, else null (usage).
 function workspace(pos) {
-  if (pos) return resolve(pos);
-  return existsSync(join(process.cwd(), 'MISSION.md')) ? process.cwd() : null;
+  const ws = pos ? resolve(pos) : process.cwd();
+  return existsSync(join(ws, 'MISSION.md')) ? ws : null;
 }
 
 function parseAnswers(list) {
