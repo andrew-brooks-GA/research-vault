@@ -1,6 +1,6 @@
 // File discovery shared by check, gate and the hooks: one set of directories never walked.
 import { globSync, statSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { resolve, basename } from 'node:path';
 
 export const SKIP_DIRS = new Set(['.git', 'node_modules', '.idea', '_obsidian', '_index', '_attachments']);
 
@@ -8,7 +8,7 @@ export const SKIP_DIRS = new Set(['.git', 'node_modules', '.idea', '_obsidian', 
 // exclude receives a path string or a Dirent depending on Node version; basename covers both.
 export function expandFiles(patterns, cwd) {
   return globSync(patterns, { cwd, exclude: (e) => SKIP_DIRS.has(basename(typeof e === 'string' ? e : e.name)) })
-    .map((rel) => join(cwd, rel))
+    .map((rel) => resolve(cwd, rel)) // globSync returns absolute paths for an absolute pattern
     .filter((abs) => statSync(abs).isFile())
     .sort();
 }
