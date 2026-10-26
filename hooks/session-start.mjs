@@ -13,9 +13,10 @@ import { findWorkspaces } from '../bin/lib/gate.mjs';
 import { checkCitations } from '../bin/commands/check.mjs';
 import { extractCitations } from '../bin/lib/citations.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
+import { SPACING_DAYS } from '../bin/lib/teach.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-export const SPACING_DAYS = 21;
+export { SPACING_DAYS };
 
 const files = (dir, ext) => (existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(ext)).map((f) => join(dir, f)) : []);
 

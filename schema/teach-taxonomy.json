@@ -1,0 +1,6 @@
+{
+  "status": ["active","superseded"],
+  "kind": ["understanding","prior-knowledge","misconception","mission-shift"],
+  "type": ["learning-record","attempt"],
+  "type_folder": { "learning-record": "learning-records", "attempt": "attempts" }
+}
