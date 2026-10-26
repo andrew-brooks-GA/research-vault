@@ -37,7 +37,7 @@ export function gateStatus(repoRoot, filePath) {
   const sha256 = contentHash(readFileSync(resolve(repoRoot, filePath), 'utf8'));
   const ledger = join(repoRoot, LEDGER_FILENAME);
   const rows = existsSync(ledger)
-    ? readFileSync(ledger, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
+    ? readFileSync(ledger, 'utf8').split('\n').filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }) : [];
   const hit = rows.findLast((r) => r.event === 'claims' && r.file === file && r.sha256 === sha256 && SATISFIES.has(r.verdict));
   return { file, sha256, verdict: hit?.verdict ?? null, ts: hit?.ts ?? null };
 }

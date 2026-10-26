@@ -35,6 +35,13 @@ test('recordVerdict appends a row keyed to the current hash and gateStatus finds
   assert.ok(!('note' in recordVerdict(root, file, 'MERIT')), 'note omitted when absent');
 });
 
+test('gateStatus skips a malformed ledger line', () => {
+  const { root, file } = draft('hello\n');
+  appendFileSync(join(root, LEDGER_FILENAME), '{not json\n');
+  recordVerdict(root, file, 'PASS');
+  assert.equal(gateStatus(root, file).verdict, 'PASS');
+});
+
 test('gateStatus returns null after the file changes', () => {
   const { root, file } = draft();
   recordVerdict(root, file, 'PASS');
