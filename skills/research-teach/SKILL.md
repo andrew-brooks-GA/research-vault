@@ -84,7 +84,7 @@ After the gate records `PASS` or `MERIT`, open the lesson:
 2. Print the lesson URL, `http://127.0.0.1:<port>/lessons/<id>.html`.
 3. Open it with `open` on macOS or `xdg-open` elsewhere. With no browser available, print the lesson's path instead.
 
-Served this way, the quiz records the attempt itself. Opened from disk, the learner reports the score; record it with `teach attempt add --lesson <id> --answers <comma list>`.
+Always open lessons through `teach serve`: Chrome blocks module scripts on `file://`, so a lesson opened from disk there shows no quiz. Served this way, the quiz records the attempt itself. The "Tell me your score in the terminal." fallback applies only on another origin (a browser that allows module scripts on `file://`, or another static server); record that score with `teach attempt add --lesson <id> --answers <comma list>`.
 
 ## 6. After the lesson
 

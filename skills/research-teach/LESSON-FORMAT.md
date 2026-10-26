@@ -9,7 +9,7 @@ A lesson is one HTML page the learner opens in a browser. It is built from block
 - Lessons: `lessons/NNNN-slug.html`, next number after the highest present. The id is the file name without `.html` (`0001-what-fx-returns`). The slug starts with a letter, so a lesson id is never taken for a vault citation id.
 - Review lessons: `lessons/NNNN-review-slug.html`, numbered in the same sequence.
 - Reference docs: `reference/<slug>.html`.
-- The page loads the shared components with `<link rel="stylesheet" href="../assets/lesson.css">` in the head and `<script type="module" src="../assets/quiz.js"></script>` before `</body>`, and the body carries the lesson id: `<body data-lesson="<id>">`.
+- The page loads the shared components with `<link rel="stylesheet" href="../assets/lesson.css">` in the head and `<script type="module" src="../assets/quiz.js"></script>` before `</body>`, and the body carries the lesson id: `<body data-lesson="<id>">`, where `data-lesson` equals the file name without `.html`. The widget takes the id from the served path `/lessons/<id>.html` first and falls back to `data-lesson`.
 - Links the lint resolves: `../GLOSSARY.md#<heading-slug>`, `<id>.html` for another lesson (`../lessons/<id>.html` from a reference doc), `../reference/<slug>.html` for a reference doc. A link to any of these that does not exist is a finding.
 
 ## Blocks
@@ -54,7 +54,7 @@ The `quiz` block holds one `<script type="application/json" data-quiz>` element:
 - Answer length spread, the longest option divided by the shortest, is at most 1.6. Pad the short options or cut the long one.
 - No formatting tells: format every option alike.
 
-When served by `teach serve`, the widget posts the answers after the last item and shows `recorded <id>: <score>/<total>`. Opened from disk, it shows the score and asks the learner to tell you; record it with `teach attempt add --lesson <id> --answers <comma list>`.
+Lessons are opened through `teach serve`: Chrome blocks `<script type="module">` on `file://`, so a lesson opened from disk there renders no quiz. Served, the widget posts the answers after the last item and shows `recorded <id>: <score>/<total>`. On any other origin (a browser that allows module scripts on `file://`, or another static server) it shows the score and "Tell me your score in the terminal."; record it with `teach attempt add --lesson <id> --answers <comma list>`.
 
 ## Review lessons
 
