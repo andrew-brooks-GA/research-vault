@@ -58,3 +58,17 @@ test('CLI prints the workspace line after the summary line', () => {
   assert.equal(lines[1], 'research-teach learn/k8s: 1 learning record(s) older than 21 days; 1 reference doc(s) with a stale citation');
   assert.equal(lines.length, 2);
 });
+
+test('CLI outside a bound repo prints the summary line only', () => {
+  const { vault } = repo();
+  // cwd has no .research-vault.json but holds a workspace with an old learning record.
+  const elsewhere = tmpVault('rv-sessionstart-cwd-');
+  mkdirSync(join(elsewhere, 'ws', 'learning-records'), { recursive: true });
+  writeFileSync(join(elsewhere, 'ws', 'MISSION.md'), '# m\n');
+  writeFileSync(join(elsewhere, 'ws', 'learning-records', 'a.md'), 'a\n');
+  utimesSync(join(elsewhere, 'ws', 'learning-records', 'a.md'), day(SPACING_DAYS + 1), day(SPACING_DAYS + 1));
+  const env = { ...process.env, RESEARCH_VAULT_PATH: vault };
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: elsewhere }), cwd: elsewhere, env, encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, 'research-vault: 2 entries; 1 stale\n');
+});

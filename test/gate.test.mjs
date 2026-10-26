@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, appendFileSync, existsSync, readFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, appendFileSync, existsSync, readFileSync, mkdirSync, chmodSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -141,6 +141,18 @@ function workspaceRepo() {
 test('findWorkspaces skips node_modules, .git and the vault', () => {
   const { root, vault } = workspaceRepo();
   assert.deepEqual(findWorkspaces(root, vault).sort(), [join(root, 'learn/k8s'), join(root, 'top')]);
+});
+
+test('findWorkspaces skips an unreadable directory and keeps walking', (t) => {
+  if (process.getuid?.() === 0) return t.skip('root ignores mode bits');
+  const { root, vault } = workspaceRepo();
+  mkdirSync(join(root, 'locked'));
+  chmodSync(join(root, 'locked'), 0o000);
+  try {
+    assert.deepEqual(findWorkspaces(root, vault).sort(), [join(root, 'learn/k8s'), join(root, 'top')]);
+  } finally {
+    chmodSync(join(root, 'locked'), 0o755);
+  }
 });
 
 test('gatedFiles returns workspace lessons and reference docs plus gates.globs', () => {

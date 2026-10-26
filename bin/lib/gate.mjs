@@ -93,7 +93,8 @@ export function findWorkspaces(repoRoot, vaultPath) {
   const vault = resolve(vaultPath);
   const out = [];
   const walk = (dir) => {
-    const dirents = readdirSync(dir, { withFileTypes: true });
+    let dirents;
+    try { dirents = readdirSync(dir, { withFileTypes: true }); } catch { return; } // unreadable: skip it
     if (dirents.some((d) => d.isFile() && d.name === 'MISSION.md')) out.push(dir);
     for (const d of dirents) {
       if (!d.isDirectory() || SKIP_DIRS.has(d.name)) continue;
