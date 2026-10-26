@@ -152,7 +152,7 @@ Four operations require a command rather than prose, by design: `lint` (correctn
 These guarantees are about the CLI. The agent hosting it may search or fetch the web on its own; that is governed by the agent, not by this tool.
 
 - Ordinary commands (`capture`, `verify`, `lint`, `init`, `compile`, `obsidian`) write to the vault. `search`, `related`, `advise`, `check` only read, and `manifest` only writes with `--rebuild`.
-- Two commands reach outside the vault. **`refresh`** is the only one that touches the network: it fetches a source URL, compares content hashes and never stores the page, and it is off until you set `RESEARCH_VAULT_ALLOW_NETWORK=1` for that run. **`export`** writes JSONL to stdout or to `--out`; titles and summaries export freely, full bodies need `--include-bodies --ack-data-egress`. Neither modifies entries. **`teach serve`** listens on `127.0.0.1` only and writes nothing but attempt files and `.teach-serve.json` in the teaching workspace it serves.
+- Three commands reach outside the vault. **`refresh`** is the only one that fetches from outside the machine: it fetches a source URL, compares content hashes and never stores the page, and it is off until you set `RESEARCH_VAULT_ALLOW_NETWORK=1` for that run. **`export`** writes JSONL to stdout or to `--out`; titles and summaries export freely, full bodies need `--include-bodies --ack-data-egress`. Neither modifies entries. **`teach serve`** listens on `127.0.0.1` only and writes nothing but attempt files and `.teach-serve.json` in the teaching workspace it serves.
 
 The full contract, including SSRF hardening, is in [SECURITY.md](../SECURITY.md).
 
