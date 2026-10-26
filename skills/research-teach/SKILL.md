@@ -33,14 +33,24 @@ The directory `/research-teach` was run in. One mission per workspace.
 
 There is no `RESOURCES.md`. Trusted sources are vault `source` entries (communities too, as `source_type: community-report`); gaps are vault `question` entries; `search --topic <topic>` is the resource list. The facts a reference doc compresses live in a vault `note` so they carry a review date; the HTML is a rendering of that note.
 
-## 2. Mission first
+## 2. Mission first: the interview, the Floor, the path
 
-If `MISSION.md` is missing or vague, interview the learner before anything else and write it per the format file. Confirm with the learner before changing it later, and add a learning record when it changes.
+If `MISSION.md` is missing or vague, interview the learner before anything else and write it per the format file. Ask in this order, and ask the learner to show or say, never to rate themselves:
+
+1. Why: what they want to be able to do or explain, and for whom. A ticket, a design, a talk, or the model for its own sake.
+2. Scope: what the sessions should include, and what is adjacent but not for now. Only the tools and terms this scope needs are asked about next; a tool the learner uses daily but no lesson needs stays out.
+3. Depth: explain with a diagram, diagnose from output, or configure from scratch.
+4. Terms: for each term the scope needs, one sentence or "pass". A correct sentence goes to `### Known terms`, anything else to `### New to me`.
+5. Tools: for each tool a lesson will run, daily, have run it, or never. Daily goes to `### Known tools`; never gets a `PATH.md` line.
+6. Session length and how they learn best (diagram first, YAML first, run and predict, read).
+
+Then write `PATH.md` (`PATH-FORMAT.md`): one line per planned lesson, in order, each with at most one new term set or tool and its prerequisites, every "New to me" term on a line before any line that needs it, a review every six or seven lessons. Read the Floor, the goal and the first four lines back to the learner and ask whether it starts too low or too high. Write a `prior-knowledge` learning record for the Floor. Confirm with the learner before changing the mission or the path later, and add a learning record when it changes.
 
 ## 3. Knowledge comes from the vault or the probe, never memory
 
 Plan before you probe. Write `evidence/NNNN/PLAN.md` first, in the five parts `LESSON-FORMAT.md` names: the win, the fact, the claims (one per line), the probe, the step. Write the probe against the claim lines. Never edit a claim line; when a probe contradicts one, or the claims gate narrows one, append a `## Revisions` section naming the line, the result or finding, and the replacement claim.
 
+0. Capture the concept sources up front, once per path: for every `New to me` term, the primary page that defines it (the project's own concepts or architecture page, the API reference), as a `source` with `--store-body --ack-data-egress`. A lesson's `model` block is a "the docs say" claim cited to these; the probe then confirms the instance. Without them every explanation gets cut back to "in the lab it was".
 1. Search the vault before the web: `search --topic`, `--text`, `--body`. Fresh entries answer; stale ones get re-verified (research-vault-usage §2) before they are taught.
    The vault is the source of truth. The web is where sources are found, not a source. A page you fetch is captured as a `source` entry before anything from it is taught or cited (`--store-body --ack-data-egress` when the quoted text matters); a page you did not capture does not exist as far as the lesson, the reference doc or the reviewer is concerned.
 2. Capture every resource you rely on, with `summary` saying what to use it for, `subject` name and version, and the workspace's topic. Dedup is automatic.
@@ -63,7 +73,7 @@ Pedagogy, in brief. Read the full source skill if you want the reasoning.
 
 Procedure, in order:
 
-1. Run `teach next` and read its output: the mission criteria, the active records with their last attempt, and the `review-due:` and `review-failed:` lines. It prints inputs only; you do the matching. Records in `review-due` or `review-failed` come first, as a review lesson (§6). Otherwise take the first criterion no record evidences whose prerequisites (glossary terms, earlier lessons) are covered. The learner's explicit request overrides this.
+1. Run `teach next` and read its output: the mission criteria, the active records with their last attempt, the `review-due:` and `review-failed:` lines, and the `path:` line naming the first `PATH.md` line no lesson has taken. Records in `review-due` or `review-failed` come first, as a review lesson (§6). Otherwise build the `path:` line. The learner's explicit request overrides this; a lesson the path did not plan gets a line added first.
 2. Write `evidence/NNNN/PLAN.md` (§3), with the chosen criterion on its first line. The probe uses only known or taught tools; if the win needs a new tool, this lesson teaches that tool and the win moves to the next lesson. NNNN is the next lesson number after the highest present.
 3. Probe and capture per §3.
 4. First lesson in a workspace only: copy the components and ignore the server file, from the workspace root.
@@ -72,7 +82,7 @@ Procedure, in order:
    grep -qxF .teach-serve.json .gitignore 2>/dev/null || echo .teach-serve.json >> .gitignore
    ```
    `cp -n` never overwrites a copy the workspace has edited. `teach serve` renders an index of every lesson at `/`, and each served lesson shows a navigation bar (all lessons, previous, next) from `/lessons.json`, so the learner can go back to earlier lessons. `/progress` (and `teach progress`) shows every attempt per lesson with first, latest and best scores, the active records, and what is due for review; point the learner at it when they ask how they are doing.
-5. Write `lessons/NNNN-slug.html` per `LESSON-FORMAT.md`.
+5. Write `lessons/NNNN-slug.html` per `LESSON-FORMAT.md`: the `model` block first (a bridge from a Floor term, one diagram, how the parts relate and why), `data-introduces` for at most three terms each in a `<dfn>`, `data-teaches` for a tool, then the facts the probe showed. Add `lesson: <id>` to the lesson's `PATH.md` line.
 6. Run `teach lint`. Fix every finding and lint again until it prints `lint: clean`. Warnings are advisory.
 
 ## 5. Reader gate, then claims gate, before the learner sees it

@@ -1,7 +1,7 @@
 // Lesson parser and lint: lessons, reference docs and the workspace store (spec 12 "Lesson lint").
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, readFileSync, writeFileSync, rmSync, renameSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fixtureVault, tmpVault, put } from './helpers.mjs';
@@ -9,7 +9,7 @@ import { buildManifest } from '../bin/lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
 import { checkCitations } from '../bin/commands/check.mjs';
 import {
-  lessonClass, parseLesson, lintLesson, lintStore, lintWorkspace, FACT_WORDS, QUIZ_MIN_ITEMS, QUIZ_SPREAD_MAX,
+  lessonClass, parseLesson, lintLesson, lintStore, lintWorkspace, QUIZ_MIN_ITEMS, QUIZ_SPREAD_MAX, MAX_INTRODUCES, readPath, missionFloor,
 } from '../bin/lib/lesson.mjs';
 
 const FIX = join(process.cwd(), 'test', 'fixtures', 'teach');
@@ -28,7 +28,7 @@ const codes = (findings) => findings.map((f) => f.code).sort();
 const lintFile = (dir, rel, ctx = ctxFor(dir)) => lintLesson(join(dir, rel), ctx);
 
 test('constants match the spec', () => {
-  assert.equal(FACT_WORDS, 300);
+  assert.equal(MAX_INTRODUCES, 3);
   assert.equal(QUIZ_MIN_ITEMS, 3);
   assert.equal(QUIZ_SPREAD_MAX, 1.6);
 });
@@ -46,9 +46,9 @@ test('lessonClass by file name', () => {
 
 test('parseLesson finds blocks, quiz, cites and links', () => {
   const p = parseLesson(readFileSync(join(FIX, 'lessons', '0001-good.html'), 'utf8'));
-  assert.deepEqual([...p.blocks.keys()].sort(), ['example', 'fact', 'followup', 'mission', 'prereq', 'quiz', 'sources', 'step']);
+  assert.deepEqual([...p.blocks.keys()].sort(), ['example', 'fact', 'followup', 'mission', 'model', 'prereq', 'quiz', 'sources', 'step']);
   assert.equal(p.quiz.items.length, 3);
-  assert.deepEqual(p.cites, ['2026-01-01-fx-snippet', '2026-01-01-fx-experiment', '2026-01-01-fx-doc']);
+  assert.deepEqual(p.cites, ['2026-01-01-fx-doc', '2026-01-01-fx-snippet', '2026-01-01-fx-experiment']);
   assert.ok(p.links.includes('https://example.org/fx'));
   assert.ok(p.links.includes('../GLOSSARY.md#term'));
   assert.ok(p.links.includes('../reference/good.html'));
@@ -67,7 +67,7 @@ test('a bad lesson reports each expected code exactly once', () => {
   const f = lintFile(FIX, 'lessons/0002-bad.html');
   const expected = [
     'EVIDENCE_PLAN_MISSING', 'LESSON_BLOCK_MISSING', 'LESSON_CITE_UNRESOLVED', 'LESSON_CLAIM_UNCITED',
-    'LESSON_LINK_DANGLING', 'LESSON_TOOL_NOT_INTRODUCED', 'QUIZ_ANSWER_SPREAD', 'QUIZ_CORRECT_RANGE', 'QUIZ_TOO_FEW', 'QUIZ_WHY_MISSING',
+    'LESSON_LINK_DANGLING', 'LESSON_MODEL_NO_FIGURE', 'LESSON_TERM_NOT_INTRODUCED', 'LESSON_TOOL_NOT_INTRODUCED', 'QUIZ_ANSWER_SPREAD', 'QUIZ_CORRECT_RANGE', 'QUIZ_TOO_FEW', 'QUIZ_WHY_MISSING',
   ];
   for (const x of f) console.log(`${x.code}  ${x.file}: ${x.message}`);
   assert.deepEqual(codes(f), expected);
@@ -76,6 +76,8 @@ test('a bad lesson reports each expected code exactly once', () => {
   assert.match(by.LESSON_CITE_UNRESOLVED.message, /2026-01-01-nope/);
   assert.match(by.LESSON_LINK_DANGLING.message, /0009-missing\.html/);
   assert.equal(by.LESSON_TOOL_NOT_INTRODUCED.message, 'example runs fxctl, which is neither in MISSION.md "Known tools" nor taught by this or an earlier lesson (data-teaches)');
+  assert.match(by.LESSON_TERM_NOT_INTRODUCED.message, /"sextuple"/);
+  assert.match(by.LESSON_MODEL_NO_FIGURE.message, /<figure>/);
   assert.match(by.QUIZ_CORRECT_RANGE.message, /item 0/);
   assert.match(by.QUIZ_ANSWER_SPREAD.message, /item 1/);
   assert.match(by.QUIZ_WHY_MISSING.message, /item 1/);
@@ -93,8 +95,6 @@ test('lesson-specific codes fire on their own fixture and not on the good lesson
   };
   // Positive control: the unedited copy is clean.
   assert.deepEqual(variant('unchanged', (h) => h), []);
-  const long = Array(FACT_WORDS).fill('word').join(' ');
-  assert.deepEqual(codes(variant('long fact', (h) => h.replace('Called with 7, fx returns 42.', `Called with 7, fx returns 42. ${long}`))), ['LESSON_FACT_TOO_LONG']);
   assert.deepEqual(codes(variant('no fixed sentence', (h) => h.replace('You can ask follow-up questions in the terminal.', 'Ask me anything.'))), ['LESSON_FOLLOWUP_MISSING']);
   const noFollowup = variant('no followup block', (h) => h.replace(/<section data-block="followup">[\s\S]*?<\/section>/, ''));
   assert.deepEqual(codes(noFollowup), ['LESSON_BLOCK_MISSING']);
@@ -256,6 +256,8 @@ test('lintWorkspace walks lessons, reference, records and attempts', () => {
     'lessons/0002-bad.html LESSON_CITE_UNRESOLVED',
     'lessons/0002-bad.html LESSON_CLAIM_UNCITED',
     'lessons/0002-bad.html LESSON_LINK_DANGLING',
+    'lessons/0002-bad.html LESSON_MODEL_NO_FIGURE',
+    'lessons/0002-bad.html LESSON_TERM_NOT_INTRODUCED',
     'lessons/0002-bad.html LESSON_TOOL_NOT_INTRODUCED',
     'lessons/0002-bad.html QUIZ_ANSWER_SPREAD',
     'lessons/0002-bad.html QUIZ_CORRECT_RANGE',
@@ -280,3 +282,52 @@ test('lintWorkspace walks lessons, reference, records and attempts', () => {
 function att2() {
   return ['---', 'type: attempt', 'date: 2026-01-01', 'lesson: 0001-good', 'total: 3', 'wrong: []', '---', ''].join('\n');
 }
+
+test('missionFloor reads the three Floor lists and readPath parses every field', () => {
+  const floor = missionFloor(FIX);
+  assert.deepEqual([...floor.knownTools], ['node']);
+  assert.deepEqual([...floor.knownTerms], ['function']);
+  assert.deepEqual([...floor.newTerms], ['fx', 'sextuple']);
+  const path = readPath(FIX);
+  assert.equal(path.length, 4);
+  assert.deepEqual(path[0], { n: 1, title: 'What fx returns', terms: ['fx'], tool: null, after: ['floor'], lesson: '0001-good' });
+  assert.deepEqual(path[3], { n: 4, title: 'The sextuple, named', terms: ['sextuple'], tool: null, after: ['1'], lesson: null });
+  assert.equal(readPath(join(tmpdir(), 'nowhere-' + Date.now())), null);
+});
+
+test('term rule: a tracked term is allowed by the Floor or by data-introduces on this or an earlier lesson; the model block needs a figure and a doc citation; PATH mismatch is reported', () => {
+  const dir = copyFixture();
+  const good = readFileSync(join(dir, 'lessons', '0001-good.html'), 'utf8');
+  // 0002-bad uses "sextuple" (New to me, introduced nowhere): finding. Line 4 of PATH introduces it later, which does not help a lower-numbered lesson.
+  assert.ok(codes(lintFile(dir, 'lessons/0002-bad.html')).includes('LESSON_TERM_NOT_INTRODUCED'));
+  // A lesson 0004 that introduces sextuple with a dfn and a figure, built against PATH line 4: clean.
+  const four = good.replace('data-lesson="0001-good" data-introduces="fx"', 'data-lesson="0004-sextuple" data-introduces="sextuple"')
+    .replace('<dfn>fx</dfn> is the fixture function', 'fx is the fixture function, and a <dfn>sextuple</dfn> is six times a number');
+  writeFileSync(join(dir, 'lessons', '0004-sextuple.html'), four);
+  writeFileSync(join(dir, 'PATH.md'), readFileSync(join(dir, 'PATH.md'), 'utf8').replace('terms: sextuple | after: 1', 'terms: sextuple | after: 1 | lesson: 0004-sextuple'));
+  let f = lintFile(dir, 'lessons/0004-sextuple.html');
+  assert.deepEqual(codes(f).filter((c) => !c.startsWith('WARN_')), []);
+  // Declaring a term without a dfn, and more than three terms, are findings; a PATH line that disagrees is a finding.
+  writeFileSync(join(dir, 'lessons', '0004-sextuple.html'), four.replace('data-introduces="sextuple"', 'data-introduces="sextuple,a,b,c"'));
+  f = lintFile(dir, 'lessons/0004-sextuple.html');
+  assert.ok(codes(f).includes('LESSON_INTRODUCES_TOO_MANY'));
+  assert.ok(codes(f).includes('LESSON_DFN_MISSING'));
+  assert.ok(codes(f).includes('LESSON_PATH_MISMATCH'));
+  // A model block that cites only an experiment warns; one with no figure and no data-no-figure fails.
+  writeFileSync(join(dir, 'lessons', '0004-sextuple.html'), four.replace('<a data-cite="2026-01-01-fx-doc">2026-01-01-fx-doc</a></p>\n</section>\n\n<section data-block="fact">', '<a data-cite="2026-01-01-fx-experiment">2026-01-01-fx-experiment</a></p>\n</section>\n\n<section data-block="fact">').replace(/<figure>[\s\S]*?<\/figure>/, ''));
+  f = lintFile(dir, 'lessons/0004-sextuple.html');
+  assert.ok(codes(f).includes('LESSON_MODEL_NO_FIGURE'));
+  assert.ok(codes(f).includes('WARN_MODEL_LAB_ONLY'));
+  // A workspace with lessons and no PATH.md warns once.
+  rmSync(join(dir, 'PATH.md'));
+  assert.ok(lintWorkspace(dir, ctxFor(dir)).some((x) => x.code === 'WARN_PATH_MISSING' && x.file === 'PATH.md'));
+});
+
+test('a parked lesson still resolves the lesson field of records and attempts', () => {
+  const dir = copyFixture();
+  renameSync(join(dir, 'lessons', '0001-good.html'), join(dir, 'lessons', '0001-gone.html'));
+  assert.ok(codes(lintStore(dir, ctxFor(dir))).includes('DANGLING_REF'), 'a missing lesson dangles');
+  mkdirSync(join(dir, 'parked'), { recursive: true });
+  renameSync(join(dir, 'lessons', '0001-gone.html'), join(dir, 'parked', '0001-good.html'));
+  assert.ok(!codes(lintStore(dir, ctxFor(dir))).includes('DANGLING_REF'), 'a parked lesson resolves');
+});

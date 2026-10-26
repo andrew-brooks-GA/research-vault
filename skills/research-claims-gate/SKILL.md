@@ -15,19 +15,21 @@ A fresh reviewer checks every factual claim in the draft against the vault entri
 ## Steps
 
 0. **Citations clean.** Run `check --check <draft>`. Any `uncovered` or `stale` row stops the gate: capture the source (`--store-body --ack-data-egress` when the quoted text matters) or re-verify the entry, then run it again. Dispatch only on exit 0.
-1. **Evidence list.** Run `gate evidence <draft> --extra <ids>`, where `<ids>` are the draft's `snippet` and `experiment` ids, comma-separated (omit `--extra` when there are none). Copy the output as printed; do not retype or trim it.
+1. **Evidence list.** Run `gate evidence <draft> --extra <ids> --changed`, where `<ids>` are the draft's `snippet` and `experiment` ids, comma-separated (omit `--extra` when there are none). Copy the output as printed; do not retype or trim it. Its last line, `changed units: ...`, names the units (data-block elements; `fact:N` and `quiz:N` per paragraph and item) that no PASS or MERIT row covers yet. On a first review that is every unit; after an edit it is only what changed, and the reviewer verdicts only those.
 2. **Dispatch.** ONE subagent: Agent tool, `subagent_type: research-vault:claims-reviewer` (the plugin's agent; a bare `claims-reviewer` can resolve to a different project agent), no `model`, not a fork. The prompt is exactly:
 
    ```
    Draft: <absolute draft path>
    Vault: <absolute vault path>
    Evidence (read ONLY these vault entries):
-   <the step 1 output, verbatim>
+   <the step 1 output, verbatim, including its changed units line>
    ```
+
+   The reviewer verdicts only the changed units; the rest keep the verdict they have. Round caps count per unit, not per draft.
 
    Nothing else. No summary of the work; the summary is the bias.
 3. **On `FAIL-as-sent`.** Fix the draft or the evidence for each failing claim: narrow the claim to what the evidence shows, capture the missing source with a body, or add the probe, re-run it and re-capture the snippet and experiment (the old ones get `verify --result outdated --superseded-by <new id>`). Then re-run from step 0. After the second round, decide each surviving finding on its merits: append to `GATE-LOG.md` a heading naming the draft and date, then each finding, the decision and the reasoning. Then stop dispatching.
-4. **Record.** `gate record <draft> PASS` when the reviewer's verdict line is `VERDICT: PASS`, or `gate record <draft> MERIT "<GATE-LOG.md heading>"` after step 3's merit decision. Never record `PASS` for a `FAIL-as-sent` verdict. Record against the exact bytes the reviewer saw; an edit after recording needs a new round. `gate status <draft> --check` confirms the row.
+4. **Record.** `gate record <draft> PASS` when the reviewer's verdict line is `VERDICT: PASS`, or `gate record <draft> MERIT "<GATE-LOG.md heading>"` after step 3's merit decision. Never record `PASS` for a `FAIL-as-sent` verdict. The row stores a hash per unit, so a later edit reopens only the units it touches (`gate changed <draft>` lists them); units untouched since a PASS or MERIT keep it. `gate status <draft> --check` confirms the draft is covered.
 5. **Present.** Show the draft with the reviewer's claim table.
 
 ## Anti-patterns

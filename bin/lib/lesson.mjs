@@ -9,12 +9,11 @@ import {
 } from './teach.mjs';
 import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
 
-export const FACT_WORDS = 300;
 export const QUIZ_MIN_ITEMS = 3;
 export const QUIZ_SPREAD_MAX = 1.6;
 const FOLLOWUP = 'You can ask follow-up questions in the terminal.';
 const REQUIRED = {
-  lesson: ['mission', 'fact', 'example', 'quiz', 'step', 'sources', 'followup'],
+  lesson: ['mission', 'model', 'fact', 'example', 'quiz', 'step', 'sources', 'followup'],
   review: ['mission', 'quiz', 'followup', 'sources'],
   reference: ['note', 'sources'],
 };
@@ -116,8 +115,99 @@ function quizFindings(quiz, cls, ws, add) {
   });
 }
 
-// --- Tool pacing (spec 12, "one new tool per lesson") ---
+// --- Floor and path (spec 12, "one new tool or term set per lesson") ---
 export const KNOWN_TOOLS_HEADING = /^#{1,6}\s+known tools\b/i;
+export const MAX_INTRODUCES = 3;
+
+// Bullets under a heading (any level) whose text matches `headingRe`: the first word for tools,
+// the whole bullet for terms. null when the heading is absent.
+function missionList(workspaceDir, headingRe, whole) {
+  const p = join(workspaceDir, 'MISSION.md');
+  if (!existsSync(p)) return null;
+  let found = false;
+  let inSection = false;
+  const out = new Set();
+  for (const line of readFileSync(p, 'utf8').split(/\r?\n/)) {
+    if (/^#{1,6}\s/.test(line)) { inSection = headingRe.test(line); if (inSection) found = true; continue; }
+    const m = inSection && /^\s*(?:[-*]|\d+\.)\s+(.+?)\s*$/.exec(line);
+    if (m) out.add((whole ? m[1].replace(/`/g, '') : m[1].replace(/`/g, '').split(/\s+/)[0]).toLowerCase());
+  }
+  return found ? out : null;
+}
+
+// The mission's Floor: tools the learner runs, terms they can define, terms they named as new.
+export function missionFloor(workspaceDir) {
+  return {
+    knownTools: missionList(workspaceDir, KNOWN_TOOLS_HEADING, false),
+    knownTerms: missionList(workspaceDir, /^#{1,6}\s+known terms\b/i, true),
+    newTerms: missionList(workspaceDir, /^#{1,6}\s+new to me\b/i, true),
+  };
+}
+
+// PATH.md lines: `N. <title> | terms: a, b | tool: x | after: 1, 2 | lesson: <id>`.
+export function readPath(workspaceDir) {
+  const p = join(workspaceDir, 'PATH.md');
+  if (!existsSync(p)) return null;
+  const lines = [];
+  for (const raw of readFileSync(p, 'utf8').split(/\r?\n/)) {
+    const m = /^\s*(\d+)\.\s+([^|]+?)\s*((?:\|[^|]*)*)$/.exec(raw);
+    if (!m) continue;
+    const line = { n: Number(m[1]), title: m[2].trim(), terms: [], tool: null, after: [], lesson: null };
+    for (const part of m[3].split('|').map((x) => x.trim()).filter(Boolean)) {
+      const f = /^([a-z]+):\s*(.*)$/i.exec(part);
+      if (!f) continue;
+      const key = f[1].toLowerCase();
+      const vals = f[2].split(',').map((x) => x.trim()).filter(Boolean);
+      if (key === 'terms') line.terms = vals.map((x) => x.toLowerCase());
+      else if (key === 'tool') line.tool = (vals[0] ?? '').toLowerCase() || null;
+      else if (key === 'after') line.after = vals.map((x) => x.toLowerCase());
+      else if (key === 'lesson') line.lesson = vals[0] ?? null;
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
+const bodyAttrList = (html, attr) => {
+  const m = new RegExp(`<body\\b[^>]*\\b${attr}\\s*=\\s*(["'])([^"']*)\\1`, 'i').exec(html);
+  return m ? m[2].split(',').map((t) => t.trim().toLowerCase()).filter(Boolean) : [];
+};
+
+// Terms declared by `data-introduces` on every lesson numbered at or below `lessonId`.
+export function introducedTerms(workspaceDir, lessonId) {
+  const out = new Set();
+  for (const f of listDir(join(workspaceDir, 'lessons'), '.html')) {
+    const id = f.slice(0, -5);
+    if (!LESSON_ID_RE.test(id) || id.slice(0, 4) > lessonId.slice(0, 4)) continue;
+    for (const t of bodyAttrList(readFileSync(join(workspaceDir, 'lessons', f), 'utf8'), 'data-introduces')) out.add(t);
+  }
+  return out;
+}
+
+// Every term the workspace tracks: the Floor's "New to me" plus every lesson's data-introduces.
+export function trackedTerms(workspaceDir) {
+  const out = new Set(missionFloor(workspaceDir).newTerms ?? []);
+  for (const f of listDir(join(workspaceDir, 'lessons'), '.html')) {
+    if (!LESSON_ID_RE.test(f.slice(0, -5))) continue;
+    for (const t of bodyAttrList(readFileSync(join(workspaceDir, 'lessons', f), 'utf8'), 'data-introduces')) out.add(t);
+  }
+  return out;
+}
+
+// The prose a term rule reads: every block except sources and followup, with <pre> blocks removed
+// (output and YAML name things before the lesson defines them) and quiz text included.
+function proseOf(blocks, quiz) {
+  let text = '';
+  for (const [name, b] of blocks) {
+    if (name === 'sources' || name === 'followup') continue;
+    text += ' ' + textOf(b.html.replace(/<pre\b[\s\S]*?<\/pre>/gi, ' ').replace(/<script\b[\s\S]*?<\/script>/gi, ' '));
+  }
+  for (const it of quiz.items ?? []) text += ' ' + [it.q, ...(it.options ?? []), ...(it.why ?? [])].join(' ');
+  return text;
+}
+
+const termRe = (t) => new RegExp(`(^|[^\\p{L}\\p{N}_-])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_-])`, 'iu');
+
 const unescapeHtml = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
 
 // Tools listed under MISSION.md's "Known tools" heading: the first word of each bullet, lowercased.
@@ -188,8 +278,6 @@ export function lintLesson(filePath, ctx) {
 
   const fact = blocks.get('fact');
   if (fact) {
-    const words = textOf(fact.html).split(' ').filter(Boolean).length;
-    if (words > FACT_WORDS) add('LESSON_FACT_TOO_LONG', `fact block is ${words} words (max ${FACT_WORDS})`);
     [...fact.html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].forEach((m, i) => {
       if (!/<a\b[^>]*\bdata-cite\s*=/i.test(m[1])) add('LESSON_CLAIM_UNCITED', `fact paragraph ${i} has no data-cite: ${textOf(m[1]).slice(0, 60)}`);
     });
@@ -208,6 +296,34 @@ export function lintLesson(filePath, ctx) {
   if (cls !== 'reference' && blocks.has('quiz')) quizFindings(quiz, cls, ws, add);
 
   if (cls === 'lesson') {
+    const html = readFileSync(filePath, 'utf8');
+    const id = basename(filePath).slice(0, -5);
+    const model = blocks.get('model');
+    if (model) {
+      if (!/\bdata-cite\s*=/i.test(model.html)) add('LESSON_CLAIM_UNCITED', 'model block has no data-cite');
+      if (!/<figure\b/i.test(model.html) && !/\bdata-no-figure\b/i.test(model.attrs)) add('LESSON_MODEL_NO_FIGURE', 'model block has no <figure> (add a diagram, or data-no-figure with a reason in PLAN.md)');
+      const types = new Set(extractCites(model.html).map((c) => ctx.entries.find((e) => e.id === c)?.type).filter(Boolean));
+      if (types.size && [...types].every((t) => t === 'experiment' || t === 'snippet')) add('WARN_MODEL_LAB_ONLY', 'model block cites only experiment or snippet entries; a model is a "the docs say" claim, cite a source or note');
+    }
+    const introduces = bodyAttrList(html, 'data-introduces');
+    if (introduces.length > MAX_INTRODUCES) add('LESSON_INTRODUCES_TOO_MANY', `data-introduces names ${introduces.length} terms (max ${MAX_INTRODUCES})`);
+    const dfns = [...html.matchAll(/<dfn\b[^>]*>([\s\S]*?)<\/dfn>/gi)].map((m) => textOf(m[1]).toLowerCase());
+    for (const t of introduces) if (!dfns.includes(t)) add('LESSON_DFN_MISSING', `data-introduces names ${t} but no <dfn>${t}</dfn> defines it`);
+    const floor = missionFloor(ws);
+    if (floor.newTerms !== null || floor.knownTerms !== null) {
+      const allowed = new Set([...(floor.knownTerms ?? []), ...introducedTerms(ws, id)]);
+      const prose = proseOf(blocks, quiz);
+      for (const t of trackedTerms(ws)) {
+        if (!allowed.has(t) && termRe(t).test(prose)) add('LESSON_TERM_NOT_INTRODUCED', `uses the term "${t}" before this or an earlier lesson introduces it (data-introduces) and it is not in the Floor's known terms`);
+      }
+    }
+    const path = readPath(ws);
+    const line = path?.find((l) => l.lesson === id);
+    if (line) {
+      const teaches = bodyAttrList(html, 'data-teaches');
+      const same = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
+      if (!same(line.terms, introduces) || (line.tool ?? null) !== (teaches[0] ?? null)) add('LESSON_PATH_MISMATCH', `PATH.md line ${line.n} says terms: ${line.terms.join(', ') || 'none'}; tool: ${line.tool ?? 'none'}, the lesson declares data-introduces ${introduces.join(', ') || 'none'}; data-teaches ${teaches.join(', ') || 'none'}`);
+    }
     const used = commandTools(blocks);
     if (used.size) {
       const known = missionKnownTools(ws);
@@ -234,7 +350,8 @@ export function lintStore(workspaceDir, ctx) {
   const ws = workspaceDir;
   const { teachSchema } = ctx;
   const findings = [];
-  const exists = { lessons: (id) => LESSON_ID_RE.test(id) && existsSync(join(ws, 'lessons', `${id}.html`)),
+  // A parked lesson (parked/<id>.html) still resolves: its attempts and records keep their history.
+  const exists = { lessons: (id) => LESSON_ID_RE.test(id) && (existsSync(join(ws, 'lessons', `${id}.html`)) || existsSync(join(ws, 'parked', `${id}.html`))),
     records: (id) => RECORD_ID_RE.test(id) && existsSync(join(ws, 'learning-records', `${id}.md`)) };
   const target = { superseded_by: exists.records, records: exists.records, lesson: exists.lessons };
   for (const folder of ['learning-records', 'attempts']) {
@@ -275,5 +392,8 @@ export function lintWorkspace(workspaceDir, ctx) {
   const findings = ['lessons', 'reference'].flatMap((d) =>
     listDir(join(workspaceDir, d), '.html').flatMap((f) => lintLesson(join(workspaceDir, d, f), c)));
   findings.push(...lintStore(workspaceDir, c));
+  if (listDir(join(workspaceDir, 'lessons'), '.html').length && readPath(workspaceDir) === null) {
+    findings.push({ code: 'WARN_PATH_MISSING', file: 'PATH.md', message: 'no PATH.md; teach next cannot name the next lesson (PATH-FORMAT.md)', warning: true });
+  }
   return findings.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
 }

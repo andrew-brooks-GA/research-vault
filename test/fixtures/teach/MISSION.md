@@ -7,8 +7,14 @@ Read and predict the output of the fixture function before running it.
 - Predict what fx prints for a given input
 - Run fx on a new input and check the prediction
 
-## Known tools
+## Floor
+### Known tools
 - node
+### Known terms
+- function
+### New to me
+- fx
+- sextuple
 
 ## Constraints
 - Ten minutes a session

@@ -28,7 +28,7 @@ const attemptFiles = (ws) => readdirSync(join(ws, 'attempts')).sort();
 
 test('CLI teach lint on the good lesson exits 0 with lint: clean', () => {
   const dir = mkdtempSync(join(tmpdir(), 'rv-teach-clean-'));
-  for (const f of ['MISSION.md', 'GLOSSARY.md', 'lessons/0001-good.html', 'lessons/0003-review-good.html', 'reference/good.html',
+  for (const f of ['MISSION.md', 'PATH.md', 'GLOSSARY.md', 'lessons/0001-good.html', 'lessons/0003-review-good.html', 'reference/good.html',
     'learning-records/0001-known.md', 'attempts/a-20260101-120000-0001.md', 'evidence/0001/PLAN.md']) {
     mkdirSync(dirname(join(dir, f)), { recursive: true });
     cpSync(join(FIX, f), join(dir, f));
@@ -53,7 +53,7 @@ test('CLI teach lint on the workspace exits 1 and prints the bad codes in the va
   const lessonLines = violations.filter((l) => l !== recordLine);
   for (const l of lessonLines) assert.match(l, /^[A-Z_]+ {2}lessons\/0002-bad\.html: \S/);
   assert.deepEqual(lessonLines.map((l) => l.split(' ')[0]).sort(), [
-    'EVIDENCE_PLAN_MISSING', 'LESSON_BLOCK_MISSING', 'LESSON_CITE_UNRESOLVED', 'LESSON_CLAIM_UNCITED', 'LESSON_LINK_DANGLING', 'LESSON_TOOL_NOT_INTRODUCED',
+    'EVIDENCE_PLAN_MISSING', 'LESSON_BLOCK_MISSING', 'LESSON_CITE_UNRESOLVED', 'LESSON_CLAIM_UNCITED', 'LESSON_LINK_DANGLING', 'LESSON_MODEL_NO_FIGURE', 'LESSON_TERM_NOT_INTRODUCED', 'LESSON_TOOL_NOT_INTRODUCED',
     'QUIZ_ANSWER_SPREAD', 'QUIZ_CORRECT_RANGE', 'QUIZ_TOO_FEW', 'QUIZ_WHY_MISSING',
   ]);
   assert.ok(violations.includes('LESSON_BLOCK_MISSING  lessons/0002-bad.html: missing block: step'));
@@ -65,6 +65,7 @@ test('CLI teach lint on the workspace exits 1 and prints the bad codes in the va
 
 test('CLI teach lint: a command tool must be in Known tools or taught by this or an earlier lesson (data-teaches)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'rv-teach-tools-'));
+  // No PATH.md here: data-teaches is set on lessons the fixture path does not plan, so only the first stdout line is compared.
   for (const f of ['MISSION.md', 'GLOSSARY.md', 'lessons/0001-good.html', 'reference/good.html', 'evidence/0001/PLAN.md']) {
     mkdirSync(dirname(join(dir, f)), { recursive: true });
     cpSync(join(FIX, f), join(dir, f));
@@ -79,21 +80,22 @@ test('CLI teach lint: a command tool must be in Known tools or taught by this or
   // node is in Known tools; fxctl is not taught anywhere: one finding, naming the block and the tool.
   let r = cli(['lint', dir]);
   assert.equal(r.status, 1);
-  assert.equal(r.stdout, 'LESSON_TOOL_NOT_INTRODUCED  lessons/0002-fxctl.html: step runs fxctl, which is neither in MISSION.md "Known tools" nor taught by this or an earlier lesson (data-teaches)\n');
+  const first = (x) => x.stdout.split('\n')[0];
+  assert.equal(first(r), 'LESSON_TOOL_NOT_INTRODUCED  lessons/0002-fxctl.html: step runs fxctl, which is neither in MISSION.md "Known tools" nor taught by this or an earlier lesson (data-teaches)');
 
   // An earlier lesson teaches it: clean.
-  writeFileSync(join(dir, 'lessons', '0001-good.html'), good.replace('<body data-lesson="0001-good">', '<body data-lesson="0001-good" data-teaches="fxctl">'));
+  writeFileSync(join(dir, 'lessons', '0001-good.html'), good.replace('<body data-lesson="0001-good"', '<body data-lesson="0001-good" data-teaches="fxctl"'));
   r = cli(['lint', dir]);
-  assert.equal(r.stdout, 'lint: clean\n');
+  assert.equal(first(r), 'lint: clean');
   assert.equal(r.status, 0);
 
   // Only a LATER lesson teaches it: still a finding (order matters).
   writeFileSync(join(dir, 'lessons', '0001-good.html'), good);
   writeFileSync(join(dir, 'lessons', '0002-fxctl.html'), second.replace('data-lesson="0002-fxctl"', 'data-lesson="0002-fxctl" data-teaches="FXCTL"'));
   r = cli(['lint', dir]);
-  assert.equal(r.stdout, 'lint: clean\n', 'a lesson may use the tool it teaches, case-insensitively');
+  assert.equal(first(r), 'lint: clean', 'a lesson may use the tool it teaches, case-insensitively');
   writeFileSync(join(dir, 'lessons', '0002-fxctl.html'), second);
-  writeFileSync(join(dir, 'lessons', '0003-later.html'), good.replace('<body data-lesson="0001-good">', '<body data-lesson="0003-later" data-teaches="fxctl">'));
+  writeFileSync(join(dir, 'lessons', '0003-later.html'), good.replace('<body data-lesson="0001-good"', '<body data-lesson="0003-later" data-teaches="fxctl"'));
   mkdirSync(join(dir, 'evidence', '0003'));
   cpSync(join(FIX, 'evidence', '0001', 'PLAN.md'), join(dir, 'evidence', '0003', 'PLAN.md'));
   r = cli(['lint', dir]);
@@ -101,7 +103,7 @@ test('CLI teach lint: a command tool must be in Known tools or taught by this or
   assert.equal(r.status, 1);
 
   // No Known tools section: the rule cannot run; a warning, not a violation.
-  writeFileSync(join(dir, 'MISSION.md'), readFileSync(join(FIX, 'MISSION.md'), 'utf8').replace(/## Known tools\n- node\n\n/, ''));
+  writeFileSync(join(dir, 'MISSION.md'), readFileSync(join(FIX, 'MISSION.md'), 'utf8').replace(/### Known tools\n- node\n/, ''));
   r = cli(['lint', dir]);
   assert.equal(r.status, 0);
   assert.match(r.stdout, /^warning WARN_MISSION_KNOWN_TOOLS_MISSING  lessons\/0001-good\.html: MISSION\.md has no "Known tools" section/m);
@@ -114,7 +116,7 @@ test('CLI teach lint resolves the vault from the workspace, not the cwd; a missi
   const repo = mkdtempSync(join(tmpdir(), 'rv-teach-repo-'));
   bind(repo, VAULT);
   const ws = join(repo, 'learn', 'fx');
-  for (const f of ['MISSION.md', 'GLOSSARY.md', 'lessons/0001-good.html', 'reference/good.html', 'evidence/0001/PLAN.md']) {
+  for (const f of ['MISSION.md', 'PATH.md', 'GLOSSARY.md', 'lessons/0001-good.html', 'reference/good.html', 'evidence/0001/PLAN.md']) {
     mkdirSync(dirname(join(ws, f)), { recursive: true });
     cpSync(join(FIX, f), join(ws, f));
   }
@@ -213,12 +215,12 @@ test('CLI teach next prints criteria, the records table and the review lines', (
     '| id | kind | date | lesson | last attempt |\n|---|---|---|---|---|\n';
   const r1 = cli(['next', ws]);
   assert.equal(r1.status, 0);
-  assert.equal(r1.stdout, head + '| 0001-known | understanding | 2026-01-01 | 0001-good | none |\n\nreview-due: 0001-known\nreview-failed: none\n');
+  assert.equal(r1.stdout, head + '| 0001-known | understanding | 2026-01-01 | 0001-good | none |\n\nreview-due: 0001-known\nreview-failed: none\npath: 4. The sextuple, named | terms: sextuple | after: 1\n');
   // A wrong answer on the review item today: no longer due, now failed. Run from the cwd.
   assert.equal(cli(['attempt', 'add', '--lesson', '0003-review-good', '--answers', '0,0,1', ws]).status, 0);
   const r2 = cli(['next'], ws);
   assert.equal(r2.status, 0);
-  assert.equal(r2.stdout, head + `| 0001-known | understanding | 2026-01-01 | 0001-good | 2/3 on ${TODAY} |\n\nreview-due: none\nreview-failed: 0001-known\n`);
+  assert.equal(r2.stdout, head + `| 0001-known | understanding | 2026-01-01 | 0001-good | 2/3 on ${TODAY} |\n\nreview-due: none\nreview-failed: 0001-known\npath: 4. The sextuple, named | terms: sextuple | after: 1\n`);
 });
 
 test('CLI teach next without a Success section exits 2', () => {

@@ -1,11 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, appendFileSync, existsSync, readFileSync, mkdirSync, chmodSync } from 'node:fs';
+import { writeFileSync, appendFileSync, existsSync, readFileSync, mkdirSync, chmodSync, mkdtempSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { tmpVault, put, fixtureVault } from './helpers.mjs';
 import {
+  unitHashes, changedUnits,
   LEDGER_FILENAME, contentHash, ledgerKey, recordVerdict, gateStatus,
   evidenceFor, renderEvidence, findWorkspaces, gatedFiles,
 } from '../bin/lib/gate.mjs';
@@ -218,7 +220,7 @@ test('CLI gate record rejects a bad verdict with exit 2 and no ledger', () => {
   const root = boundRepo(vault);
   const r = gateCli(root, vault, 'record', 'docs/reply.md', 'pass');
   assert.equal(r.code, 2);
-  assert.match(r.err, /^usage: research-vault gate evidence <draft> \[--extra ids\] \[--json\] \| record <file> <PASS\|FAIL-as-sent\|MERIT> \[note\] \| status <file> \[--check\]$/m);
+  assert.match(r.err, /^usage: research-vault gate evidence <draft> \[--extra ids\] \[--changed\] \[--json\] \| changed <draft> \| record <file> <PASS\|FAIL-as-sent\|MERIT> \[note\] \| status <file> \[--check\]$/m);
   assert.equal(existsSync(join(root, LEDGER_FILENAME)), false);
   assert.equal(gateCli(root, vault, 'bogus').code, 2);
   assert.equal(gateCli(root, vault).code, 2);
@@ -273,4 +275,43 @@ test('CLI gate outside a bound repo exits 2', () => {
   const r = gateCli(root, vault, 'status', 'x.md');
   assert.equal(r.code, 2);
   assert.equal(r.err, `gate: x.md is not inside a repo bound with .research-vault.json\n`);
+});
+
+test('per-unit gate: an edit reopens only the units it touched, and a unit passed in any row keeps its verdict', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'rv-gate-units-'));
+  writeFileSync(join(repo, '.research-vault.json'), JSON.stringify({ vault: 'vault' }) + '\n');
+  const lesson = (p2) => `<!doctype html><html><body data-lesson="0001-x">
+<section data-block="mission"><p>m</p></section>
+<section data-block="fact"><p>one <a data-cite="a">a</a></p><p>${p2} <a data-cite="b">b</a></p></section>
+<section data-block="quiz"><script type="application/json" data-quiz>{"items":[{"q":"q1","options":["a","b","c"],"correct":0,"why":["","",""]},{"q":"q2","options":["a","b","c"],"correct":1,"why":["","",""]}]}</script></section>
+<section data-block="step"><p>s</p></section>
+</body></html>`;
+  const f = join(repo, 'l.html');
+  writeFileSync(f, lesson('two'));
+  const u = unitHashes(readFileSync(f));
+  assert.deepEqual(Object.keys(u).sort(), ['fact:0', 'fact:1', 'mission', 'quiz:0', 'quiz:1', 'step']);
+  assert.deepEqual(changedUnits(repo, f).sort(), ['fact:0', 'fact:1', 'mission', 'quiz:0', 'quiz:1', 'step'], 'nothing recorded yet: every unit is pending');
+  recordVerdict(repo, f, 'PASS');
+  assert.equal(gateStatus(repo, f).verdict, 'PASS');
+  assert.deepEqual(changedUnits(repo, f), []);
+  // Edit the second fact paragraph only.
+  writeFileSync(f, lesson('two, revised'));
+  assert.deepEqual(changedUnits(repo, f), ['fact:1']);
+  const s1 = gateStatus(repo, f);
+  assert.equal(s1.verdict, null);
+  assert.deepEqual(s1.units, ['fact:1']);
+  recordVerdict(repo, f, 'MERIT', 'fact:1 reviewed');
+  assert.equal(gateStatus(repo, f).verdict, 'MERIT');
+  // Revert that paragraph: these exact bytes have no row, but every unit was passed in some row.
+  writeFileSync(f, lesson('two'));
+  assert.deepEqual(changedUnits(repo, f), []);
+  assert.equal(gateStatus(repo, f).verdict, 'PASS');
+  // A FAIL row covers nothing.
+  writeFileSync(f, lesson('three'));
+  recordVerdict(repo, f, 'FAIL-as-sent');
+  assert.deepEqual(changedUnits(repo, f), ['fact:1']);
+  assert.equal(gateStatus(repo, f).verdict, null);
+  // A draft without data-block elements is one unit.
+  writeFileSync(f, '<p>plain</p>');
+  assert.deepEqual(Object.keys(unitHashes(readFileSync(f))), ['all']);
 });

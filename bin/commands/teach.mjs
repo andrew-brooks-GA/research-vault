@@ -6,7 +6,7 @@ import { resolveVault } from '../lib/resolve.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
 import { writeRecord, supersedeRecord, writeAttempt, fixRecordFrontmatter, teachIndex, createServer, progress, progressText } from '../lib/teach.mjs';
-import { lintWorkspace } from '../lib/lesson.mjs';
+import { lintWorkspace, readPath } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | progress [workspace] | serve [workspace]';
@@ -50,6 +50,19 @@ function lint(ws, args) {
   return violations.length ? 1 : 0;
 }
 
+// The first PATH.md line no lesson has taken, as `path: N. <title> | terms ... | after ...`.
+function pathLine(ws) {
+  const path = readPath(ws);
+  if (path === null) return 'path: none (write PATH.md)';
+  const l = path.find((x) => !x.lesson);
+  if (!l) return 'path: complete';
+  const bits = [];
+  if (l.terms.length) bits.push(`terms: ${l.terms.join(', ')}`);
+  if (l.tool) bits.push(`tool: ${l.tool}`);
+  if (l.after.length) bits.push(`after: ${l.after.join(', ')}`);
+  return `path: ${l.n}. ${l.title}${bits.length ? ' | ' + bits.join(' | ') : ''}`;
+}
+
 function next(ws) {
   const idx = teachIndex(ws, { now: new Date() });
   if (!idx.criteria.length) {
@@ -68,6 +81,7 @@ function next(ws) {
     '',
     `review-due: ${ids(active.filter((r) => r.reviewDue))}`,
     `review-failed: ${ids(active.filter((r) => r.reviewFailed))}`,
+    pathLine(ws),
   ].join('\n'));
   return 0;
 }
