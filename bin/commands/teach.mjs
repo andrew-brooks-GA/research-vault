@@ -87,8 +87,8 @@ function next(ws) {
 }
 
 // Runs until killed: the returned promise settles only when the server closes.
-async function serve(ws, teachSchema) {
-  const server = createServer(ws, { schema: teachSchema });
+async function serve(ws, teachSchema, titles) {
+  const server = createServer(ws, { schema: teachSchema, titles });
   await new Promise((ok, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', ok); });
   const { port } = server.address();
   const file = join(ws, '.teach-serve.json');
@@ -141,7 +141,13 @@ export async function run(args) {
   if (verb === 'serve') {
     const ws = workspace(sub);
     if (!ws) return usage();
-    return serve(ws, teachSchema);
+    // Vault titles for the footnote rendering; a missing vault just leaves ids as titles.
+    let titles = {};
+    try {
+      const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws });
+      if (existsSync(vaultPath)) titles = Object.fromEntries(buildManifest(vaultPath).entries.map((e) => [e.id, e.title ?? e.id]));
+    } catch { /* serve without titles */ }
+    return serve(ws, teachSchema, titles);
   }
   return usage();
 }

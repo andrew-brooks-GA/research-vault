@@ -327,8 +327,35 @@ function send(req, res, status, body = '', type = 'text/plain; charset=utf-8', c
   res.end(body);
 }
 
+// Citations as the learner sees them: every `<a data-cite="ID">` outside the sources block becomes a
+// numbered footnote `[n]` (first appearance order) carrying the entry's title, and the sources block's
+// anchors get `id="src-ID"`, their title as text, and their number. The file on disk is untouched, so
+// the claims-gate hash is unaffected. `titles` maps vault id to title; an unknown id keeps the id as its title.
+export function footnoteCitations(html, titles = {}) {
+  const order = [];
+  const num = (id) => { let i = order.indexOf(id); if (i === -1) { order.push(id); i = order.length - 1; } return i + 1; };
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const srcRe = /(<[a-z][a-z0-9]*\b[^>]*\bdata-block\s*=\s*(["'])sources\2[^>]*>)([\s\S]*?)(<\/section>|<\/div>)/i;
+  const m = srcRe.exec(html);
+  const before = m ? html.slice(0, m.index) : html;
+  const sources = m ? m[3] : '';
+  const after = m ? html.slice(m.index + m[0].length) : '';
+  const anchor = /<a\b([^>]*)\bdata-cite\s*=\s*(["'])([^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi;
+  const body = before.replace(anchor, (_, pre, q, id, post) => {
+    const n = num(id);
+    return `<a${pre}data-cite="${id}"${post} class="cite" href="#src-${esc(id)}" title="${esc(titles[id] ?? id)}">[${n}]</a>`;
+  });
+  if (!m) return body;
+  const srcBody = sources.replace(anchor, (_, pre, q, id, post) => {
+    const n = num(id);
+    const hrefOnly = /\bhref\s*=/.test(pre + post) ? '' : ` href="#src-${esc(id)}"`;
+    return `<a${pre}data-cite="${id}"${post}${hrefOnly} id="src-${esc(id)}">[${n}] ${esc(titles[id] ?? id)}</a>`;
+  });
+  return body + m[1] + srcBody + m[4] + after;
+}
+
 // The resolved file to serve for a URL path, or a status: 400 undecodable, 404 anything not allowlisted.
-export function serveFile(workspaceDir, urlPath) {
+export function serveFile(workspaceDir, urlPath, { titles } = {}) {
   let decoded;
   try { decoded = decodeURIComponent(urlPath); } catch { return { status: 400 }; }
   if (decoded.includes('\0') || decoded.split('/').some((seg) => seg.startsWith('.'))) return { status: 404 };
@@ -338,7 +365,9 @@ export function serveFile(workspaceDir, urlPath) {
   if (!allowed) return { status: 404 };
   try {
     if (!statSync(target).isFile()) return { status: 404 };
-    return { status: 200, body: readFileSync(target), type: CONTENT_TYPES[extname(target).toLowerCase()] ?? 'application/octet-stream' };
+    const body = readFileSync(target);
+    const isPage = /\.html$/i.test(target) && (decoded.startsWith('/lessons/') || decoded.startsWith('/reference/'));
+    return { status: 200, body: isPage ? footnoteCitations(body.toString('utf8'), titles ?? {}) : body, type: CONTENT_TYPES[extname(target).toLowerCase()] ?? 'application/octet-stream' };
   } catch {
     return { status: 404 };
   }
@@ -404,7 +433,7 @@ function postAttempt(req, res, workspaceDir, origin, schema, now) {
   });
 }
 
-export function createServer(workspaceDir, { schema, now = () => new Date() } = {}) {
+export function createServer(workspaceDir, { schema, now = () => new Date(), titles = {} } = {}) {
   const ws = resolve(workspaceDir);
   const clock = typeof now === 'function' ? now : () => now;
   // requireHostHeader off: a missing Host gets our 403, not node:http's own 400.
@@ -422,7 +451,7 @@ export function createServer(workspaceDir, { schema, now = () => new Date() } = 
     if (path === '/lessons.json') return send(req, res, 200, JSON.stringify(lessonIndex(ws)), 'application/json');
     if (path === '/progress') return send(req, res, 200, progressHtml(progress(ws, { now: clock() })), 'text/html; charset=utf-8');
     if (path === '/progress.json') return send(req, res, 200, JSON.stringify(progress(ws, { now: clock() })), 'application/json');
-    const f = serveFile(ws, path);
+    const f = serveFile(ws, path, { titles });
     if (f.status !== 200) return send(req, res, f.status, f.status === 400 ? 'bad request\n' : 'not found\n');
     send(req, res, 200, f.body, f.type); // HEAD: node:http drops the body itself
   });

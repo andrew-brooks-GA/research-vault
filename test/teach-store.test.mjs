@@ -10,6 +10,7 @@ import {
   validateEntry, nextRecordId, attemptId, writeRecord, supersedeRecord, readQuiz,
   writeAttempt, teachIndex, fixRecordFrontmatter,
 } from '../bin/lib/teach.mjs';
+import { footnoteCitations } from '../bin/lib/teach.mjs';
 
 // Copied from bin/lib/citations.mjs (not exported there): the vault citation id pattern.
 const CITATION_RE = /\b\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\b/;
@@ -303,4 +304,17 @@ test('teachIndex orders same-second attempts by numeric suffix', () => {
   console.log(`attempt order: ${ix.attempts.map((a) => a.id).join(', ')}`);
   assert.deepEqual(ix.attempts.map((a) => a.id), ['a-20261026-123456-0001', 'a-20261026-123456-0001-2', 'a-20261026-123456-0001-10']);
   assert.equal(ix.records[0].lastAttempt.id, 'a-20261026-123456-0001-10');
+});
+
+test('footnoteCitations numbers citations by first appearance, titles them, and rewrites the sources block', () => {
+  const html = '<p>a <a data-cite="x">x</a> b <a data-cite="y">y</a> c <a data-cite="x">x</a></p>' +
+    '<section data-block="sources"><ul><li><a data-cite="y" href="https://e.org/y">y</a> (recommended read)</li><li><a data-cite="x">x</a></li></ul></section>' +
+    '<section data-block="followup"><p>f</p></section>';
+  const out = footnoteCitations(html, { x: 'X title', y: 'Y <title>' });
+  assert.ok(out.includes('<a data-cite="x" class="cite" href="#src-x" title="X title">[1]</a> b <a data-cite="y" class="cite" href="#src-y" title="Y &lt;title&gt;">[2]</a> c <a data-cite="x" class="cite" href="#src-x" title="X title">[1]</a>'));
+  assert.ok(out.includes('<a data-cite="y" href="https://e.org/y" id="src-y">[2] Y &lt;title&gt;</a> (recommended read)'), 'an existing href is kept');
+  assert.ok(out.includes('<a data-cite="x" href="#src-x" id="src-x">[1] X title</a>'));
+  assert.ok(out.endsWith('<section data-block="followup"><p>f</p></section>'), 'content after the sources block is untouched');
+  assert.equal(footnoteCitations('<p>no cites</p>'), '<p>no cites</p>');
+  assert.ok(footnoteCitations('<p><a data-cite="z">z</a></p>').includes('title="z">[1]</a>'), 'an unknown id keeps the id as its title');
 });
