@@ -1,9 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync, appendFileSync, existsSync, readFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpVault } from './helpers.mjs';
-import { LEDGER_FILENAME, contentHash, ledgerKey, recordVerdict, gateStatus } from '../bin/lib/gate.mjs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { tmpVault, put } from './helpers.mjs';
+import {
+  LEDGER_FILENAME, contentHash, ledgerKey, recordVerdict, gateStatus,
+  evidenceFor, renderEvidence, findWorkspaces, gatedFiles,
+} from '../bin/lib/gate.mjs';
+
+const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'gate');
 
 function draft(content = 'draft body\n') {
   const root = tmpVault('rv-gate-');
@@ -60,4 +66,97 @@ test('ledgerKey is repo-relative with forward slashes', () => {
   assert.equal(ledgerKey(root, join(root, 'docs', 'drafts', 'a.md')), 'docs/drafts/a.md');
   assert.equal(ledgerKey(root, './docs/drafts/a.md'), 'docs/drafts/a.md');
   assert.equal(ledgerKey(root, 'docs\\drafts\\a.md'), 'docs/drafts/a.md');
+});
+
+const ver = (date) => [{ date, by_type: 'human', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }];
+const LONG = 'The fixture function reads an integer and prints a value. '.repeat(5);
+
+// Fixture vault: the ids the gate fixtures cite, plus one stale note.
+function fixtureVault() {
+  const dir = tmpVault('rv-gate-vault-');
+  put(dir, 'source', '2026-01-01-fx-doc', { source_type: 'article', source_url: 'https://example.org/fx' },
+    `# 2026-01-01-fx-doc\n\n${LONG}\n`);
+  put(dir, 'source', '2026-01-01-fx-doc-nobody', { source_type: 'article', source_url: 'https://example.org/nobody' });
+  put(dir, 'experiment', '2026-01-01-fx-experiment', {}, `# 2026-01-01-fx-experiment\n\nRan it with 7; it printed 42.\n`);
+  put(dir, 'note', '2026-01-01-old', { sources: [], confidence: 'medium', volatility: 'fast', verifications: ver('2020-01-01') },
+    `# 2026-01-01-old\n\n${LONG}\n`);
+  return dir;
+}
+
+test('evidenceFor resolves cited ids and URLs, flags stale and no-body, lists uncovered', () => {
+  const vault = fixtureVault();
+  const { file } = draft([
+    'See [doc](https://example.org/fx), 2026-01-01-fx-doc-nobody, 2026-01-01-fx-experiment,',
+    '2026-01-01-old and https://nowhere.example/x.',
+  ].join('\n'));
+  const r = evidenceFor(file, vault);
+  assert.deepEqual(r.entries.map((e) => e.id),
+    ['2026-01-01-fx-doc', '2026-01-01-fx-doc-nobody', '2026-01-01-fx-experiment', '2026-01-01-old']);
+  assert.deepEqual(r.entries.filter((e) => e.noBody).map((e) => e.id), ['2026-01-01-fx-doc-nobody']);
+  assert.deepEqual(r.entries.filter((e) => e.stale).map((e) => e.id), ['2026-01-01-old']);
+  assert.deepEqual(r.entries[0], { id: '2026-01-01-fx-doc', type: 'source', status: 'active', stale: false, noBody: false });
+  assert.deepEqual(r.uncovered, [{ type: 'url', value: 'https://nowhere.example/x' }]);
+});
+
+test('evidenceFor merges --extra ids and does not throw on a malformed URL', () => {
+  const vault = fixtureVault();
+  const { file } = draft('Broken link http://[bad and 2026-01-01-fx-experiment.\n');
+  const r = evidenceFor(file, vault, { extra: ['2026-01-01-fx-doc', '2026-01-01-fx-experiment', '2026-09-09-missing'] });
+  assert.deepEqual(r.entries.map((e) => e.id), ['2026-01-01-fx-doc', '2026-01-01-fx-experiment']);
+  assert.deepEqual(r.uncovered, [{ type: 'url', value: 'http://[bad' }, { type: 'id', value: '2026-09-09-missing' }]);
+  const fx = evidenceFor(join(FIXTURES, 'lesson-ok.html'), vault);
+  assert.deepEqual(fx.entries.map((e) => e.id),
+    ['2026-01-01-fx-doc', '2026-01-01-fx-doc-nobody', '2026-01-01-fx-experiment']);
+  assert.deepEqual(fx.uncovered, []);
+});
+
+test('renderEvidence prints one line per entry and an uncovered line', () => {
+  const out = renderEvidence({
+    entries: [
+      { id: '2026-01-01-a', type: 'source', status: 'active', stale: false, noBody: true },
+      { id: '2026-01-01-b', type: 'note', status: 'active', stale: true, noBody: false },
+      { id: '2026-01-01-c', type: 'experiment', status: 'active', stale: false, noBody: false },
+    ],
+    uncovered: [{ type: 'url', value: 'https://nowhere.example/x' }],
+  });
+  assert.equal(out, [
+    '2026-01-01-a [source, active, no-body]',
+    '2026-01-01-b [note, active, STALE]',
+    '2026-01-01-c [experiment, active]',
+    'uncovered: https://nowhere.example/x',
+  ].join('\n') + '\n');
+});
+
+function workspaceRepo() {
+  const root = tmpVault('rv-gate-repo-');
+  const mk = (rel, files = {}) => {
+    mkdirSync(join(root, rel), { recursive: true });
+    for (const [name, text] of Object.entries(files)) writeFileSync(join(root, rel, name), text);
+  };
+  mk('learn/k8s', { 'MISSION.md': '# m\n' });
+  mk('learn/k8s/lessons', { 'one.html': 'x', 'notes.md': 'x' });
+  mk('learn/k8s/reference', { 'ref.html': 'x' });
+  mk('top', { 'MISSION.md': '# m\n' });
+  mk('node_modules/pkg', { 'MISSION.md': '# m\n' });
+  mk('.git/x', { 'MISSION.md': '# m\n' });
+  mk('research/notes', { 'MISSION.md': '# m\n' });
+  mk('_index/x', { 'MISSION.md': '# m\n' });
+  mk('docs/drafts', { 'reply.md': 'x', 'other.txt': 'x' });
+  return { root, vault: join(root, 'research') };
+}
+
+test('findWorkspaces skips node_modules, .git and the vault', () => {
+  const { root, vault } = workspaceRepo();
+  assert.deepEqual(findWorkspaces(root, vault).sort(), [join(root, 'learn/k8s'), join(root, 'top')]);
+});
+
+test('gatedFiles returns workspace lessons and reference docs plus gates.globs', () => {
+  const { root, vault } = workspaceRepo();
+  const want = [
+    join(root, 'learn/k8s/lessons/one.html'),
+    join(root, 'learn/k8s/reference/ref.html'),
+  ];
+  assert.deepEqual(gatedFiles(root, vault, {}).sort(), want);
+  assert.deepEqual(gatedFiles(root, vault, { gates: { globs: ['docs/drafts/*.md'] } }).sort(),
+    [join(root, 'docs/drafts/reply.md'), ...want].sort());
 });
