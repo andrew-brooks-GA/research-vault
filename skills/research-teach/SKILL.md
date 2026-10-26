@@ -21,7 +21,8 @@ The directory `/research-teach` was run in. One mission per workspace.
 | `MISSION.md` | Why the learner wants this; grounds every decision | learner state |
 | `GLOSSARY.md` | Terms the learner can already use correctly | learner state |
 | `learning-records/NNNN-slug.md` | What the learner has demonstrated; sets the zone of proximal development | learner state |
-| `NOTES.md` | Preferences, chapter progress, gate decisions | learner state |
+| `NOTES.md` | Preferences, chapter progress | learner state |
+| `GATE-LOG.md` | Claims-gate merit decisions, append-only | gate record |
 | `lessons/NNNN-slug.html` | One tightly scoped win each; the unit of teaching | view |
 | `reference/*.html` | Compressed essence, printable, revisited | view of vault notes |
 | `assets/` | Shared stylesheet, quiz widget, other reusable components | view |
@@ -38,7 +39,7 @@ If `MISSION.md` is missing or vague, interview the learner before anything else 
 1. Search the vault before the web: `search --topic`, `--text`, `--body`. Fresh entries answer; stale ones get re-verified (research-vault-usage §2) before they are taught.
    The vault is the source of truth. The web is where sources are found, not a source. A page you fetch is captured as a `source` entry before anything from it is taught or cited (`--store-body --ack-data-egress` when the quoted text matters); a page you did not capture does not exist as far as the lesson, the reference doc or the reviewer is concerned.
 2. Capture every resource you rely on, with `summary` saying what to use it for, `subject` name and version, and the workspace's topic. Dedup is automatic.
-3. Evidence is exactly three kinds of vault entry: `source`/`note` for what a document says, `snippet` for locally verifiable code, `experiment` for the log of a local run. Every claim about what a program prints, what a compiler or runtime says, what an API is named or what a version does is verified by running it, and the run is persisted: the probes under `evidence/NNNN/` are captured as one `snippet` (`--language`, `--tested true`), and `run.sh`'s output as one `experiment` (`--date-run`, `--outcome`, `--related <snippet id>`, Result verbatim, then `verify --method tool-probe`). A run that exists only on disk is not evidence; a web page is evidence only once captured as a `source`, so capture before you cite. Non-software topics keep the quoted passage or measurement in the entry body.
+3. Evidence is exactly three kinds of vault entry: `source`/`note` for what a document says, `snippet` for locally verifiable code, `experiment` for the log of a local run. Every claim about what a program prints, what a compiler or runtime says, what an API is named or what a version does is verified by running it, and the run is persisted: the probes under `evidence/NNNN/` are captured as one `snippet` (`--language`, `--tested true`), and `run.sh`'s output as one `experiment` (`--date-run`, `--outcome`, `--related <snippet id>`, Result verbatim, then `verify --method tool-probe`). A `run.sh` that fails gets one line in `evidence/NNNN/RERUNS.md` before any rerun: `harness-infra` or `hypothesis-relevant`, and the fix. A run that exists only on disk is not evidence; a web page is evidence only once captured as a `source`, so capture before you cite. Non-software topics keep the quoted passage or measurement in the entry body.
 
 ## 4. Build the lesson
 
@@ -58,21 +59,7 @@ Number lessons `NNNN-slug.html`, next number after the highest present. If possi
 
 ## 5. Claims gate, before the learner sees it
 
-1. Dispatch ONE `claims-reviewer` subagent (Agent tool, `subagent_type: claims-reviewer`, no `model`, not a fork). The prompt is only the inputs:
-
-   ```
-   Draft: <path>
-   Vault: <absolute vault path>
-   Evidence (read ONLY these vault entries):
-   <entry ids, one per line: sources and notes cited, the lesson's snippet, its experiment>
-   ```
-
-   Do not summarise what you did; the summary is the bias.
-2. `FAIL-as-sent`: narrow the claim to what the evidence shows, or add the missing probe, re-run `run.sh`, and re-capture the snippet and experiment (the old ones get `verify --result outdated --superseded-by <new id>`). Then re-run the gate. Never argue a finding down without changing the draft or the evidence. After the second round, decide each surviving finding on its merits, write the decision and reasoning in `NOTES.md`, and stop; a logged override beats a green verdict bought by re-rolling.
-3. Mark the draft: `<!-- claims-gate: PASS <date> -->`, or `<!-- claims-gate: MERIT <date>, see NOTES.md -->`.
-4. A citation or file with no vault entry is `unsupported` and fails the gate; capture it, add the id to the evidence list, re-run. `check <draft>` finds uncaptured URLs before the reviewer does.
-
-Reference docs go through the same gate; they are revisited more than lessons.
+Run the `research-claims-gate` skill on the lesson (extra ids: its snippet and experiment). Reference docs go through the same gate.
 
 ## 6. After the lesson
 

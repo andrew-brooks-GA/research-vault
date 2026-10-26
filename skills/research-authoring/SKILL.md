@@ -25,5 +25,7 @@ Capture fills `domain`/`topics` from the `.research-vault.json` `defaults` when 
 ## 3. Verify after authoring
 Run `research-vault check "<file-or-reference-glob>"` to confirm the new citation reports `ok`, not `uncovered` or `stale`. A consuming repo gates CI on `research-vault check --check`, so this is the same correctness floor the vault's own `lint` provides, extended to the document.
 
+If the document matches `gates.globs`, run the `research-claims-gate` skill before it is shown or sent.
+
 ## What this skill is not
 Not a research-orchestration entry point, and not the question-answering path — that is `research-vault-usage`. It owns one thing: a citation entering a document you are writing.
