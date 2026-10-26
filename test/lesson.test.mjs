@@ -67,7 +67,7 @@ test('a bad lesson reports each expected code exactly once', () => {
   const f = lintFile(FIX, 'lessons/0002-bad.html');
   const expected = [
     'EVIDENCE_PLAN_MISSING', 'LESSON_BLOCK_MISSING', 'LESSON_CITE_UNRESOLVED', 'LESSON_CLAIM_UNCITED',
-    'LESSON_LINK_DANGLING', 'QUIZ_ANSWER_SPREAD', 'QUIZ_CORRECT_RANGE', 'QUIZ_TOO_FEW', 'QUIZ_WHY_MISSING',
+    'LESSON_LINK_DANGLING', 'LESSON_TOOL_NOT_INTRODUCED', 'QUIZ_ANSWER_SPREAD', 'QUIZ_CORRECT_RANGE', 'QUIZ_TOO_FEW', 'QUIZ_WHY_MISSING',
   ];
   for (const x of f) console.log(`${x.code}  ${x.file}: ${x.message}`);
   assert.deepEqual(codes(f), expected);
@@ -75,6 +75,7 @@ test('a bad lesson reports each expected code exactly once', () => {
   assert.equal(by.LESSON_BLOCK_MISSING.message, 'missing block: step');
   assert.match(by.LESSON_CITE_UNRESOLVED.message, /2026-01-01-nope/);
   assert.match(by.LESSON_LINK_DANGLING.message, /0009-missing\.html/);
+  assert.equal(by.LESSON_TOOL_NOT_INTRODUCED.message, 'example runs fxctl, which is neither in MISSION.md "Known tools" nor taught by this or an earlier lesson (data-teaches)');
   assert.match(by.QUIZ_CORRECT_RANGE.message, /item 0/);
   assert.match(by.QUIZ_ANSWER_SPREAD.message, /item 1/);
   assert.match(by.QUIZ_WHY_MISSING.message, /item 1/);
@@ -255,6 +256,7 @@ test('lintWorkspace walks lessons, reference, records and attempts', () => {
     'lessons/0002-bad.html LESSON_CITE_UNRESOLVED',
     'lessons/0002-bad.html LESSON_CLAIM_UNCITED',
     'lessons/0002-bad.html LESSON_LINK_DANGLING',
+    'lessons/0002-bad.html LESSON_TOOL_NOT_INTRODUCED',
     'lessons/0002-bad.html QUIZ_ANSWER_SPREAD',
     'lessons/0002-bad.html QUIZ_CORRECT_RANGE',
     'lessons/0002-bad.html QUIZ_TOO_FEW',

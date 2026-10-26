@@ -116,6 +116,63 @@ function quizFindings(quiz, cls, ws, add) {
   });
 }
 
+// --- Tool pacing (spec 12, "one new tool per lesson") ---
+export const KNOWN_TOOLS_HEADING = /^#{1,6}\s+known tools\b/i;
+const unescapeHtml = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+
+// Tools listed under MISSION.md's "Known tools" heading: the first word of each bullet, lowercased.
+// null when the section is absent, so the caller can tell "no tools" from "no section".
+export function missionKnownTools(workspaceDir) {
+  const p = join(workspaceDir, 'MISSION.md');
+  if (!existsSync(p)) return null;
+  let found = false;
+  let inSection = false;
+  const out = new Set();
+  for (const line of readFileSync(p, 'utf8').split(/\r?\n/)) {
+    if (/^#{1,6}\s/.test(line)) { inSection = KNOWN_TOOLS_HEADING.test(line); if (inSection) found = true; continue; }
+    const m = inSection && /^\s*(?:[-*]|\d+\.)\s+`?([^\s`]+)/.exec(line);
+    if (m) out.add(m[1].toLowerCase());
+  }
+  return found ? out : null;
+}
+
+// Tools declared by `data-teaches="a,b"` on the <body> of every lesson numbered at or below `lessonId`.
+// A lesson may use the tool it teaches; later lessons inherit it.
+export function taughtTools(workspaceDir, lessonId) {
+  const out = new Set();
+  for (const f of listDir(join(workspaceDir, 'lessons'), '.html')) {
+    const id = f.slice(0, -5);
+    if (!LESSON_ID_RE.test(id) || id.slice(0, 4) > lessonId.slice(0, 4)) continue;
+    const m = /<body\b[^>]*\bdata-teaches\s*=\s*(["'])([^"']*)\1/i.exec(readFileSync(join(workspaceDir, 'lessons', f), 'utf8'));
+    if (m) for (const t of m[2].split(',')) { const tool = t.trim().toLowerCase(); if (tool) out.add(tool); }
+  }
+  return out;
+}
+
+// The tools a lesson's commands invoke, as a Map of tool -> block name. In `example`, a command is a <pre>
+// line starting with `$ `; in `step`, every non-empty, non-comment <pre> line is a command. One tool per
+// pipe, `&&` or `;` segment, skipping VAR=value prefixes. Tokens with a path separator are not tools.
+export function commandTools(blocks) {
+  const tools = new Map();
+  for (const name of ['example', 'step']) {
+    const b = blocks.get(name);
+    if (!b) continue;
+    for (const pre of b.html.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi)) {
+      for (const raw of unescapeHtml(pre[1].replace(/<[^>]*>/g, '')).split('\n')) {
+        let line = raw.trim();
+        if (!line || line.startsWith('#')) continue;
+        if (name === 'example') { if (!line.startsWith('$ ')) continue; line = line.slice(2); }
+        for (const seg of line.split(/\s\|\s|\s&&\s|\s;\s/)) {
+          const words = seg.trim().split(/\s+/).filter((w) => w && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w));
+          const tool = words[0]?.replace(/^\.\//, '').toLowerCase();
+          if (tool && /^[a-z0-9._-]+$/.test(tool) && !tools.has(tool)) tools.set(tool, name);
+        }
+      }
+    }
+  }
+  return tools;
+}
+
 export function lintLesson(filePath, ctx) {
   const cls = lessonClass(filePath);
   if (!cls) return [];
@@ -149,6 +206,20 @@ export function lintLesson(filePath, ctx) {
   }
 
   if (cls !== 'reference' && blocks.has('quiz')) quizFindings(quiz, cls, ws, add);
+
+  if (cls === 'lesson') {
+    const used = commandTools(blocks);
+    if (used.size) {
+      const known = missionKnownTools(ws);
+      if (known === null) add('WARN_MISSION_KNOWN_TOOLS_MISSING', 'MISSION.md has no "Known tools" section, so LESSON_TOOL_NOT_INTRODUCED cannot run');
+      else {
+        const taught = taughtTools(ws, basename(filePath).slice(0, -5));
+        for (const [tool, block] of used) {
+          if (!known.has(tool) && !taught.has(tool)) add('LESSON_TOOL_NOT_INTRODUCED', `${block} runs ${tool}, which is neither in MISSION.md "Known tools" nor taught by this or an earlier lesson (data-teaches)`);
+        }
+      }
+    }
+  }
 
   if (cls === 'lesson' && fact) {
     const ev = join(ws, 'evidence', basename(filePath).slice(0, 4));

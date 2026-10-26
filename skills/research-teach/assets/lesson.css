@@ -1,31 +1,117 @@
-/* Lesson and reference doc styles. Plain CSS, loaded by lessons as ../assets/lesson.css. */
-body { font: 16px/1.6 system-ui, sans-serif; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; color: #1d1d1f; background: #fff; }
-code, pre { font-family: ui-monospace, monospace; font-size: 0.9em; }
-pre { background: #f4f4f6; padding: 0.75rem; overflow-x: auto; }
+/* Lesson and reference doc styles. Plain CSS, loaded by lessons as ../assets/lesson.css.
+   Light and dark follow the OS (prefers-color-scheme); <html data-theme="light|dark"> forces one.
+   Wide screens get two columns (fact beside example, quiz beside step); narrow screens stack. */
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7fa; --card: #ffffff; --ink: #1d1d1f; --muted: #5b6270; --rule: #e3e5ea;
+  --code-bg: #eef1f6; --code-ink: #1d1d1f; --link: #2b6cb0; --chip: #f6f7fa;
+  --c-mission: #6a5acd; --c-fact: #2b6cb0; --c-example: #4a5568; --c-quiz: #d69e2e; --c-step: #2f855a;
+  --c-sources: #718096; --c-followup: #a0aec0; --c-prereq: #b7791f; --c-note: #2b6cb0;
+  --ok-bg: #e6ffed; --ok: #2f855a; --bad-bg: #fff5f5; --bad: #c53030;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1020; --card: #131a33; --ink: #e8eaf0; --muted: #9aa3b5; --rule: #273052;
+    --code-bg: #0d1530; --code-ink: #9ad0ff; --link: #7ab8ff; --chip: #0d1530;
+    --c-mission: #9d8fff; --c-fact: #6ea8ff; --c-example: #8e9bb3; --c-quiz: #f0b84a; --c-step: #4ec98a;
+    --c-sources: #8e9bb3; --c-followup: #6f7a95; --c-prereq: #e0a842; --c-note: #6ea8ff;
+    --ok-bg: #0f2a1a; --ok: #4ec98a; --bad-bg: #2d1416; --bad: #ff7b7b;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b1020; --card: #131a33; --ink: #e8eaf0; --muted: #9aa3b5; --rule: #273052;
+  --code-bg: #0d1530; --code-ink: #9ad0ff; --link: #7ab8ff; --chip: #0d1530;
+  --c-mission: #9d8fff; --c-fact: #6ea8ff; --c-example: #8e9bb3; --c-quiz: #f0b84a; --c-step: #4ec98a;
+  --c-sources: #8e9bb3; --c-followup: #6f7a95; --c-prereq: #e0a842; --c-note: #6ea8ff;
+  --ok-bg: #0f2a1a; --ok: #4ec98a; --bad-bg: #2d1416; --bad: #ff7b7b;
+}
 
-[data-block] { margin: 1.5rem 0; padding: 0.75rem 1rem; border-left: 4px solid #ccc; }
-[data-block="mission"] { border-color: #6a5acd; font-weight: 600; }
-[data-block="fact"] { border-color: #2b6cb0; }
-[data-block="example"] { border-color: #4a5568; background: #fafafa; }
-[data-block="quiz"] { border-color: #d69e2e; }
-[data-block="step"] { border-color: #2f855a; background: #f0fff4; }
-[data-block="sources"] { border-color: #718096; font-size: 0.9em; }
-[data-block="followup"] { border-color: #a0aec0; font-style: italic; }
-[data-block="prereq"] { border-color: #b7791f; font-size: 0.9em; }
-[data-block="note"] { border-color: #2b6cb0; }
-a[data-cite] { font-size: 0.85em; vertical-align: super; }
+html { background: var(--bg); }
+body {
+  font: 17px/1.65 Inter, system-ui, sans-serif; color: var(--ink); background: var(--bg);
+  max-width: 90rem; margin: 0 auto; padding: 2rem 1.25rem 4rem;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; align-items: start;
+}
+h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 0.25rem; letter-spacing: -0.01em; }
+p { margin: 0 0 0.9rem; }
+p:last-child { margin-bottom: 0; }
+a { color: var(--link); }
 
-.quiz-item { margin: 1rem 0; }
-.quiz-q { font-weight: 600; }
-.quiz-option { display: block; width: 100%; text-align: left; margin: 0.25rem 0; padding: 0.5rem 0.75rem; font: inherit; background: #fff; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; }
+code, pre { font-family: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+code { font-size: 0.88em; color: var(--code-ink); background: var(--code-bg); padding: 0.08em 0.35em; border-radius: 4px; }
+pre { background: var(--code-bg); color: var(--code-ink); padding: 0.9rem 1rem; border-radius: 6px; font-size: 0.8rem; line-height: 1.5;
+      white-space: pre-wrap; overflow-wrap: anywhere; margin: 0.5rem 0 1rem; }
+pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
+
+/* Blocks: one labelled card per data-block. */
+[data-block] { position: relative; margin: 0; padding: 2rem 1.4rem 1.2rem; background: var(--card); border: 1px solid var(--rule); border-left: 5px solid #ccc; border-radius: 10px; min-width: 0; }
+[data-block]::before { content: attr(data-block); position: absolute; top: 0.65rem; left: 1.4rem; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+[data-block="mission"] { border-left-color: var(--c-mission); font-size: 1.08em; }
+[data-block="mission"]::before { content: "why this lesson"; }
+[data-block="fact"] { border-left-color: var(--c-fact); }
+[data-block="fact"]::before { content: "the fact"; }
+[data-block="example"] { border-left-color: var(--c-example); }
+[data-block="example"]::before { content: "what the lab showed"; }
+[data-block="quiz"] { border-left-color: var(--c-quiz); }
+[data-block="quiz"]::before { content: "check yourself"; }
+[data-block="step"] { border-left-color: var(--c-step); }
+[data-block="step"]::before { content: "do it yourself"; }
+[data-block="sources"] { border-left-color: var(--c-sources); font-size: 0.9em; }
+[data-block="sources"]::before { content: "sources"; }
+[data-block="followup"] { border-left-color: var(--c-followup); font-style: italic; }
+[data-block="followup"]::before { content: "follow up"; }
+[data-block="prereq"] { border-left-color: var(--c-prereq); font-size: 0.9em; }
+[data-block="prereq"]::before { content: "before you start"; }
+[data-block="note"] { border-left-color: var(--c-note); }
+[data-block="note"]::before { content: "reference"; }
+
+/* Fact: one numbered point per paragraph, so the eye lands on one claim at a time. */
+[data-block="fact"] { counter-reset: fact; }
+[data-block="fact"] > p { position: relative; padding: 0.85rem 0 0.85rem 2.4rem; margin: 0; border-top: 1px solid var(--rule); }
+[data-block="fact"] > p:first-of-type { border-top: 0; padding-top: 0; }
+[data-block="fact"] > p::before { counter-increment: fact; content: counter(fact); position: absolute; left: 0; top: 0.85rem; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: var(--c-fact); color: #fff; font: 700 0.8rem/1.6rem Inter, system-ui, sans-serif; text-align: center; }
+[data-block="fact"] > p:first-of-type::before { top: 0; }
+
+/* Example: a one-line lead, then its command and output. */
+[data-block="example"] > p { font-size: 0.95em; }
+[data-block="example"] > p + pre { margin-top: 0; }
+
+/* Citations: small muted chips after the sentence instead of superscript ids. */
+a[data-cite] { display: inline-block; font: 0.68rem/1.4 "Roboto Mono", ui-monospace, monospace; color: var(--muted); background: var(--chip); border: 1px solid var(--rule); border-radius: 999px; padding: 0 0.5em; margin: 0.15rem 0.15em 0 0; text-decoration: none; vertical-align: 0.15em; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a[data-cite]:hover { color: var(--ink); border-color: var(--muted); }
+[data-block="sources"] a[data-cite] { font-size: 0.85rem; border: 0; padding: 0; background: none; color: var(--link); text-decoration: underline; white-space: normal; }
+[data-block="sources"] li { margin: 0.3rem 0; }
+
+/* Quiz */
+.quiz { counter-reset: q; }
+.quiz-item { margin: 0 0 1.4rem; padding-bottom: 1.2rem; border-bottom: 1px solid var(--rule); }
+.quiz-item:last-child { border-bottom: 0; }
+.quiz-q { font-weight: 600; margin-bottom: 0.6rem; }
+.quiz-q::before { counter-increment: q; content: counter(q) ". "; color: var(--muted); }
+.quiz-option { display: block; width: 100%; text-align: left; margin: 0.35rem 0; padding: 0.6rem 0.9rem; font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--rule); border-radius: 6px; cursor: pointer; }
+.quiz-option:hover:not(:disabled) { border-color: var(--muted); background: var(--chip); }
 .quiz-option:disabled { cursor: default; }
-.quiz .correct { background: #e6ffed; border-color: #2f855a; }
-.quiz .wrong { background: #fff5f5; border-color: #c53030; }
-.quiz-why { color: #4a5568; }
+.quiz .correct { background: var(--ok-bg); border-color: var(--ok); }
+.quiz .wrong { background: var(--bad-bg); border-color: var(--bad); }
+.quiz-why { color: var(--muted); margin-top: 0.5rem; }
+.quiz-why:empty { display: none; }
 .quiz-result { font-weight: 600; }
 
+/* Two columns from 1100px: fact beside example, quiz beside step; everything else spans. */
+@media (min-width: 1100px) {
+  body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 1.5rem; padding: 2.5rem 2rem 4rem; }
+  h1, [data-block="prereq"], [data-block="mission"], [data-block="sources"], [data-block="followup"], [data-block="note"] { grid-column: 1 / -1; }
+  /* Command output keeps its columns; a wide table scrolls inside its own block instead of wrapping. */
+  pre { white-space: pre; overflow-x: auto; font-size: 0.76rem; }
+}
+@media (max-width: 600px) {
+  body { font-size: 16px; padding: 1.25rem 1rem 3rem; }
+  [data-block] { padding: 1.9rem 0.9rem 1rem; }
+  [data-block]::before { left: 0.9rem; }
+  [data-block="fact"] > p { padding-left: 2.1rem; }
+}
 @media print {
   [data-block="quiz"], [data-block="followup"] { display: none; }
-  body { max-width: none; margin: 0; }
-  [data-block] { break-inside: avoid; }
+  body { max-width: none; margin: 0; display: block; color: #000; background: #fff; }
+  [data-block] { break-inside: avoid; margin: 1rem 0; }
 }

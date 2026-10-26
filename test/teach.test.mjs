@@ -53,7 +53,7 @@ test('CLI teach lint on the workspace exits 1 and prints the bad codes in the va
   const lessonLines = violations.filter((l) => l !== recordLine);
   for (const l of lessonLines) assert.match(l, /^[A-Z_]+ {2}lessons\/0002-bad\.html: \S/);
   assert.deepEqual(lessonLines.map((l) => l.split(' ')[0]).sort(), [
-    'EVIDENCE_PLAN_MISSING', 'LESSON_BLOCK_MISSING', 'LESSON_CITE_UNRESOLVED', 'LESSON_CLAIM_UNCITED', 'LESSON_LINK_DANGLING',
+    'EVIDENCE_PLAN_MISSING', 'LESSON_BLOCK_MISSING', 'LESSON_CITE_UNRESOLVED', 'LESSON_CLAIM_UNCITED', 'LESSON_LINK_DANGLING', 'LESSON_TOOL_NOT_INTRODUCED',
     'QUIZ_ANSWER_SPREAD', 'QUIZ_CORRECT_RANGE', 'QUIZ_TOO_FEW', 'QUIZ_WHY_MISSING',
   ]);
   assert.ok(violations.includes('LESSON_BLOCK_MISSING  lessons/0002-bad.html: missing block: step'));
@@ -61,6 +61,50 @@ test('CLI teach lint on the workspace exits 1 and prints the bad codes in the va
   assert.ok(!r.stdout.includes('lint: clean'));
   // Warnings print after the violations, as the vault lint does.
   assert.equal(lines.at(-1), warnings[0]);
+});
+
+test('CLI teach lint: a command tool must be in Known tools or taught by this or an earlier lesson (data-teaches)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-teach-tools-'));
+  for (const f of ['MISSION.md', 'GLOSSARY.md', 'lessons/0001-good.html', 'reference/good.html', 'evidence/0001/PLAN.md']) {
+    mkdirSync(dirname(join(dir, f)), { recursive: true });
+    cpSync(join(FIX, f), join(dir, f));
+  }
+  const good = readFileSync(join(FIX, 'lessons', '0001-good.html'), 'utf8');
+  const second = good.replace('data-lesson="0001-good"', 'data-lesson="0002-fxctl"')
+    .replace('<section data-block="step">', '<section data-block="step">\n<pre><code>FX_ENV=lab fxctl run 3 | node -e "process.stdin.pipe(process.stdout)"</code></pre>');
+  writeFileSync(join(dir, 'lessons', '0002-fxctl.html'), second);
+  mkdirSync(join(dir, 'evidence', '0002'));
+  cpSync(join(FIX, 'evidence', '0001', 'PLAN.md'), join(dir, 'evidence', '0002', 'PLAN.md'));
+
+  // node is in Known tools; fxctl is not taught anywhere: one finding, naming the block and the tool.
+  let r = cli(['lint', dir]);
+  assert.equal(r.status, 1);
+  assert.equal(r.stdout, 'LESSON_TOOL_NOT_INTRODUCED  lessons/0002-fxctl.html: step runs fxctl, which is neither in MISSION.md "Known tools" nor taught by this or an earlier lesson (data-teaches)\n');
+
+  // An earlier lesson teaches it: clean.
+  writeFileSync(join(dir, 'lessons', '0001-good.html'), good.replace('<body data-lesson="0001-good">', '<body data-lesson="0001-good" data-teaches="fxctl">'));
+  r = cli(['lint', dir]);
+  assert.equal(r.stdout, 'lint: clean\n');
+  assert.equal(r.status, 0);
+
+  // Only a LATER lesson teaches it: still a finding (order matters).
+  writeFileSync(join(dir, 'lessons', '0001-good.html'), good);
+  writeFileSync(join(dir, 'lessons', '0002-fxctl.html'), second.replace('data-lesson="0002-fxctl"', 'data-lesson="0002-fxctl" data-teaches="FXCTL"'));
+  r = cli(['lint', dir]);
+  assert.equal(r.stdout, 'lint: clean\n', 'a lesson may use the tool it teaches, case-insensitively');
+  writeFileSync(join(dir, 'lessons', '0002-fxctl.html'), second);
+  writeFileSync(join(dir, 'lessons', '0003-later.html'), good.replace('<body data-lesson="0001-good">', '<body data-lesson="0003-later" data-teaches="fxctl">'));
+  mkdirSync(join(dir, 'evidence', '0003'));
+  cpSync(join(FIX, 'evidence', '0001', 'PLAN.md'), join(dir, 'evidence', '0003', 'PLAN.md'));
+  r = cli(['lint', dir]);
+  assert.match(r.stdout, /^LESSON_TOOL_NOT_INTRODUCED  lessons\/0002-fxctl\.html: step runs fxctl/);
+  assert.equal(r.status, 1);
+
+  // No Known tools section: the rule cannot run; a warning, not a violation.
+  writeFileSync(join(dir, 'MISSION.md'), readFileSync(join(FIX, 'MISSION.md'), 'utf8').replace(/## Known tools\n- node\n\n/, ''));
+  r = cli(['lint', dir]);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /^warning WARN_MISSION_KNOWN_TOOLS_MISSING  lessons\/0001-good\.html: MISSION\.md has no "Known tools" section/m);
 });
 
 test('CLI teach lint resolves the vault from the workspace, not the cwd; a missing vault exits 2', () => {

@@ -7,6 +7,7 @@ A lesson is one HTML page the learner opens in a browser. It is built from block
 - Lessons: `lessons/NNNN-slug.html`, next number after the highest present. The id is the file name without `.html` (`0001-what-fx-returns`). The slug starts with a letter, so the id does not begin with the `YYYY-MM-DD-` prefix of a vault id; do not embed a date in the slug.
 - Review lessons: `lessons/NNNN-review-slug.html`, numbered in the same sequence.
 - Reference docs: `reference/<slug>.html`.
+- The body may declare the tools the lesson teaches: `<body data-lesson="<id>" data-teaches="istioctl">` (comma-separated). A later lesson may then run that tool; see Commands and tools.
 - The page loads the shared components with `<link rel="stylesheet" href="../assets/lesson.css">` in the head and `<script type="module" src="../assets/quiz.js"></script>` before `</body>`, and the body carries the lesson id: `<body data-lesson="<id>">`, where `data-lesson` equals the file name without `.html`. The widget takes the id from the served path `/lessons/<id>.html` first and falls back to `data-lesson`.
 - Links the lint resolves: `../GLOSSARY.md#<heading-slug>`, `<id>.html` for another lesson (`../lessons/<id>.html` from a reference doc), `../reference/<slug>.html` for a reference doc. A link to any of these that does not exist is a finding.
 
@@ -27,6 +28,15 @@ Each block is an element with `data-block="<name>"`, normally a `<section>`. Ord
 | `note` | reference | The rendered vault note body, with `data-cite` on the block element |
 
 In `step`, state the command exactly as the experiment's Result quotes it, so the claims gate can match it. When the step names the probe's path, keep that path in the captured snippet.
+
+## Commands and tools
+
+A lesson runs only tools the learner already has. `teach lint` reads every command the lesson runs and reports `LESSON_TOOL_NOT_INTRODUCED` for a tool that is neither listed under `## Known tools` in `MISSION.md` nor declared by `data-teaches` on this or an earlier lesson. A tool is the first word of a command, or of each `|`, `&&` or `;` segment, after any `VAR=value` prefixes.
+
+- In `example`, a command is a `<pre>` line starting with `$ `; the lines after it are its output. Put one command and its output in each `<pre>`, with a one-sentence `<p>` before it saying what to look at.
+- In `step`, every non-empty, non-comment `<pre>` line is a command.
+- A lesson that introduces a tool declares it with `data-teaches` and spends its win on that tool (what it is, one command, how to read the output). The next lesson may use it as evidence.
+- With no `## Known tools` section the rule cannot run and `teach lint` warns `WARN_MISSION_KNOWN_TOOLS_MISSING`.
 
 ## Citation anchors
 
@@ -105,6 +115,8 @@ A complete minimal lesson that passes `teach lint`:
 <section data-block="example">
 <p>The source of fx, from <a data-cite="2026-01-01-fx-snippet">2026-01-01-fx-snippet</a>:</p>
 <pre><code>export function fx(n) { return n * 6; }</code></pre>
+<pre><code>$ node -e "console.log(fx(7))"
+42</code></pre>
 <p>Input <code>7</code>, output <code>42</code>, from <a data-cite="2026-01-01-fx-experiment">2026-01-01-fx-experiment</a>.</p>
 </section>
 

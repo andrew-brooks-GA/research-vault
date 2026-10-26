@@ -17,6 +17,9 @@
 - {Another specific thing}
 - {…}
 
+## Known tools
+- {One tool per bullet that the learner already runs and reads, e.g. kubectl. A lesson may run only these and the tools earlier lessons taught; see LESSON-FORMAT.md "Commands and tools"}
+
 ## Constraints
 - {Time, budget, prior commitments, learning preferences, anything that bounds the approach}
 
@@ -30,4 +33,5 @@
 - **Concrete over abstract.** "Run a half marathon by October" beats "get fitter." "Ship a Rust CLI to my team" beats "learn Rust."
 - **Push back on vagueness.** If the user cannot articulate why, interview them before writing anything. A bad mission is worse than no mission.
 - **Revise when reality shifts.** Missions change. When the user's goal moves, update this file: don't leave a stale mission steering future sessions.
+- **Name the tools the learner has.** `## Known tools` is the floor `teach lint` enforces: a lesson that runs anything else must come after a lesson that taught it. Ask in the interview which tools the learner runs and reads today, not which they have heard of.
 - **Keep it short.** If `MISSION.md` runs past a screen, it has stopped being a compass and started being a plan.

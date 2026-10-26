@@ -52,18 +52,19 @@ Pedagogy, in brief. Read the full source skill if you want the reasoning.
 
 - **Zone of proximal development.** Read the learning records and the mission; teach the most relevant next thing that is challenging but reachable. If the learner names the thing, teach that.
 - **Short.** Working memory is small. One tangible win, completable fast, tied to the mission.
+- **One new tool per lesson.** The probe and the step run only tools in the mission's `## Known tools` or taught by an earlier lesson (`data-teaches`); `teach lint` enforces it. A tool the mission needs (istioctl, a debugger, a profiler) gets its own lesson before its output is used as evidence. The same holds for vocabulary: a term the learner has not met is defined in the sentence that first uses it, and a lesson introduces one such set, not several.
 - **Knowledge first, then skill.** Difficulty is the enemy of acquisition and the tool of retention. Teach the fact plainly, then make the learner retrieve it: quizzes with immediate feedback, a real-world step with an observable result.
 - **Storage over fluency.** Retrieval practice, spacing, interleaving (skills only). A learner who feels fluent after reading has not learned yet; the quiz is where learning happens.
 - **Quiz hygiene.** Answers of equal length; correct position varies; no formatting tells.
 - **Cite.** Every claim links its vault entry or primary source. Recommend one primary source to read.
-- **Reuse components.** Read `assets/` before writing; the shared stylesheet is the first asset. Lessons link to each other and to reference docs by anchor.
+- **Reuse components.** Read `assets/` before writing; the shared stylesheet is the first asset. It follows the OS light or dark scheme (`<html data-theme="light|dark">` forces one), labels every block, numbers the fact paragraphs, and lays fact beside example and quiz beside step from 1100px wide. Lessons link to each other and to reference docs by anchor.
 - **Wisdom is delegated.** Questions about idiom or real-world practice get an answer and a pointer to a community (a captured `community-report` source). Respect an opt-out recorded in `NOTES.md`.
 - **Reminder in every lesson** that the learner can ask follow-up questions in the terminal.
 
 Procedure, in order:
 
 1. Run `teach next` and read its output: the mission criteria, the active records with their last attempt, and the `review-due:` and `review-failed:` lines. It prints inputs only; you do the matching. Records in `review-due` or `review-failed` come first, as a review lesson (§6). Otherwise take the first criterion no record evidences whose prerequisites (glossary terms, earlier lessons) are covered. The learner's explicit request overrides this.
-2. Write `evidence/NNNN/PLAN.md` (§3), with the chosen criterion on its first line. NNNN is the next lesson number after the highest present.
+2. Write `evidence/NNNN/PLAN.md` (§3), with the chosen criterion on its first line. The probe uses only known or taught tools; if the win needs a new tool, this lesson teaches that tool and the win moves to the next lesson. NNNN is the next lesson number after the highest present.
 3. Probe and capture per §3.
 4. First lesson in a workspace only: copy the components and ignore the server file, from the workspace root.
    ```sh
