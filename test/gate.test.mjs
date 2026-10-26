@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync, appendFileSync, existsSync, readFileSync, mkdirSync, chmodSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { tmpVault, put, fixtureVault } from './helpers.mjs';
@@ -227,6 +227,15 @@ test('CLI gate evidence prints the entry lines and uncovered lines', () => {
   const parsed = JSON.parse(j.out);
   assert.deepEqual(parsed.entries.map((e) => e.id), ['2026-01-01-fx-experiment']);
   assert.deepEqual(parsed.uncovered, [{ type: 'url', value: 'https://nowhere.example/x' }]);
+});
+
+test('CLI gate evidence from a subdirectory with a relative project vault lists the entries', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault: relative(root, vault) }) + '\n');
+  const r = gateCli(join(root, 'docs'), '/nonexistent-env-vault', 'evidence', 'reply.md');
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, ['2026-01-01-fx-experiment [experiment, active]', 'uncovered: https://nowhere.example/x'].join('\n') + '\n');
 });
 
 test('CLI gate record and status work for a vault entry outside any bound repo', () => {

@@ -37,7 +37,9 @@ export function fixtureVault() {
   put(dir, 'source', '2026-01-01-fx-doc-nobody', { source_type: 'article', source_url: 'https://example.org/nobody' });
   put(dir, 'snippet', '2026-01-01-fx-snippet', { language: 'js', tested: true, source_id: '2026-01-01-fx-doc' },
     '# 2026-01-01-fx-snippet\n\n```js\nexport function fx(n) { return n * 6; }\n```\n');
-  put(dir, 'experiment', '2026-01-01-fx-experiment', {}, `# 2026-01-01-fx-experiment\n\nRan it with 7; it printed 42.\n`);
+  put(dir, 'experiment', '2026-01-01-fx-experiment',
+    { provider: 'local', model_id: 'none', date_run: '2026-01-01', task: 'run fx with input 7', outcome: 'success' },
+    `# 2026-01-01-fx-experiment\n\nRan it with 7; it printed 42.\n`);
   put(dir, 'note', '2026-01-01-old', { sources: [], confidence: 'medium', volatility: 'fast', verifications: ver('2020-01-01') },
     `# 2026-01-01-old\n\n${LONG}\n`);
   return dir;

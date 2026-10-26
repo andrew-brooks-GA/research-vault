@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { tmpVault } from './helpers.mjs';
 import { recordVerdict, contentHash } from '../bin/lib/gate.mjs';
-import { missingGates } from '../hooks/stop-gate.mjs';
+import { missingGates, sinceFrom, TWELVE_HOURS } from '../hooks/stop-gate.mjs';
 
 const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'stop-gate.mjs');
 
@@ -92,4 +92,12 @@ test('CLI exits 0 with no output on a missing transcript and nothing changed', (
   const r = hook({ stop_hook_active: false, transcript_path: join(root, 'missing.jsonl'), cwd: root });
   assert.equal(r.code, 0, r.err);
   assert.equal(r.out, '');
+});
+
+test('sinceFrom uses birth time, and falls back to now minus twelve hours when it is 0 or missing', () => {
+  const now = 1_800_000_000_000;
+  assert.equal(sinceFrom('/t', now, () => ({ birthtimeMs: 1234 })), 1234);
+  assert.equal(sinceFrom('/t', now, () => ({ birthtimeMs: 0 })), now - TWELVE_HOURS);
+  assert.equal(sinceFrom('/t', now, () => { throw new Error('ENOENT'); }), now - TWELVE_HOURS);
+  assert.equal(sinceFrom(join(tmpVault('rv-nots-'), 'missing.jsonl'), now), now - TWELVE_HOURS);
 });

@@ -15,7 +15,7 @@ export async function run(args) {
   if (!file || !['evidence', 'record', 'status'].includes(sub)) return usage();
   if (sub === 'record' && !VERDICTS.includes(verdict)) return usage();
   const abs = resolve(cwd, file);
-  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd });
+  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: dirname(abs) });
   const cfg = findProjectConfig(dirname(abs));
   // A vault entry outside any bound repo (e.g. a synthesis in an OS-default vault) is
   // gated with the vault directory as the ledger root.

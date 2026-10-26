@@ -15,7 +15,8 @@ export const LEDGER_FILENAME = '.research-vault-ledger.jsonl';
 export const VERDICTS = ['PASS', 'FAIL-as-sent', 'MERIT'];
 const SATISFIES = new Set(['PASS', 'MERIT']);
 
-export function contentHash(text) { return createHash('sha256').update(text).digest('hex'); }
+// Raw bytes (a Buffer) or a string; a string hashes as its UTF-8 encoding.
+export function contentHash(data) { return createHash('sha256').update(data).digest('hex'); }
 
 export function ledgerKey(repoRoot, filePath) {
   return relative(resolve(repoRoot), resolve(repoRoot, filePath)).replace(/\\/g, '/');
@@ -25,7 +26,7 @@ export function recordVerdict(repoRoot, filePath, verdict, note) {
   if (!VERDICTS.includes(verdict)) throw new Error(`verdict must be one of ${VERDICTS.join(', ')}`);
   const row = {
     ts: new Date().toISOString(), event: 'claims', file: ledgerKey(repoRoot, filePath),
-    sha256: contentHash(readFileSync(resolve(repoRoot, filePath), 'utf8')), verdict,
+    sha256: contentHash(readFileSync(resolve(repoRoot, filePath))), verdict,
   };
   if (note !== undefined) row.note = note;
   appendFileSync(join(repoRoot, LEDGER_FILENAME), JSON.stringify(row) + '\n');
@@ -34,7 +35,7 @@ export function recordVerdict(repoRoot, filePath, verdict, note) {
 
 export function gateStatus(repoRoot, filePath) {
   const file = ledgerKey(repoRoot, filePath);
-  const sha256 = contentHash(readFileSync(resolve(repoRoot, filePath), 'utf8'));
+  const sha256 = contentHash(readFileSync(resolve(repoRoot, filePath)));
   const ledger = join(repoRoot, LEDGER_FILENAME);
   const rows = existsSync(ledger)
     ? readFileSync(ledger, 'utf8').split('\n').filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }) : [];

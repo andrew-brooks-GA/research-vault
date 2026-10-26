@@ -40,11 +40,16 @@ export function resolveVault(opts = {}) {
   const readConfig = opts.readConfig ?? (() => readConfigPath(ctx));
   const readProjectConfig = opts.readProjectConfig ?? (() => {
     const hit = loadProjectConfig(ctx.cwd, { schema: loadSchema(REPO_ROOT) });
-    return hit ? hit.config : null;
+    return hit ? { ...hit.config, path: hit.path } : null;
   });
   if (ctx.flag) return { path: ctx.flag, source: 'flag' };
   const project = readProjectConfig();
-  if (project && project.vault) return { path: project.vault, source: 'project' };
+  // A relative vault (what `init --project --vault research` writes) is relative to the
+  // config file's directory, never to wherever the process happens to run.
+  if (project && project.vault) {
+    const base = project.path ? path.dirname(project.path) : ctx.cwd;
+    return { path: path.resolve(base, project.vault), source: 'project' };
+  }
   if (ctx.env.RESEARCH_VAULT_PATH) return { path: ctx.env.RESEARCH_VAULT_PATH, source: 'env' };
   const cfg = readConfig();
   if (cfg) return { path: cfg, source: 'config' };

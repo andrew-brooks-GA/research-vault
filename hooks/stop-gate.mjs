@@ -21,14 +21,23 @@ export function missingGates(repoRoot, vaultPath, cfg, since) {
     .map(({ file, sha256 }) => ({ file, sha256 }));
 }
 
+// Session start from the transcript's birth time. A filesystem without birth time reports
+// 0 (which would gate every file ever touched), so fall back to the last twelve hours.
+export function sinceFrom(transcriptPath, now = Date.now(), stat = statSync) {
+  try {
+    const born = stat(transcriptPath).birthtimeMs;
+    if (born) return born;
+  } catch { /* missing transcript */ }
+  return now - TWELVE_HOURS;
+}
+
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) {
   try {
     const evt = JSON.parse(readFileSync(0, 'utf8') || '{}');
     const cwd = evt.cwd || process.cwd();
     const hit = evt.stop_hook_active ? null : loadProjectConfig(cwd, { schema: loadSchema(REPO_ROOT) });
     if (hit) {
-      let since;
-      try { since = statSync(evt.transcript_path).birthtimeMs; } catch { since = Date.now() - TWELVE_HOURS; }
+      const since = sinceFrom(evt.transcript_path);
       const { path: vaultPath } = resolveVault({ cwd });
       const missing = missingGates(dirname(hit.path), vaultPath, hit.config, since);
       if (missing.length) {

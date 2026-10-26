@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { defaultVaultPath, configPath, resolveVault } from '../bin/lib/resolve.mjs';
@@ -52,6 +52,20 @@ test('resolveVault default reader is silent when no project file exists', () => 
   const dir = mkdtempSync(join(tmpdir(), 'rv-noproj-'));
   try {
     assert.equal(resolveVault({ cwd: dir, env: { RESEARCH_VAULT_PATH: '/fromenv' }, readConfig: () => null }).source, 'env');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a relative project vault resolves against the config\'s directory, not cwd', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-rel-'));
+  try {
+    writeFileSync(join(dir, '.research-vault.json'), '{"vault":"research"}');
+    mkdirSync(join(dir, 'docs'));
+    assert.deepEqual(
+      resolveVault({ cwd: join(dir, 'docs'), env: {}, readConfig: () => null }),
+      { path: join(dir, 'research'), source: 'project' },
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
