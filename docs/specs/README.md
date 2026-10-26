@@ -30,6 +30,12 @@ Round 3 (2026-10-26): enforcement for the claims gate the teach skill introduced
 |---|---|---|---|
 | 11 | [Claims gate enforcement](11-claims-gate-enforcement.md) | 10 | medium |
 
+Round 4 (2026-10-26): building a lesson in the teach skill, and a store for what the learner does. Evidence is the four lessons from the vCluster support lab named in the spec: a format file per document class, a mechanical lint before the claims gate, a plan written before the evidence, and components shipped once.
+
+| # | Spec | Depends on | Size |
+|---|---|---|---|
+| 12 | [Lesson building](12-lesson-building.md) | 11 | medium |
+
 Sizes are indicative, not budgets.
 
 Suggested PRs: 01+02, then 03+04, then 05 and 06 independently after 02 has merged. 02, 04 and 06 all edit `bin/lib/agentsmd.mjs` and `schema/AGENTS.golden.md`; each PR regenerates the golden against the merged generator, never against its own branch alone.
@@ -42,7 +48,7 @@ Suggested PRs: 01+02, then 03+04, then 05 and 06 independently after 02 has merg
 
 ## Shared rules
 
-- No new dependencies, no new runtime services, no schema fields that lint enforces (only one doc-only map in 06).
+- No new dependencies, no new runtime services (one exception: `teach serve`, a loopback server a learner starts and stops, because a lesson opened in a browser cannot write the attempt to the workspace any other way), no vault-schema fields that lint enforces (only one doc-only map in 06; the teach schema in `schema/teach.schema.json` governs the teaching workspace, not the vault).
 - Edges are never inferred. If the frontmatter does not declare it, it is not an edge.
 - `backlinks` keeps its current policy: formed only by `edge_fields.backlink`; `superseded_by` stays reference-only.
 - Every change that alters `.vault-manifest.json` content makes `lint --check` report `MANIFEST_STALE` on existing vaults until `lint` runs once. Each such spec says so in CHANGELOG under "Upgrading an existing vault".
