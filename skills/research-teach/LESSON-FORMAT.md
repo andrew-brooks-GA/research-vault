@@ -1,5 +1,3 @@
-<!-- Adapted from the `teach` skill in mattpocock/skills (MIT, (c) 2026 Matt Pocock). -->
-
 # Lesson Format
 
 A lesson is one HTML page the learner opens in a browser. It is built from blocks, each marked with a `data-block` attribute, so `teach lint` can check it before the claims gate does. Run `teach lint` after writing a lesson and after every revision.
