@@ -4,7 +4,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { normalizeUrl } from '../bin/lib/ids.mjs';
-import { checkCitations, expandFiles, renderReport, run } from '../bin/commands/check.mjs';
+import { checkCitations, renderReport, run } from '../bin/commands/check.mjs';
+import { expandFiles } from '../bin/lib/files.mjs';
 import { runInit } from '../bin/commands/init.mjs';
 
 const SCHEMA = {

@@ -143,6 +143,18 @@ test('findWorkspaces skips node_modules, .git and the vault', () => {
   assert.deepEqual(findWorkspaces(root, vault).sort(), [join(root, 'learn/k8s'), join(root, 'top')]);
 });
 
+test('findWorkspaces skips .idea and _attachments', () => {
+  const { root, vault } = workspaceRepo();
+  for (const d of ['.idea/ws', '_attachments/ws']) {
+    mkdirSync(join(root, d), { recursive: true });
+    writeFileSync(join(root, d, 'MISSION.md'), '# m\n');
+  }
+  const found = findWorkspaces(root, vault);
+  assert.ok(found.includes(join(root, 'learn/k8s')), 'a workspace outside the skipped dirs is found');
+  assert.ok(!found.includes(join(root, '.idea/ws')), '.idea is skipped');
+  assert.ok(!found.includes(join(root, '_attachments/ws')), '_attachments is skipped');
+});
+
 test('findWorkspaces skips an unreadable directory and keeps walking', (t) => {
   if (process.getuid?.() === 0) return t.skip('root ignores mode bits');
   const { root, vault } = workspaceRepo();

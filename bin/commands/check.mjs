@@ -4,8 +4,8 @@
 // the vault; no network (freshness from recorded last_verified only). `--check` exits
 // non-zero so a consuming repo can gate CI on it — the "lint is the guarantee"
 // principle extended past the vault boundary.
-import { globSync, statSync, readFileSync } from 'node:fs';
-import { join, relative, dirname, basename } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSchema } from '../lib/schema.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
@@ -14,9 +14,9 @@ import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { normalizeUrl } from '../lib/ids.mjs';
 import { extractCitations } from '../lib/citations.mjs';
 import { staleness } from '../lib/stale.mjs';
+import { expandFiles } from '../lib/files.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const SKIP_DIRS = new Set(['.git', 'node_modules', '.idea', '_obsidian', '_index', '_attachments']);
 
 // Pure: classify each citation as ok | stale | uncovered against the manifest entries.
 export function checkCitations(citations, entries, schema, now) {
@@ -39,15 +39,6 @@ export function checkCitations(citations, entries, schema, now) {
     const status = staleness(entry, schema, new Date(now)) ? 'stale' : 'ok';
     return { type: c.type, value: c.value, status, id: entry.id, volatility: entry.volatility };
   });
-}
-
-// Expand patterns to sorted absolute file paths under cwd, pruning SKIP_DIRS.
-// exclude receives a path string or a Dirent depending on Node version; basename covers both.
-export function expandFiles(patterns, cwd) {
-  return globSync(patterns, { cwd, exclude: (e) => SKIP_DIRS.has(basename(typeof e === 'string' ? e : e.name)) })
-    .map((rel) => join(cwd, rel))
-    .filter((abs) => statSync(abs).isFile())
-    .sort();
 }
 
 function tally(perFile) {

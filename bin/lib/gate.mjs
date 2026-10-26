@@ -3,13 +3,17 @@
 // from what it cites, and finds the files the gate covers.
 import { createHash } from 'node:crypto';
 import { readFileSync, appendFileSync, existsSync, readdirSync } from 'node:fs';
-import { join, resolve, relative } from 'node:path';
+import { join, resolve, relative, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { extractCitations } from './citations.mjs';
 import { buildManifest } from './manifest.mjs';
 import { walkEntries, readEntry } from './fsutil.mjs';
-import { normalizeUrl } from './ids.mjs';
 import { listStale } from './stale.mjs';
-import { expandFiles } from '../commands/check.mjs';
+import { loadSchema } from './schema.mjs';
+import { SKIP_DIRS, expandFiles } from './files.mjs';
+import { checkCitations } from '../commands/check.mjs';
+
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export const LEDGER_FILENAME = '.research-vault-ledger.jsonl';
 export const VERDICTS = ['PASS', 'FAIL-as-sent', 'MERIT'];
@@ -56,16 +60,13 @@ function bodyText(body) {
 export function evidenceFor(draftPath, vaultPath, { extra = [] } = {}) {
   const manifest = buildManifest(vaultPath);
   const byId = new Map(manifest.entries.map((e) => [e.id, e]));
-  const byUrl = new Map(manifest.entries.filter((e) => e.source_url).map((e) => [e.source_url, e]));
   const cites = [...extractCitations(readFileSync(draftPath, 'utf8')), ...extra.map((value) => ({ type: 'id', value }))];
+  const now = new Date().toISOString().slice(0, 10);
   const hit = new Map();
   const uncovered = [];
-  for (const c of cites) {
-    let e;
-    if (c.type === 'url') { try { e = byUrl.get(normalizeUrl(c.value)); } catch { e = undefined; } }
-    else e = byId.get(c.value);
-    if (e) hit.set(e.id, e);
-    else if (!uncovered.some((u) => u.type === c.type && u.value === c.value)) uncovered.push({ type: c.type, value: c.value });
+  for (const r of checkCitations(cites, manifest.entries, loadSchema(REPO_ROOT), now)) {
+    if (r.status !== 'uncovered') hit.set(r.id, byId.get(r.id));
+    else if (!uncovered.some((u) => u.type === r.type && u.value === r.value)) uncovered.push({ type: r.type, value: r.value });
   }
   const stale = new Set(listStale(vaultPath, { manifest }).map((s) => s.id));
   const bodies = new Map();
@@ -86,8 +87,6 @@ export function renderEvidence({ entries, uncovered }) {
   for (const u of uncovered) lines.push(`uncovered: ${u.value}`);
   return lines.length ? lines.join('\n') + '\n' : '';
 }
-
-const SKIP_DIRS = new Set(['.git', 'node_modules', '_obsidian', '_index']);
 
 // Directories holding MISSION.md, walked from repoRoot; the vault itself is never searched.
 export function findWorkspaces(repoRoot, vaultPath) {
