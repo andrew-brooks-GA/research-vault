@@ -95,12 +95,16 @@ export function parseProjectConfig(raw, schema) {
   if (references.globs !== undefined && !Array.isArray(references.globs)) {
     throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: references.globs must be an array`);
   }
+  const gates = data.gates ?? {};
+  if (gates.globs !== undefined && !Array.isArray(gates.globs)) {
+    throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: gates.globs must be an array`);
+  }
   const capture = data.capture ?? {};
   if (capture.enabled !== undefined && typeof capture.enabled !== 'boolean') {
     throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: capture.enabled must be a boolean`);
   }
   const taxonomyExtensions = validateTaxonomyExtensions(data.taxonomy_extensions);
-  return { vault: data.vault, defaults, references, capture, taxonomyExtensions };
+  return { vault: data.vault, defaults, references, gates, capture, taxonomyExtensions };
 }
 
 // Schema-free read of just the `taxonomy_extensions` block for the nearest config above

@@ -136,3 +136,9 @@ test('readTaxonomyExtensions returns the merged-ready map for the nearest config
 test('readTaxonomyExtensions returns {} when there is no config', () => {
   assert.deepEqual(readTaxonomyExtensions(resolve('/repo'), fakeFs([])), {});
 });
+
+test('parseProjectConfig keeps gates.globs', () => {
+  const cfg = parseProjectConfig('{"vault":"/v","gates":{"globs":["docs/drafts/*.md"]}}', SCHEMA);
+  assert.deepEqual(cfg.gates.globs, ['docs/drafts/*.md']);
+  assert.throws(() => parseProjectConfig('{"gates":{"globs":"x"}}', SCHEMA), /gates\.globs must be an array/);
+});

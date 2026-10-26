@@ -2,10 +2,14 @@
 // Stop hook: block the end of a turn while a gated draft changed this session has no
 // PASS or MERIT recorded for its current content. Silent outside a bound repo; always exits 0.
 import { statSync, readFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../bin/lib/resolve.mjs';
-import { findProjectConfig } from '../bin/lib/projectconfig.mjs';
+import { loadProjectConfig } from '../bin/lib/projectconfig.mjs';
+import { loadSchema } from '../bin/lib/schema.mjs';
 import { gatedFiles, gateStatus } from '../bin/lib/gate.mjs';
+
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 export const TWELVE_HOURS = 12 * 60 * 60 * 1000;
 
@@ -21,14 +25,12 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
   try {
     const evt = JSON.parse(readFileSync(0, 'utf8') || '{}');
     const cwd = evt.cwd || process.cwd();
-    const hit = evt.stop_hook_active ? null : findProjectConfig(cwd);
+    const hit = evt.stop_hook_active ? null : loadProjectConfig(cwd, { schema: loadSchema(REPO_ROOT) });
     if (hit) {
       let since;
       try { since = statSync(evt.transcript_path).birthtimeMs; } catch { since = Date.now() - TWELVE_HOURS; }
-      // Raw JSON, not parseProjectConfig: the parsed config drops `gates`, which gatedFiles reads.
-      const cfg = JSON.parse(hit.raw);
       const { path: vaultPath } = resolveVault({ cwd });
-      const missing = missingGates(dirname(hit.path), vaultPath, cfg, since);
+      const missing = missingGates(dirname(hit.path), vaultPath, hit.config, since);
       if (missing.length) {
         const reason = ['Gated drafts changed without a claims verdict for their current content:',
           ...missing.map((m) => `- ${m.file}: run the research-claims-gate skill, then research-vault gate record ${m.file} PASS|MERIT`)].join('\n');
