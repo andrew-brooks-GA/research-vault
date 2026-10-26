@@ -50,3 +50,36 @@ Start from `docs/evaluation-template.json` (a `capture --batch` plan with one ex
 ## What the results gate
 
 Ranking or truncation in `related`; link suggestions or a graph-health section in `advise`; a `check --transitive` flag. The paired run does not measure transitive CI gating; that needs its own observation period (spec 04).
+
+# Claims gate: does the reviewer agree with gold, run to run?
+
+A frozen, repeatable protocol for the `claims-reviewer` agent. Results are captured as `experiment` entries; the agent prompt changes only with a run.
+
+## Freeze before the first run
+
+Record all of these in the experiment entry's body:
+
+- Fixture vault: the one built by `fixtureVault()` in `test/helpers.mjs` at the commit of the run: `2026-01-01-fx-doc` (a source with a stored body), `2026-01-01-fx-doc-nobody` (a source without one), `2026-01-01-fx-snippet` (a snippet), `2026-01-01-fx-experiment` (an experiment that probes one value, 7 prints 42) and `2026-01-01-old` (a stale note). Materialise it from the repo root with `node --input-type=module -e "import { fixtureVault } from './test/helpers.mjs'; console.log(fixtureVault())"`, which prints the temp vault path. `gate evidence` refuses a draft outside a bound repo, so copy the two drafts into a fresh directory holding `.research-vault.json` with `{"vault": "<that path>"}` and run against the copies.
+- Drafts: `test/fixtures/gate/lesson-ok.html` and `test/fixtures/gate/lesson-overclaim.html`, with the gold verdict per draft in `test/fixtures/gate/gold.json`. `gold.json` must be written before any run; the current file predates every reviewer run, since none has been recorded.
+- Agent file: the git revision of `agents/claims-reviewer.md`, its `model` and `effort`, and the model id the dispatch reports.
+
+## Procedure
+
+For each draft, run `gate evidence --extra 2026-01-01-fx-snippet,2026-01-01-fx-experiment` against the fixture vault and dispatch one fresh `claims-reviewer` with the draft path, the vault path and that output verbatim. Five independent dispatches per draft; no dispatch sees another's transcript.
+
+## Metrics
+
+| metric | how |
+|---|---|
+| agreement with gold | dispatches whose final `VERDICT:` line equals the draft's `gold.json` value / dispatches |
+| verdict stability across the five runs | for each draft, the count of the most common verdict / 5 |
+
+Report both per draft. For `lesson-overclaim.html`, also record whether each `FAIL-as-sent` names the generalised claim, so a fail for the wrong reason is visible.
+
+## Output
+
+One `experiment` per run: `provider`, `model_id`, `date_run`, `task` (the agent revision and fixture commit), `outcome`, and the metric table plus each dispatch's verdict line in the body.
+
+## The rule
+
+A change to `agents/claims-reviewer.md` (prompt, `model`, `effort` or `tools`) ships only with a run of this protocol against the changed file, captured as above. A change that lowers agreement with gold or stability does not ship without a written reason in the experiment entry.

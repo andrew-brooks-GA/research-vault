@@ -83,7 +83,7 @@ Run the same lifecycle inline and sequentially: vault search → web search/fetc
 ## 4. Close out
 
 1. Run `research-vault lint` — clean, or explain every warning.
-2. Present the synthesis (short: claims + recommendation, `confidence`, open `question` ids).
+2. Run the `research-claims-gate` skill on the synthesis entry file (evidence derives from its `contributing_ids` and `sources`), then present it (short: claims + recommendation, `confidence`, open `question` ids).
 3. List every entry created (from the batch JSON result) and anything skipped as a duplicate.
 4. Offline or fetch-blocked? Do not fabricate: answer from the vault, record what could not be verified as open `question` entries, and say so.
 

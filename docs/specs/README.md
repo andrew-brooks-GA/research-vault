@@ -24,6 +24,12 @@ Suggested PRs: 07+08 (one golden regen), then 09, then 10. Nothing further ships
 
 Rejected this round, pending measurement under 10: output caps, hub demotion or any ranking in `related`; a `--between` shortest-path flag (`advise` already prints evidence paths); link suggestions and a `graph` health section in `advise` (health metrics are a one-off report for the evaluation, not a feature); archive candidates; a `capture --supersedes` flag (`verify --result outdated --superseded-by` exists).
 
+Round 3 (2026-10-26): enforcement for the claims gate the teach skill introduced. Evidence is the reviewer design, Stop hook and write-time citation check of the vCluster support lab, named in the spec.
+
+| # | Spec | Depends on | Size |
+|---|---|---|---|
+| 11 | [Claims gate enforcement](11-claims-gate-enforcement.md) | 10 | medium |
+
 Sizes are indicative, not budgets.
 
 Suggested PRs: 01+02, then 03+04, then 05 and 06 independently after 02 has merged. 02, 04 and 06 all edit `bin/lib/agentsmd.mjs` and `schema/AGENTS.golden.md`; each PR regenerates the golden against the merged generator, never against its own branch alone.

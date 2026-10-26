@@ -4,19 +4,19 @@
 // the vault; no network (freshness from recorded last_verified only). `--check` exits
 // non-zero so a consuming repo can gate CI on it — the "lint is the guarantee"
 // principle extended past the vault boundary.
-import { globSync, statSync, readFileSync } from 'node:fs';
-import { join, relative, dirname, basename } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSchema } from '../lib/schema.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { normalizeUrl } from '../lib/ids.mjs';
-import { extractCitations } from '../lib/citations.mjs';
+import { extractCitationsDetailed } from '../lib/citations.mjs';
 import { staleness } from '../lib/stale.mjs';
+import { expandFiles } from '../lib/files.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const SKIP_DIRS = new Set(['.git', 'node_modules', '.idea', '_obsidian', '_index', '_attachments']);
 
 // Pure: classify each citation as ok | stale | uncovered against the manifest entries.
 export function checkCitations(citations, entries, schema, now) {
@@ -41,19 +41,15 @@ export function checkCitations(citations, entries, schema, now) {
   });
 }
 
-// Expand patterns to sorted absolute file paths under cwd, pruning SKIP_DIRS.
-// exclude receives a path string or a Dirent depending on Node version; basename covers both.
-export function expandFiles(patterns, cwd) {
-  return globSync(patterns, { cwd, exclude: (e) => SKIP_DIRS.has(basename(typeof e === 'string' ? e : e.name)) })
-    .map((rel) => join(cwd, rel))
-    .filter((abs) => statSync(abs).isFile())
-    .sort();
-}
-
 function tally(perFile) {
   const s = { files: perFile.length, ok: 0, stale: 0, uncovered: 0 };
   for (const f of perFile) for (const r of f.rows) s[r.status]++;
   return s;
+}
+
+// Citation-shaped values found only inside code: listed, never counted or gated.
+function skippedLines(perFile) {
+  return perFile.flatMap((f) => (f.skipped ?? []).map((s) => `skipped (in code): ${f.file}  ${s.value}`));
 }
 
 // Pure: render the full coverage/freshness matrix as markdown or JSON.
@@ -61,7 +57,8 @@ export function renderReport(perFile, { format, now }) {
   const summary = tally(perFile);
   if (format === 'json') {
     const rows = perFile.flatMap((f) => f.rows.map((r) => ({ file: f.file, ...r })));
-    return JSON.stringify({ generated: now, summary, rows }, null, 2);
+    const skipped = perFile.flatMap((f) => (f.skipped ?? []).map((s) => ({ file: f.file, ...s })));
+    return JSON.stringify({ generated: now, summary, rows, skipped }, null, 2);
   }
   const lines = [
     `# research-vault check report (${now})`,
@@ -75,6 +72,8 @@ export function renderReport(perFile, { format, now }) {
       lines.push(`| ${f.file} | ${r.value} | ${r.status} | ${entry} |`);
     }
   }
+  const skipped = skippedLines(perFile);
+  if (skipped.length) lines.push('', ...skipped);
   lines.push('', `ok: ${summary.ok}, stale: ${summary.stale}, uncovered: ${summary.uncovered} across ${summary.files} file(s)`);
   return lines.join('\n') + '\n';
 }
@@ -98,10 +97,10 @@ export async function run(args) {
   const now = args.now || new Date().toISOString().slice(0, 10);
   const files = expandFiles(globs, cwd);
 
-  const perFile = files.map((abs) => ({
-    file: relative(cwd, abs).replace(/\\/g, '/'),
-    rows: checkCitations(extractCitations(readFileSync(abs, 'utf8')), entries, schema, now),
-  }));
+  const perFile = files.map((abs) => {
+    const { citations, skipped } = extractCitationsDetailed(readFileSync(abs, 'utf8'));
+    return { file: relative(cwd, abs).replace(/\\/g, '/'), rows: checkCitations(citations, entries, schema, now), skipped };
+  });
   const summary = tally(perFile);
 
   if (args.report || args.json) {
@@ -114,6 +113,7 @@ export async function run(args) {
         process.stdout.write(`${r.status.toUpperCase().padEnd(9)} ${f.file}  ${r.value}${tag}\n`);
       }
     }
+    for (const line of skippedLines(perFile)) process.stdout.write(line + '\n');
     process.stdout.write(`check: ${summary.files} file(s); ${summary.ok} ok, ${summary.stale} stale, ${summary.uncovered} uncovered\n`);
   }
   return args.check && summary.stale + summary.uncovered > 0 ? 1 : 0;

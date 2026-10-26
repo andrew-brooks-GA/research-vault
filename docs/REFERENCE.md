@@ -30,8 +30,9 @@ Skills load when a request matches their job; none of them fires for every techn
 | `research-authoring` | Fires when a citation is about to land in prose you're writing in a vault-bound repo |
 | `research-review` | Auditing an existing document or corpus against the vault |
 | `research-teach` (`/research-teach`) | Teaching a topic over sessions: resources and facts in the vault, probed evidence, a fresh `claims-reviewer` agent gates every lesson |
+| `research-claims-gate` (`/research-claims-gate`) | Gating a draft that cites the vault: derives the evidence list, dispatches one fresh `research-vault:claims-reviewer`, records the verdict in the claims ledger |
 
-Slash commands, all under `/research-vault:`: `research-init`, `research-capture`, `research-search`, `research-related`, `research-verify`, `research-lint`, `research-advise`, `research-compile`, `research-obsidian`, `research`, `research-teach`.
+Slash commands, all under `/research-vault:`: `research-init`, `research-capture`, `research-search`, `research-related`, `research-verify`, `research-lint`, `research-advise`, `research-compile`, `research-obsidian`, `research`, `research-teach`, `research-claims-gate`.
 
 ## Binding a repo to a vault
 
@@ -40,6 +41,7 @@ Run `init --project` at the root of a repo to write `.research-vault.json` there
 - **Discovery.** Every CLI command run from inside the repo resolves to that vault with no flag or env var. Agents that read the vault's `AGENTS.md` follow it; the binding selects the vault, it does not control an agent's behaviour.
 - **`research-authoring`.** When a citation is about to land in prose you're writing in the repo, the skill consults the vault, captures what's missing and checks freshness first.
 - **`check`.** Audits the repo's docs against the vault; each citation is `ok`, `stale` or `uncovered`. `check --check` exits non-zero so CI can fail on stale or uncovered citations.
+- **Gate.** Lessons and reference docs in every teach workspace (a directory holding `MISSION.md`) found under the repo are gated, plus any file matching the optional `gates.globs` array in `.research-vault.json`, for example `"gates": { "globs": ["docs/**/*.md"] }`. The `research-claims-gate` skill records each verdict with `gate record` in `.research-vault-ledger.jsonl` at the repo root, keyed to the file's content hash, so an edit after the gate needs a new verdict. The Stop hook blocks a turn that leaves a changed gated file without a `PASS` or `MERIT` row for its current content. After an edit to a gated file or one matching `references.globs`, a hook reports its uncovered or stale citations without blocking; an edit inside the vault runs `lint --fix` instead, so this applies to files outside the vault. `gate status <file> --check` exits 1 when the current content has no passing verdict. A vault entry outside any bound repo can be gated too; its ledger lives in the vault.
 
 ## Extending the controlled vocabulary
 
@@ -137,7 +139,8 @@ Ids are `<date>-<slug>`; use the one `capture` or `search` prints rather than gu
 | `manifest` | Rebuild or print the derived index. |
 | `compile` | Regenerate the human-readable `_index/` (git-ignored, derived). |
 | `obsidian` | Regenerate `_obsidian/` (git-ignored, derived). Open that folder, not the vault root, as an Obsidian vault; stubs carry `type/`, `status/`, `domain/`, `volatility/`, `freshness/` and `topic/` tags, so a graph filter like `tag:#freshness/stale` colours what matters. See `meta/obsidian-view.md` in any vault. |
-| `check` | Audit a document or glob outside the vault. `--report` or `--json` emit a coverage matrix; `--check` exits non-zero. Read-only, no network. |
+| `check` | Audit a document or glob outside the vault. `--report` or `--json` emit a coverage matrix; `--check` exits non-zero on a stale or uncovered citation. URLs and ids inside code spans and fenced blocks are not citations; a value found only in code is reported as skipped. A fence left unclosed makes the rest of the file code, and `check` lists a URL found only there as skipped. Read-only, no network. |
+| `gate` | `gate evidence\|record\|status`: derive a draft's evidence list from the vault (`evidence <draft> [--extra <ids>] [--json]`), record a claims verdict keyed to the file's content hash (`record <file> <PASS\|FAIL-as-sent\|MERIT> [note]`), or report the verdict for the current content (`status <file> [--check]`, exit 1 with `--check` when there is no `PASS` or `MERIT`). |
 | `refresh` | Re-fetch sources to see whether they changed; reports `confirmed`, `changed` or `unreachable` per source and never edits entries. Run `verify` on anything `changed`. Needs `RESEARCH_VAULT_ALLOW_NETWORK=1`. |
 | `export` | JSONL for fine-tuning or eval, to stdout or `--out <path>` (outside the vault). Default: answered-question pairs. `--scope <types>` chooses which types to export instead (include `question` to keep the pairs); other types emit title and summary, and bodies need `--include-bodies --ack-data-egress`. See [FINETUNING.md](FINETUNING.md). |
 
