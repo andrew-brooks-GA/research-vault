@@ -12,7 +12,7 @@ import { buildManifest } from '../lib/manifest.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { normalizeUrl } from '../lib/ids.mjs';
-import { extractCitations } from '../lib/citations.mjs';
+import { extractCitationsDetailed } from '../lib/citations.mjs';
 import { staleness } from '../lib/stale.mjs';
 import { expandFiles } from '../lib/files.mjs';
 
@@ -47,12 +47,18 @@ function tally(perFile) {
   return s;
 }
 
+// Citation-shaped values found only inside code: listed, never counted or gated.
+function skippedLines(perFile) {
+  return perFile.flatMap((f) => (f.skipped ?? []).map((s) => `skipped (in code): ${f.file}  ${s.value}`));
+}
+
 // Pure: render the full coverage/freshness matrix as markdown or JSON.
 export function renderReport(perFile, { format, now }) {
   const summary = tally(perFile);
   if (format === 'json') {
     const rows = perFile.flatMap((f) => f.rows.map((r) => ({ file: f.file, ...r })));
-    return JSON.stringify({ generated: now, summary, rows }, null, 2);
+    const skipped = perFile.flatMap((f) => (f.skipped ?? []).map((s) => ({ file: f.file, ...s })));
+    return JSON.stringify({ generated: now, summary, rows, skipped }, null, 2);
   }
   const lines = [
     `# research-vault check report (${now})`,
@@ -66,6 +72,8 @@ export function renderReport(perFile, { format, now }) {
       lines.push(`| ${f.file} | ${r.value} | ${r.status} | ${entry} |`);
     }
   }
+  const skipped = skippedLines(perFile);
+  if (skipped.length) lines.push('', ...skipped);
   lines.push('', `ok: ${summary.ok}, stale: ${summary.stale}, uncovered: ${summary.uncovered} across ${summary.files} file(s)`);
   return lines.join('\n') + '\n';
 }
@@ -89,10 +97,10 @@ export async function run(args) {
   const now = args.now || new Date().toISOString().slice(0, 10);
   const files = expandFiles(globs, cwd);
 
-  const perFile = files.map((abs) => ({
-    file: relative(cwd, abs).replace(/\\/g, '/'),
-    rows: checkCitations(extractCitations(readFileSync(abs, 'utf8')), entries, schema, now),
-  }));
+  const perFile = files.map((abs) => {
+    const { citations, skipped } = extractCitationsDetailed(readFileSync(abs, 'utf8'));
+    return { file: relative(cwd, abs).replace(/\\/g, '/'), rows: checkCitations(citations, entries, schema, now), skipped };
+  });
   const summary = tally(perFile);
 
   if (args.report || args.json) {
@@ -105,6 +113,7 @@ export async function run(args) {
         process.stdout.write(`${r.status.toUpperCase().padEnd(9)} ${f.file}  ${r.value}${tag}\n`);
       }
     }
+    for (const line of skippedLines(perFile)) process.stdout.write(line + '\n');
     process.stdout.write(`check: ${summary.files} file(s); ${summary.ok} ok, ${summary.stale} stale, ${summary.uncovered} uncovered\n`);
   }
   return args.check && summary.stale + summary.uncovered > 0 ? 1 : 0;

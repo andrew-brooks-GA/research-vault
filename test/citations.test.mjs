@@ -32,3 +32,42 @@ test('dedups repeated citations', () => {
 test('returns empty for prose with no citations', () => {
   assert.deepEqual(extractCitations('just some ordinary prose, no links.'), []);
 });
+
+import { extractCitationsDetailed } from '../bin/lib/citations.mjs';
+
+test('a URL in a fenced block is skipped and a URL in prose on the next line is kept', () => {
+  const text = '```bash\ncurl https://in.code/fence\n```\nsee https://in.prose/next\n~~~\nhttps://in.code/tilde\n~~~\n';
+  const { citations, skipped } = extractCitationsDetailed(text);
+  assert.deepEqual(citations, [{ type: 'url', value: 'https://in.prose/next' }]);
+  assert.deepEqual(skipped, [
+    { type: 'url', value: 'https://in.code/fence' },
+    { type: 'url', value: 'https://in.code/tilde' },
+  ]);
+  assert.deepEqual(extractCitations(text), citations);
+});
+
+test('an inline code span URL is skipped, single or double backticks', () => {
+  const { citations, skipped } = extractCitationsDetailed('run `curl https://a/one` or ``x ` https://a/two`` then read https://a/three');
+  assert.deepEqual(citations, [{ type: 'url', value: 'https://a/three' }]);
+  assert.deepEqual(skipped, [{ type: 'url', value: 'https://a/one' }, { type: 'url', value: 'https://a/two' }]);
+});
+
+test('a markdown link URL is kept, not skipped', () => {
+  const { citations, skipped } = extractCitationsDetailed('see [x](https://a/b) and `https://c/d`');
+  assert.deepEqual(citations, [{ type: 'url', value: 'https://a/b' }]);
+  assert.deepEqual(skipped, [{ type: 'url', value: 'https://c/d' }]);
+});
+
+test('a bare URL followed by a stray backtick or paren is trimmed', () => {
+  assert.deepEqual(extractCitations('at https://a/b` here'), [{ type: 'url', value: 'https://a/b' }]);
+  assert.notDeepEqual(extractCitations('at https://a/b` here'), [{ type: 'url', value: 'https://a/b`' }]);
+});
+
+test('an id inside backticks is skipped while the same id in prose is kept', () => {
+  const inCode = extractCitationsDetailed('the file `2026-01-02-foo-bar` only');
+  assert.deepEqual(inCode.citations, []);
+  assert.deepEqual(inCode.skipped, [{ type: 'id', value: '2026-01-02-foo-bar' }]);
+  const both = extractCitationsDetailed('per 2026-01-02-foo-bar, file `2026-01-02-foo-bar`');
+  assert.deepEqual(both.citations, [{ type: 'id', value: '2026-01-02-foo-bar' }]);
+  assert.deepEqual(both.skipped, [], 'an id also cited in prose is not reported as skipped');
+});

@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { normalizeUrl } from '../bin/lib/ids.mjs';
 import { checkCitations, renderReport, run } from '../bin/commands/check.mjs';
 import { expandFiles } from '../bin/lib/files.mjs';
@@ -126,6 +128,25 @@ test('run errors with usage (exit 2) when neither positional globs nor config gl
     const code = await run({ _: ['check'], cwd: repo });
     assert.equal(code, 2);
   } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test('CLI reports a URL found only in code as skipped and --check still exits 0', () => {
+  const vault = mkdtempSync(join(tmpdir(), 'rv-vault-'));
+  const repo = mkdtempSync(join(tmpdir(), 'rv-repo-'));
+  try {
+    runInit({ vaultPath: vault });
+    writeFileSync(join(repo, 'doc.md'), 'run this:\n\n```\ncurl https://nobody.example/in-code\n```\n');
+    const bin = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'research-vault.mjs');
+    const r = spawnSync(process.execPath, [bin, 'check', 'doc.md', '--vault', vault, '--check'], { cwd: repo, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^skipped \(in code\): doc\.md {2}https:\/\/nobody\.example\/in-code$/m);
+    assert.doesNotMatch(r.stdout, /UNCOVERED/);
+    const j = spawnSync(process.execPath, [bin, 'check', 'doc.md', '--vault', vault, '--json'], { cwd: repo, encoding: 'utf8' });
+    assert.deepEqual(JSON.parse(j.stdout).skipped, [{ file: 'doc.md', type: 'url', value: 'https://nobody.example/in-code' }]);
+  } finally {
+    rmSync(vault, { recursive: true, force: true });
     rmSync(repo, { recursive: true, force: true });
   }
 });
