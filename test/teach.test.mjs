@@ -60,6 +60,32 @@ test('CLI teach lint on the workspace exits 1 and prints the bad codes in the va
   assert.equal(lines.at(-1), warnings[0]);
 });
 
+test('CLI teach lint resolves the vault from the workspace, not the cwd; a missing vault exits 2', () => {
+  // A repo bound to the fixture vault holds a clean workspace; the cwd is another repo bound
+  // to a vault that does not exist, and RESEARCH_VAULT_PATH points nowhere too.
+  const bind = (root, vault) => writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault }) + '\n');
+  const repo = mkdtempSync(join(tmpdir(), 'rv-teach-repo-'));
+  bind(repo, VAULT);
+  const ws = join(repo, 'learn', 'fx');
+  for (const f of ['MISSION.md', 'GLOSSARY.md', 'lessons/0001-good.html', 'reference/good.html', 'evidence/0001/PLAN.md']) {
+    mkdirSync(dirname(join(ws, f)), { recursive: true });
+    cpSync(join(FIX, f), join(ws, f));
+  }
+  const other = mkdtempSync(join(tmpdir(), 'rv-teach-other-'));
+  bind(other, join(other, 'no-vault'));
+  const env = { ...process.env, RESEARCH_VAULT_PATH: join(other, 'nowhere') };
+  const r = spawnSync(process.execPath, [BIN, 'teach', 'lint', ws], { cwd: other, env, encoding: 'utf8' });
+  assert.equal(r.stderr, '');
+  assert.equal(r.stdout, 'lint: clean\n');
+  assert.equal(r.status, 0);
+  // The workspace's own binding names a missing vault: exit 2, not a wall of LESSON_CITE_UNRESOLVED.
+  bind(repo, join(repo, 'gone'));
+  const g = spawnSync(process.execPath, [BIN, 'teach', 'lint', ws], { cwd: other, env, encoding: 'utf8' });
+  assert.equal(g.status, 2);
+  assert.equal(g.stdout, '');
+  assert.equal(g.stderr, `teach lint: no vault at ${join(repo, 'gone')}\n`);
+});
+
 test('CLI teach lint --fix migrates the legacy record and is idempotent', () => {
   const ws = copyFixture();
   const legacy = join(ws, 'learning-records', '0002-legacy.md');

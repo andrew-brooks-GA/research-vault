@@ -33,7 +33,12 @@ function lint(ws, args) {
     const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md')) : [];
     out(`fixed ${files.filter((f) => fixRecordFrontmatter(ws, f, new Date())).length} record(s)`);
   }
-  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
+  // Resolve from the workspace, so a project config there wins over the process cwd.
+  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws });
+  if (!existsSync(vaultPath)) {
+    process.stderr.write(`teach lint: no vault at ${vaultPath}\n`);
+    return 2;
+  }
   const findings = lintWorkspace(ws, {
     workspaceDir: ws, vaultPath, entries: buildManifest(vaultPath).entries,
     schema: loadSchema(REPO_ROOT, { vaultPath }), teachSchema: loadTeachSchema(REPO_ROOT), now: new Date(),
