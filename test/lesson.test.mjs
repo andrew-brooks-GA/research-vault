@@ -48,7 +48,8 @@ test('parseLesson finds blocks, quiz, cites and links', () => {
   const p = parseLesson(readFileSync(join(FIX, 'lessons', '0001-good.html'), 'utf8'));
   assert.deepEqual([...p.blocks.keys()].sort(), ['example', 'fact', 'followup', 'mission', 'prereq', 'quiz', 'sources', 'step']);
   assert.equal(p.quiz.items.length, 3);
-  assert.deepEqual(p.cites, ['2026-01-01-fx-doc', '2026-01-01-fx-experiment', '2026-01-01-fx-snippet']);
+  assert.deepEqual(p.cites, ['2026-01-01-fx-snippet', '2026-01-01-fx-experiment', '2026-01-01-fx-doc']);
+  assert.ok(p.links.includes('https://example.org/fx'));
   assert.ok(p.links.includes('../GLOSSARY.md#term'));
   assert.ok(p.links.includes('../reference/good.html'));
 });
@@ -92,7 +93,7 @@ test('lesson-specific codes fire on their own fixture and not on the good lesson
   // Positive control: the unedited copy is clean.
   assert.deepEqual(variant('unchanged', (h) => h), []);
   const long = Array(FACT_WORDS).fill('word').join(' ');
-  assert.deepEqual(codes(variant('long fact', (h) => h.replace('multiplied by six.', `multiplied by six. ${long}`))), ['LESSON_FACT_TOO_LONG']);
+  assert.deepEqual(codes(variant('long fact', (h) => h.replace('Called with 7, fx returns 42.', `Called with 7, fx returns 42. ${long}`))), ['LESSON_FACT_TOO_LONG']);
   assert.deepEqual(codes(variant('no fixed sentence', (h) => h.replace('You can ask follow-up questions in the terminal.', 'Ask me anything.'))), ['LESSON_FOLLOWUP_MISSING']);
   const noFollowup = variant('no followup block', (h) => h.replace(/<section data-block="followup">[\s\S]*?<\/section>/, ''));
   assert.deepEqual(codes(noFollowup), ['LESSON_BLOCK_MISSING']);

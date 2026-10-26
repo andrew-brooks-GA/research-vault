@@ -24,13 +24,17 @@ Each block is an element with `data-block="<name>"`, normally a `<section>`. Ord
 | `example` | lesson | The probe's input and verbatim output, cited to its `snippet` and `experiment` |
 | `quiz` | lesson, review | The quiz data block (below) |
 | `step` | lesson | One real-world action, the command to run, and the observable result |
-| `sources` | lesson, review, reference | The vault ids cited, with one marked `(recommended read)` |
+| `sources` | lesson, review, reference | The vault ids cited, with one marked `(recommended read)`; source anchors carry `href` (Citation anchors) |
 | `followup` | lesson, review | Exactly the sentence `You can ask follow-up questions in the terminal.` |
 | `note` | reference | The rendered vault note body, with `data-cite` on the block element |
+
+In `step`, state the command exactly as the experiment's Result quotes it, so the claims gate can match it. When the step names the probe's path, keep that path in the captured snippet.
 
 ## Citation anchors
 
 A claim is cited with `<a data-cite="<vault id>">`, placed at the end of the paragraph that makes the claim. Every `<p>` in `fact` needs at least one. The id must resolve to a vault entry; a stale entry still resolves, because freshness is the claims gate's job.
+
+In the `sources` block, an anchor whose vault entry is a `source` with a `source_url` also carries `href="<that URL>"`, so the learner can open it from the lesson. The recommended read is such a source, and its anchor always carries the `href`. Anchors in `fact` and `example` keep `data-cite` only.
 
 ## Quiz data
 
@@ -54,7 +58,7 @@ When served by `teach serve`, the widget posts the answers after the last item a
 
 ## Review lessons
 
-A review lesson is retrieval practice for records already written. Blocks: `mission`, `quiz`, `followup`, `sources` (`prereq` optional). Draw items from two or three learning records, interleaved, and give every item `"record": "<learning-record id>"`. The record must exist. A wrong answer on an item is a corrected-misconception candidate for that record.
+A review lesson is retrieval practice for records already written. Blocks: `mission`, `quiz`, `sources`, `followup` (`prereq` optional). Draw items from two or three learning records once the workspace has at least two, and from the one record before that, interleaved, and give every item `"record": "<learning-record id>"`. The record must exist. A wrong answer on an item is a corrected-misconception candidate for that record.
 
 ## Reference docs
 
@@ -70,7 +74,7 @@ Before any probe or draft, write `evidence/NNNN/PLAN.md` for lesson NNNN, in fiv
 4. The probe: what to run and what output would support each claim.
 5. The step: the real-world action and its observable result.
 
-Write the probe against the claim lines. The `fact` block states only claims the plan lists. When a probe contradicts a claim line, never edit the line: append a `## Revisions` section naming the line, the result and the replacement claim. An `evidence/NNNN/` folder with no `PLAN.md` is a lint finding.
+Write the probe against the claim lines. The `fact` block states only claims the plan lists. When a probe contradicts a claim line, or the claims gate narrows one, never edit the line: append a `## Revisions` section naming the line, the result or finding, and the replacement claim. An `evidence/NNNN/` folder with no `PLAN.md` is a lint finding.
 
 ## Example
 
@@ -96,7 +100,7 @@ A complete minimal lesson that passes `teach lint`:
 </section>
 
 <section data-block="fact">
-<p>The function fx returns its input multiplied by six. <a data-cite="2026-01-01-fx-doc">2026-01-01-fx-doc</a></p>
+<p>The body of fx is <code>return n * 6;</code>. <a data-cite="2026-01-01-fx-snippet">2026-01-01-fx-snippet</a></p>
 <p>Called with 7, fx returns 42. <a data-cite="2026-01-01-fx-experiment">2026-01-01-fx-experiment</a></p>
 </section>
 
@@ -125,7 +129,7 @@ A complete minimal lesson that passes `teach lint`:
 
 <section data-block="sources">
 <ul>
-<li><a data-cite="2026-01-01-fx-doc">2026-01-01-fx-doc</a> (recommended read)</li>
+<li><a data-cite="2026-01-01-fx-doc" href="https://example.org/fx">2026-01-01-fx-doc</a> (recommended read)</li>
 <li><a data-cite="2026-01-01-fx-snippet">2026-01-01-fx-snippet</a></li>
 <li><a data-cite="2026-01-01-fx-experiment">2026-01-01-fx-experiment</a></li>
 </ul>
