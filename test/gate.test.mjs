@@ -217,6 +217,22 @@ test('CLI gate evidence prints the entry lines and uncovered lines', () => {
   assert.deepEqual(parsed.uncovered, [{ type: 'url', value: 'https://nowhere.example/x' }]);
 });
 
+test('CLI gate record and status work for a vault entry outside any bound repo', () => {
+  const vault = fixtureVault();
+  const rel = 'experiments/2026-01-01-fx-experiment.md';
+  const file = join(vault, rel);
+  const parent = dirname(vault);
+  const sha = contentHash(readFileSync(file, 'utf8')).slice(0, 12);
+  const rec = gateCli(parent, vault, 'record', file, 'PASS');
+  assert.equal(rec.code, 0, rec.err);
+  assert.equal(rec.out, `recorded claims PASS for ${rel} @ ${sha}\n`);
+  assert.ok(existsSync(join(vault, LEDGER_FILENAME)), 'ledger lives in the vault');
+  const st = gateCli(parent, vault, 'status', file, '--check');
+  assert.equal(st.code, 0, st.err);
+  assert.equal(st.out, `${rel}: PASS @ ${sha}\n`);
+  assert.equal(gateCli(parent, vault, 'evidence', file).code, 0);
+});
+
 test('CLI gate outside a bound repo exits 2', () => {
   const vault = fixtureVault();
   const root = tmpVault('rv-gate-unbound-');

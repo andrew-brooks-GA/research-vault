@@ -3,6 +3,7 @@
 import { resolve, dirname } from 'node:path';
 import { resolveVault } from '../lib/resolve.mjs';
 import { findProjectConfig } from '../lib/projectconfig.mjs';
+import { isInsideVault } from '../lib/containment.mjs';
 import { VERDICTS, recordVerdict, gateStatus, evidenceFor, renderEvidence } from '../lib/gate.mjs';
 
 const USAGE = `usage: research-vault gate evidence <draft> [--extra ids] [--json] | record <file> <${VERDICTS.join('|')}> [note] | status <file> [--check]`;
@@ -14,15 +15,17 @@ export async function run(args) {
   if (!file || !['evidence', 'record', 'status'].includes(sub)) return usage();
   if (sub === 'record' && !VERDICTS.includes(verdict)) return usage();
   const abs = resolve(cwd, file);
+  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd });
   const cfg = findProjectConfig(dirname(abs));
-  if (!cfg) {
+  // A vault entry outside any bound repo (e.g. a synthesis in an OS-default vault) is
+  // gated with the vault directory as the ledger root.
+  const repoRoot = cfg ? dirname(cfg.path) : isInsideVault(vaultPath, abs) ? resolve(vaultPath) : null;
+  if (!repoRoot) {
     process.stderr.write(`gate: ${file} is not inside a repo bound with .research-vault.json\n`);
     return 2;
   }
-  const repoRoot = dirname(cfg.path);
 
   if (sub === 'evidence') {
-    const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd });
     const extra = (args.extra ?? '').split(',').map((s) => s.trim()).filter(Boolean);
     const r = evidenceFor(abs, vaultPath, { extra });
     process.stdout.write(args.json ? JSON.stringify(r, null, 2) + '\n' : renderEvidence(r));

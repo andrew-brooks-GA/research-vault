@@ -1,6 +1,6 @@
 ---
 name: research-teach
-description: Use when the user wants to learn a topic over multiple sessions in a vault-bound repo — "teach me X", "/research-teach", "I'm stuck on this passage", or a question about a lesson, reference doc or learning record in a teaching workspace. Owns the teaching workspace (mission, lessons, reference docs, learning records) and wires it to the vault — resources are vault sources, reference facts are vault notes, every behaviour claim is probed, kept as evidence and gated by a fresh claims reviewer before the learner sees it. For a research question with no learner, use research-orchestrate.
+description: Use when the user wants to learn a topic over multiple sessions in a vault-bound repo — "teach me X", "/research-teach", "I'm stuck on this passage", or a question about a lesson, reference doc or learning record in a teaching workspace. Owns the teaching workspace (mission, lessons, reference docs, learning records) and wires it to the vault — resources are vault sources, reference facts are vault notes, every behaviour claim is probed, kept as evidence and gated by a fresh research-vault:claims-reviewer before the learner sees it. For a research question with no learner, use research-orchestrate.
 ---
 # Teaching from the vault
 
