@@ -65,6 +65,7 @@ In Claude Code you mostly just talk. The plugin's skills load when a request mat
 | "research X" | Answered from the vault if possible. Otherwise the agent searches the web and files every source, note and open question as entries, not a one-off report. |
 | "what needs attention?" | A report of entries past their interval, conclusions resting on aged evidence, entries nothing links to, and sources nobody has written up yet. |
 | "teach me X" | A teaching workspace: mission, short lessons with quizzes, reference sheets. Every fact comes from the vault or a kept probe run, and a fresh reviewer agent fails any lesson that claims more than the evidence shows. |
+| "gate this draft" | A fresh reviewer agent checks every claim against the vault; the verdict is tied to the file's content, so an edit reopens the gate. |
 | "verify this" | The entry is checked by a suitable method (re-fetching, cross-referencing, a local probe, or your say-so) and the result recorded. A wrong entry is marked as replaced by a corrected one. |
 
 Each of these is also a slash command. All but the research workflow are plain CLI calls too.
