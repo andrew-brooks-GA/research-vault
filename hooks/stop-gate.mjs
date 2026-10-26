@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Stop hook: block the end of a turn while a gated draft changed this session has no
-// PASS or MERIT recorded for its current content. Silent outside a bound repo; always exits 0.
+// PASS or MERIT recorded for its current content. Silent outside a bound repo; always exits 0, and says so on stderr when it fails open.
 import { statSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -46,6 +46,9 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
         process.stdout.write(JSON.stringify({ decision: 'block', reason }) + '\n');
       }
     }
-  } catch { /* never crash a session */ }
+  } catch (err) {
+    // Never crash a session: no decision on stdout, one line on stderr so the skip is visible.
+    process.stderr.write(`research-vault: stop-gate skipped (${err?.message ?? err})\n`);
+  }
   process.exit(0);
 }

@@ -101,3 +101,12 @@ test('sinceFrom uses birth time, and falls back to now minus twelve hours when i
   assert.equal(sinceFrom('/t', now, () => { throw new Error('ENOENT'); }), now - TWELVE_HOURS);
   assert.equal(sinceFrom(join(tmpVault('rv-nots-'), 'missing.jsonl'), now), now - TWELVE_HOURS);
 });
+
+test('CLI fails open with a stderr line when the binding file is malformed', () => {
+  const root = tmpVault('rv-stopgate-bad-');
+  writeFileSync(join(root, '.research-vault.json'), '{ not json\n');
+  const r = hook({ stop_hook_active: false, transcript_path: join(root, 'nope.jsonl'), cwd: root });
+  assert.equal(r.code, 0);
+  assert.equal(r.out, '');
+  assert.match(r.err, /^research-vault: stop-gate skipped \(.+\)\n$/);
+});
