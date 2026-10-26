@@ -43,6 +43,23 @@ pre { background: var(--code-bg); color: var(--code-ink); padding: 0.9rem 1rem; 
       white-space: pre-wrap; overflow-wrap: anywhere; margin: 0.5rem 0 1rem; }
 pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
 
+/* Navigation: injected by quiz.js when served; the index page at / lists every lesson. */
+.lesson-nav { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; font-size: 0.9rem; color: var(--muted); }
+.lesson-nav a { color: var(--link); text-decoration: none; }
+.lesson-nav a:hover { text-decoration: underline; }
+.lesson-nav-next { margin-left: auto; }
+.lesson-index { padding-left: 1.5rem; }
+.lesson-index li { margin: 0.4rem 0; }
+.lesson-index small { color: var(--muted); font-family: "Roboto Mono", ui-monospace, monospace; font-size: 0.75em; margin-left: 0.5em; }
+[data-block="index"]::before { content: "lessons"; }
+[data-block="reference-index"]::before { content: "reference"; }
+[data-block="progress"]::before { content: "scores"; }
+[data-block="timeline"]::before { content: "every attempt"; }
+table.progress { width: 100%; border-collapse: collapse; font-size: 0.95em; }
+table.progress th, table.progress td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--rule); }
+table.progress th { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.timeline { padding-left: 1.5rem; } .timeline li { margin: 0.35rem 0; }
+
 /* Blocks: one labelled card per data-block. */
 [data-block] { position: relative; margin: 0; padding: 2rem 1.4rem 1.2rem; background: var(--card); border: 1px solid var(--rule); border-left: 5px solid #ccc; border-radius: 10px; min-width: 0; }
 [data-block]::before { content: attr(data-block); position: absolute; top: 0.65rem; left: 1.4rem; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
@@ -100,7 +117,7 @@ a[data-cite]:hover { color: var(--ink); border-color: var(--muted); }
 /* Two columns from 1100px: fact beside example, quiz beside step; everything else spans. */
 @media (min-width: 1100px) {
   body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 1.5rem; padding: 2.5rem 2rem 4rem; }
-  h1, [data-block="prereq"], [data-block="mission"], [data-block="sources"], [data-block="followup"], [data-block="note"] { grid-column: 1 / -1; }
+  h1, .lesson-nav, [data-block="prereq"], [data-block="mission"], [data-block="sources"], [data-block="followup"], [data-block="note"], [data-block="index"], [data-block="reference-index"], [data-block="progress"], [data-block="timeline"] { grid-column: 1 / -1; }
   /* Command output keeps its columns; a wide table scrolls inside its own block instead of wrapping. */
   pre { white-space: pre; overflow-x: auto; font-size: 0.76rem; }
 }

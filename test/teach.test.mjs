@@ -14,7 +14,7 @@ const BIN = join(ROOT, 'bin', 'research-vault.mjs');
 const FIX = join(ROOT, 'test', 'fixtures', 'teach');
 const VAULT = fixtureVault();
 const TODAY = new Date().toISOString().slice(0, 10);
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | serve [workspace]\n';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | progress [workspace] | serve [workspace]\n';
 
 const copyFixture = () => {
   const dir = mkdtempSync(join(tmpdir(), 'rv-teach-'));
@@ -264,4 +264,18 @@ test('session brief names review-due, stale docs and the last attempt', () => {
   assert.equal(cli(['attempt', 'add', '--lesson', '0003-review-good', '--answers', '0,2,1', ws]).status, 0);
   assert.equal(workspaceBrief(ws, VAULT, now, 'learn/fx'),
     'research-teach learn/fx: 0 record(s) review-due; 1 reference doc(s) with a stale citation; last attempt 3/3 on 0003-review-good');
+});
+
+test('CLI teach progress prints every attempt per lesson with first, latest and best', () => {
+  const ws = copyFixture();
+  const r1 = cli(['progress', ws]);
+  assert.equal(r1.status, 0);
+  assert.equal(r1.stdout, '| lesson | attempts | first | latest | best |\n|---|---|---|---|---|\n' +
+    '| 0001-good | 1 | 2/3 on 2026-01-01 | 2/3 on 2026-01-01 | 2/3 on 2026-01-01 |\n' +
+    '| 0002-bad | 0 | none | none | none |\n| 0003-review-good | 0 | none | none | none |\n\n' +
+    'attempts: 1\nrecords: 1 active (understanding 1)\nreview-due: 0001-known\nreview-failed: none\n');
+  assert.equal(cli(['attempt', 'add', '--lesson', '0001-good', '--answers', '0,1,3', ws]).status, 0);
+  const r2 = cli(['progress', ws]);
+  assert.match(r2.stdout, new RegExp(`\\| 0001-good \\| 2 \\| 2/3 on 2026-01-01 \\| 3/3 on ${TODAY} \\| 3/3 on ${TODAY} \\|`));
+  assert.match(r2.stdout, /attempts: 2/);
 });

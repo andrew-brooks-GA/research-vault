@@ -5,11 +5,11 @@ import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../lib/resolve.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
-import { writeRecord, supersedeRecord, writeAttempt, fixRecordFrontmatter, teachIndex, createServer } from '../lib/teach.mjs';
+import { writeRecord, supersedeRecord, writeAttempt, fixRecordFrontmatter, teachIndex, createServer, progress, progressText } from '../lib/teach.mjs';
 import { lintWorkspace } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | serve [workspace]';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | progress [workspace] | serve [workspace]';
 
 const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
 const out = (s) => process.stdout.write(s + '\n');
@@ -91,6 +91,12 @@ export async function run(args) {
   const teachSchema = loadTeachSchema(REPO_ROOT);
   const now = new Date();
 
+  if (verb === 'progress') {
+    const ws = workspace(sub);
+    if (!ws) return usage();
+    process.stdout.write(progressText(progress(ws, { now: new Date() })));
+    return 0;
+  }
   if (verb === 'lint' || verb === 'next') {
     const ws = workspace(sub);
     if (!ws) return usage();

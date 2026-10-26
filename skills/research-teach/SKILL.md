@@ -71,13 +71,15 @@ Procedure, in order:
    mkdir -p assets && cp -n "${CLAUDE_PLUGIN_ROOT}/skills/research-teach/assets/lesson.css" "${CLAUDE_PLUGIN_ROOT}/skills/research-teach/assets/quiz.js" assets/
    grep -qxF .teach-serve.json .gitignore 2>/dev/null || echo .teach-serve.json >> .gitignore
    ```
-   `cp -n` never overwrites a copy the workspace has edited.
+   `cp -n` never overwrites a copy the workspace has edited. `teach serve` renders an index of every lesson at `/`, and each served lesson shows a navigation bar (all lessons, previous, next) from `/lessons.json`, so the learner can go back to earlier lessons. `/progress` (and `teach progress`) shows every attempt per lesson with first, latest and best scores, the active records, and what is due for review; point the learner at it when they ask how they are doing.
 5. Write `lessons/NNNN-slug.html` per `LESSON-FORMAT.md`.
 6. Run `teach lint`. Fix every finding and lint again until it prints `lint: clean`. Warnings are advisory.
 
-## 5. Claims gate, before the learner sees it
+## 5. Reader gate, then claims gate, before the learner sees it
 
-`teach lint` must be clean first. Then run the `research-claims-gate` skill on the lesson (extra ids: its snippet and experiment). Reference docs go through the same lint and gate. After any revision, lint and gate again.
+`teach lint` must be clean first. Then the reader gate: dispatch ONE `research-vault:lesson-reader` agent (Agent tool, `subagent_type: research-vault:lesson-reader`, no `model`, not a fork) with a prompt that is exactly the lesson's absolute path and nothing else. It has no mission, evidence or session context on purpose: it reads the page as the learner will and returns `VERDICT: READS` or `VERDICT: REVISE` with findings. On `REVISE`, fix the lesson, run `teach lint`, and dispatch a fresh reader; a lesson that needs a third reader round is the wrong lesson (too much in it), so split it. Record each reader verdict in `GATE-LOG.md` under the lesson's heading.
+
+After `READS`, run the `research-claims-gate` skill on the lesson (extra ids: its snippet and experiment). Reference docs go through the same lint and gate. After any revision, lint and gate again.
 
 After the gate records `PASS` or `MERIT`, open the lesson:
 
