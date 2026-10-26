@@ -189,7 +189,7 @@ test('a lesson with no evidence folder gets the advisory WARN_EVIDENCE_FOLDER_MI
   assert.deepEqual(f.map((x) => [x.code, x.warning]), [['WARN_EVIDENCE_FOLDER_MISSING', true]]);
 });
 
-test('lintStore reports PARSE, MISSING_REQUIRED, ENUM, DANGLING_REF, SUPERSEDE, STORED_DERIVED, TYPE_FOLDER and the frontmatter warning', () => {
+test('lintStore reports PARSE, MISSING_REQUIRED, ENUM_KIND, ENUM_STATUS, ENUM_TYPE, DANGLING_REF, SUPERSEDE, STORED_DERIVED, TYPE_FOLDER and the frontmatter warning', () => {
   const dir = copyFixture();
   const rec = (extra) => ['---', 'title: x', 'type: learning-record', 'date: 2026-01-01', ...extra, '---', '# x', ''].join('\n');
   const att = (extra) => ['---', 'type: attempt', 'date: 2026-01-01', 'lesson: 0001-good', 'total: 3', 'wrong: []', ...extra, '---', ''].join('\n');
@@ -203,6 +203,8 @@ test('lintStore reports PARSE, MISSING_REQUIRED, ENUM, DANGLING_REF, SUPERSEDE, 
     'attempts/a-20260101-120000-0002.md': att(['records: []', 'score: 3']),
     'attempts/a-20260101-120000-0003.md': att(['records: [0099-nope]']),
     'learning-records/0016-typed.md': att(['records: []']),
+    'learning-records/0017-enum-status.md': rec(['status: gone', 'kind: understanding']),
+    'learning-records/0018-enum-type.md': ['---', 'title: x', 'type: nope', 'date: 2026-01-01', 'status: active', 'kind: understanding', '---', '# x', ''].join('\n'),
   };
   for (const [rel, text] of Object.entries(files)) writeFileSync(join(dir, rel), text);
   const f = lintStore(dir, ctxFor(dir));
@@ -221,6 +223,9 @@ test('lintStore reports PARSE, MISSING_REQUIRED, ENUM, DANGLING_REF, SUPERSEDE, 
     'attempts/a-20260101-120000-0002.md': ['STORED_DERIVED'],
     'attempts/a-20260101-120000-0003.md': ['DANGLING_REF'],
     'learning-records/0016-typed.md': ['TYPE_FOLDER'],
+    'learning-records/0017-enum-status.md': ['ENUM_STATUS'],
+    // An unknown type is both outside the enum and outside the type-to-folder map.
+    'learning-records/0018-enum-type.md': ['ENUM_TYPE', 'TYPE_FOLDER'],
   });
   // The good record and the good attempt fire nothing.
   console.log(`good record/attempt findings: ${f.filter((x) => /0001-known|0001\.md$/.test(x.file)).length}`);
@@ -232,6 +237,8 @@ test('lintStore reports PARSE, MISSING_REQUIRED, ENUM, DANGLING_REF, SUPERSEDE, 
   assert.equal(msg('attempts/a-20260101-120000-0003.md'), 'records -> missing id 0099-nope');
   assert.equal(msg('attempts/a-20260101-120000-0002.md'), 'stored derived field: score');
   assert.equal(msg('learning-records/0016-typed.md'), 'type attempt in folder learning-records');
+  assert.equal(msg('learning-records/0017-enum-status.md'), 'unknown status: gone');
+  assert.equal(msg('learning-records/0018-enum-type.md'), 'unknown type: nope');
   assert.equal(f.find((x) => x.code === 'WARN_RECORD_FRONTMATTER_MISSING').warning, true);
   assert.ok(f.filter((x) => x.code !== 'WARN_RECORD_FRONTMATTER_MISSING').every((x) => x.warning === false));
 });

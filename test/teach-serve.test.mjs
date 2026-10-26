@@ -91,7 +91,7 @@ test('serves a lesson and the glossary; returns 404 for NOTES.md, a record, an a
     for (const p of hidden) {
       const r = await req(port, { path: p });
       console.log(`GET ${p} -> ${r.status}`);
-      assert.ok(r.status === 404 || r.status === 400, `${p} -> ${r.status}`);
+      assert.equal(r.status, 404, p);
       assert.ok(!r.text.includes('Success looks like') && !r.text.includes('type: attempt'), p);
       notFound++;
     }
