@@ -28,6 +28,14 @@
         "globs": { "type": "array", "items": { "type": "string" }, "description": "Globs (repo-relative) for files the authoring skill and consumer-side check should treat as citation-bearing." }
       }
     },
+    "gates": {
+      "type": "object",
+      "description": "Files the claims gate covers beyond research workspaces.",
+      "additionalProperties": true,
+      "properties": {
+        "globs": { "type": "array", "items": { "type": "string" }, "description": "Globs (repo-relative) for files the claims gate must cover." }
+      }
+    },
     "capture": {
       "type": "object",
       "description": "Authoring-capture behavior for this repo.",

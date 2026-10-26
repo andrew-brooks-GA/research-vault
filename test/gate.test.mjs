@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync, appendFileSync, existsSync, readFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { tmpVault, put } from './helpers.mjs';
 import {
   LEDGER_FILENAME, contentHash, ledgerKey, recordVerdict, gateStatus,
@@ -159,4 +160,76 @@ test('gatedFiles returns workspace lessons and reference docs plus gates.globs',
   assert.deepEqual(gatedFiles(root, vault, {}).sort(), want);
   assert.deepEqual(gatedFiles(root, vault, { gates: { globs: ['docs/drafts/*.md'] } }).sort(),
     [join(root, 'docs/drafts/reply.md'), ...want].sort());
+});
+
+const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'research-vault.mjs');
+
+function gateCli(cwd, vault, ...args) {
+  const r = spawnSync(process.execPath, [CLI, 'gate', ...args], {
+    cwd, encoding: 'utf8', env: { ...process.env, RESEARCH_VAULT_PATH: vault },
+  });
+  return { code: r.status, out: r.stdout, err: r.stderr };
+}
+
+function boundRepo(vault) {
+  const root = tmpVault('rv-gate-cli-');
+  writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault }) + '\n');
+  mkdirSync(join(root, 'docs'), { recursive: true });
+  writeFileSync(join(root, 'docs', 'reply.md'), 'See 2026-01-01-fx-experiment and https://nowhere.example/x.\n');
+  return root;
+}
+
+test('CLI gate record then status --check exits 0, after an edit exits 1', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  const sha = contentHash(readFileSync(join(root, 'docs', 'reply.md'), 'utf8')).slice(0, 12);
+  const rec = gateCli(root, vault, 'record', 'docs/reply.md', 'PASS', 'checked');
+  assert.equal(rec.code, 0, rec.err);
+  assert.equal(rec.out, `recorded claims PASS for docs/reply.md @ ${sha}\n`);
+  const ok = gateCli(join(root, 'docs'), vault, 'status', 'reply.md', '--check');
+  assert.equal(ok.code, 0, ok.err);
+  assert.equal(ok.out, `docs/reply.md: PASS @ ${sha}\n`);
+  appendFileSync(join(root, 'docs', 'reply.md'), 'edit\n');
+  const sha2 = contentHash(readFileSync(join(root, 'docs', 'reply.md'), 'utf8')).slice(0, 12);
+  const stale = gateCli(root, vault, 'status', 'docs/reply.md', '--check');
+  assert.equal(stale.code, 1);
+  assert.equal(stale.out, `docs/reply.md: none @ ${sha2}\n`);
+  assert.equal(gateCli(root, vault, 'status', 'docs/reply.md').code, 0, 'without --check a missing verdict exits 0');
+});
+
+test('CLI gate record rejects a bad verdict with exit 2 and no ledger', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  const r = gateCli(root, vault, 'record', 'docs/reply.md', 'pass');
+  assert.equal(r.code, 2);
+  assert.match(r.err, /^usage: research-vault gate evidence <draft> \[--extra ids\] \[--json\] \| record <file> <PASS\|FAIL-as-sent\|MERIT> \[note\] \| status <file> \[--check\]$/m);
+  assert.equal(existsSync(join(root, LEDGER_FILENAME)), false);
+  assert.equal(gateCli(root, vault, 'bogus').code, 2);
+  assert.equal(gateCli(root, vault).code, 2);
+});
+
+test('CLI gate evidence prints the entry lines and uncovered lines', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  const r = gateCli(root, vault, 'evidence', 'docs/reply.md', '--extra', '2026-01-01-fx-doc');
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, [
+    '2026-01-01-fx-doc [source, active]',
+    '2026-01-01-fx-experiment [experiment, active]',
+    'uncovered: https://nowhere.example/x',
+  ].join('\n') + '\n');
+  const j = gateCli(root, vault, 'evidence', 'docs/reply.md', '--json');
+  assert.equal(j.code, 0, j.err);
+  const parsed = JSON.parse(j.out);
+  assert.deepEqual(parsed.entries.map((e) => e.id), ['2026-01-01-fx-experiment']);
+  assert.deepEqual(parsed.uncovered, [{ type: 'url', value: 'https://nowhere.example/x' }]);
+});
+
+test('CLI gate outside a bound repo exits 2', () => {
+  const vault = fixtureVault();
+  const root = tmpVault('rv-gate-unbound-');
+  writeFileSync(join(root, 'x.md'), 'x\n');
+  const r = gateCli(root, vault, 'status', 'x.md');
+  assert.equal(r.code, 2);
+  assert.equal(r.err, `gate: x.md is not inside a repo bound with .research-vault.json\n`);
 });

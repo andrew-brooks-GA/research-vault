@@ -1,0 +1,39 @@
+// Claims-gate CLI: derive a draft's evidence list, record a reviewer verdict keyed to the
+// draft's content hash, and report whether the current content carries a passing verdict.
+import { resolve, dirname } from 'node:path';
+import { resolveVault } from '../lib/resolve.mjs';
+import { findProjectConfig } from '../lib/projectconfig.mjs';
+import { VERDICTS, recordVerdict, gateStatus, evidenceFor, renderEvidence } from '../lib/gate.mjs';
+
+const USAGE = `usage: research-vault gate evidence <draft> [--extra ids] [--json] | record <file> <${VERDICTS.join('|')}> [note] | status <file> [--check]`;
+
+export async function run(args) {
+  const cwd = args.cwd ?? process.cwd();
+  const [, sub, file, verdict, note] = args._;
+  const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
+  if (!file || !['evidence', 'record', 'status'].includes(sub)) return usage();
+  if (sub === 'record' && !VERDICTS.includes(verdict)) return usage();
+  const abs = resolve(cwd, file);
+  const cfg = findProjectConfig(dirname(abs));
+  if (!cfg) {
+    process.stderr.write(`gate: ${file} is not inside a repo bound with .research-vault.json\n`);
+    return 2;
+  }
+  const repoRoot = dirname(cfg.path);
+
+  if (sub === 'evidence') {
+    const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd });
+    const extra = (args.extra ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    const r = evidenceFor(abs, vaultPath, { extra });
+    process.stdout.write(args.json ? JSON.stringify(r, null, 2) + '\n' : renderEvidence(r));
+    return 0;
+  }
+  if (sub === 'record') {
+    const row = recordVerdict(repoRoot, abs, verdict, note);
+    process.stdout.write(`recorded claims ${verdict} for ${row.file} @ ${row.sha256.slice(0, 12)}\n`);
+    return 0;
+  }
+  const s = gateStatus(repoRoot, abs);
+  process.stdout.write(`${s.file}: ${s.verdict ?? 'none'} @ ${s.sha256.slice(0, 12)}\n`);
+  return args.check && !s.verdict ? 1 : 0;
+}
