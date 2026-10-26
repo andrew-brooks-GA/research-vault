@@ -4,7 +4,7 @@ description: Use when a draft that cites vault evidence is about to be shown, se
 ---
 # Claims gate
 
-A fresh reviewer checks every factual claim in the draft against the vault entries it cites, and nothing else. The verdict goes to the ledger (`.research-vault-ledger.jsonl` at the repo root, or in the vault for an entry outside any bound repo), keyed to the draft's content hash, so any edit after the gate needs a new verdict. The Stop hook blocks a turn that leaves a changed gated file without a `PASS` or `MERIT` row for its current content.
+A fresh reviewer checks every factual claim in the draft against the vault entries on its evidence list, plus any contradicting entry it finds in the vault. The verdict goes to the ledger (`.research-vault-ledger.jsonl` at the repo root, or in the vault for an entry outside any bound repo), keyed to the draft's content hash, so any edit after the gate needs a new verdict. The Stop hook blocks a turn that leaves a changed gated file without a `PASS` or `MERIT` row for its current content.
 
 ## Paths
 

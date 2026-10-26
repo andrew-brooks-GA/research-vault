@@ -60,7 +60,7 @@ A frozen, repeatable protocol for the `claims-reviewer` agent. Results are captu
 Record all of these in the experiment entry's body:
 
 - Fixture vault: the one built by `fixtureVault()` in `test/helpers.mjs` at the commit of the run: `2026-01-01-fx-doc` (a source with a stored body), `2026-01-01-fx-doc-nobody` (a source without one), `2026-01-01-fx-snippet` (a snippet), `2026-01-01-fx-experiment` (an experiment that probes one value, 7 prints 42) and `2026-01-01-old` (a stale note). Materialise it from the repo root with `node --input-type=module -e "import { fixtureVault } from './test/helpers.mjs'; console.log(fixtureVault())"`, which prints the temp vault path. `gate evidence` refuses a draft outside a bound repo, so copy the two drafts into a fresh directory holding `.research-vault.json` with `{"vault": "<that path>"}` and run against the copies.
-- Drafts: `test/fixtures/gate/lesson-ok.html` and `test/fixtures/gate/lesson-overclaim.html`, with the gold verdict per draft in `test/fixtures/gate/gold.json`, written before any run.
+- Drafts: `test/fixtures/gate/lesson-ok.html` and `test/fixtures/gate/lesson-overclaim.html`, with the gold verdict per draft in `test/fixtures/gate/gold.json`. `gold.json` must be written before any run; the current file predates every reviewer run, since none has been recorded.
 - Agent file: the git revision of `agents/claims-reviewer.md`, its `model` and `effort`, and the model id the dispatch reports.
 
 ## Procedure
