@@ -231,5 +231,8 @@ export function teachIndex(workspaceDir, { now }) {
       reviewFailed: active && lastAttempt?.wrongHere === true,
     };
   });
-  return { criteria: missionCriteria(workspaceDir), lessons, records, attempts, backlinks };
+  const refDir = join(workspaceDir, 'reference');
+  const reference = (existsSync(refDir) ? readdirSync(refDir).sort() : []).filter((f) => f.endsWith('.html'))
+    .map((f) => ({ slug: f.slice(0, -5), file: `reference/${f}`, cites: extractCites(readFileSync(join(refDir, f), 'utf8')) }));
+  return { criteria: missionCriteria(workspaceDir), lessons, reference, records, attempts, backlinks };
 }
