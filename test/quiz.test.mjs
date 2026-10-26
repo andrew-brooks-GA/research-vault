@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { shuffleOptions, grade, answerLengthSpread, lessonIdFrom } from '../skills/research-teach/assets/quiz.js';
+import { shuffleOptions, grade, answerLengthSpread, lessonIdFrom, neighbours } from '../skills/research-teach/assets/quiz.js';
 
 const QUIZ = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills/research-teach/assets/quiz.js');
 
@@ -59,7 +59,16 @@ test('importing quiz.js in Node touches no DOM', () => {
   `;
   const out = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }));
   console.log(`exports=${out.exports.length} dom_accesses=${out.touched}`);
-  assert.deepEqual(out.exports, ['answerLengthSpread', 'grade', 'lessonIdFrom', 'renderQuiz', 'shuffleOptions']);
+  assert.deepEqual(out.exports, ['answerLengthSpread', 'grade', 'lessonIdFrom', 'neighbours', 'renderQuiz', 'shuffleOptions']);
   assert.equal(out.touched, 0);
   assert.equal(out.hasDocument, false);
+});
+
+test('neighbours gives prev and next around the current lesson, null at the ends or when absent', () => {
+  const list = [{ id: '0001-a' }, { id: '0002-b' }, { id: '0003-c' }];
+  assert.deepEqual(neighbours(list, '0002-b'), { prev: { id: '0001-a' }, next: { id: '0003-c' } });
+  assert.deepEqual(neighbours(list, '0001-a'), { prev: null, next: { id: '0002-b' } });
+  assert.deepEqual(neighbours(list, '0003-c'), { prev: { id: '0002-b' }, next: null });
+  assert.deepEqual(neighbours(list, '0009-z'), { prev: null, next: null });
+  assert.deepEqual(neighbours([], null), { prev: null, next: null });
 });

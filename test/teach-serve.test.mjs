@@ -10,6 +10,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { fixtureVault } from './helpers.mjs';
 import { createServer, ATTEMPT_BODY_MAX } from '../bin/lib/teach.mjs';
+import { footnoteCitations } from '../bin/lib/teach.mjs';
 import { loadTeachSchema } from '../bin/lib/schema.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -84,7 +85,7 @@ test('serves a lesson and the glossary; returns 404 for NOTES.md, a record, an a
       assert.equal(r.status, 200, p);
       assert.equal(r.headers['content-type'], type);
       assert.equal(r.headers['x-content-type-options'], 'nosniff');
-      if (p === '/lessons/0001-good.html') assert.equal(r.text, readFileSync(join(ws, 'lessons', '0001-good.html'), 'utf8'));
+      if (p === '/lessons/0001-good.html') assert.equal(r.text, footnoteCitations(readFileSync(join(ws, 'lessons', '0001-good.html'), 'utf8')), 'a lesson is served with its citations rendered as footnotes');
       ok++;
     }
     let notFound = 0;
@@ -98,9 +99,27 @@ test('serves a lesson and the glossary; returns 404 for NOTES.md, a record, an a
     const root = await req(port, { path: '/' });
     console.log(`GET / -> ${root.status} ${JSON.stringify(root.text)}`);
     assert.equal(root.status, 200);
-    assert.equal(root.headers['content-type'], 'text/plain; charset=utf-8');
-    assert.equal(root.text, '/lessons/0001-good.html\n/lessons/0002-bad.html\n/lessons/0003-review-good.html\n');
+    assert.equal(root.headers['content-type'], 'text/html; charset=utf-8');
+    for (const p of ['/lessons/0001-good.html', '/lessons/0002-bad.html', '/lessons/0003-review-good.html', '/reference/good.html']) assert.ok(root.text.includes(`href="${p}"`), p);
+    assert.ok(root.text.includes('What fx returns'), 'index links carry the lesson title');
     assert.ok(!root.text.includes('Success looks like') && !root.text.includes('learning-records') && !root.text.includes('.hidden'));
+    const idx = await req(port, { path: '/lessons.json' });
+    assert.equal(idx.headers['content-type'], 'application/json');
+    const parsed = JSON.parse(idx.text);
+    assert.deepEqual(parsed.lessons.map((l) => l.id), ['0001-good', '0002-bad', '0003-review-good']);
+    assert.equal(parsed.lessons[0].title, 'What fx returns');
+    assert.deepEqual(parsed.reference.map((r) => r.path), ['/reference/good.html']);
+    const page = await req(port, { path: '/lessons/0001-good.html' });
+    assert.ok(page.text.includes('class="cite" href="#src-2026-01-01-fx-doc" title="2026-01-01-fx-doc">[1]</a>'), 'inline citations render as numbered footnotes');
+    assert.ok(page.text.includes('id="src-2026-01-01-fx-doc">[1] 2026-01-01-fx-doc</a>'), 'the sources block carries the anchor id and number');
+    assert.ok(!/<a data-cite="2026-01-01-fx-snippet">2026-01-01-fx-snippet<\/a>/.test(page.text), 'no raw id link text outside the sources block');
+    const prog = await req(port, { path: '/progress' });
+    assert.equal(prog.status, 200);
+    assert.equal(prog.headers['content-type'], 'text/html; charset=utf-8');
+    assert.ok(prog.text.includes('<b>2/3</b>') && prog.text.includes('2026-01-01') && prog.text.includes('href="/lessons/0001-good.html"'), 'progress page shows the attempt');
+    const progJson = JSON.parse((await req(port, { path: '/progress.json' })).text);
+    assert.equal(progJson.attempts, 1);
+    assert.equal(progJson.lessons.find((l) => l.id === '0001-good').best.score, 2);
     const bad = await req(port, { path: '/lessons/%E0%A4%A' });
     console.log(`GET /lessons/%E0%A4%A -> ${bad.status}`);
     assert.equal(bad.status, 400);

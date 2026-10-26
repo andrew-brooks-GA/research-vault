@@ -26,11 +26,64 @@ export function ledgerKey(repoRoot, filePath) {
   return relative(resolve(repoRoot), resolve(repoRoot, filePath)).replace(/\\/g, '/');
 }
 
+// Claim units of a draft, each hashed on its own: for a lesson, every data-block (the fact block
+// per <p>, the quiz per item), so a verdict carries over to the units an edit did not touch.
+// A draft without data-block elements is one unit, "all".
+export function unitHashes(content) {
+  const html = typeof content === 'string' ? content : content.toString('utf8');
+  const units = {};
+  const blocks = [...html.matchAll(/<([a-z][a-z0-9]*)\b[^>]*\bdata-block\s*=\s*(["'])([^"']+)\2[^>]*>/gi)];
+  if (!blocks.length) return { all: contentHash(html) };
+  for (const m of blocks) {
+    const [open, tag, , name] = m;
+    const start = m.index + open.length;
+    const re = new RegExp(`<(/?)${tag}\\b[^>]*>`, 'gi');
+    re.lastIndex = start;
+    let depth = 1;
+    let end = html.length;
+    for (let t; (t = re.exec(html));) { depth += t[1] ? -1 : 1; if (depth === 0) { end = t.index; break; } }
+    const inner = html.slice(start, end);
+    if (units[name] !== undefined) continue;
+    if (name === 'fact') {
+      [...inner.matchAll(/<p\b[^>]*>[\s\S]*?<\/p>/gi)].forEach((pm, i) => { units[`fact:${i}`] = contentHash(pm[0]); });
+      if (!Object.keys(units).some((k) => k.startsWith('fact:'))) units.fact = contentHash(inner);
+    } else if (name === 'quiz') {
+      let items = null;
+      try { items = JSON.parse(/<script\b[^>]*\bdata-quiz\b[^>]*>([\s\S]*?)<\/script>/i.exec(inner)?.[1] ?? 'null')?.items; } catch { items = null; }
+      if (Array.isArray(items)) items.forEach((it, i) => { units[`quiz:${i}`] = contentHash(JSON.stringify(it)); });
+      else units.quiz = contentHash(inner);
+    } else {
+      units[name] = contentHash(inner);
+    }
+  }
+  return units;
+}
+
+function ledgerRows(repoRoot) {
+  const ledger = join(repoRoot, LEDGER_FILENAME);
+  return existsSync(ledger)
+    ? readFileSync(ledger, 'utf8').split('\n').filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }) : [];
+}
+
+// Units of the draft's current content that no PASS or MERIT row for this file has covered,
+// by unit id: the reviewer's worklist after an edit.
+export function changedUnits(repoRoot, filePath) {
+  const file = ledgerKey(repoRoot, filePath);
+  const units = unitHashes(readFileSync(resolve(repoRoot, filePath)));
+  const covered = new Set();
+  for (const r of ledgerRows(repoRoot)) {
+    if (r.event !== 'claims' || r.file !== file || !SATISFIES.has(r.verdict)) continue;
+    for (const h of Object.values(r.units ?? {})) covered.add(h);
+  }
+  return Object.entries(units).filter(([, h]) => !covered.has(h)).map(([id]) => id);
+}
+
 export function recordVerdict(repoRoot, filePath, verdict, note) {
   if (!VERDICTS.includes(verdict)) throw new Error(`verdict must be one of ${VERDICTS.join(', ')}`);
+  const content = readFileSync(resolve(repoRoot, filePath));
   const row = {
     ts: new Date().toISOString(), event: 'claims', file: ledgerKey(repoRoot, filePath),
-    sha256: contentHash(readFileSync(resolve(repoRoot, filePath))), verdict,
+    sha256: contentHash(content), verdict, units: unitHashes(content),
   };
   if (note !== undefined) row.note = note;
   appendFileSync(join(repoRoot, LEDGER_FILENAME), JSON.stringify(row) + '\n');
@@ -40,11 +93,14 @@ export function recordVerdict(repoRoot, filePath, verdict, note) {
 export function gateStatus(repoRoot, filePath) {
   const file = ledgerKey(repoRoot, filePath);
   const sha256 = contentHash(readFileSync(resolve(repoRoot, filePath)));
-  const ledger = join(repoRoot, LEDGER_FILENAME);
-  const rows = existsSync(ledger)
-    ? readFileSync(ledger, 'utf8').split('\n').filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }) : [];
+  const rows = ledgerRows(repoRoot);
   const hit = rows.findLast((r) => r.event === 'claims' && r.file === file && r.sha256 === sha256 && SATISFIES.has(r.verdict));
-  return { file, sha256, verdict: hit?.verdict ?? null, ts: hit?.ts ?? null };
+  if (hit) return { file, sha256, verdict: hit.verdict, ts: hit.ts, units: [] };
+  // No row for these exact bytes: the draft still passes when every unit of it was passed in some row.
+  const pending = changedUnits(repoRoot, filePath);
+  if (pending.length) return { file, sha256, verdict: null, ts: null, units: pending };
+  const last = rows.findLast((r) => r.event === 'claims' && r.file === file && SATISFIES.has(r.verdict) && r.units);
+  return { file, sha256, verdict: last ? `${last.verdict} (by unit)` : null, ts: last?.ts ?? null, units: [] };
 }
 
 export const MIN_BODY_CHARS = 200;

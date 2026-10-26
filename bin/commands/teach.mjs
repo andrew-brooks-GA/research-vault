@@ -5,11 +5,11 @@ import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../lib/resolve.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
-import { writeRecord, supersedeRecord, writeAttempt, fixRecordFrontmatter, teachIndex, createServer } from '../lib/teach.mjs';
-import { lintWorkspace } from '../lib/lesson.mjs';
+import { writeRecord, supersedeRecord, writeAttempt, fixRecordFrontmatter, teachIndex, createServer, progress, progressText } from '../lib/teach.mjs';
+import { lintWorkspace, readPath } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | serve [workspace]';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | progress [workspace] | serve [workspace]';
 
 const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
 const out = (s) => process.stdout.write(s + '\n');
@@ -50,6 +50,19 @@ function lint(ws, args) {
   return violations.length ? 1 : 0;
 }
 
+// The first PATH.md line no lesson has taken, as `path: N. <title> | terms ... | after ...`.
+function pathLine(ws) {
+  const path = readPath(ws);
+  if (path === null) return 'path: none (write PATH.md)';
+  const l = path.find((x) => !x.lesson);
+  if (!l) return 'path: complete';
+  const bits = [];
+  if (l.terms.length) bits.push(`terms: ${l.terms.join(', ')}`);
+  if (l.tool) bits.push(`tool: ${l.tool}`);
+  if (l.after.length) bits.push(`after: ${l.after.join(', ')}`);
+  return `path: ${l.n}. ${l.title}${bits.length ? ' | ' + bits.join(' | ') : ''}`;
+}
+
 function next(ws) {
   const idx = teachIndex(ws, { now: new Date() });
   if (!idx.criteria.length) {
@@ -68,13 +81,14 @@ function next(ws) {
     '',
     `review-due: ${ids(active.filter((r) => r.reviewDue))}`,
     `review-failed: ${ids(active.filter((r) => r.reviewFailed))}`,
+    pathLine(ws),
   ].join('\n'));
   return 0;
 }
 
 // Runs until killed: the returned promise settles only when the server closes.
-async function serve(ws, teachSchema) {
-  const server = createServer(ws, { schema: teachSchema });
+async function serve(ws, teachSchema, titles) {
+  const server = createServer(ws, { schema: teachSchema, titles });
   await new Promise((ok, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', ok); });
   const { port } = server.address();
   const file = join(ws, '.teach-serve.json');
@@ -91,6 +105,12 @@ export async function run(args) {
   const teachSchema = loadTeachSchema(REPO_ROOT);
   const now = new Date();
 
+  if (verb === 'progress') {
+    const ws = workspace(sub);
+    if (!ws) return usage();
+    process.stdout.write(progressText(progress(ws, { now: new Date() })));
+    return 0;
+  }
   if (verb === 'lint' || verb === 'next') {
     const ws = workspace(sub);
     if (!ws) return usage();
@@ -121,7 +141,13 @@ export async function run(args) {
   if (verb === 'serve') {
     const ws = workspace(sub);
     if (!ws) return usage();
-    return serve(ws, teachSchema);
+    // Vault titles for the footnote rendering; a missing vault just leaves ids as titles.
+    let titles = {};
+    try {
+      const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws });
+      if (existsSync(vaultPath)) titles = Object.fromEntries(buildManifest(vaultPath).entries.map((e) => [e.id, e.title ?? e.id]));
+    } catch { /* serve without titles */ }
+    return serve(ws, teachSchema, titles);
   }
   return usage();
 }

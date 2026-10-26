@@ -4,15 +4,15 @@ import { resolve, dirname } from 'node:path';
 import { resolveVault } from '../lib/resolve.mjs';
 import { findProjectConfig } from '../lib/projectconfig.mjs';
 import { isInsideVault } from '../lib/containment.mjs';
-import { VERDICTS, recordVerdict, gateStatus, evidenceFor, renderEvidence } from '../lib/gate.mjs';
+import { VERDICTS, recordVerdict, gateStatus, evidenceFor, renderEvidence, changedUnits } from '../lib/gate.mjs';
 
-const USAGE = `usage: research-vault gate evidence <draft> [--extra ids] [--json] | record <file> <${VERDICTS.join('|')}> [note] | status <file> [--check]`;
+const USAGE = `usage: research-vault gate evidence <draft> [--extra ids] [--changed] [--json] | changed <draft> | record <file> <${VERDICTS.join('|')}> [note] | status <file> [--check]`;
 
 export async function run(args) {
   const cwd = args.cwd ?? process.cwd();
   const [, sub, file, verdict, note] = args._;
   const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
-  if (!file || !['evidence', 'record', 'status'].includes(sub)) return usage();
+  if (!file || !['evidence', 'changed', 'record', 'status'].includes(sub)) return usage();
   if (sub === 'record' && !VERDICTS.includes(verdict)) return usage();
   const abs = resolve(cwd, file);
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: dirname(abs) });
@@ -28,8 +28,14 @@ export async function run(args) {
   if (sub === 'evidence') {
     const extra = (args.extra ?? '').split(',').map((s) => s.trim()).filter(Boolean);
     const r = evidenceFor(abs, vaultPath, { extra });
-    process.stdout.write(args.json ? JSON.stringify(r, null, 2) + '\n' : renderEvidence(r));
+    if (args.changed) r.changed = changedUnits(repoRoot, abs);
+    process.stdout.write(args.json ? JSON.stringify(r, null, 2) + '\n' : renderEvidence(r) + (args.changed ? `changed units: ${r.changed.join(', ') || 'none'}\n` : ''));
     return 0;
+  }
+  if (sub === 'changed') {
+    const units = changedUnits(repoRoot, abs);
+    process.stdout.write(`changed units: ${units.join(', ') || 'none'}\n`);
+    return units.length ? 1 : 0;
   }
   if (sub === 'record') {
     const row = recordVerdict(repoRoot, abs, verdict, note);
@@ -37,6 +43,6 @@ export async function run(args) {
     return 0;
   }
   const s = gateStatus(repoRoot, abs);
-  process.stdout.write(`${s.file}: ${s.verdict ?? 'none'} @ ${s.sha256.slice(0, 12)}\n`);
+  process.stdout.write(`${s.file}: ${s.verdict ?? 'none'} @ ${s.sha256.slice(0, 12)}${s.units?.length && !(s.units.length === 1 && s.units[0] === 'all') ? ` (changed units: ${s.units.join(', ')})` : ''}\n`);
   return args.check && !s.verdict ? 1 : 0;
 }

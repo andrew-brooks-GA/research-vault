@@ -34,6 +34,31 @@ export function answerLengthSpread(item) {
   return Math.max(...lens) / Math.max(1, Math.min(...lens));
 }
 
+// The previous and next entries around `id` in the served lesson list (null at the ends or when absent).
+export function neighbours(lessons, id) {
+  const i = lessons.findIndex((l) => l.id === id);
+  return { prev: i > 0 ? lessons[i - 1] : null, next: i >= 0 && i < lessons.length - 1 ? lessons[i + 1] : null };
+}
+
+async function renderNav() {
+  if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(location.origin)) return;
+  let index;
+  try {
+    const res = await fetch('/lessons.json');
+    if (!res.ok) return;
+    index = await res.json();
+  } catch { return; }
+  const id = lessonIdFrom(location.pathname, document.body.dataset.lesson);
+  const { prev, next } = neighbours(index.lessons ?? [], id);
+  const nav = el('nav', 'lesson-nav');
+  const link = (href, text, cls) => { const a = el('a', cls, text); a.href = href; return a; };
+  nav.append(link('/', 'All lessons', 'lesson-nav-index'));
+  nav.append(link('/progress', 'Progress', 'lesson-nav-progress'));
+  if (prev) nav.append(link(prev.path, `\u2190 ${prev.title}`, 'lesson-nav-prev'));
+  if (next) nav.append(link(next.path, `${next.title} \u2192`, 'lesson-nav-next'));
+  document.body.prepend(nav);
+}
+
 async function postAttempt(payload) {
   if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(location.origin)) return null;
   try {
@@ -94,6 +119,7 @@ export function renderQuiz(container, data, { rand = Math.random, submit = postA
 }
 
 if (typeof document !== 'undefined') {
+  renderNav();
   for (const script of document.querySelectorAll('script[data-quiz]')) {
     let target = script.closest('[data-block="quiz"]');
     if (!target) {

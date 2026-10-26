@@ -17,6 +17,14 @@
 - {Another specific thing}
 - {…}
 
+## Floor
+### Known tools
+- {One tool per bullet the learner runs daily, e.g. kubectl. Lessons may run only these and the tools earlier lessons taught}
+### Known terms
+- {One term per bullet the learner defined correctly in the interview, e.g. Service and Endpoints}
+### New to me
+- {One term per bullet the mission needs and the learner could not define. Every one gets a PATH.md line before any lesson uses it}
+
 ## Constraints
 - {Time, budget, prior commitments, learning preferences, anything that bounds the approach}
 
@@ -30,4 +38,6 @@
 - **Concrete over abstract.** "Run a half marathon by October" beats "get fitter." "Ship a Rust CLI to my team" beats "learn Rust."
 - **Push back on vagueness.** If the user cannot articulate why, interview them before writing anything. A bad mission is worse than no mission.
 - **Revise when reality shifts.** Missions change. When the user's goal moves, update this file: don't leave a stale mission steering future sessions.
+- **Scope first, then the floor.** Ask what the sessions should include and leave out before asking about any tool or term; then check only the tools and terms that scope needs. A tool the learner uses daily but no lesson needs stays out of the Floor.
+- **The Floor is what the learner showed, not rated.** Ask for a one-sentence definition of each term the scope needs; a correct sentence goes to Known terms, anything else to New to me. Ask "daily, have run it, or never" for each tool a lesson will run. `teach lint` enforces both lists.
 - **Keep it short.** If `MISSION.md` runs past a screen, it has stopped being a compass and started being a plan.

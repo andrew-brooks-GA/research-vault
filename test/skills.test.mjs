@@ -41,7 +41,7 @@ test('LESSON-FORMAT.md names every block, the quiz rules and PLAN.md', () => {
   }
   for (const s of [
     'lessons/NNNN-slug.html', 'lessons/NNNN-review-slug.html', 'reference/<slug>.html', 'data-cite', 'data-quiz', 'data-lesson',
-    '"record"', '300 words', 'at least 3 items', '3 or 4', '1.6', 'evidence/NNNN/PLAN.md', '## Revisions',
+    '"record"', 'data-introduces', 'at most three', '`model`', '<dfn>', 'PATH-FORMAT.md', 'at least 3 items', '3 or 4', '1.6', 'evidence/NNNN/PLAN.md', '## Revisions',
     'You can ask follow-up questions in the terminal.', '../assets/lesson.css', '../assets/quiz.js', 'teach lint',
   ]) {
     assert.ok(f.includes(s), `format lacks ${s}`);

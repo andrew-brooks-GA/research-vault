@@ -251,6 +251,62 @@ export function teachIndex(workspaceDir, { now }) {
   return { criteria: missionCriteria(workspaceDir), lessons, reference, records, attempts, backlinks };
 }
 
+// Learner performance over time, from the attempts on disk: every attempt per lesson in
+// chronological order with first, latest and best, plus record counts and what is due for review.
+export function progress(workspaceDir, { now }) {
+  const idx = teachIndex(workspaceDir, { now });
+  const byLesson = new Map(idx.lessons.map((l) => [l.id, { id: l.id, title: l.title, class: l.class, attempts: [] }]));
+  for (const a of idx.attempts) {
+    const total = Number(a.total) || 0;
+    const wrong = Array.isArray(a.wrong) ? a.wrong : [];
+    if (!byLesson.has(a.lesson)) byLesson.set(a.lesson, { id: a.lesson, title: a.lesson, class: 'lesson', attempts: [] });
+    byLesson.get(a.lesson).attempts.push({ id: a.id, date: String(a.date), score: total - wrong.length, total, wrong });
+  }
+  const ratio = (x) => (x.total ? x.score / x.total : 0);
+  const lessons = [...byLesson.values()].map((l) => ({
+    ...l,
+    first: l.attempts[0] ?? null,
+    latest: l.attempts.at(-1) ?? null,
+    best: l.attempts.reduce((b, a) => (b === null || ratio(a) > ratio(b) ? a : b), null),
+  }));
+  const byKind = {};
+  for (const r of idx.records) if (r.status === 'active') byKind[r.kind] = (byKind[r.kind] ?? 0) + 1;
+  return {
+    lessons,
+    attempts: idx.attempts.length,
+    records: { active: idx.records.filter((r) => r.status === 'active').length, byKind },
+    reviewDue: idx.records.filter((r) => r.reviewDue).map((r) => r.id),
+    reviewFailed: idx.records.filter((r) => r.reviewFailed).map((r) => r.id),
+  };
+}
+
+const fmtScore = (a) => (a ? `${a.score}/${a.total} on ${a.date}` : 'none');
+
+export function progressText(p) {
+  const lines = ['| lesson | attempts | first | latest | best |', '|---|---|---|---|---|'];
+  for (const l of p.lessons) lines.push(`| ${l.id} | ${l.attempts.length} | ${fmtScore(l.first)} | ${fmtScore(l.latest)} | ${fmtScore(l.best)} |`);
+  lines.push('', `attempts: ${p.attempts}`, `records: ${p.records.active} active (${Object.entries(p.records.byKind).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'})`,
+    `review-due: ${p.reviewDue.join(', ') || 'none'}`, `review-failed: ${p.reviewFailed.join(', ') || 'none'}`);
+  return lines.join('\n') + '\n';
+}
+
+export function progressHtml(p) {
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const cell = (a) => (a ? `<td><b>${a.score}/${a.total}</b> <small>${esc(a.date)}</small></td>` : '<td>none</td>');
+  const rows = p.lessons.map((l) => `<tr><td><a href="/lessons/${esc(l.id)}.html">${esc(l.title)}</a></td><td>${l.attempts.length}</td>${cell(l.first)}${cell(l.latest)}${cell(l.best)}</tr>`).join('');
+  const timeline = p.lessons.flatMap((l) => l.attempts.map((a) => ({ ...a, lesson: l.title, lid: l.id })))
+    .sort((a, b) => (a.id < b.id ? -1 : 1))
+    .map((a) => `<li><small>${esc(a.date)}</small> <a href="/lessons/${esc(a.lid)}.html">${esc(a.lesson)}</a>: <b>${a.score}/${a.total}</b>${a.wrong.length ? ` <small>(missed item${a.wrong.length > 1 ? 's' : ''} ${a.wrong.map((i) => i + 1).join(', ')})</small>` : ''}</li>`).join('');
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Progress</title><link rel="stylesheet" href="/assets/lesson.css"></head>
+<body><h1>Progress</h1>
+<section data-block="progress"><table class="progress"><thead><tr><th>lesson</th><th>attempts</th><th>first</th><th>latest</th><th>best</th></tr></thead><tbody>${rows}</tbody></table>
+<p>${p.attempts} attempt${p.attempts === 1 ? '' : 's'}; ${p.records.active} active learning record${p.records.active === 1 ? '' : 's'}${Object.keys(p.records.byKind).length ? ` (${esc(Object.entries(p.records.byKind).map(([k, n]) => `${k} ${n}`).join(', '))})` : ''}. Review due: ${esc(p.reviewDue.join(', ') || 'none')}. Review failed: ${esc(p.reviewFailed.join(', ') || 'none')}.</p></section>
+<section data-block="timeline"><ol class="timeline">${timeline || '<li>No attempts yet.</li>'}</ol></section>
+</body></html>
+`;
+}
+
 // `teach serve` (spec 12 "Serving and recording"). Order matters: Host before anything;
 // for POST, Origin, Content-Type and Content-Length before a byte of the body is read.
 const STATIC_DIRS = ['lessons', 'reference', 'assets'];
@@ -271,8 +327,35 @@ function send(req, res, status, body = '', type = 'text/plain; charset=utf-8', c
   res.end(body);
 }
 
+// Citations as the learner sees them: every `<a data-cite="ID">` outside the sources block becomes a
+// numbered footnote `[n]` (first appearance order) carrying the entry's title, and the sources block's
+// anchors get `id="src-ID"`, their title as text, and their number. The file on disk is untouched, so
+// the claims-gate hash is unaffected. `titles` maps vault id to title; an unknown id keeps the id as its title.
+export function footnoteCitations(html, titles = {}) {
+  const order = [];
+  const num = (id) => { let i = order.indexOf(id); if (i === -1) { order.push(id); i = order.length - 1; } return i + 1; };
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const srcRe = /(<[a-z][a-z0-9]*\b[^>]*\bdata-block\s*=\s*(["'])sources\2[^>]*>)([\s\S]*?)(<\/section>|<\/div>)/i;
+  const m = srcRe.exec(html);
+  const before = m ? html.slice(0, m.index) : html;
+  const sources = m ? m[3] : '';
+  const after = m ? html.slice(m.index + m[0].length) : '';
+  const anchor = /<a\b([^>]*)\bdata-cite\s*=\s*(["'])([^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi;
+  const body = before.replace(anchor, (_, pre, q, id, post) => {
+    const n = num(id);
+    return `<a${pre}data-cite="${id}"${post} class="cite" href="#src-${esc(id)}" title="${esc(titles[id] ?? id)}">[${n}]</a>`;
+  });
+  if (!m) return body;
+  const srcBody = sources.replace(anchor, (_, pre, q, id, post) => {
+    const n = num(id);
+    const hrefOnly = /\bhref\s*=/.test(pre + post) ? '' : ` href="#src-${esc(id)}"`;
+    return `<a${pre}data-cite="${id}"${post}${hrefOnly} id="src-${esc(id)}">[${n}] ${esc(titles[id] ?? id)}</a>`;
+  });
+  return body + m[1] + srcBody + m[4] + after;
+}
+
 // The resolved file to serve for a URL path, or a status: 400 undecodable, 404 anything not allowlisted.
-export function serveFile(workspaceDir, urlPath) {
+export function serveFile(workspaceDir, urlPath, { titles } = {}) {
   let decoded;
   try { decoded = decodeURIComponent(urlPath); } catch { return { status: 400 }; }
   if (decoded.includes('\0') || decoded.split('/').some((seg) => seg.startsWith('.'))) return { status: 404 };
@@ -282,18 +365,39 @@ export function serveFile(workspaceDir, urlPath) {
   if (!allowed) return { status: 404 };
   try {
     if (!statSync(target).isFile()) return { status: 404 };
-    return { status: 200, body: readFileSync(target), type: CONTENT_TYPES[extname(target).toLowerCase()] ?? 'application/octet-stream' };
+    const body = readFileSync(target);
+    const isPage = /\.html$/i.test(target) && (decoded.startsWith('/lessons/') || decoded.startsWith('/reference/'));
+    return { status: 200, body: isPage ? footnoteCitations(body.toString('utf8'), titles ?? {}) : body, type: CONTENT_TYPES[extname(target).toLowerCase()] ?? 'application/octet-stream' };
   } catch {
     return { status: 404 };
   }
 }
 
-// GET / lists the lesson URLs, one per line, so the printed root URL is not a 404.
-function lessonUrls(ws) {
-  const dir = join(ws, 'lessons');
-  return (existsSync(dir) ? readdirSync(dir).sort() : [])
-    .filter((f) => f.endsWith('.html') && LESSON_ID_RE.test(f.slice(0, -5)))
-    .map((f) => `/lessons/${f}\n`).join('');
+// The workspace's lessons and reference docs for navigation: id, title and served path, lessons in id
+// order. GET / renders it as an HTML index; GET /lessons.json returns it so a lesson page can link to
+// its neighbours.
+export function lessonIndex(ws) {
+  const read = (dir, isLesson) => {
+    const d = join(ws, dir);
+    return (existsSync(d) ? readdirSync(d).sort() : [])
+      .filter((f) => f.endsWith('.html') && (!isLesson || LESSON_ID_RE.test(f.slice(0, -5))))
+      .map((f) => { const id = f.slice(0, -5); return { id, title: lessonTitle(readFileSync(join(d, f), 'utf8'), id), path: `/${dir}/${f}` }; });
+  };
+  return { lessons: read('lessons', true), reference: read('reference', false) };
+}
+
+const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+export function indexHtml(ws) {
+  const { lessons, reference } = lessonIndex(ws);
+  const li = (e) => `<li><a href="${escapeHtml(e.path)}">${escapeHtml(e.title)}</a> <small>${escapeHtml(e.id)}</small></li>`;
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Lessons</title><link rel="stylesheet" href="/assets/lesson.css"></head>
+<body><h1>Lessons</h1>
+<section data-block="index"><ol class="lesson-index">${lessons.map(li).join('')}</ol></section>
+${reference.length ? `<section data-block="reference-index"><ul class="lesson-index">${reference.map(li).join('')}</ul></section>` : ''}
+</body></html>
+`;
 }
 
 function postAttempt(req, res, workspaceDir, origin, schema, now) {
@@ -329,7 +433,7 @@ function postAttempt(req, res, workspaceDir, origin, schema, now) {
   });
 }
 
-export function createServer(workspaceDir, { schema, now = () => new Date() } = {}) {
+export function createServer(workspaceDir, { schema, now = () => new Date(), titles = {} } = {}) {
   const ws = resolve(workspaceDir);
   const clock = typeof now === 'function' ? now : () => now;
   // requireHostHeader off: a missing Host gets our 403, not node:http's own 400.
@@ -343,8 +447,11 @@ export function createServer(workspaceDir, { schema, now = () => new Date() } = 
       return postAttempt(req, res, ws, `http://${base}`, schema, clock);
     }
     if (!isBodyless) return send(req, res, 405, 'method not allowed\n', undefined, true);
-    if (path === '/') return send(req, res, 200, lessonUrls(ws));
-    const f = serveFile(ws, path);
+    if (path === '/') return send(req, res, 200, indexHtml(ws), 'text/html; charset=utf-8');
+    if (path === '/lessons.json') return send(req, res, 200, JSON.stringify(lessonIndex(ws)), 'application/json');
+    if (path === '/progress') return send(req, res, 200, progressHtml(progress(ws, { now: clock() })), 'text/html; charset=utf-8');
+    if (path === '/progress.json') return send(req, res, 200, JSON.stringify(progress(ws, { now: clock() })), 'application/json');
+    const f = serveFile(ws, path, { titles });
     if (f.status !== 200) return send(req, res, f.status, f.status === 400 ? 'bad request\n' : 'not found\n');
     send(req, res, 200, f.body, f.type); // HEAD: node:http drops the body itself
   });
