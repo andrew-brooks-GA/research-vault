@@ -1,0 +1,31 @@
+/* Lesson and reference doc styles. Plain CSS, loaded by lessons as ../assets/lesson.css. */
+body { font: 16px/1.6 system-ui, sans-serif; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; color: #1d1d1f; background: #fff; }
+code, pre { font-family: ui-monospace, monospace; font-size: 0.9em; }
+pre { background: #f4f4f6; padding: 0.75rem; overflow-x: auto; }
+
+[data-block] { margin: 1.5rem 0; padding: 0.75rem 1rem; border-left: 4px solid #ccc; }
+[data-block="mission"] { border-color: #6a5acd; font-weight: 600; }
+[data-block="fact"] { border-color: #2b6cb0; }
+[data-block="example"] { border-color: #4a5568; background: #fafafa; }
+[data-block="quiz"] { border-color: #d69e2e; }
+[data-block="step"] { border-color: #2f855a; background: #f0fff4; }
+[data-block="sources"] { border-color: #718096; font-size: 0.9em; }
+[data-block="followup"] { border-color: #a0aec0; font-style: italic; }
+[data-block="prereq"] { border-color: #b7791f; font-size: 0.9em; }
+[data-block="note"] { border-color: #2b6cb0; }
+a[data-cite] { font-size: 0.85em; vertical-align: super; }
+
+.quiz-item { margin: 1rem 0; }
+.quiz-q { font-weight: 600; }
+.quiz-option { display: block; width: 100%; text-align: left; margin: 0.25rem 0; padding: 0.5rem 0.75rem; font: inherit; background: #fff; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; }
+.quiz-option:disabled { cursor: default; }
+.quiz .correct { background: #e6ffed; border-color: #2f855a; }
+.quiz .wrong { background: #fff5f5; border-color: #c53030; }
+.quiz-why { color: #4a5568; }
+.quiz-result { font-weight: 600; }
+
+@media print {
+  [data-block="quiz"], [data-block="followup"] { display: none; }
+  body { max-width: none; margin: 0; }
+  [data-block] { break-inside: avoid; }
+}
