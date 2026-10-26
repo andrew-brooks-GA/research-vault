@@ -58,7 +58,7 @@ test('a markdown link URL is kept, not skipped', () => {
   assert.deepEqual(skipped, [{ type: 'url', value: 'https://c/d' }]);
 });
 
-test('a bare URL followed by a stray backtick or paren is trimmed', () => {
+test('a bare URL followed by a stray backtick is trimmed', () => {
   assert.deepEqual(extractCitations('at https://a/b` here'), [{ type: 'url', value: 'https://a/b' }]);
   assert.notDeepEqual(extractCitations('at https://a/b` here'), [{ type: 'url', value: 'https://a/b`' }]);
 });
@@ -70,4 +70,13 @@ test('an id inside backticks is skipped while the same id in prose is kept', () 
   const both = extractCitationsDetailed('per 2026-01-02-foo-bar, file `2026-01-02-foo-bar`');
   assert.deepEqual(both.citations, [{ type: 'id', value: '2026-01-02-foo-bar' }]);
   assert.deepEqual(both.skipped, [], 'an id also cited in prose is not reported as skipped');
+});
+
+test('an inline code span stays within one line, so a stray backtick does not swallow list items', () => {
+  const list = extractCitationsDetailed('- use the ` flag\n- see https://a/listed\n- run `foo`\n');
+  assert.deepEqual(list.citations, [{ type: 'url', value: 'https://a/listed' }]);
+  assert.deepEqual(list.skipped, []);
+  const sameLine = extractCitationsDetailed('- run `curl https://a/inline` now\n');
+  assert.deepEqual(sameLine.citations, []);
+  assert.deepEqual(sameLine.skipped, [{ type: 'url', value: 'https://a/inline' }]);
 });

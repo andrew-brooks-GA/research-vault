@@ -57,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **In-draft marker retired.** The `<!-- claims-gate: PASS <date> -->` comment is no longer written; the verdict lives in the ledger, keyed to the content, so an edit after the gate reopens it. Old markers are ignored.
 - **`gates.globs` in `.research-vault.json`.** An optional array of repo-relative globs naming further files the claims gate covers; `parseProjectConfig` keeps it and rejects a value that is not an array.
 - **`research-teach` §5** is now a pointer to the `research-claims-gate` skill.
-- **URLs in code are not citations.** `check`, `gate evidence` and the citation hooks ignore URLs and vault ids inside fenced code blocks and inline code spans. `check` lists each one as `skipped (in code): <file>  <value>` (a `skipped` array in `--json`), and `check --check` does not count them. A stray closing backtick or paren after a bare URL is trimmed.
+- **URLs in code are not citations.** `check`, `gate evidence` and the citation hooks ignore URLs and vault ids inside fenced code blocks and inline code spans. `check` lists each one as `skipped (in code): <file>  <value>` (a `skipped` array in `--json`), and `check --check` does not count them. A stray closing backtick after a bare URL is trimmed.
 
 ### Upgrading an existing vault
 

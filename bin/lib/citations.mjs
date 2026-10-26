@@ -6,18 +6,18 @@
 
 // URLs stop at whitespace, closing paren/bracket/angle, and quotes — so the URL
 // inside [label](url) is captured cleanly. Trailing sentence punctuation and a stray
-// closing backtick or paren are trimmed.
+// closing backtick are trimmed.
 const URL_RE = /https?:\/\/[^\s)<>\]"']+/g;
 // A vault id is `<YYYY-MM-DD>-<slug>` with a lowercase-alnum, hyphen-separated slug.
 const ID_RE = /\b\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\b/g;
 
-// An inline code span: a run of backticks, content, and the same run again, within one paragraph.
-const SPAN_RE = /(?<!`)(`+)(?!`)((?:(?!\n\s*\n)[\s\S])*?[^`])\1(?!`)/g;
+// An inline code span: a run of backticks, content, and the same run again, on one line.
+const SPAN_RE = /(?<!`)(`+)(?!`)([^\n]*?[^`\n])\1(?!`)/g;
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/;
 const FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})\s*$/;
 
 function trimTrailing(url) {
-  return url.replace(/[.,;:`)]+$/, '');
+  return url.replace(/[.,;:`]+$/, '');
 }
 
 // Split text into prose and code (fenced blocks, then inline spans). An unclosed fence runs to the end.
