@@ -37,7 +37,9 @@ async function postAttempt(payload) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    return res.ok ? await res.text() : null;
+    if (!res.ok) return null;
+    const r = await res.json();
+    return Number.isInteger(r.score) ? `recorded ${r.id}: ${r.score}/${r.total}` : null;
   } catch {
     return null;
   }

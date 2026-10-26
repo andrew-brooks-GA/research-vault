@@ -1,11 +1,11 @@
 // research-teach workspace verbs: record, attempt, lint and next (spec 12 "Workspace store").
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../lib/resolve.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
-import { writeRecord, supersedeRecord, writeAttempt, fixRecordFrontmatter, teachIndex } from '../lib/teach.mjs';
+import { writeRecord, supersedeRecord, writeAttempt, fixRecordFrontmatter, teachIndex, createServer } from '../lib/teach.mjs';
 import { lintWorkspace } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -72,6 +72,20 @@ function next(ws) {
   return 0;
 }
 
+// Runs until killed: the returned promise settles only when the server closes.
+async function serve(ws, teachSchema) {
+  const server = createServer(ws, { schema: teachSchema });
+  await new Promise((ok, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', ok); });
+  const { port } = server.address();
+  const file = join(ws, '.teach-serve.json');
+  writeFileSync(file, JSON.stringify({ port, pid: process.pid }) + '\n');
+  process.on('exit', () => rmSync(file, { force: true }));
+  for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0)); // exit handler removes the file
+  out(`serving ${ws} at http://127.0.0.1:${port}/`);
+  await new Promise((ok) => server.on('close', ok));
+  return 0;
+}
+
 export async function run(args) {
   const [, verb, sub, ...rest] = args._;
   const teachSchema = loadTeachSchema(REPO_ROOT);
@@ -105,8 +119,9 @@ export async function run(args) {
     return 0;
   }
   if (verb === 'serve') {
-    process.stderr.write('teach serve: not implemented\n'); // Task 5
-    return 2;
+    const ws = workspace(sub);
+    if (!ws) return usage();
+    return serve(ws, teachSchema);
   }
   return usage();
 }

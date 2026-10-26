@@ -1,13 +1,15 @@
 // research-teach workspace store: learning records, attempts and the derived index.
 // Pure logic over a workspace directory; the verbs live in bin/commands/teach.mjs.
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
-import { join, resolve, basename } from 'node:path';
+import { join, resolve, basename, extname } from 'node:path';
+import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.mjs';
 import { writeEntry } from './fsutil.mjs';
 import { loadTeachSchema } from './schema.mjs';
 import { allowedValues } from './validate.mjs';
 import { slugify } from './ids.mjs';
+import { isInsideVault } from './containment.mjs';
 import { grade } from '../../skills/research-teach/assets/quiz.js';
 
 export const SPACING_DAYS = 21;
@@ -235,4 +237,95 @@ export function teachIndex(workspaceDir, { now }) {
   const reference = (existsSync(refDir) ? readdirSync(refDir).sort() : []).filter((f) => f.endsWith('.html'))
     .map((f) => ({ slug: f.slice(0, -5), file: `reference/${f}`, cites: extractCites(readFileSync(join(refDir, f), 'utf8')) }));
   return { criteria: missionCriteria(workspaceDir), lessons, reference, records, attempts, backlinks };
+}
+
+// `teach serve` (spec 12 "Serving and recording"). Order matters: Host before anything;
+// for POST, Origin, Content-Type and Content-Length before a byte of the body is read.
+const STATIC_DIRS = ['lessons', 'reference', 'assets'];
+const CONTENT_TYPES = {
+  '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8', '.json': 'application/json',
+  '.png': 'image/png', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+};
+const CLIENT_ERROR = /^(invalid lesson id|no lesson|answers must be)/;
+
+function send(req, res, status, body = '', type = 'text/plain; charset=utf-8', close = false) {
+  const headers = { 'Content-Type': type, 'X-Content-Type-Options': 'nosniff' };
+  if (close) {
+    headers.Connection = 'close';
+    res.on('finish', () => req.destroy()); // the body is never read, so drop the connection
+  }
+  res.writeHead(status, headers);
+  res.end(body);
+}
+
+// The resolved file to serve for a URL path, or a status: 400 undecodable, 404 anything not allowlisted.
+export function serveFile(workspaceDir, urlPath) {
+  let decoded;
+  try { decoded = decodeURIComponent(urlPath); } catch { return { status: 400 }; }
+  if (decoded.includes('\0') || decoded.split('/').some((seg) => seg.startsWith('.'))) return { status: 404 };
+  const target = join(workspaceDir, decoded);
+  const allowed = target === join(workspaceDir, 'GLOSSARY.md') ||
+    STATIC_DIRS.some((d) => isInsideVault(join(workspaceDir, d), target));
+  if (!allowed) return { status: 404 };
+  try {
+    if (!statSync(target).isFile()) return { status: 404 };
+    return { status: 200, body: readFileSync(target), type: CONTENT_TYPES[extname(target).toLowerCase()] ?? 'application/octet-stream' };
+  } catch {
+    return { status: 404 };
+  }
+}
+
+function postAttempt(req, res, workspaceDir, origin, schema, now) {
+  const type = req.headers['content-type'];
+  const length = req.headers['content-length'];
+  if (req.headers.origin !== origin || !/^application\/json(;\s*charset=utf-8)?$/i.test(type ?? '') ||
+      (length !== undefined && !(Number(length) <= ATTEMPT_BODY_MAX))) {
+    return send(req, res, 403, 'forbidden\n', undefined, true);
+  }
+  const chunks = [];
+  let size = 0;
+  req.on('data', (c) => {
+    size += c.length;
+    if (size > ATTEMPT_BODY_MAX) {
+      req.removeAllListeners('data').removeAllListeners('end').pause();
+      return send(req, res, 403, 'forbidden\n', undefined, true);
+    }
+    chunks.push(c);
+  });
+  req.on('end', () => {
+    let body;
+    try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { return send(req, res, 400, 'malformed JSON\n'); }
+    if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.lesson !== 'string' || !Array.isArray(body.answers)) {
+      return send(req, res, 400, 'body must be {"lesson": "<id>", "answers": [integers]}\n');
+    }
+    try {
+      const { id, score, total, wrong } = writeAttempt(workspaceDir, { lesson: body.lesson, answers: body.answers, now: now() }, schema);
+      send(req, res, 200, JSON.stringify({ id, score, total, wrong }), 'application/json');
+    } catch (e) {
+      // A malformed quiz or a failed write is the server's problem; nothing was written on a 400.
+      send(req, res, CLIENT_ERROR.test(e.message) ? 400 : 500, `${e.message}\n`);
+    }
+  });
+}
+
+export function createServer(workspaceDir, { schema, now = () => new Date() } = {}) {
+  const ws = resolve(workspaceDir);
+  const clock = typeof now === 'function' ? now : () => now;
+  // requireHostHeader off: a missing Host gets our 403, not node:http's own 400.
+  const server = http.createServer({ requireHostHeader: false }, (req, res) => {
+    const base = `127.0.0.1:${server.address().port}`;
+    const isBodyless = req.method === 'GET' || req.method === 'HEAD';
+    if (req.headers.host !== base) return send(req, res, 403, 'forbidden\n', undefined, !isBodyless);
+    const path = req.url.split('?')[0];
+    if (req.method === 'POST') {
+      if (path !== '/attempt') return send(req, res, 404, 'not found\n', undefined, true);
+      return postAttempt(req, res, ws, `http://${base}`, schema, clock);
+    }
+    if (!isBodyless) return send(req, res, 405, 'method not allowed\n', undefined, true);
+    const f = serveFile(ws, path);
+    if (f.status !== 200) return send(req, res, f.status, f.status === 400 ? 'bad request\n' : 'not found\n');
+    send(req, res, 200, f.body, f.type); // HEAD: node:http drops the body itself
+  });
+  return server;
 }
