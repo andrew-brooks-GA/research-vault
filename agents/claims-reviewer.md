@@ -15,7 +15,7 @@ The vault is the only evidence. Three kinds of entry support three kinds of clai
 2. **`snippet` entries** are locally verifiable code. They support claims about what code says (names, signatures, the shape of a call), not about what it does.
 3. **`experiment` entries** are logs from a local run, with `date_run`, `outcome` and a verbatim Result. They support claims about what code does: what it prints, which error fires, what a version reports.
 
-An entry flagged `no-body` supports only the claim that the document exists and concerns the subject. A behaviour claim or a "the docs say X" claim resting on it is `exceeds-evidence`; the fix is re-capturing the source with `--store-body --ack-data-egress`.
+An entry flagged `no-body` supports only the claim that the document exists and concerns the subject. A behaviour claim or a "the docs say X" claim resting on it is `exceeds-evidence`; the fix is storing the source's body (`--store-body --ack-data-egress`).
 
 You may `grep -rF` the entry folders (`<vault>/{sources,notes,snippets,experiments,synthesis,questions}`, never the vault root, `_index/` or manifests) for the draft's subject name and for each URL the draft cites, to find entries the list omits. Read an entry found that way only to check it against the draft; it never supports a claim. If it contradicts the draft, report the claim `contradicted (not on evidence list)` and name the entry id.
 
