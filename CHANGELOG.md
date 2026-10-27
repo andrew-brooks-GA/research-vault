@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Spec 14 (`docs/specs/14-deps-graph.md`): a derived dependency graph for the repo, computed from the working tree on every run, with a hand-declared coupling table, a test that fails CI on a broken reference, an AGENTS.md rule and a project-scope PostToolUse hook; plus the drift fixes the 2026-10-27 inventory found. The file is force-added, since `docs/specs/` is otherwise ignored.
+- **Dependency graph** (spec 14 D1-D4). `scripts/deps.mjs` derives the repo's import, read, test, documentation, invocation and declared-coupling edges from the working tree on every run; `node scripts/deps.mjs` prints every broken reference, `node scripts/deps.mjs <path>` (or `cli:<command>`, `npm:<script>`) the dependents of one thing, and `test/deps.test.mjs` fails `npm test` on a reference to something that no longer exists. A committed `.claude/settings.json` PostToolUse hook names the dependents of a file after an `Edit` or `Write`. `AGENTS.md` gains the rename rule and the `COUPLINGS` rule; `.gitignore` gains `ci-vault/`.
 
 ## [0.6.0] - 2026-10-27
 

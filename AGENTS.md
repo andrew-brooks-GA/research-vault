@@ -14,3 +14,4 @@ This repo is the research-vault plugin: a zero-dependency Node 22+ CLI (`bin/`),
 - `schema/AGENTS.golden.md` is generated from `schema/` by `bin/lib/agentsmd.mjs`. Never edit it by hand; change the schema or the generator and regenerate it (the drift script's failure message carries the regenerate command).
 - Every change gets a line under `## [Unreleased]` in `CHANGELOG.md`.
 - ESM only, no dependencies, no classes. Keep a change small and in the style of the code around it.
+- Before renaming or removing a file, a CLI flag, a skill, an agent or an npm script, run `node scripts/deps.mjs <path>` (or `cli:<command>`) and update every dependent it lists; `npm test` fails on a reference to something that no longer exists. When a change makes two files depend on each other through anything other than a path (a copied value, a printed string, a name, a format), add a `COUPLINGS` row in `scripts/deps.mjs`.
