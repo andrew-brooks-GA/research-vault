@@ -9,7 +9,7 @@
 // closing backtick are trimmed.
 const URL_RE = /https?:\/\/[^\s)<>\]"']+/g;
 // A vault id is `<YYYY-MM-DD>-<slug>` with a lowercase-alnum, hyphen-separated slug.
-const ID_RE = /\b\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\b/g;
+export const ID_RE = /\b\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\b/g;
 
 // An inline code span: a run of backticks, content, and the same run again, on one line.
 const SPAN_RE = /(?<!`)(`+)(?!`)([^\n]*?[^`\n])\1(?!`)/g;

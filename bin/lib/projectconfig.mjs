@@ -3,7 +3,7 @@
 // supplies capture defaults. The plugin ships the mechanism; every repo-specific value
 // lives in the file, never here. Validated against the single schema/taxonomy.json.
 import { existsSync as realExists, readFileSync as realRead, writeFileSync as realWrite } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 
 export const PROJECT_CONFIG_FILENAME = '.research-vault.json';
 
@@ -70,7 +70,54 @@ export function validateTaxonomyExtensions(ext) {
   return out;
 }
 
+// The one compiler for every regex the binding carries (`code.versions.*.pattern`,
+// `code.languages.*.comment`, `code.languages.*.decl`): the source must compile and hold at least
+// `groups` capture groups; the error names the field. Returns the RegExp.
+export function compilePattern(field, source, { groups = 1, flags = '' } = {}) {
+  if (typeof source !== 'string') throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${field} must be a string`);
+  let re;
+  try { re = new RegExp(source, flags); } catch (e) { throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${field}: ${e.message}`); }
+  // `(?:source)|` matches the empty string with one slot per capture group.
+  if (new RegExp(`(?:${source})|`).exec('').length - 1 < groups) {
+    throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${field}: pattern has no capture group`);
+  }
+  return re;
+}
+
+// Validate the `code` block (spec 15). It needs a project-specific vault inside the repo: a
+// relative `vault` with no `..` segment. Returns { globs, languages, versions } with every pattern
+// compiled; throws on misuse.
+function validateCode(code, vault) {
+  const bad = (msg) => new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${msg}`);
+  if (code === null || typeof code !== 'object' || Array.isArray(code)) throw bad('code must be an object');
+  if (typeof vault !== 'string' || !vault || isAbsolute(vault) || vault.split(/[\\/]/).includes('..')) {
+    throw bad(`code links need a project-specific vault inside the repo (a relative vault path); this binding points at ${vault || '(none)'}`);
+  }
+  const globs = code.globs ?? [];
+  if (!Array.isArray(globs) || !globs.every((g) => typeof g === 'string')) throw bad('code.globs must be an array of strings');
+  const table = (name) => {
+    const t = code[name] ?? {};
+    if (t === null || typeof t !== 'object' || Array.isArray(t)) throw bad(`code.${name} must be an object`);
+    return t;
+  };
+  const languages = {};
+  for (const [ext, row] of Object.entries(table('languages'))) {
+    if (row === null || typeof row !== 'object') throw bad(`code.languages[${JSON.stringify(ext)}] must be { comment, decl }`);
+    languages[ext] = {
+      comment: compilePattern(`code.languages[${JSON.stringify(ext)}].comment`, row.comment),
+      decl: compilePattern(`code.languages[${JSON.stringify(ext)}].decl`, row.decl),
+    };
+  }
+  const versions = {};
+  for (const [key, row] of Object.entries(table('versions'))) {
+    if (row === null || typeof row !== 'object' || typeof row.file !== 'string') throw bad(`code.versions.${key} must be { file, pattern }`);
+    versions[key] = { file: row.file, pattern: compilePattern(`code.versions.${key}.pattern`, row.pattern, { flags: 'm' }) };
+  }
+  return { globs, languages, versions };
+}
+
 // Parse + validate raw JSON against the taxonomy. Throws on malformed JSON or bad values.
+// The returned object carries `code` only when the block is present; every consumer tests it.
 export function parseProjectConfig(raw, schema) {
   let data;
   try {
@@ -104,7 +151,9 @@ export function parseProjectConfig(raw, schema) {
     throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: capture.enabled must be a boolean`);
   }
   const taxonomyExtensions = validateTaxonomyExtensions(data.taxonomy_extensions);
-  return { vault: data.vault, defaults, references, gates, capture, taxonomyExtensions };
+  const out = { vault: data.vault, defaults, references, gates, capture, taxonomyExtensions };
+  if (data.code !== undefined) out.code = validateCode(data.code, data.vault);
+  return out;
 }
 
 // Schema-free read of just the `taxonomy_extensions` block for the nearest config above
@@ -128,7 +177,8 @@ export function loadProjectConfig(startDir, opts = {}) {
 }
 
 // Write a starter .research-vault.json binding `dir` to a vault. Refuses to clobber
-// an existing binding (mirrors init's non-clobber discipline). Returns the file path.
+// an existing binding (mirrors init's non-clobber discipline). `codeLinks` globs add the `code`
+// block; the body goes through parseProjectConfig first, so its rules live in one place. Returns the file path.
 export function scaffoldProjectConfig(dir, opts = {}, hooks = {}) {
   const exists = hooks.existsSync ?? realExists;
   const write = hooks.writeFileSync ?? realWrite;
@@ -140,6 +190,8 @@ export function scaffoldProjectConfig(dir, opts = {}, hooks = {}) {
     references: { globs: opts.globs ?? [] },
     capture: { enabled: true },
   };
+  if (opts.codeLinks?.length) body.code = { globs: opts.codeLinks, languages: {}, versions: {} };
+  parseProjectConfig(JSON.stringify(body), opts.schema);
   write(target, JSON.stringify(body, null, 2) + '\n', 'utf8');
   return target;
 }

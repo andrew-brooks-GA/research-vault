@@ -21,7 +21,7 @@ function memFs() {
 
 test('scaffoldProjectConfig writes a parseable .research-vault.json binding the vault', () => {
   const fs = memFs();
-  const target = scaffoldProjectConfig('/repo', { vault: '/v', domain: 'learning', topics: ['cpp'], globs: ['plan/**/*.md'] }, fs);
+  const target = scaffoldProjectConfig('/repo', { vault: '/v', domain: 'learning', topics: ['cpp'], globs: ['plan/**/*.md'], schema: SCHEMA }, fs);
   assert.equal(target, join('/repo', PROJECT_CONFIG_FILENAME));
   const cfg = parseProjectConfig(fs.files.get(target), SCHEMA);
   assert.equal(cfg.vault, '/v');
@@ -34,5 +34,5 @@ test('scaffoldProjectConfig writes a parseable .research-vault.json binding the 
 test('scaffoldProjectConfig refuses to overwrite an existing binding', () => {
   const fs = memFs();
   fs.files.set(join('/repo', PROJECT_CONFIG_FILENAME), '{}');
-  assert.throws(() => scaffoldProjectConfig('/repo', { vault: '/v' }, fs), /already exists/);
+  assert.throws(() => scaffoldProjectConfig('/repo', { vault: '/v', schema: SCHEMA }, fs), /already exists/);
 });
