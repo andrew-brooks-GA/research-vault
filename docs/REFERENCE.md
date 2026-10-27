@@ -32,7 +32,7 @@ Skills load when a request matches their job; none of them fires for every techn
 | `research-teach` (`/research-teach`) | Teaching a topic over sessions: resources and facts in the vault, probed evidence, lessons checked by `teach lint` and then gated by a fresh `claims-reviewer` agent, quiz attempts recorded by a local quiz server (`teach serve`) |
 | `research-claims-gate` (`/research-claims-gate`) | Gating a draft that cites the vault: derives the evidence list, dispatches one fresh `research-vault:claims-reviewer`, records the verdict in the claims ledger |
 
-Slash commands, all under `/research-vault:`: `research-init`, `research-capture`, `research-search`, `research-related`, `research-verify`, `research-lint`, `research-advise`, `research-compile`, `research-obsidian`, `research`, `research-teach`, `research-claims-gate`.
+Slash commands, all under `/research-vault:`: `research-init`, `research-search`, `research-related`, `research-lint`, `research-advise`, `research-compile`, `research-obsidian`, `research`. Every skill is also `/research-vault:<name>` (for example `/research-vault:research-capture`).
 
 ## Binding a repo to a vault
 

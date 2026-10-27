@@ -1,6 +1,7 @@
 ---
 name: research-claims-gate
 description: Use when a draft that cites vault evidence is about to be shown, sent or taught (a teach lesson or reference doc, a vault synthesis, a document matching the project's gates.globs). Checks citations, derives the evidence list from the vault, dispatches one fresh research-vault:claims-reviewer, and records the verdict in the repo's claims ledger keyed to the draft's content hash. Not a style check and not the research itself.
+argument-hint: "<draft path> [snippet and experiment ids]"
 ---
 # Claims gate
 
@@ -13,6 +14,8 @@ A fresh reviewer checks every factual claim in the draft against the vault entri
 - `GATE-LOG.md`: in the teach workspace if the draft sits under a directory holding `MISSION.md`, else at the repo root. Append-only; do not edit earlier entries.
 
 ## Steps
+
+If no draft was named, ask which file to gate.
 
 0. **Citations clean.** Run `check --check <draft>`. Any `uncovered` or `stale` row stops the gate: capture the source (`--store-body --ack-data-egress` when the quoted text matters) or re-verify the entry, then run it again. Dispatch only on exit 0.
 1. **Evidence list.** Run `gate evidence <draft> --extra <ids> --changed`, where `<ids>` are the draft's `snippet` and `experiment` ids, comma-separated (omit `--extra` when there are none). Copy the output as printed; do not retype or trim it. Its last line, `changed units: ...`, names the units (data-block elements; `fact:N` and `quiz:N` per paragraph and item) that no PASS or MERIT row covers yet. On a first review that is every unit; after an edit it is only what changed, and the reviewer verdicts only those.
