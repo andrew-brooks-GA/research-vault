@@ -3,7 +3,9 @@ node_modules/
 _index/
 _obsidian/
 .idea/
-.claude/
+.claude/*
+!.claude/settings.json
+ci-vault/
 
 # design/process docs — not part of the published plugin
 docs/superpowers/
