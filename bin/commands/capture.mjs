@@ -51,8 +51,10 @@ function prepareEntry(vaultPath, opts, ctx = {}) {
 
   const id = makeId(now, opts.title);
   const path = join(vaultPath, folder, `${id}.md`);
-  if (existsSync(path) || pending.some(p => p.id === id))
-    return { dedup: { id, ambiguous: false, reason: `entry id ${id} already exists (supersede via verify, do not overwrite)` } };
+  // Ids are vault-wide: a title that slugs to an id already used in another folder collides too.
+  const taken = Object.values(TYPE_FOLDER).find(f => existsSync(join(vaultPath, f, `${id}.md`)));
+  if (taken || pending.some(p => p.id === id))
+    return { dedup: { id, ambiguous: false, reason: `entry id ${id} already exists${taken ? ` in ${taken}/` : ''} (supersede via verify, do not overwrite)` } };
   const data = {
     title: opts.title, type: opts.type, created: now,
     domain: opts.domain ? csvList(opts.domain) : ['software-engineering'],

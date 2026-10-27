@@ -454,3 +454,14 @@ test('a malformed binding file is reported on stderr, capture still runs with --
   assert.equal(code, 0);
   assert.match(err, /\.research-vault\.json/);
 });
+
+test('captureEntry refuses an id already used in another folder and names it', () => {
+  const vault = mkdtempSync(join(tmpdir(), 'rv-capture-collide-'));
+  cpSync(join(fileURLToPath(new URL('../vault-template', import.meta.url))), vault, { recursive: true });
+  const snip = captureEntry(vault, { type: 'snippet', title: 'gate round lines', language: 'markdown', now: '2026-10-27' });
+  assert.equal(snip.dedup, null);
+  const exp = captureEntry(vault, { type: 'experiment', title: 'gate round lines', provider: 'local', modelId: 'none', dateRun: '2026-10-27', task: 't', outcome: 'success', now: '2026-10-27' });
+  assert.equal(exp.dedup.id, snip.id);
+  assert.match(exp.dedup.reason, /^entry id 2026-10-27-gate-round-lines already exists in snippets\/ \(supersede via verify, do not overwrite\)$/);
+  assert.equal(existsSync(join(vault, 'experiments', `${snip.id}.md`)), false);
+});
