@@ -24,7 +24,7 @@ Before citing any entry, compute `last_verified` ← the latest `verifications[]
 1. `volatile` → never quote stored values as current; cite as historical context only; web-search the live value.
 2. `fast` and `last_verified` >90 days → flag stale; prefer web; on re-check append a verification and either keep or supersede.
 3. `slow` and `last_verified` >365 days → prefer web; supersede on contradiction.
-4. `stable` → trust unless something specific cues a re-check.
+4. `stable` and `last_verified` >1095 days, or a specific cue → re-check; otherwise trust.
 5. After verification: append to `verifications[]`. A substantive contradiction → supersede (§7); otherwise update in place.
 
 A note or synthesis is only as fresh as its evidence: before citing one, check that its `sources`/`contributing_ids` chain is within window (`advise` lists violations as `staleEvidence`).
