@@ -10,12 +10,13 @@ const raw = readFileSync(join(ROOT, 'agents', 'lesson-reader.md'), 'utf8');
 const fm = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(raw);
 const field = (k) => new RegExp(`^${k}:\\s*(.+)$`, 'm').exec(fm[1])?.[1].trim();
 
-test('lesson-reader frontmatter allows Read only and pins model and effort', () => {
+test('lesson-reader frontmatter allows Read only, pins model and effort, and omits CLAUDE.md', () => {
   assert.ok(fm, 'frontmatter present');
   assert.equal(field('name'), 'lesson-reader');
   assert.equal(field('tools'), 'Read');
   assert.equal(field('model'), 'opus');
   assert.equal(field('effort'), 'high');
+  assert.equal(field('omitClaudeMd'), 'true');
 });
 
 test('lesson-reader body reads only the lesson and ends with READS or REVISE', () => {

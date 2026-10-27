@@ -10,13 +10,14 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FIXTURES = join(ROOT, 'test', 'fixtures', 'gate');
 const agent = () => parseFrontmatter(readFileSync(join(ROOT, 'agents', 'claims-reviewer.md'), 'utf8'));
 
-test('claims-reviewer frontmatter pins model and effort and only read-only tools', () => {
+test('claims-reviewer frontmatter pins model and effort, omits CLAUDE.md, and only read-only tools', () => {
   const { data } = agent();
   const tools = String(data.tools).split(',').map((t) => t.trim());
   assert.ok(tools.length > 0);
   for (const t of tools) assert.ok(['Read', 'Grep', 'Glob'].includes(t), `tool ${t} is not read-only`);
   assert.equal(data.model, 'opus');
   assert.equal(data.effort, 'high');
+  assert.equal(data.omitClaudeMd, true);
 });
 
 test('claims-reviewer body carries the no-body, omitted-entry and GATE-LOG rules', () => {
