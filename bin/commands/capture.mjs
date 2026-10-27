@@ -8,6 +8,7 @@ import { writeEntry, TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { resolveVault, reportFallback } from '../lib/resolve.mjs';
 import { assertControlledValues } from '../lib/validate.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
+import { csvList } from '../lib/args.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const verKey = v => (v == null || v === '') ? null : String(v);
@@ -54,10 +55,10 @@ function prepareEntry(vaultPath, opts, ctx = {}) {
     return { dedup: { id, ambiguous: false, reason: `entry id ${id} already exists (supersede via verify, do not overwrite)` } };
   const data = {
     title: opts.title, type: opts.type, created: now,
-    domain: opts.domain ? opts.domain.split(',') : ['software-engineering'],
+    domain: opts.domain ? csvList(opts.domain) : ['software-engineering'],
     stage: schema.taxonomy.stage_by_folder[folder].default,
-    topics: (opts.topics ? opts.topics.split(',') : []).map(t => schema.taxonomy.topic_aliases[t] || t),
-    status: 'active', related: opts.related ? opts.related.split(',') : [],
+    topics: csvList(opts.topics).map(t => schema.taxonomy.topic_aliases[t] || t),
+    status: 'active', related: csvList(opts.related),
     volatility: opts.volatility || 'slow',
     verifications: [{ date: now, by_type: 'agent', by_id: opts.byId || '', method: 'captured', result: 'confirmed', notes: '' }],
   };
@@ -72,11 +73,11 @@ function prepareEntry(vaultPath, opts, ctx = {}) {
     if (opts.capturedVia) data.captured_via = opts.capturedVia;
     if (opts.summary) data.summary = opts.summary;
   } else if (opts.type === 'note') {
-    data.sources = opts.sources ? opts.sources.split(',') : [];
+    data.sources = csvList(opts.sources);
     data.confidence = opts.confidence || 'medium';
     if (opts.summary) data.summary = opts.summary;
   } else if (opts.type === 'synthesis') {
-    data.contributing_ids = opts.contributingIds ? opts.contributingIds.split(',') : [];
+    data.contributing_ids = csvList(opts.contributingIds);
     if (opts.question) data.question = opts.question;
     if (opts.synthesisBasis) data.synthesis_basis = opts.synthesisBasis;
     if (opts.summary) data.summary = opts.summary;
@@ -180,7 +181,10 @@ function captureDefaults(cwd) {
   try {
     const hit = loadProjectConfig(cwd, { schema: loadSchema(REPO_ROOT) });
     return hit ? (hit.config.defaults || {}) : {};
-  } catch { return {}; }
+  } catch (e) {
+    process.stderr.write(`research-vault: capture defaults ignored: ${e.message}\n`);
+    return {};
+  }
 }
 
 export async function run(args) {
@@ -200,7 +204,7 @@ export async function run(args) {
     subjectName: args['subject-name'], subjectVersion: args['subject-version'], series: args.series,
     domain: args.domain ?? defaults.domain,
     topics: args.topics ?? (defaults.topics && defaults.topics.length ? defaults.topics.join(',') : undefined),
-    related: args.related, volatility: args.volatility ?? defaults.volatility,
+    related: args.related, byId: args['by-id'], volatility: args.volatility ?? defaults.volatility,
     content: cfBuf ? cfBuf.toString('utf8') : args.content, contentBytes: cfBuf, contentHash: args['content-hash'],
     capturedVia: args['captured-via'], storeBody: !!args['store-body'], ackDataEgress: !!args['ack-data-egress'],
     sources: args.sources, confidence: args.confidence, summary: args.summary,

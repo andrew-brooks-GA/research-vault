@@ -419,3 +419,38 @@ test('capture persists a source summary and a synthesis confidence; synthesis co
   const { violations } = lintVault(dir, process.cwd());
   assert.equal(violations.length, 0, JSON.stringify(violations));
 });
+
+test('comma lists are trimmed: --topics "tdd, go" aliases and stores go, --sources "a, b" stores b (spec 13)', () => {
+  const dir = freshVault();
+  const r = captureEntry(dir, { type: 'note', title: 'Trimmed', topics: 'tdd, go', sources: '2026-01-01-a, 2026-01-02-b', related: '2026-01-01-a, ', now: '2026-05-27', repoRoot: process.cwd() });
+  const e = readEntry(r.path);
+  assert.deepEqual(e.data.topics, ['test-driven-development', 'go']);
+  assert.deepEqual(e.data.sources, ['2026-01-01-a', '2026-01-02-b']);
+  assert.deepEqual(e.data.related, ['2026-01-01-a']);
+});
+
+async function quiet(fn) {
+  const err = [];
+  const [so, se] = [process.stdout.write, process.stderr.write];
+  process.stdout.write = () => true;
+  process.stderr.write = c => { err.push(String(c)); return true; };
+  try { return { code: await fn(), err: err.join('') }; }
+  finally { process.stdout.write = so; process.stderr.write = se; }
+}
+
+test('capture --by-id lands in the first verification (spec 13)', async () => {
+  const dir = freshVault();
+  const { code } = await quiet(() => run({ type: 'question', title: 'ById', 'by-id': 'claude-x', vault: dir }));
+  assert.equal(code, 0);
+  const e = readEntry(join(dir, 'questions', makeId(new Date().toISOString().slice(0, 10), 'ById') + '.md'));
+  assert.equal(e.data.verifications[0].by_id, 'claude-x');
+});
+
+test('a malformed binding file is reported on stderr, capture still runs with --vault (spec 13)', async () => {
+  const dir = freshVault();
+  const repo = mkdtempSync(join(tmpdir(), 'rv-bad-binding-'));
+  writeFileSync(join(repo, '.research-vault.json'), '{ not json', 'utf8');
+  const { code, err } = await quiet(() => run({ type: 'question', title: 'Bad binding', vault: dir, cwd: repo }));
+  assert.equal(code, 0);
+  assert.match(err, /\.research-vault\.json/);
+});

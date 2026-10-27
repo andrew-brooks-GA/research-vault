@@ -8,6 +8,7 @@ import { buildManifest } from '../lib/manifest.mjs';
 import { ENTRY_FOLDERS } from '../lib/fsutil.mjs';
 import { compileVault } from './compile.mjs';
 import { scaffoldProjectConfig } from '../lib/projectconfig.mjs';
+import { csvList } from '../lib/args.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -64,8 +65,8 @@ export async function run(args) {
   // here; it does not scaffold a vault. The vault itself is resolved as usual.
   if (args.project) {
     const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
-    const topics = args.topics ? String(args.topics).split(',').map(s => s.trim()).filter(Boolean) : [];
-    const globs = args.globs ? String(args.globs).split(',').map(s => s.trim()).filter(Boolean) : [];
+    const topics = csvList(args.topics);
+    const globs = csvList(args.globs);
     try {
       const target = scaffoldProjectConfig(process.cwd(), {
         vault: vaultPath, domain: args.domain, topics, globs, volatility: args.volatility,

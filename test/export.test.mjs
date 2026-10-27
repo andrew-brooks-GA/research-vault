@@ -145,3 +145,16 @@ test('note summary exports as output without the body gate', () => {
   assert.equal(recs.find(r => r.input === 'Crisp').output, 'A claim.');
   assert.equal(recs.find(r => r.input === 'Bare').output, '');   // unchanged: metadata-only
 });
+
+test('export --scope "question, note" trims the list and exports both types (spec 13)', async () => {
+  const dir = freshVault();
+  seedQuestions(dir);
+  handWrite(dir, 'notes', 'note', '2026-01-01-n', { sources: ['2026-01-01-a'], confidence: 'high' });
+  const outFile = join(mkdtempSync(join(tmpdir(), 'rv-out-')), 'scope.jsonl');
+  const so = process.stdout.write;
+  process.stdout.write = () => true;
+  try { assert.equal(await run({ out: outFile, vault: dir, scope: 'question, note' }), 0); }
+  finally { process.stdout.write = so; }
+  const types = new Set(readFileSync(outFile, 'utf8').trim().split('\n').map(l => JSON.parse(l).meta.type));
+  assert.deepEqual([...types].sort(), ['note', 'question']);
+});
