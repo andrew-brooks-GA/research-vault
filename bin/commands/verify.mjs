@@ -1,9 +1,8 @@
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeFileSync } from 'node:fs';
 import { loadSchema, fieldOrder } from '../lib/schema.mjs';
 import { walkEntries, readEntry, writeEntry } from '../lib/fsutil.mjs';
-import { buildManifest, CONFIRMING_RESULTS } from '../lib/manifest.mjs';
+import { writeManifest, CONFIRMING_RESULTS } from '../lib/manifest.mjs';
 import { resolveVault, reportFallback } from '../lib/resolve.mjs';
 import { assertControlledValues } from '../lib/validate.mjs';
 import { listStale } from '../lib/stale.mjs';
@@ -42,7 +41,7 @@ export function applyVerification(vaultPath, opts) {
     // The newer version is captured as a separate sibling entry sharing the same `series`.
     entry.data.updated = now;
     writeEntry(abs, entry.data, entry.body, fieldOrder(schema, entry.data.type));
-    writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');
+    writeManifest(vaultPath);
     return { action: 'version-succeeded' };
   }
 
@@ -55,7 +54,7 @@ export function applyVerification(vaultPath, opts) {
   // Non-confirming results (unreachable, inconclusive) are recorded for audit but never bump
   // `updated` — a failed or indeterminate check must not reset the freshness clock.
   writeEntry(abs, entry.data, entry.body, fieldOrder(schema, entry.data.type));
-  writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');
+  writeManifest(vaultPath);
   if (opts.result === 'outdated') return { action: 'superseded' };
   return { action: CONFIRMING_RESULTS.includes(opts.result) ? 'updated' : 'recorded' };
 }

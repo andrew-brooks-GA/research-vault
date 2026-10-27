@@ -1,9 +1,9 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { loadSchema, fieldOrder } from '../lib/schema.mjs';
 import { makeId, normalizeUrl, normalizeUrlSafe, sha256 } from '../lib/ids.mjs';
-import { buildManifest } from '../lib/manifest.mjs';
+import { buildManifest, writeManifest } from '../lib/manifest.mjs';
 import { writeEntry, TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { resolveVault, reportFallback } from '../lib/resolve.mjs';
 import { assertControlledValues } from '../lib/validate.mjs';
@@ -115,7 +115,7 @@ export function captureEntry(vaultPath, opts) {
   if (prep.dedup) return { dedup: prep.dedup };
   mkdirSync(join(vaultPath, prep.folder), { recursive: true });
   writeEntry(prep.path, prep.data, prep.body, prep.order);
-  writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');
+  writeManifest(vaultPath);
   return { id: prep.id, path: prep.path, dedup: null };
 }
 
@@ -172,7 +172,7 @@ export function runBatch(vaultPath, planPath, cliOpts = {}) {
   } catch (e) {
     return { errors: [{ index: -1, error: `write failed at ${failing ? failing.path : '?'}: ${e.message}` }], created, skipped };
   } finally {
-    if (created.length) writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');
+    if (created.length) writeManifest(vaultPath);
   }
   return { errors: [], created, skipped };
 }

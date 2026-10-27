@@ -33,7 +33,7 @@ export function lessonClass(filePath) {
 
 // Each `data-block` element: its opening tag's attributes and its inner HTML, matched to the
 // closing tag of the same name by depth. First occurrence of a block name wins.
-function parseBlocks(html) {
+export function parseBlocks(html) {
   const blocks = new Map();
   for (const m of html.matchAll(/<([a-z][a-z0-9]*)\b([^>]*\bdata-block\s*=\s*(["'])([^"']+)\3[^>]*)>/gi)) {
     const [open, tag, attrs, , name] = m;
@@ -119,9 +119,9 @@ function quizFindings(quiz, cls, ws, add) {
 export const KNOWN_TOOLS_HEADING = /^#{1,6}\s+known tools\b/i;
 export const MAX_INTRODUCES = 3;
 
-// Bullets under a heading (any level) whose text matches `headingRe`: the first word for tools,
-// the whole bullet for terms. null when the heading is absent.
-function missionList(workspaceDir, headingRe, whole) {
+// Bullets under a heading (any level) whose text matches `headingRe`, lower-cased.
+// null when the heading is absent.
+function missionList(workspaceDir, headingRe) {
   const p = join(workspaceDir, 'MISSION.md');
   if (!existsSync(p)) return null;
   let found = false;
@@ -130,17 +130,16 @@ function missionList(workspaceDir, headingRe, whole) {
   for (const line of readFileSync(p, 'utf8').split(/\r?\n/)) {
     if (/^#{1,6}\s/.test(line)) { inSection = headingRe.test(line); if (inSection) found = true; continue; }
     const m = inSection && /^\s*(?:[-*]|\d+\.)\s+(.+?)\s*$/.exec(line);
-    if (m) out.add((whole ? m[1].replace(/`/g, '') : m[1].replace(/`/g, '').split(/\s+/)[0]).toLowerCase());
+    if (m) out.add(m[1].replace(/`/g, '').toLowerCase());
   }
   return found ? out : null;
 }
 
-// The mission's Floor: tools the learner runs, terms they can define, terms they named as new.
+// The mission's Floor: terms they can define, terms they named as new (tools: missionKnownTools).
 export function missionFloor(workspaceDir) {
   return {
-    knownTools: missionList(workspaceDir, KNOWN_TOOLS_HEADING, false),
-    knownTerms: missionList(workspaceDir, /^#{1,6}\s+known terms\b/i, true),
-    newTerms: missionList(workspaceDir, /^#{1,6}\s+new to me\b/i, true),
+    knownTerms: missionList(workspaceDir, /^#{1,6}\s+known terms\b/i),
+    newTerms: missionList(workspaceDir, /^#{1,6}\s+new to me\b/i),
   };
 }
 

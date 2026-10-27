@@ -1,8 +1,8 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { lintVault, fixVault } from '../lib/lintrules.mjs';
-import { buildManifest } from '../lib/manifest.mjs';
+import { buildManifest, writeManifest } from '../lib/manifest.mjs';
 import { resolveVault, reportFallback } from '../lib/resolve.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -16,7 +16,7 @@ export function lintAndReport(vaultPath, { check = false } = {}) {
     const cur = existsSync(mfPath) ? norm(JSON.parse(readFileSync(mfPath, 'utf8'))) : null;
     if (cur !== fresh) violations.push({ file: mfPath, code: 'MANIFEST_STALE', msg: 'manifest out of date (run lint)' });
   } else {
-    writeFileSync(join(vaultPath, '.vault-manifest.json'), JSON.stringify(buildManifest(vaultPath), null, 2), 'utf8');
+    writeManifest(vaultPath);
   }
   return { violations, warnings };
 }

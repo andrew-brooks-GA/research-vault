@@ -283,9 +283,8 @@ function att2() {
   return ['---', 'type: attempt', 'date: 2026-01-01', 'lesson: 0001-good', 'total: 3', 'wrong: []', '---', ''].join('\n');
 }
 
-test('missionFloor reads the three Floor lists and readPath parses every field', () => {
+test('missionFloor reads the two Floor term lists and readPath parses every field', () => {
   const floor = missionFloor(FIX);
-  assert.deepEqual([...floor.knownTools], ['node']);
   assert.deepEqual([...floor.knownTerms], ['function']);
   assert.deepEqual([...floor.newTerms], ['fx', 'sextuple']);
   const path = readPath(FIX);

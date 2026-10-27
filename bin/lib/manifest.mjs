@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { walkEntries, readEntry } from './fsutil.mjs';
@@ -60,4 +60,10 @@ export function buildManifest(vaultPath) {
   const sortedBacklinks = {};
   for (const k of Object.keys(backlinks).sort()) sortedBacklinks[k] = [...backlinks[k]].sort();
   return { generated: new Date().toISOString().slice(0, 10), entries, edges, backlinks: sortedBacklinks };
+}
+
+export function writeManifest(vaultPath, manifest = buildManifest(vaultPath)) {
+  const path = join(vaultPath, '.vault-manifest.json');
+  writeFileSync(path + '.tmp', JSON.stringify(manifest, null, 2), 'utf8');
+  renameSync(path + '.tmp', path);
 }
