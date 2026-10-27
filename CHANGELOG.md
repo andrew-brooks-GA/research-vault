@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Spec 14 (`docs/specs/14-deps-graph.md`): a derived dependency graph for the repo, computed from the working tree on every run, with a hand-declared coupling table, a test that fails CI on a broken reference, an AGENTS.md rule and a project-scope PostToolUse hook; plus the drift fixes the 2026-10-27 inventory found. The file is force-added, since `docs/specs/` is otherwise ignored.
 - **Dependency graph** (spec 14 D1-D4). `scripts/deps.mjs` derives the repo's import, read, test, documentation, invocation and declared-coupling edges from the working tree on every run; `node scripts/deps.mjs` prints every broken reference, `node scripts/deps.mjs <path>` (or `cli:<command>`, `npm:<script>`) the dependents of one thing, and `test/deps.test.mjs` fails `npm test` on a reference to something that no longer exists. A committed `.claude/settings.json` PostToolUse hook names the dependents of a file after an `Edit` or `Write`. `AGENTS.md` gains the rename rule and the `COUPLINGS` rule, and its other lines are narrowed to what the evidence shows after a claims gate; `.gitignore` gains `ci-vault/`.
 
+### Fixed
+- **Inventory drift** (spec 14 D6). `skills/research-capture/SKILL.md` lists `tool-output` among the authority bases; step 1 of `vault-template/meta/prompt-templates/verify-entry.md` computes `last_verified` from `confirmed` and `changed-trivially` verifications only, as `freshness-policy.md` and the code do; `agents/claims-reviewer.md` keys on the lowercase `changed units:` line the gate prints and names `all` as the unit of a draft without data-blocks; `freshness-policy.md` §3 gives `stable` its 1095-day window instead of "trust unless cued", matching `refresh_after_days`, and verify-entry step 2 reads `stable >1095d`; `research-capture` calls `--batch` validate-then-write, not atomic, since a write failure mid-plan keeps the entries already written; `schema/project-config.schema.json`, which nothing read, is gone; CI runs `npm run lint:self`. Each fix has a test.
+
+### Upgrading an existing vault
+
+**Spec 14 D6**
+- `init --refresh-docs` rewrites `AGENTS.md` and `taxonomy.json` only, so hand-replace step 1 of `meta/prompt-templates/verify-entry.md` with: Compute `last_verified` := the latest `verifications[].date` whose `result` is `confirmed` or `changed-trivially`; check `volatility`.
+- Likewise replace item 4 of `meta/freshness-policy.md` §3 with: `stable` and `last_verified` >1095 days, or a specific cue → re-check; otherwise trust.
+
 ## [0.6.0] - 2026-10-27
 
 ### Added
