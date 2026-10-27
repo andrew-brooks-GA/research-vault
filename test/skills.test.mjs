@@ -18,6 +18,11 @@ test('research-claims-gate skill exists with the expected frontmatter', () => {
   }
 });
 
+test('research-capture skill lists every authority_basis value (spec 14 D6)', () => {
+  const listed = read('skills/research-capture/SKILL.md').match(/--authority-basis <([^>]+)>/)[1].split('|');
+  assert.deepEqual(listed, JSON.parse(read('schema/taxonomy.json')).authority_basis);
+});
+
 test('teach, orchestrate and authoring skills name research-claims-gate', () => {
   for (const s of ['research-teach', 'research-orchestrate', 'research-authoring']) {
     assert.match(read(`skills/${s}/SKILL.md`), /`research-claims-gate` skill/, s);

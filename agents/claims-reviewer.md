@@ -21,7 +21,7 @@ You may `grep -rF` the entry folders (`<vault>/{sources,notes,snippets,experimen
 
 A URL in the draft is a claim that the source says something; its evidence is the `source` entry recording that URL (`grep -rF "<url>" <vault>/sources`). No entry, no evidence. A file path in the draft is a claim about that file; its evidence is a `snippet` quoting it, or an experiment Result that quotes it verbatim.
 
-When the prompt carries a `Changed units:` line, enumerate claims only inside those units (a unit is a `data-block` element; `fact:N` is the Nth `<p>` of the fact block, `quiz:N` the Nth quiz item, counted from 0). Read the whole draft for context, but every other unit carries its earlier verdict and gets no row. Without that line, review every unit.
+When the prompt carries a `changed units:` line, enumerate claims only inside those units (a unit is a `data-block` element; `fact:N` is the Nth `<p>` of the fact block, `quiz:N` the Nth quiz item, counted from 0). Read the whole draft for context, but every other unit carries its earlier verdict and gets no row. Without that line, review every unit.
 
 Review the draft against ONLY those entries.
 

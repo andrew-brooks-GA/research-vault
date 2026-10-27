@@ -14,7 +14,7 @@ argument-hint: "[type] [title] [url]"
 
 ## Optional fields
 
-- Sources: `--authority-tier <primary|secondary|tertiary>` and `--authority-basis <official-docs|spec|source-code|release-notes|vendor-blog|community-report|benchmark|talk|personal-experiment|unknown>`.
+- Sources: `--authority-tier <primary|secondary|tertiary>` and `--authority-basis <official-docs|spec|source-code|release-notes|vendor-blog|community-report|benchmark|talk|personal-experiment|tool-output|unknown>`.
 - Sources: `--content-file <path>` hashes `content_hash` from a local file's raw bytes (no network); `--captured-via <text>` records provenance; `--store-body` copies the content (decoded as UTF-8) into the entry body (off by default — a copyright/PII surface, so it REQUIRES `--ack-data-egress`).
 - Syntheses: `--synthesis-basis <interpretive|primary-rollup>` (declare `primary-rollup` only for factual rollups that legitimately skip notes; see AGENTS.md §2.5).
 - Notes/Syntheses: `--summary "<one-line claim>"` — the load-bearing claim; indexed in the manifest, scanned by `search --text`, and exported ungated. Skipping it trips the advisory `WARN_MISSING_SUMMARY`.

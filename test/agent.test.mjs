@@ -27,6 +27,11 @@ test('claims-reviewer body carries the no-body, omitted-entry and GATE-LOG rules
   assert.match(body, /GATE-LOG\.md/);
 });
 
+test('claims-reviewer keys on the changed-units line the gate prints (spec 14 D6)', () => {
+  const printed = readFileSync(join(ROOT, 'bin', 'commands', 'gate.mjs'), 'utf8').match(/`(changed units:)/)[1];
+  assert.ok(agent().body.includes(`\`${printed}\``), `agent body lacks \`${printed}\``);
+});
+
 test('gate fixtures carry a gold verdict per draft', () => {
   const gold = JSON.parse(readFileSync(join(FIXTURES, 'gold.json'), 'utf8'));
   const drafts = readdirSync(FIXTURES).filter((f) => f.endsWith('.html'));
