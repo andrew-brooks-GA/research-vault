@@ -89,3 +89,14 @@ test('URLs and ids inside HTML <pre> and <code> elements are code, not citations
   assert.deepEqual(citations, [{ type: 'id', value: '2026-01-01-fx-doc' }]);
   assert.deepEqual(skipped.map((s) => s.value).sort(), ['2026-02-02-in-code', 'https://127.0.0.1:8443', 'https://example.org/in-code', 'https://localhost:8443']);
 });
+
+test('a markdown image URL is a picture, not a citation, and is not reported as skipped either', () => {
+  const text = [
+    '![CI](https://github.com/x/y/actions/workflows/ci.yml/badge.svg)',
+    '![License](https://img.shields.io/badge/license-MIT-blue.svg "MIT")',
+    'See [the docs](https://example.org/docs) and 2026-01-01-some-entry.',
+  ].join('\n');
+  const { citations, skipped } = extractCitationsDetailed(text);
+  assert.deepEqual(citations, [{ type: 'url', value: 'https://example.org/docs' }, { type: 'id', value: '2026-01-01-some-entry' }]);
+  assert.deepEqual(skipped, []);
+});

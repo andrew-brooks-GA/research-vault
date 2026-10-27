@@ -17,6 +17,8 @@ const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/;
 const FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})\s*$/;
 // HTML code: a lesson's commands and output live in <pre> and <code> elements.
 const HTML_CODE_RE = /<(pre|code)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
+// A markdown image is a picture (a badge, a figure), not a citation of its URL; it is dropped, not skipped.
+const IMAGE_RE = /!\[[^\]\n]*\]\([^)\s]+(?:\s+"[^"]*")?\)/g;
 
 function trimTrailing(url) {
   return url.replace(/[.,;:`]+$/, '');
@@ -27,7 +29,7 @@ function splitCode(text) {
   const prose = [];
   const code = [];
   let fence = null;
-  text = text.replace(HTML_CODE_RE, (el) => { code.push(el); return ' '; });
+  text = text.replace(HTML_CODE_RE, (el) => { code.push(el); return ' '; }).replace(IMAGE_RE, ' ');
   for (const line of text.split('\n')) {
     if (fence) {
       code.push(line);
