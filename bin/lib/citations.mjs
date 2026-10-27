@@ -15,6 +15,8 @@ const ID_RE = /\b\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\b/g;
 const SPAN_RE = /(?<!`)(`+)(?!`)([^\n]*?[^`\n])\1(?!`)/g;
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/;
 const FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})\s*$/;
+// HTML code: a lesson's commands and output live in <pre> and <code> elements.
+const HTML_CODE_RE = /<(pre|code)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
 
 function trimTrailing(url) {
   return url.replace(/[.,;:`]+$/, '');
@@ -25,6 +27,7 @@ function splitCode(text) {
   const prose = [];
   const code = [];
   let fence = null;
+  text = text.replace(HTML_CODE_RE, (el) => { code.push(el); return ' '; });
   for (const line of text.split('\n')) {
     if (fence) {
       code.push(line);

@@ -80,3 +80,12 @@ test('an inline code span stays within one line, so a stray backtick does not sw
   assert.deepEqual(sameLine.citations, []);
   assert.deepEqual(sameLine.skipped, [{ type: 'url', value: 'https://a/inline' }]);
 });
+
+test('URLs and ids inside HTML <pre> and <code> elements are code, not citations', () => {
+  const html = '<p>See <a data-cite="2026-01-01-fx-doc">2026-01-01-fx-doc</a>.</p>\n' +
+    '<pre><code>$ kubectl --server https://127.0.0.1:8443 get ns\nserver: https://localhost:8443</code></pre>\n' +
+    '<p>Also <code>https://example.org/in-code</code> and <code class="x">2026-02-02-in-code</code>.</p>';
+  const { citations, skipped } = extractCitationsDetailed(html);
+  assert.deepEqual(citations, [{ type: 'id', value: '2026-01-01-fx-doc' }]);
+  assert.deepEqual(skipped.map((s) => s.value).sort(), ['2026-02-02-in-code', 'https://127.0.0.1:8443', 'https://example.org/in-code', 'https://localhost:8443']);
+});
