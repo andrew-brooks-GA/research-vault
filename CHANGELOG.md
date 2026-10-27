@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Review lessons.** `lessons/NNNN-review-slug.html` holds `mission`, `quiz`, `followup` and `sources`, with items drawn from two or three learning records, each item naming its record; `teach lint` reports an item whose record does not exist.
 
 ### Fixed
+- **REFERENCE.md counted three hooks.** The design-notes bullet now names all four, including the Stop gate.
 - **Single-quoted scalars are parsed.** `title: 'Tool: X'` used to be read with its quotes as literal text, and the next rewrite (`verify`, `lint --fix`) stored it as `title: "'Tool: X'"`. Quotes are now stripped and `''` decodes to `'`. Frontmatter written by other YAML tools was the common trigger: yq 4.53.2, for example, writes a string containing `: ` single-quoted.
 - **Flow sequences respect quotes.** `topics: ["a, b", c]` is two items, not three fragments.
 - **Inline comments are dropped.** `status: active # note` is `active`, as in YAML. A `#` with no space before it (`https://host/a#frag`) is still content.

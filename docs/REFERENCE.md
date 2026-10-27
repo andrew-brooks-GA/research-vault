@@ -163,7 +163,7 @@ A vault is a folder of Markdown, so a shared team vault is one kept in a git rep
 ## Design notes
 
 - **Cache, not source of truth.** Staleness is the dominant failure mode of agent research; the vault makes it visible and actionable.
-- **Lint is the guarantee, not the hook.** Correctness lives in `lint`, which runs anywhere on any writer. The plugin's three Claude Code hooks (a post-edit lint-fix, a session-start summary, and a pre-web-fetch vault lookup that hands matching entries to the model before it searches) are conveniences.
+- **Lint is the guarantee, not the hook.** Correctness lives in `lint`, which runs anywhere on any writer. The plugin's four Claude Code hooks (a post-edit lint-fix, a session-start summary, a pre-web-fetch vault lookup that hands matching entries to the model before it searches, and a Stop gate that blocks a turn leaving a changed gated draft without a verdict) are conveniences.
 - **Everything agent-facing is generated.** `AGENTS.md` and each vault's `taxonomy.json` come from the schema at `init`; CI checks the generator against `schema/AGENTS.golden.md`.
 - **Orchestration is a reference implementation with a contract.** `research-orchestrate` drives vault-first research with eager source capture and a batch for the distilled layers; other orchestrators compose the same way. See [ORCHESTRATOR-INTEGRATION.md](ORCHESTRATOR-INTEGRATION.md).
 - **Migrating existing notes?** See [MIGRATION.md](MIGRATION.md).
