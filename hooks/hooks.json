@@ -9,7 +9,8 @@
             "command": "node",
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/hooks/post-tool-use.mjs"
-            ]
+            ],
+            "timeout": 30
           }
         ]
       }
@@ -22,7 +23,8 @@
             "command": "node",
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.mjs"
-            ]
+            ],
+            "timeout": 10
           }
         ]
       }
@@ -36,7 +38,8 @@
             "command": "node",
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/hooks/pre-web.mjs"
-            ]
+            ],
+            "timeout": 30
           }
         ]
       }
@@ -49,7 +52,8 @@
             "command": "node",
             "args": [
               "${CLAUDE_PLUGIN_ROOT}/hooks/stop-gate.mjs"
-            ]
+            ],
+            "timeout": 30
           }
         ]
       }

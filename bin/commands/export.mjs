@@ -2,6 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { buildExport, toJsonl } from '../lib/exportjsonl.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { isInsideVault } from '../lib/containment.mjs';
+import { csvList } from '../lib/args.mjs';
 
 export async function run(args) {
   if (args.format && args.format !== 'jsonl') { process.stderr.write(`unsupported --format: ${args.format} (only jsonl)\n`); return 1; }
@@ -9,7 +10,7 @@ export async function run(args) {
   let records;
   try {
     records = buildExport(vaultPath, {
-      scope: args.scope ? args.scope.split(',') : null,
+      scope: args.scope ? csvList(args.scope) : null,
       includeBodies: !!args['include-bodies'],
       ackDataEgress: !!args['ack-data-egress'],
     });

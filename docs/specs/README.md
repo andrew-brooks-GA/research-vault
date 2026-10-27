@@ -36,6 +36,12 @@ Round 4 (2026-10-26): building a lesson in the teach skill, and a store for what
 |---|---|---|---|
 | 12 | [Lesson building](12-lesson-building.md) | 11 | medium |
 
+Round 5 (2026-10-26): fixes from a review of the plugin against the Claude Code docs, a software-engineering pass over the code, and research on why audience framing improves generated documents. Evidence is the vault note, experiment, snippets and synthesis the spec names.
+
+| # | Spec | Depends on | Size |
+|---|---|---|---|
+| 13 | [Scaffolding, writing and code fixes](13-scaffolding-review.md) | 12 | medium |
+
 Sizes are indicative, not budgets.
 
 Suggested PRs: 01+02, then 03+04, then 05 and 06 independently after 02 has merged. 02, 04 and 06 all edit `bin/lib/agentsmd.mjs` and `schema/AGENTS.golden.md`; each PR regenerates the golden against the merged generator, never against its own branch alone.

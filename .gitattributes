@@ -4,3 +4,4 @@
 *.yml text eol=lf
 *.yaml text eol=lf
 .gitignore text eol=lf
+bin/research-vault text eol=lf

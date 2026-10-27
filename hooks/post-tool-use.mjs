@@ -38,7 +38,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
     try {
       const evt = JSON.parse(input || '{}');
       const editedPath = evt.tool_input?.file_path || '';
-      const { path: vaultPath } = resolveVault({});
+      const { path: vaultPath } = resolveVault({ cwd: evt.cwd });
       if (isInsideVault(vaultPath, editedPath)) {
         fixVault(vaultPath, REPO_ROOT);
         lintAndReport(vaultPath, { check: false }); // rebuild manifest

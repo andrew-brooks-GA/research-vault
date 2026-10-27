@@ -11,3 +11,8 @@ docs/superpowers/
 
 # internal review/audit artifacts — kept locally, not shipped
 REVIEW.md
+
+# local vault binding and claims ledger for gating this repo's own docs
+.research-vault.json
+.research-vault-ledger.jsonl
+GATE-LOG.md

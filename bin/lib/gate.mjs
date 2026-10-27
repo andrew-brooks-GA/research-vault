@@ -12,6 +12,7 @@ import { listStale } from './stale.mjs';
 import { loadSchema } from './schema.mjs';
 import { SKIP_DIRS, expandFiles } from './files.mjs';
 import { checkCitations } from '../commands/check.mjs';
+import { parseBlocks } from './lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -32,18 +33,9 @@ export function ledgerKey(repoRoot, filePath) {
 export function unitHashes(content) {
   const html = typeof content === 'string' ? content : content.toString('utf8');
   const units = {};
-  const blocks = [...html.matchAll(/<([a-z][a-z0-9]*)\b[^>]*\bdata-block\s*=\s*(["'])([^"']+)\2[^>]*>/gi)];
-  if (!blocks.length) return { all: contentHash(html) };
-  for (const m of blocks) {
-    const [open, tag, , name] = m;
-    const start = m.index + open.length;
-    const re = new RegExp(`<(/?)${tag}\\b[^>]*>`, 'gi');
-    re.lastIndex = start;
-    let depth = 1;
-    let end = html.length;
-    for (let t; (t = re.exec(html));) { depth += t[1] ? -1 : 1; if (depth === 0) { end = t.index; break; } }
-    const inner = html.slice(start, end);
-    if (units[name] !== undefined) continue;
+  const blocks = parseBlocks(html);
+  if (!blocks.size) return { all: contentHash(html) };
+  for (const [name, { html: inner }] of blocks) {
     if (name === 'fact') {
       [...inner.matchAll(/<p\b[^>]*>[\s\S]*?<\/p>/gi)].forEach((pm, i) => { units[`fact:${i}`] = contentHash(pm[0]); });
       if (!Object.keys(units).some((k) => k.startsWith('fact:'))) units.fact = contentHash(inner);

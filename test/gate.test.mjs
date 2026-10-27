@@ -315,3 +315,21 @@ test('per-unit gate: an edit reopens only the units it touched, and a unit passe
   writeFileSync(f, '<p>plain</p>');
   assert.deepEqual(Object.keys(unitHashes(readFileSync(f))), ['all']);
 });
+
+test('unitHashes over the shared parseBlocks keeps the hashes ledger rows were keyed to (spec 13)', () => {
+  const f = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'teach', 'lessons', '0001-good.html');
+  assert.deepEqual(unitHashes(readFileSync(f)), {
+    prereq: 'a2f78466c34816b23168b1d3a8d6197e591900357ac054ade858f1f2f137b06e',
+    mission: '93ae37de93dea817e91c3500bdfb7fd0f6923d3edb0afe687ac02eff14a2ed11',
+    model: '21213aca0415570015676cdafb0202fa96be6c906b95c44231842d8eb785b163',
+    'fact:0': '49558439126af11ab57bb543909780375d9790a0ee3d7349f15276e33b7f9494',
+    'fact:1': '74cef07374921aceeed9f43d29b0e07570af6271559557210cb993f218a31b8e',
+    example: '234d24f7fdee8a8eab3480d8c9240bf6741801862733fcfc58d7aee9a10a782a',
+    'quiz:0': 'db7c2f7d4a137ed47e0670825b3e8d2b1c913daf2b230d7c4c8a1784659d396d',
+    'quiz:1': '1314fa197610cc4d88eab76955c7178ea233d4c90c577eb5e5468c7cbd9e125c',
+    'quiz:2': 'dd6315f923221f2ad643a98e193b61e94037229cec8025ea8d4d6baf322aaf4a',
+    step: 'ac86fe13d81803cbc782f402f66bffc4dba25a91e1d21505b1c0a61c38dcff30',
+    sources: 'a3139580587c951b4271a1b2aa488e43690dfd6917b3439b6e91a11e7a698451',
+    followup: '0d56143cfcdc326c0c4dbc65b9615fc233150b86346e096865780ef9e2dcf81e',
+  });
+});

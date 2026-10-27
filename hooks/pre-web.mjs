@@ -6,7 +6,7 @@ import { resolveVault } from '../bin/lib/resolve.mjs';
 import { walkEntries, readEntry } from '../bin/lib/fsutil.mjs';
 import { listStale } from '../bin/lib/stale.mjs';
 
-const STOP = new Set('the a an and or of to in on for with how what why does is are was be this that from into about using use vs'.split(' '));
+const STOP = new Set('the a an and or of to in on for with how what why does is are was be this that from into about using use vs return full page text summarize paper extract verbatim'.split(' '));
 const normUrl = u => String(u || '').trim().replace(/#.*$/, '').replace(/\/+$/, '').toLowerCase();
 
 export function vaultContext(vaultPath, toolName, toolInput = {}) {
@@ -28,12 +28,10 @@ export function vaultContext(vaultPath, toolName, toolInput = {}) {
   }
   hits.sort((a, b) => b.score - a.score);
   const line = e => `- ${e.id} [${e.data.type}${stale.has(e.id) ? ', STALE' : ''}] ${e.data.title}`;
-  const out = [];
-  if (urlHit) out.push(`research-vault: this URL is already captured as ${urlHit.id}${stale.has(urlHit.id) ? ' (STALE: verify it rather than re-reading from memory)' : ''}. Cite it; do not capture a duplicate.`);
+  if (urlHit) return `research-vault: this URL is already captured as ${urlHit.id}${stale.has(urlHit.id) ? ' (STALE: verify it rather than re-reading from memory)' : ''}. Cite it; do not capture a duplicate.`;
   const top = hits.slice(0, 5).map(h => line(h.e));
-  if (top.length) out.push(`research-vault: ${hits.length} entr${hits.length === 1 ? 'y' : 'ies'} match [${terms.join(', ')}]. Read these before fetching; answer from them if they are fresh:\n${top.join('\n')}`);
-  else if (terms.length) out.push(`research-vault: no entry matches [${terms.join(', ')}]. If you fetch, capture the source before citing it.`);
-  return out.join('\n');
+  if (top.length) return `Vault entries matching this query:\n${top.join('\n')}`;
+  return terms.length ? `research-vault: no entry matches [${terms.join(', ')}].` : '';
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) {
@@ -42,7 +40,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
   process.stdin.on('end', () => {
     try {
       const evt = JSON.parse(input || '{}');
-      const { path: vaultPath } = resolveVault({});
+      const { path: vaultPath } = resolveVault({ cwd: evt.cwd });
       if (!existsSync(vaultPath)) process.exit(0);
       const ctx = vaultContext(vaultPath, evt.tool_name, evt.tool_input || {});
       if (ctx) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: ctx } }) + '\n');

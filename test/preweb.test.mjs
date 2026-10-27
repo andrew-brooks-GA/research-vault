@@ -13,6 +13,8 @@ test('pre-web hook surfaces matching entries and exact URL hits', () => {
   assert.doesNotMatch(ctx, /unrelated/);
   const fetch = vaultContext(v, 'WebFetch', { url: 'https://ziglang.org/doc/writer/#frag', prompt: 'anything' });
   assert.match(fetch, /already captured as 2026-01-01-zig-io-writer/);
+  assert.equal(fetch.split('\n').length, 1, 'a captured URL returns only that line');
+  assert.equal(vaultContext(v, 'WebFetch', { url: 'https://other.example.com/x', prompt: 'Return the full page text verbatim' }), '', 'fetch instructions are not search terms');
   const none = vaultContext(v, 'WebSearch', { query: 'rust borrow checker' });
   assert.match(none, /no entry matches/);
 });
@@ -20,7 +22,7 @@ test('pre-web hook surfaces matching entries and exact URL hits', () => {
 test('pre-web hook CLI emits PreToolUse additionalContext and exits 0', () => {
   const v = tmpVault('rv-preweb-');
   put(v, 'source', '2026-01-01-vcluster-sleep', { title: 'vcluster sleep mode', topics: ['vcluster'], source_url: 'https://docs.vcluster.com/sleep-mode', source_type: 'official-docs', subject: { name: 'vcluster', version: '0.20' } });
-  const r = spawnSync(process.execPath, ['hooks/pre-web.mjs'], { input: JSON.stringify({ tool_name: 'WebSearch', tool_input: { query: 'vcluster sleep mode' } }), env: { ...process.env, RESEARCH_VAULT_PATH: v }, encoding: 'utf8' });
+  const r = spawnSync(process.execPath, ['hooks/pre-web.mjs'], { input: JSON.stringify({ tool_name: 'WebSearch', tool_input: { query: 'vcluster sleep mode' }, cwd: v }), env: { ...process.env, RESEARCH_VAULT_PATH: v }, encoding: 'utf8' });
   assert.equal(r.status, 0);
   const out = JSON.parse(r.stdout);
   assert.equal(out.hookSpecificOutput.hookEventName, 'PreToolUse');

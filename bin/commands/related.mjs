@@ -4,6 +4,7 @@ import { buildManifest } from '../lib/manifest.mjs';
 import { traverse } from '../lib/graph.mjs';
 import { loadSchema } from '../lib/schema.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
+import { csvList } from '../lib/args.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DIRECTIONS = ['out', 'in', 'both'];
@@ -39,7 +40,7 @@ export async function run(args) {
   if ('rel' in args) {
     const { backlink, reference_only } = loadSchema(REPO_ROOT).fields.edge_fields;
     const known = [...backlink, ...reference_only];
-    opts.rels = (args.rel ?? '').split(',').map(s => s.trim()).filter(Boolean);
+    opts.rels = csvList(args.rel);
     const bad = opts.rels.filter(r => !known.includes(r));
     if (!opts.rels.length || bad.length) return fail(`--rel must name relations from: ${known.join(', ')}`);
   }

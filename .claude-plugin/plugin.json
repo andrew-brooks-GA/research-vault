@@ -1,5 +1,10 @@
 {
   "name": "research-vault",
-  "description": "Portable research-vault scaffold and tooling for Claude Code and any agent.",
-  "author": { "name": "Andrew Brooks" }
+  "version": "0.5.0",
+  "description": "A freshness-governed research knowledge base for coding agents.",
+  "author": { "name": "Andrew Brooks" },
+  "homepage": "https://github.com/andrew-brooks-GA/research-vault",
+  "repository": "https://github.com/andrew-brooks-GA/research-vault",
+  "license": "MIT",
+  "keywords": ["research", "knowledge-base", "freshness", "citations"]
 }
