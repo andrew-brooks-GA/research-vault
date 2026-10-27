@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **README** describes binding a repo with `init --project` and code links: the bullet, a code vignette, the install line and a "Day to day" row.
+
 ## [0.7.0] - 2026-10-27
 
 ### Added
