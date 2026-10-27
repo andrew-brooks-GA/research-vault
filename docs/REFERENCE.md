@@ -4,7 +4,7 @@ The README explains what research-vault is and how to start. This page is for lo
 
 ## Scope
 
-research-vault is for *external* facts: documentation, API behaviour, tool-version claims and the decisions you made because of them. It is not a code indexer and does not replace the agent's view of your repo. Without Node, an agent can still read a vault by globbing and grepping the folders; the CLI is the faster, checked path.
+research-vault is for *external* facts: documentation, API behaviour, tool-version claims and the decisions you made because of them. It is not a code indexer beyond the comments that cite the vault, and does not replace the agent's view of your repo. Without Node, an agent can still read a vault by globbing and grepping the folders; the CLI is the faster, checked path.
 
 ## Where the vault lives
 
@@ -42,6 +42,41 @@ Run `init --project` at the root of a repo to write `.research-vault.json` there
 - **`research-authoring`.** When a citation is about to land in prose you're writing in the repo, the skill consults the vault, captures what's missing and checks freshness first.
 - **`check`.** Audits the repo's docs against the vault; each citation is `ok`, `stale` or `uncovered`. `check --check` exits non-zero so CI can fail on stale or uncovered citations.
 - **Gate.** Lessons and reference docs in every teach workspace (a directory holding `MISSION.md`) found under the repo are gated, plus any file matching the optional `gates.globs` array in `.research-vault.json`, for example `"gates": { "globs": ["docs/**/*.md"] }`. The `research-claims-gate` skill records each verdict with `gate record` in `.research-vault-ledger.jsonl` at the repo root, keyed to the file's content hash, so an edit after the gate needs a new verdict. The Stop hook blocks a turn that leaves a changed gated file without a `PASS` or `MERIT` row for its current content. After an edit to a gated file or one matching `references.globs`, a hook reports its uncovered or stale citations without blocking; an edit inside the vault runs `lint --fix` instead, so this applies to files outside the vault. `gate status <file> --check` exits 1 when the current content has no passing verdict. A vault entry outside any bound repo can be gated too; its ledger lives in the vault.
+
+### Code links
+
+A vault id on a comment line of its own, above a column-0 declaration, cites that entry for the symbol below it. The id may carry a pin, `<id>@<key>=<version>`, naming a key of `code.versions` and the version the code was checked against:
+
+```lua
+-- Sleep-mode call order per 2026-03-03-sleep-mode-api@sdk=0.20
+function ns.Sleep(frame)
+```
+
+Blank and comment lines may sit between the comment and the declaration; several ids on one line, or several comment lines above one declaration, are several links to the same symbol. A link whose next non-blank, non-comment line is not a column-0 declaration is `unattached`: reported, never dropped.
+
+**Opt-in.** `init --project --vault <relative dir> --code-links '<glob>[,<glob>]'` writes the standard binding plus a `code` block, and a `code` block written by hand into an existing binding is the same opt-in. The block is accepted only on a relative `vault` inside the repo: an absolute, empty, `..` or absent vault is rejected with `code links need a project-specific vault inside the repo (a relative vault path); this binding points at <vault>`. Without the block, every command and hook runs exactly as before and the comments are ordinary comments.
+
+```json
+"code": {
+  "globs": ["src/**/*.lua"],
+  "languages": {},
+  "versions": {
+    "sdk": { "file": "package-lock.json", "pattern": "\"node_modules/sdk\": \\{\\s*\"version\": \"([^\"]+)\"" }
+  }
+}
+```
+
+- **`versions`.** Each key names a `{ file, pattern }`. The pattern is a JavaScript regex applied with the `m` flag to the whole file; the first capture group of the first match is the declared version. A file that is missing or that the pattern does not match is a configuration error (`check` exits 2 with `versions.<key>: pattern matched nothing in <file>`), not a row per link. `package-lock.json` nests the installed version under `packages[<path>].version`; an addon `.toc` (`## Interface:`), a `go.mod` `require` line and `build.zig.zon` (`.minimum_zig_version`) hold it on one line. `check` prints the values it read as a footer, `versions: sdk=0.20`.
+- **`languages`.** A language is `{ comment, decl }`, two regex sources: `comment` matches one whole comment line and captures its text in group 1; `decl` matches one column-0 declaration line and captures the symbol name in its first non-empty group. Each must compile and hold a capture group, else the error names the field (`code.languages[".py"].decl: pattern has no capture group`). The plugin ships one row, `.lua`:
+
+  ```js
+  comment: /^\s*--(?!\[=*\[)(.*)$/,
+  decl: /^(?:local\s+)?function\s+([A-Za-z_][\w.:]*)\s*\(|^(?:local\s+)?([A-Za-z_][\w.]*)\s*=(?!=)/,
+  ```
+
+  A project adds any other language as a row keyed by extension in `code.languages`, and may override a shipped row; a `code.globs` file whose extension has a row from neither is a configuration error, `no language for .py in code.globs; add code.languages[".py"] = { comment, decl }`. `comment` is matched line by line, so a block-only comment syntax needs a line prefix inside the block.
+- **Statuses.** A code row is `ok`, `uncovered` (no entry for the id), `unattached`, or `stale` with its reason: `(time)` for an unpinned link whose entry is past its volatility window, or a pinned link to a `volatile` entry; `(superseded by <id>)` for an entry with `status: superseded`; `(<key> <pinned> -> <declared>)` for a pin that differs from the declared version; `(no key <key> in code.versions)`. A pin selects the version rule over the time rule; an unpinned link follows the entry's window as prose does. `check --check` exits 1 on any `stale`, `uncovered` or `unattached` row.
+- **Gate.** Each linked declaration is a unit, `sym:<name>`, hashed from its leading comment block to the line before the next column-0 declaration's comment block, with pin values stripped, so moving the block, editing a neighbour or moving a pin reopens nothing and editing the body does. Code files with an attached link are gated like `gates.globs` files; `gate evidence <file> --changed` adds one line per changed unit, `unit sym:<name> <file>:<start>-<end> <status>`, which the `claims-reviewer` reads as its line range. The post-edit hook reports a code file's non-`ok` rows and, after an edit to a `versions` file, every link whose pin differs from the version now declared. The Stop hook also blocks a turn in which a `versions` file changed and a link is still pinned to another value, naming the link and the two versions.
 
 ## Extending the controlled vocabulary
 
@@ -129,7 +164,7 @@ Ids are `<date>-<slug>`; use the one `capture` or `search` prints rather than gu
 
 | Command | Does |
 |---|---|
-| `init` | Scaffold a vault and generate its `AGENTS.md`. `--project` binds the current repo. `--refresh-docs` regenerates `AGENTS.md` and `taxonomy.json` in an existing vault and touches nothing else (entries and `meta/` are preserved). |
+| `init` | Scaffold a vault and generate its `AGENTS.md`. `--project` binds the current repo; with `--code-links '<glob>[,<glob>]'` it also writes the `code` block, which needs a relative `--vault` inside the repo. `--refresh-docs` regenerates `AGENTS.md` and `taxonomy.json` in an existing vault and touches nothing else (entries and `meta/` are preserved). |
 | `capture` | Add an entry. Required: `--type`, `--title`; sources also `--url`. Common: `--domain`, `--topics a,b`, `--subject-name`/`--subject-version`/`--series`, `--summary`, `--sources` (notes), `--contributing-ids` (syntheses), `--confidence`. Dedupes by URL and version. `--scaffold` writes a per-type body skeleton; `--body-file` supplies prose for non-source types; `--content-file` and `--captured-via` record local provenance; `--store-body` keeps the text you pass with `--content` or `--content-file` in a source entry and needs `--ack-data-egress`; capture never fetches the URL itself. `--batch <plan.json>` validates every entry before writing any, reports duplicates as skipped, and writes sequentially (a validation failure writes nothing; a filesystem failure can leave partial output). |
 | `lint` | Validate the vault and rebuild the manifest. `--check` for CI (exits non-zero on violations or a stale manifest); `--fix` applies safe normalizations. |
 | `verify` | `--stale` lists entries past their interval. `--id <id> --method <m> --result <r> [--notes]` records a check. `--result outdated --superseded-by <id>` replaces; `--succession` records a version sibling. |
@@ -139,7 +174,7 @@ Ids are `<date>-<slug>`; use the one `capture` or `search` prints rather than gu
 | `manifest` | Rebuild or print the derived index. |
 | `compile` | Regenerate the human-readable `_index/` (git-ignored, derived). |
 | `obsidian` | Regenerate `_obsidian/` (git-ignored, derived). Open that folder, not the vault root, as an Obsidian vault; stubs carry `type/`, `status/`, `domain/`, `volatility/`, `freshness/` and `topic/` tags, so a graph filter like `tag:#freshness/stale` colours what matters. |
-| `check` | Audit a document or glob outside the vault. `--report` or `--json` emit a coverage matrix; `--check` exits non-zero on a stale or uncovered citation. URLs and ids inside code spans and fenced blocks are not citations; a value found only in code is reported as skipped. A fence left unclosed makes the rest of the file code, and `check` lists a URL found only there as skipped. Read-only, no network. |
+| `check` | Audit a document or glob outside the vault. `--report` or `--json` emit a coverage matrix; `--check` exits non-zero on a stale or uncovered citation. URLs and ids inside code spans and fenced blocks are not citations; a value found only in code is reported as skipped. A fence left unclosed makes the rest of the file code, and `check` lists a URL found only there as skipped. With a `code` block in the binding, files matching `code.globs` are read for code links instead (one row per link, printed as `file:line symbol`), the summary gains the `unattached` and code-link counts, and a `versions:` footer lists the declared versions; with no positional glob, `references.globs` and `code.globs` are both checked. Read-only, no network. |
 | `gate` | `gate evidence\|record\|status`: derive a draft's evidence list from the vault (`evidence <draft> [--extra <ids>] [--json]`), record a claims verdict keyed to the file's content hash (`record <file> <PASS\|FAIL-as-sent\|MERIT> [note]`), or report the verdict for the current content (`status <file> [--check]`, exit 1 with `--check` when there is no `PASS` or `MERIT`). |
 | `teach` | Teaching workspace verbs: `teach record add --title <t> --kind <k> [--lesson <id>] [--body-file <path>] [workspace]`, `teach record supersede <id> --by <id> [--reason <text>] [workspace]`, `teach attempt add --lesson <id> --answers <comma list> [workspace]`, `teach lint [--fix] [workspace]` (prints `lint: clean` or the findings, exit 1 on any non-warning finding), `teach next [workspace]` and `teach serve [workspace]`. The workspace is the positional path, which must hold `MISSION.md`, else the cwd when it holds `MISSION.md`; otherwise usage and exit 2. `serve` binds `127.0.0.1` only; its limits are in [SECURITY.md](../SECURITY.md). |
 | `refresh` | Re-fetch sources to see whether they changed; reports `confirmed`, `changed` or `unreachable` per source and never edits entries. Run `verify` on anything `changed`. Needs `RESEARCH_VAULT_ALLOW_NETWORK=1`. |

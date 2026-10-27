@@ -27,5 +27,14 @@ Run `research-vault check "<file-or-reference-glob>"` to confirm the new citatio
 
 If the document matches `gates.globs`, run the `research-claims-gate` skill before it is shown or sent.
 
+## Code
+
+This section applies only when the binding has a `code` block and the file you are editing matches its `code.globs`; in any other file a comment is just a comment. Two triggers: a declaration being written or changed because of a vault entry (a call sequence from a snippet, a constant from a source, a formula from an experiment), and a version being changed in a file named under `code.versions`.
+
+1. Search the vault first; the entry's id is what goes in the comment. If nothing covers the fact, capture it first (section 2).
+2. Choose the key: the entry of `code.versions` whose file declares the dependency the symbol calls; none for a pure formula. Read the declared version from the `versions:` footer of `research-vault check`, and write the link as the last comment line above the declaration: `-- <why, in a few words> <id>@<key>=<version>`, or `-- <why> <id>` when no key applies, in which case the link follows the entry's time rule like prose. One link per declaration the entry justifies: a sequence that spans two functions gets two comment lines, one above each.
+3. Run `research-vault check <file>`; the new row must be `ok`, not `uncovered`, `stale` or `unattached` (a link whose next non-blank, non-comment line is not a column-0 declaration).
+4. On a versions-file change: for each link the hook or `check` reports as `stale (<key> <old> -> <new>)`, re-verify the entry against the new version (`research-vault verify --id <id> --method tool-probe --result confirmed`, or `--method refetched-source`). Confirmed: move the pin to the new version; the unit's hash does not change and no gate round follows. Changed: capture the new version as its own entry, supersede the old one (`verify --id <old> --method <m> --result outdated --superseded-by <new>`), and replace the id in the comment; the gate reopens the unit. Never move a pin without the verify step: the pin says "checked at this version".
+
 ## What this skill is not
 Not a research-orchestration entry point, and not the question-answering path — that is `research-vault-usage`. It owns one thing: a citation entering a document you are writing.

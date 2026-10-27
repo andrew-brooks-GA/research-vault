@@ -67,11 +67,16 @@ export async function run(args) {
     const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
     const topics = csvList(args.topics);
     const globs = csvList(args.globs);
+    // --code-links <glob,glob> adds the `code` block (spec 15); scaffoldProjectConfig checks it needs a relative vault.
+    const codeLinks = csvList(args['code-links']);
     try {
       const target = scaffoldProjectConfig(process.cwd(), {
-        vault: vaultPath, domain: args.domain, topics, globs, volatility: args.volatility,
+        vault: vaultPath, domain: args.domain, topics, globs, volatility: args.volatility, codeLinks, schema: loadSchema(REPO_ROOT),
       });
       process.stdout.write(`Bound this repo to ${vaultPath} via ${target}.\n`);
+      if (codeLinks.length) {
+        process.stdout.write(`Code links on for ${codeLinks.join(', ')}: in ${target}, add a code.versions key ({ file, pattern }) per dependency to pin to, and a code.languages row ({ comment, decl }) for a language the plugin does not ship.\n`);
+      }
       return 0;
     } catch (e) {
       process.stderr.write(e.message + '\n');

@@ -223,3 +223,9 @@ test('bin/ and hooks/ carry no project name, language name outside LANGS or vers
     assert.doesNotMatch(text, /\bwow\b|QuestRouter|\.toc\b|Interface:/i, f);
   }
 });
+
+test('docs/REFERENCE.md quotes the shipped Lua row verbatim', () => {
+  const doc = readFileSync(join(ROOT, 'docs', 'REFERENCE.md'), 'utf8');
+  assert.ok(doc.includes(`comment: /${LUA.comment.source}/,`), 'comment row');
+  assert.ok(doc.includes(`decl: /${LUA.decl.source}/,`), 'decl row');
+});
