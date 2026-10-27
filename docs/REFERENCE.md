@@ -13,8 +13,8 @@ Tooling and vault data are separate by default. The vault is discovered in order
 1. `--vault <path>` flag
 2. a repo's `.research-vault.json` (project binding, below)
 3. `$RESEARCH_VAULT_PATH`
-4. the config pointer written by `init`
-5. the OS default: `~/.local/share/research-vault` on Linux, `~/Library/Application Support/research-vault` on macOS, `%LOCALAPPDATA%\research-vault` on Windows
+4. the config pointer `init` writes when it sets the default vault (first `init`, or `--set-default`)
+5. the OS default: `$XDG_DATA_HOME/research-vault` (else `~/.local/share/research-vault`) on Linux, `~/Library/Application Support/research-vault` on macOS, `%LOCALAPPDATA%\research-vault` on Windows
 
 ## Skills and slash commands (Claude Code)
 
@@ -29,8 +29,8 @@ Skills load when a request matches their job; none of them fires for every techn
 | `research-orchestrate` (`/research`) | A fresh research task end to end: vault first, then the web, every finding filed as entries |
 | `research-authoring` | Fires when a citation is about to land in prose you're writing in a vault-bound repo |
 | `research-review` | Auditing an existing document or corpus against the vault |
-| `research-teach` (`/research-teach`) | Teaching a topic over sessions: resources and facts in the vault, probed evidence, lessons checked by `teach lint` and then gated by a fresh `claims-reviewer` agent, quiz attempts recorded by a local quiz server (`teach serve`) |
-| `research-claims-gate` (`/research-claims-gate`) | Gating a draft that cites the vault: derives the evidence list, dispatches one fresh `research-vault:claims-reviewer`, records the verdict in the claims ledger |
+| `research-teach` | Teaching a topic over sessions: resources and facts in the vault, probed evidence, lessons checked by `teach lint`, read by a fresh `lesson-reader` agent, then gated by a fresh `claims-reviewer` agent, quiz attempts recorded by a local quiz server (`teach serve`) |
+| `research-claims-gate` | Gating a draft that cites the vault: derives the evidence list, dispatches one fresh `research-vault:claims-reviewer`, records the verdict in the claims ledger |
 
 Slash commands, all under `/research-vault:`: `research-init`, `research-search`, `research-related`, `research-lint`, `research-advise`, `research-compile`, `research-obsidian`, `research`. Every skill is also `/research-vault:<name>` (for example `/research-vault:research-capture`).
 
@@ -135,7 +135,7 @@ Ids are `<date>-<slug>`; use the one `capture` or `search` prints rather than gu
 | `verify` | `--stale` lists entries past their interval. `--id <id> --method <m> --result <r> [--notes]` records a check. `--result outdated --superseded-by <id>` replaces; `--succession` records a version sibling. |
 | `search` | `--type`, `--domain`, `--topic`, `--series`, `--text` (title, topics, summary), `--body`, `--json`. Superseded entries are hidden unless `--include-superseded`. |
 | `related` | Typed links for an entry. `--depth N`, `--direction` (`out`, `in` or `both`), `--rel a,b`, `--format mermaid`. |
-| `advise` | Read-only report: stale entries, stale evidence chains, orphans, sources without notes, unverified sources, missing summaries, aliasable topics, stub bodies. `--json`. |
+| `advise` | Read-only report: stale entries, stale evidence chains, orphans, sources without notes, unverified sources, missing summaries, aliasable topics, stub bodies, quote residue. `--json`. |
 | `manifest` | Rebuild or print the derived index. |
 | `compile` | Regenerate the human-readable `_index/` (git-ignored, derived). |
 | `obsidian` | Regenerate `_obsidian/` (git-ignored, derived). Open that folder, not the vault root, as an Obsidian vault; stubs carry `type/`, `status/`, `domain/`, `volatility/`, `freshness/` and `topic/` tags, so a graph filter like `tag:#freshness/stale` colours what matters. See `meta/obsidian-view.md` in any vault. |

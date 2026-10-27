@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Review lessons.** `lessons/NNNN-review-slug.html` holds `mission`, `quiz`, `followup` and `sources`, with items drawn from two or three learning records, each item naming its record; `teach lint` reports an item whose record does not exist.
 
 ### Fixed
+- **Docs narrowed after a claims gate.** `AGENTS.md` and `docs/REFERENCE.md` say what the code says: the config pointer is written on the first `init` or `--set-default`, the Linux default honours `$XDG_DATA_HOME`, `research-teach` names the reader gate, `advise` lists quote residue, and two slash-command forms that no longer exist are gone. The orchestrate skill calls `--batch` validate-then-write, not atomic.
 - **REFERENCE.md counted three hooks.** The design-notes bullet now names all four, including the Stop gate.
 - **Single-quoted scalars are parsed.** `title: 'Tool: X'` used to be read with its quotes as literal text, and the next rewrite (`verify`, `lint --fix`) stored it as `title: "'Tool: X'"`. Quotes are now stripped and `''` decodes to `'`. Frontmatter written by other YAML tools was the common trigger: yq 4.53.2, for example, writes a string containing `: ` single-quoted.
 - **Flow sequences respect quotes.** `topics: ["a, b", c]` is two items, not three fragments.
@@ -202,6 +203,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.research-vault.json` `defaults` + `references.globs` are now consumed** by `capture`/`check` (previously validated but inert).
 
 ### Fixed
+- **Docs narrowed after a claims gate.** `AGENTS.md` and `docs/REFERENCE.md` say what the code says: the config pointer is written on the first `init` or `--set-default`, the Linux default honours `$XDG_DATA_HOME`, `research-teach` names the reader gate, `advise` lists quote residue, and two slash-command forms that no longer exist are gone. The orchestrate skill calls `--batch` validate-then-write, not atomic.
 - **Frontmatter serializer is now lossless.** `parseScalar` un-escapes `\"` (the emit side already escaped it), ending the compounding quote-corruption every parse→serialize cycle used to add — automated by the PostToolUse hook. `[`-leading and comma-containing scalars are now quoted on emit so titles no longer round-trip into arrays.
 - **Body bytes are preserved.** Trailing-whitespace normalization now applies to frontmatter lines only, not the body — Markdown hard breaks and trailing-space-significant snippet code survive capture/verify/fix/hook writes.
 - **Freshness derives from confirming verifications only.** `unreachable`/`inconclusive` no longer reset the freshness clock; `last_verified` is computed from `confirmed`/`changed-trivially` results in one shared helper.
@@ -231,6 +233,7 @@ A bug-fix release closing gaps an adversarial review surfaced: documented behavi
 that did not hold, plus two paths that could mutate canonical vault data.
 
 ### Fixed
+- **Docs narrowed after a claims gate.** `AGENTS.md` and `docs/REFERENCE.md` say what the code says: the config pointer is written on the first `init` or `--set-default`, the Linux default honours `$XDG_DATA_HOME`, `research-teach` names the reader gate, `advise` lists quote residue, and two slash-command forms that no longer exist are gone. The orchestrate skill calls `--batch` validate-then-write, not atomic.
 - **`lint --fix` now normalizes via the CLI.** It was imported but never invoked, so `--fix` only rebuilt the manifest; it never stripped BOM/CRLF or re-serialized frontmatter.
 - **`obsidian --out` can no longer overwrite canonical entries.** A `--out` that escapes the vault, is the vault root, or targets an entry folder (e.g. `--out sources`) is refused.
 - **`export --out` can no longer write inside the vault**, preserving the read-only-on-the-vault guarantee.
@@ -274,6 +277,7 @@ guarantee; every new artifact is a regenerable cache, never a source of truth.
 - README: command surface synced (all 12 commands), added "Two ways to use it" (prose vs. command) and "Team use" sections, renamed Security → "Security & privacy".
 
 ### Fixed
+- **Docs narrowed after a claims gate.** `AGENTS.md` and `docs/REFERENCE.md` say what the code says: the config pointer is written on the first `init` or `--set-default`, the Linux default honours `$XDG_DATA_HOME`, `research-teach` names the reader gate, `advise` lists quote residue, and two slash-command forms that no longer exist are gone. The orchestrate skill calls `--batch` validate-then-write, not atomic.
 - **Hook path containment.** Replaced the unsafe `startsWith` vault-containment check with a resolved-path, separator-aware `isInsideVault` (rejects siblings like `<vault>-evil` and cross-drive paths); switched the hook to exec-form invocation.
 
 ### Security

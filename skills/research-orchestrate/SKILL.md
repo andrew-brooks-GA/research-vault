@@ -78,7 +78,7 @@ return { recon, created: result }
 
 ## 3. Degraded mode (no Workflow tool)
 
-Run the same lifecycle inline and sequentially: vault search → web search/fetch with an eager `capture --type source` per kept URL → walk §2.6 → write the batch plan JSON → `capture --batch` → `lint`. Conformance comes from the same checklist and the same atomic batch call; only the parallelism is lost. Write the synthesis body as the Plan step in §2 describes.
+Run the same lifecycle inline and sequentially: vault search → web search/fetch with an eager `capture --type source` per kept URL → walk §2.6 → write the batch plan JSON → `capture --batch` → `lint`. Conformance comes from the same checklist and the same validate-then-write batch call; only the parallelism is lost. Write the synthesis body as the Plan step in §2 describes.
 
 ## 4. Close out
 
