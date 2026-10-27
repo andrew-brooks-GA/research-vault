@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Inventory drift** (spec 14 D6). `skills/research-capture/SKILL.md` lists `tool-output` among the authority bases; step 1 of `vault-template/meta/prompt-templates/verify-entry.md` computes `last_verified` from `confirmed` and `changed-trivially` verifications only, as `freshness-policy.md` and the code do; `agents/claims-reviewer.md` keys on the lowercase `changed units:` line the gate prints and names `all` as the unit of a draft without data-blocks; `freshness-policy.md` §3 gives `stable` its 1095-day window instead of "trust unless cued", matching `refresh_after_days`, and verify-entry step 2 reads `stable >1095d`; `research-capture` calls `--batch` validate-then-write, not atomic, since a write failure mid-plan keeps the entries already written; `schema/project-config.schema.json`, which nothing read, is gone; CI runs `npm run lint:self`. Each fix has a test.
 
+- **`verify --stale`** printed `Infinityd` (and `null` under `--json`) for an entry with no confirming verification; it now reports `never verified`.
+
 ### Upgrading an existing vault
 
 **Spec 14 D6**

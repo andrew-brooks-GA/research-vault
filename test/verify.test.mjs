@@ -144,7 +144,8 @@ test('a source whose only log entry is non-confirming has last_verified null and
   writeSource(dir, '2026-01-01-nc', { verifications: [{ date: '2027-01-01', method: 'refetched-source', result: 'unreachable' }] });
   const row = buildManifest(dir).entries.find(x => x.id === '2026-01-01-nc');
   assert.equal(row.last_verified, null, 'no confirming verification → null');
-  assert.ok(listStale(dir, { now: '2027-06-01', repoRoot: process.cwd() }).some(s => s.id === '2026-01-01-nc'), 'null last_verified is treated as Infinity → stale');
+  const hit = listStale(dir, { now: '2027-06-01', repoRoot: process.cwd() }).find(s => s.id === '2026-01-01-nc');
+  assert.equal(hit?.reason, 'never verified', 'null last_verified is stale with a reason, not an Infinity age');
 });
 
 test('freshness boundary: at exactly the window is NOT stale (strict >), one day past is', () => {

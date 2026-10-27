@@ -6,13 +6,13 @@ import { buildManifest } from './manifest.mjs';
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 // null = volatility unknown/absent, not assessable; false = fresh; object = stale
-// (with `reason` for always-re-check volatility, `ageDays` otherwise).
+// (with `reason` for always-re-check volatility or no confirming verification, `ageDays` otherwise).
 export function staleness(entry, schema, now) {
   const win = schema.taxonomy.volatility[entry.volatility]?.refresh_after_days;
   if (win === undefined) return null;
   if (win === 0) return { reason: 'always re-check' };
-  const last = entry.last_verified ? new Date(entry.last_verified) : null;
-  const ageDays = last ? (now - last) / 86400000 : Infinity;
+  if (!entry.last_verified) return { reason: 'never verified' };
+  const ageDays = (now - new Date(entry.last_verified)) / 86400000;
   return ageDays > win ? { ageDays: Math.round(ageDays) } : false;
 }
 
