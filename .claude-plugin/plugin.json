@@ -1,6 +1,6 @@
 {
   "name": "research-vault",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "A freshness-governed research knowledge base for coding agents.",
   "author": { "name": "Andrew Brooks" },
   "homepage": "https://github.com/andrew-brooks-GA/research-vault",
