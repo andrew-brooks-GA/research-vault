@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Spec 14 (`docs/specs/14-deps-graph.md`): a derived dependency graph for the repo, computed from the working tree on every run, with a hand-declared coupling table, a test that fails CI on a broken reference, an AGENTS.md rule and a project-scope PostToolUse hook; plus the drift fixes the 2026-10-27 inventory found. The file is force-added, since `docs/specs/` is otherwise ignored.
+
 ## [0.6.0] - 2026-10-27
 
 ### Added
