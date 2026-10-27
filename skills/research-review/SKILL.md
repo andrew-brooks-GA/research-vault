@@ -30,7 +30,7 @@ For each load-bearing statement, search the vault and decide:
 The durable outputs are these entries. Walk the four-prompt capture plan (`AGENTS.md` §2.6) before writing any synthesis of the audit.
 
 ## 4. Output is a view, not the artifact
-Produce a per-document audit summary — the coverage matrix plus the new `question`/`source` ids — as a **report you hand back**, not a file that becomes the only record. Reports are views; the vault entries are the system of record. A 2000-word audit document with no captured entries is the failure mode this skill exists to prevent.
+Produce a per-document audit summary — the coverage matrix plus the new `question`/`source` ids — as a **report you hand back**, not a file that becomes the only record. Reports are views; the vault entries are the system of record. A 2000-word audit document with no captured entries is the failure mode this skill exists to prevent. Open with what the audit found and what to fix first, then the coverage matrix.
 
 ## What this skill is not
 Not the single-citation write path (`research-authoring`) and not question-answering (`research-vault-usage`). It owns the backward pass: an existing corpus measured against the vault, claims and assumptions included.

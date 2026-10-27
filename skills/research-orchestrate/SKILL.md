@@ -67,8 +67,8 @@ const verdicts = (await parallel(claims.map(k => () =>
 phase('Plan')
 const plan = await agent(`You are walking AGENTS.md §2.6 for: ${args.question}.
 Verified claims: ${JSON.stringify(verdicts)}. Source extractions: ${JSON.stringify(extractions)}.
-Walk the four prompts: (1) notes distilling load-bearing sources, (2) questions for every unresolved ambiguity (including every unverified claim), (3) experiments for any empirical run cited as evidence, (4) snippets for reusable fragments. Then ONE short synthesis (cross-source claims + recommendation, with summary and confidence) whose contributingIds reference the notes (and other entries) by their deterministic ids (${args.today}-<slug>). Sources already exist in the vault — reference, do not recreate.
-Every entry MUST carry a body field with real prose. Notes: load-bearing claims + caveats + how-I'd-use. Snippets: usage context + fenced code block + caveats. Questions: why it matters + what would answer it. Synthesis: chain-of-verification claims per research-vault-usage §4. summary stays ONE sentence — the substance lives in body. Return planJson: a JSON array string for capture --batch using camelCase capture opts keys (type, title, body, sources, contributingIds, topics, summary, confidence, state, question, language, tested, synthesisBasis...).`, { phase: 'Plan', schema: PLAN })
+Walk the four prompts: (1) notes distilling load-bearing sources, (2) questions for every unresolved ambiguity (including every unverified claim), (3) experiments for any empirical run cited as evidence, (4) snippets for reusable fragments. Then ONE synthesis (cross-source claims + recommendation, with summary and confidence) whose contributingIds reference the notes (and other entries) by their deterministic ids (${args.today}-<slug>). Sources already exist in the vault — reference, do not recreate.
+Every entry MUST carry a body field with real prose. Notes: load-bearing claims + caveats + how-I'd-use. Snippets: usage context + fenced code block + caveats. Questions: why it matters + what would answer it. Synthesis: written for a colleague who reads it once, cold, to decide what to do: the answer first, then the reasoning in paragraphs with each checked claim (research-vault-usage §4) as a sentence, then the recommendation; detail stays in the notes. summary stays ONE sentence — the substance lives in body. Return planJson: a JSON array string for capture --batch using camelCase capture opts keys (type, title, body, sources, contributingIds, topics, summary, confidence, state, question, language, tested, synthesisBasis...).`, { phase: 'Plan', schema: PLAN })
 
 phase('Persist+Gate')
 const result = await agent(`Write this JSON to a temp file and run: ${CLI}capture --batch <file>. If it returns errors, fix the plan per the per-entry report and retry (max 3 attempts). Then run ${CLI}lint. If WARN_SYNTHESIS_NO_NOTE_COVERAGE or WARN_SYNTHESIS_MONOLITHIC fires, either decompose further (more notes) and re-batch, or declare synthesis_basis: primary-rollup only if honestly a factual rollup. Return the final created/skipped ids and lint status.
@@ -78,12 +78,12 @@ return { recon, created: result }
 
 ## 3. Degraded mode (no Workflow tool)
 
-Run the same lifecycle inline and sequentially: vault search → web search/fetch with an eager `capture --type source` per kept URL → walk §2.6 → write the batch plan JSON → `capture --batch` → `lint`. Conformance comes from the same checklist and the same atomic batch call; only the parallelism is lost.
+Run the same lifecycle inline and sequentially: vault search → web search/fetch with an eager `capture --type source` per kept URL → walk §2.6 → write the batch plan JSON → `capture --batch` → `lint`. Conformance comes from the same checklist and the same atomic batch call; only the parallelism is lost. Write the synthesis body as the Plan step in §2 describes.
 
 ## 4. Close out
 
 1. Run `research-vault lint` — clean, or explain every warning.
-2. Run the `research-claims-gate` skill on the synthesis entry file (evidence derives from its `contributing_ids` and `sources`), then present it (short: claims + recommendation, `confidence`, open `question` ids).
+2. Run the `research-claims-gate` skill on the synthesis entry file (evidence derives from its `contributing_ids` and `sources`), then present it to the user the way you would tell a colleague: the answer, why, how confident, and what is still open (question ids).
 3. List every entry created (from the batch JSON result) and anything skipped as a duplicate.
 4. Offline or fetch-blocked? Do not fabricate: answer from the vault, record what could not be verified as open `question` entries, and say so.
 

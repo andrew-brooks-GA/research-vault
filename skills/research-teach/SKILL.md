@@ -62,7 +62,8 @@ Plan before you probe. Write `evidence/NNNN/PLAN.md` first, in the five parts `L
 Pedagogy, in brief. Read the full source skill if you want the reasoning.
 
 - **Zone of proximal development.** Read the learning records and the mission; teach the most relevant next thing that is challenging but reachable. If the learner names the thing, teach that.
-- **Short.** Working memory is small. One tangible win, completable fast, tied to the mission.
+- **Talk to the learner.** Write the model, fact and example blocks to the learner MISSION.md describes, the way you would explain them in person. The lesson-reader gate never sees MISSION.md; it reads the page as someone who knows only what the page says they know, so name the Floor terms and tools the page relies on.
+- **Short in scope.** Working memory is small. One tangible win, completable fast, tied to the mission, explained in full sentences.
 - **One new tool per lesson.** The probe and the step run only tools in the mission's `## Known tools` or taught by an earlier lesson (`data-teaches`); `teach lint` enforces it. A tool the mission needs (istioctl, a debugger, a profiler) gets its own lesson before its output is used as evidence. The same holds for vocabulary: a term the learner has not met is defined in the sentence that first uses it, and a lesson introduces one such set, not several.
 - **Knowledge first, then skill.** Difficulty is the enemy of acquisition and the tool of retention. Teach the fact plainly, then make the learner retrieve it: quizzes with immediate feedback, a real-world step with an observable result.
 - **Storage over fluency.** Retrieval practice, spacing, interleaving (skills only). A learner who feels fluent after reading has not learned yet; the quiz is where learning happens.
