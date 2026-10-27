@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -168,4 +168,106 @@ test('CLI reports a URL found only in code as skipped and --check still exits 0'
     rmSync(vault, { recursive: true, force: true });
     rmSync(repo, { recursive: true, force: true });
   }
+});
+
+// ---- code links (spec 15) ----
+import { codeRepo } from './helpers.mjs';
+import { parseProjectConfig } from '../bin/lib/projectconfig.mjs';
+import { loadSchema } from '../bin/lib/schema.mjs';
+
+const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'research-vault.mjs');
+const cli = (cwd, ...args) => spawnSync(process.execPath, [BIN, 'check', ...args, '--now', '2026-06-01'], { cwd, encoding: 'utf8', env: { ...process.env, RESEARCH_VAULT_PATH: '/nonexistent-env-vault' } });
+const C = [
+  '-- per 2026-01-01-fx-doc@dep=1.2.3', 'function ns.pinned()', 'end', '',
+  '-- per 2026-01-01-fx-doc@dep=1.0.0', 'function ns.behind()', 'end', '',
+  '-- per 2026-01-01-fx-doc@other=1', 'function ns.nokey()', 'end', '',
+  '-- per 2026-01-01-fx-gone', 'function ns.gone()', 'end', '',
+  '-- per 2026-01-01-old', 'function ns.old()', 'end', '',
+  '-- per 2026-01-01-old@dep=1.2.3', 'function ns.oldPinned()', 'end', '',
+  '-- per 2026-01-01-fx-doc', '  local function nested()', '  end', '',
+].join('\n');
+
+test('check with a code block reads code.globs for links, prints code rows and the versions footer, and --check exits 1', () => {
+  const { root } = codeRepo();
+  const r = cli(root, '--check');
+  assert.equal(r.stdout, [
+    'UNCOVERED src/b.lua:1 ns.g  2026-01-01-fx-missing',
+    'check: 3 file(s); 2 ok, 0 stale, 1 uncovered, 0 unattached, 2 code link(s)',
+    'versions: dep=1.2.3',
+  ].join('\n') + '\n', r.stderr);
+  assert.equal(r.status, 1);
+  // A code file named positionally is still a code file, never prose.
+  assert.equal(cli(root, 'src/a.lua').stdout, 'check: 1 file(s); 1 ok, 0 stale, 0 uncovered, 0 unattached, 1 code link(s)\nversions: dep=1.2.3\n');
+});
+
+test('check reports every code status with its reason, in text and JSON', () => {
+  const { root } = codeRepo();
+  writeFileSync(join(root, 'src', 'c.lua'), C);
+  const r = cli(root, 'src/c.lua', '--check');
+  assert.equal(r.stdout, [
+    'STALE     src/c.lua:5 ns.behind  2026-01-01-fx-doc  (dep 1.0.0 -> 1.2.3)',
+    'STALE     src/c.lua:9 ns.nokey  2026-01-01-fx-doc  (no key other in code.versions)',
+    'STALE     src/c.lua:13 ns.gone  2026-01-01-fx-gone  (superseded by 2026-01-01-fx-doc)',
+    'STALE     src/c.lua:17 ns.old  2026-01-01-old  (time)',
+    'UNATTACHED src/c.lua:25  2026-01-01-fx-doc',
+    'check: 1 file(s); 2 ok, 4 stale, 0 uncovered, 1 unattached, 7 code link(s)',
+    'versions: dep=1.2.3',
+  ].join('\n') + '\n', r.stderr);
+  assert.equal(r.status, 1);
+  const j = JSON.parse(cli(root, 'src/c.lua', '--json').stdout);
+  assert.deepEqual(j.summary, { files: 1, ok: 2, stale: 4, uncovered: 0, unattached: 1, code: 7 });
+  assert.deepEqual(j.versions, { dep: '1.2.3' });
+  assert.deepEqual(j.rows[1], { file: 'src/c.lua', type: 'id', value: '2026-01-01-fx-doc', symbol: 'ns.behind', line: 5, key: 'dep', version: '1.0.0', id: '2026-01-01-fx-doc', volatility: 'slow', status: 'stale', reason: 'dep 1.0.0 -> 1.2.3' });
+  assert.deepEqual(j.rows[5].status, 'ok', 'a pin selects the version rule over the time rule');
+  const md = cli(root, 'src/c.lua', '--report').stdout;
+  assert.match(md, /^\| src\/c\.lua:5 ns\.behind \| 2026-01-01-fx-doc \| stale \| dep 1\.0\.0 -> 1\.2\.3 \|$/m);
+  assert.match(md, /\nversions: dep=1\.2\.3\n$/);
+});
+
+test('check exits 2 on a versions file that is missing or unmatched and on a glob with no language row', () => {
+  const { root } = codeRepo();
+  writeFileSync(join(root, 'deps.txt'), 'nothing here\n');
+  let r = cli(root);
+  assert.equal(r.status, 2);
+  assert.equal(r.stderr, 'error: versions.dep: pattern matched nothing in deps.txt\n');
+  rmSync(join(root, 'deps.txt'));
+  r = cli(root);
+  assert.equal(r.status, 2);
+  assert.equal(r.stderr, 'error: versions.dep: cannot read deps.txt\n');
+  writeFileSync(join(root, 'deps.txt'), 'dep 1.2.3\n');
+  const cfg = JSON.parse(readFileSync(join(root, '.research-vault.json'), 'utf8'));
+  cfg.code.globs.push('src/**/*.py');
+  writeFileSync(join(root, '.research-vault.json'), JSON.stringify(cfg));
+  writeFileSync(join(root, 'src', 'p.py'), '# per 2026-01-01-fx-doc\ndef f():\n    pass\n');
+  r = cli(root);
+  assert.equal(r.status, 2);
+  assert.equal(r.stderr, 'error: no language for .py in code.globs; add code.languages[".py"] = { comment, decl }\n');
+  // The project supplies the row and the engine runs on it unchanged (D0).
+  cfg.code.languages['.py'] = { comment: '^\\s*#(.*)$', decl: '^(?:async\\s+)?def\\s+(\\w+)|^class\\s+(\\w+)|^(\\w+)\\s*=(?!=)' };
+  writeFileSync(join(root, '.research-vault.json'), JSON.stringify(cfg));
+  writeFileSync(join(root, 'src', 'p.py'), '# per 2026-01-01-fx-doc@dep=1.0.0\ndef f():\n    pass\n');
+  r = cli(root, 'src/p.py');
+  assert.equal(r.stdout, 'STALE     src/p.py:1 f  2026-01-01-fx-doc  (dep 1.0.0 -> 1.2.3)\ncheck: 1 file(s); 0 ok, 1 stale, 0 uncovered, 0 unattached, 1 code link(s)\nversions: dep=1.2.3\n');
+});
+
+// Absent state (spec 15 D7): without a code block the .lua files are not read unless named, named
+// positionally they are prose, and the output is byte for byte today's.
+test('check without a code block runs today\'s path on the same fixture', () => {
+  const { root } = codeRepo({ code: false });
+  assert.equal(cli(root).stdout, 'check: 1 file(s); 1 ok, 0 stale, 0 uncovered\n');
+  const r = cli(root, 'src/a.lua', 'src/b.lua', '--check');
+  assert.equal(r.stdout, 'UNCOVERED src/b.lua  2026-01-01-fx-missing\ncheck: 2 file(s); 1 ok, 0 stale, 1 uncovered\n');
+  assert.equal(r.status, 1);
+  const j = JSON.parse(cli(root, 'src/a.lua', 'src/b.lua', '--json').stdout);
+  delete j.generated;
+  assert.deepEqual(j, {
+    summary: { files: 2, ok: 1, stale: 0, uncovered: 1 },
+    rows: [
+      { file: 'src/a.lua', type: 'id', value: '2026-01-01-fx-doc', status: 'ok', id: '2026-01-01-fx-doc', volatility: 'slow' },
+      { file: 'src/b.lua', type: 'id', value: '2026-01-01-fx-missing', status: 'uncovered' },
+    ],
+    skipped: [],
+  });
+  assert.deepEqual(Object.keys(parseProjectConfig(readFileSync(join(root, '.research-vault.json'), 'utf8'), loadSchema(process.cwd()))),
+    ['vault', 'defaults', 'references', 'gates', 'capture', 'taxonomyExtensions']);
 });

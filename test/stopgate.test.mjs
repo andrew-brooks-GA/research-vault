@@ -110,3 +110,59 @@ test('CLI fails open with a systemMessage when the binding file is malformed', (
   assert.equal(r.err, '');
   assert.match(JSON.parse(r.out).systemMessage, /^research-vault: stop-gate skipped \(.+\)$/);
 });
+
+// ---- code links (spec 15 D3, D4) ----
+import { readFileSync } from 'node:fs';
+import { codeRepo } from './helpers.mjs';
+import { reasonLine } from '../hooks/stop-gate.mjs';
+import { loadSchema } from '../bin/lib/schema.mjs';
+import { parseProjectConfig } from '../bin/lib/projectconfig.mjs';
+
+const parsed = (root) => parseProjectConfig(readFileSync(join(root, '.research-vault.json'), 'utf8'), loadSchema(process.cwd()));
+
+test('missingGates lists linked code files without a verdict, then the links a changed versions file unpins', () => {
+  const { root, vault } = codeRepo();
+  const cfg = parsed(root);
+  assert.deepEqual(missingGates(root, vault, cfg, 0).map((m) => m.file), ['src/a.lua', 'src/b.lua']);
+  recordVerdict(root, join(root, 'src/a.lua'), 'MERIT');
+  recordVerdict(root, join(root, 'src/b.lua'), 'PASS');
+  assert.deepEqual(missingGates(root, vault, cfg, 0), []);
+  writeFileSync(join(root, 'deps.txt'), 'dep 2.0.0\n');
+  assert.deepEqual(missingGates(root, vault, cfg, 0), [
+    { file: 'src/b.lua', line: 1, symbol: 'ns.g', id: '2026-01-01-fx-missing', key: 'dep', version: '1.2.3', declared: '2.0.0' },
+  ]);
+  assert.equal(reasonLine(missingGates(root, vault, cfg, 0)[0]),
+    '- src/b.lua:1 ns.g: pinned dep=1.2.3, declared 2.0.0; re-verify 2026-01-01-fx-missing and move the pin, or capture the new version and replace the id');
+  const old = new Date(Date.now() - 86400000);
+  utimesSync(join(root, 'deps.txt'), old, old);
+  assert.deepEqual(missingGates(root, vault, cfg, Date.now() - 3600000), [], 'a versions file untouched this session blocks nothing');
+});
+
+test('CLI blocks with the pin line after a versions bump', () => {
+  const { root } = codeRepo();
+  recordVerdict(root, join(root, 'src/a.lua'), 'MERIT');
+  recordVerdict(root, join(root, 'src/b.lua'), 'PASS');
+  const transcript = join(root, 't.jsonl');
+  writeFileSync(transcript, '');
+  writeFileSync(join(root, 'deps.txt'), 'dep 2.0.0\n');
+  const now = new Date(Date.now() + 1000);
+  utimesSync(join(root, 'deps.txt'), now, now);
+  const r = hook({ stop_hook_active: false, transcript_path: transcript, cwd: root });
+  assert.equal(r.code, 0, r.err);
+  const out = JSON.parse(r.out);
+  assert.equal(out.decision, 'block');
+  assert.match(out.reason, /^- src\/b\.lua:1 ns\.g: pinned dep=1\.2\.3, declared 2\.0\.0; re-verify 2026-01-01-fx-missing and move the pin, or capture the new version and replace the id$/m);
+  assert.doesNotMatch(out.reason, /a\.lua/);
+});
+
+// Absent state (spec 15 D7): a .lua file changed this session is not gated without a code block.
+test('CLI gives no decision for a changed .lua file in a repo without a code block', () => {
+  const { root } = codeRepo({ code: false });
+  const transcript = join(root, 't.jsonl');
+  writeFileSync(transcript, '');
+  const now = new Date(Date.now() + 1000);
+  utimesSync(join(root, 'src', 'a.lua'), now, now);
+  const r = hook({ stop_hook_active: false, transcript_path: transcript, cwd: root });
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, '');
+});

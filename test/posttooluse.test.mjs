@@ -62,3 +62,52 @@ test('CLI emits PostToolUse additionalContext for a doc edit and nothing for a v
   assert.equal(other.status, 0, other.stderr);
   assert.equal(other.stdout, '');
 });
+
+// ---- code links (spec 15 D3) ----
+import { codeRepo } from './helpers.mjs';
+import { readFileSync } from 'node:fs';
+import { loadSchema } from '../bin/lib/schema.mjs';
+import { parseProjectConfig } from '../bin/lib/projectconfig.mjs';
+
+const parsed = (root) => parseProjectConfig(readFileSync(join(root, '.research-vault.json'), 'utf8'), loadSchema(process.cwd()));
+
+test('citationWarnings reports code rows for a code.globs file and the unpinned links for a versions file', () => {
+  const { root, vault } = codeRepo();
+  const cfg = parsed(root);
+  assert.equal(citationWarnings(join(root, 'src', 'b.lua'), root, vault, cfg, NOW), [
+    'research-vault: UNCOVERED 2026-01-01-fx-missing in src/b.lua:1 ns.g',
+    'capture it (or verify the entry) before the claims gate.',
+  ].join('\n'));
+  assert.equal(citationWarnings(join(root, 'deps.txt'), root, vault, cfg, NOW), '', 'nothing to say while the pins match');
+  writeFileSync(join(root, 'src', 'c.lua'), '-- per 2026-01-01-fx-doc@dep=1.0.0\nfunction ns.behind()\nend\n\n-- per 2026-01-01-fx-doc\n  local nested = 1\n');
+  assert.equal(citationWarnings(join(root, 'src', 'c.lua'), root, vault, cfg, NOW), [
+    'research-vault: STALE 2026-01-01-fx-doc in src/c.lua:1 ns.behind  (dep 1.0.0 -> 1.2.3)',
+    'research-vault: UNATTACHED 2026-01-01-fx-doc in src/c.lua:5',
+    'capture it (or verify the entry) before the claims gate.',
+  ].join('\n'));
+  assert.equal(citationWarnings(join(root, 'src', 'a.lua'), root, vault, cfg, NOW), '', 'an ok link says nothing');
+  // A versions-file edit names every link whose pin differs from the version now declared.
+  writeFileSync(join(root, 'deps.txt'), 'dep 2.0.0\n');
+  assert.equal(citationWarnings(join(root, 'deps.txt'), root, vault, cfg, NOW), [
+    'research-vault: STALE 2026-01-01-fx-missing in src/b.lua:1 ns.g  (dep 1.2.3 -> 2.0.0)',
+    'research-vault: STALE 2026-01-01-fx-doc in src/c.lua:1 ns.behind  (dep 1.0.0 -> 2.0.0)',
+    'capture it (or verify the entry) before the claims gate.',
+  ].join('\n'));
+});
+
+test('CLI emits additionalContext for a versions-file edit in a repo with a code block', () => {
+  const { root } = codeRepo();
+  writeFileSync(join(root, 'deps.txt'), 'dep 2.0.0\n');
+  const r = spawnSync(process.execPath, [HOOK], { cwd: root, input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: join(root, 'deps.txt') }, cwd: root }), encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /^research-vault: STALE 2026-01-01-fx-missing in src\/b\.lua:1 ns\.g {2}\(dep 1\.2\.3 -> 2\.0\.0\)$/m);
+});
+
+// Absent state (spec 15 D7): without a code block a .lua file is neither referenced nor gated.
+test('citationWarnings and the CLI are silent for a .lua edit in a repo without a code block', () => {
+  const { root, vault } = codeRepo({ code: false });
+  assert.equal(citationWarnings(join(root, 'src', 'a.lua'), root, vault, parsed(root), NOW), '');
+  const r = spawnSync(process.execPath, [HOOK], { cwd: root, input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: join(root, 'src', 'b.lua') }, cwd: root }), encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, '');
+});

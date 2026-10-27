@@ -84,3 +84,13 @@ test('teach skill names teach next, PLAN.md, teach lint, the assets copy, teach 
   const s5 = s.slice(s.indexOf('## 5.'), s.indexOf('## 6.'));
   assert.ok(s5.indexOf('teach lint') >= 0 && s5.indexOf('teach lint') < s5.indexOf('`research-claims-gate` skill'), 'lint before gate in §5');
 });
+
+test('research-authoring has a Code section whose first sentence states the code block condition (spec 15 D5)', () => {
+  const s = read('skills/research-authoring/SKILL.md');
+  const section = s.slice(s.indexOf('## Code\n'));
+  const first = section.split('\n\n')[1].split('. ')[0];
+  assert.match(first, /applies only when the binding has a `code` block and the file you are editing matches its `code\.globs`/);
+  for (const x of ['<id>@<key>=<version>', 'versions:', 'research-vault check', '--superseded-by', 'Never move a pin']) assert.ok(section.includes(x), `Code section lacks ${x}`);
+  assert.match(read('agents/claims-reviewer.md'), /A `sym:<name>` unit is a code symbol/);
+  assert.match(read('agents/claims-reviewer.md'), /`unit sym:<name> <file>:<start>-<end> <status>`/);
+});

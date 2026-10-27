@@ -333,3 +333,91 @@ test('unitHashes over the shared parseBlocks keeps the hashes ledger rows were k
     followup: '0d56143cfcdc326c0c4dbc65b9615fc233150b86346e096865780ef9e2dcf81e',
   });
 });
+
+// ---- code links (spec 15 D4) ----
+import { codeRepo, LUA_A } from './helpers.mjs';
+import { codeLang } from '../bin/lib/gate.mjs';
+import { LANGS } from '../bin/lib/codelinks.mjs';
+import { parseProjectConfig } from '../bin/lib/projectconfig.mjs';
+import { loadSchema } from '../bin/lib/schema.mjs';
+
+function codeCli(cwd, ...args) {
+  const r = spawnSync(process.execPath, [CLI, 'gate', ...args], { cwd, encoding: 'utf8', env: { ...process.env, RESEARCH_VAULT_PATH: '/nonexistent-env-vault' } });
+  return { code: r.status, out: r.stdout, err: r.stderr };
+}
+
+test('a linked declaration is a sym: unit: the ledger keys it, an edit outside it passes by unit, a move keeps it', () => {
+  const { root } = codeRepo();
+  const a = join(root, 'src', 'a.lua');
+  assert.deepEqual(codeLang(root, a).lang, LANGS['.lua']);
+  assert.equal(codeLang(root, join(root, 'docs', 'd.md')), null);
+  assert.deepEqual(changedUnits(root, a), ['sym:f']);
+  assert.equal(gateStatus(root, a).verdict, null);
+  const row = recordVerdict(root, a, 'MERIT', 'in-game call not runnable here');
+  assert.deepEqual(Object.keys(row.units), ['sym:f']);
+  assert.equal(gateStatus(root, a).verdict, 'MERIT');
+  // An edit outside every unit (the file header) passes by unit; a body edit reopens the unit.
+  writeFileSync(a, LUA_A.replace('local _, ns = ...', 'local addon, ns = ...'));
+  assert.deepEqual(changedUnits(root, a), []);
+  assert.equal(gateStatus(root, a).verdict, 'MERIT (by unit)');
+  writeFileSync(a, LUA_A.replace('  return 1', '  return 2'));
+  assert.deepEqual(changedUnits(root, a), ['sym:f']);
+  assert.equal(gateStatus(root, a).verdict, null);
+  // Moving the whole block to the end of the file leaves its hash, and the verdict, in place.
+  const block = '-- per 2026-01-01-fx-doc\nlocal function f()\n  return 1\nend\n';
+  writeFileSync(a, LUA_A.replace(block, '') + 'function ns.other()\nend\n\n' + block);
+  assert.equal(gateStatus(root, a).verdict, 'MERIT (by unit)');
+  // A pin bump is not a change to the unit.
+  writeFileSync(a, LUA_A.replace('2026-01-01-fx-doc', '2026-01-01-fx-doc@dep=1.2.3'));
+  recordVerdict(root, a, 'PASS');
+  writeFileSync(a, LUA_A.replace('2026-01-01-fx-doc', '2026-01-01-fx-doc@dep=9'));
+  assert.equal(gateStatus(root, a).verdict, 'PASS (by unit)');
+});
+
+test('gatedFiles includes a code.globs file only when it has an attached link', () => {
+  const { root, vault, cfg } = codeRepo();
+  writeFileSync(join(root, 'src', 'plain.lua'), 'local x = 1\n');
+  writeFileSync(join(root, 'src', 'loose.lua'), '-- 2026-01-01-fx-doc\n  local function nested() end\n');
+  const parsed = parseProjectConfig(readFileSync(join(root, '.research-vault.json'), 'utf8'), loadSchema(process.cwd()));
+  assert.deepEqual(gatedFiles(root, vault, parsed), [join(root, 'src', 'a.lua'), join(root, 'src', 'b.lua')]);
+  assert.deepEqual(gatedFiles(root, vault, { ...cfg, code: undefined }), [], 'no code block, no code file gated');
+});
+
+test('CLI gate evidence --changed on a code file prints the entry lines, the changed sym: units and one unit line each', () => {
+  const { root } = codeRepo();
+  writeFileSync(join(root, 'src', 'c.lua'), [
+    '-- per 2026-01-01-fx-doc@dep=1.0.0', 'function ns.behind()', 'end', '',
+    '-- per 2026-01-01-fx-experiment', '-- and 2026-01-01-old', 'function ns.two()', '  return 1', 'end', '',
+    'function ns.plain()', 'end', '',
+  ].join('\n'));
+  const r = codeCli(root, 'evidence', 'src/c.lua', '--changed');
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, [
+    '2026-01-01-fx-doc [source, active]',
+    '2026-01-01-fx-experiment [experiment, active]',
+    '2026-01-01-old [note, active, STALE]',
+    'changed units: sym:ns.behind, sym:ns.two',
+    'unit sym:ns.behind src/c.lua:1-3 stale (dep 1.0.0 -> 1.2.3)',
+    'unit sym:ns.two src/c.lua:5-9 stale (time)',
+  ].join('\n') + '\n');
+  const rec = codeCli(root, 'record', 'src/c.lua', 'PASS');
+  assert.equal(rec.code, 0, rec.err);
+  const ledger = JSON.parse(readFileSync(join(root, LEDGER_FILENAME), 'utf8').trim());
+  assert.deepEqual(Object.keys(ledger.units), ['sym:ns.behind', 'sym:ns.two']);
+  assert.equal(codeCli(root, 'status', 'src/c.lua', '--check').code, 0);
+  const j = JSON.parse(codeCli(root, 'evidence', 'src/c.lua', '--json').out);
+  assert.deepEqual(j.units.map((u) => u.unit), ['sym:ns.behind', 'sym:ns.two']);
+});
+
+// Absent state (spec 15 D7): one argument is today's { all }; a .lua file in a repo without a code
+// block is one unit; evidence --changed on a markdown draft is today's output with no unit line.
+test('unitHashes and gate evidence without a code block are today\'s', () => {
+  assert.deepEqual(unitHashes(Buffer.from(LUA_A)), { all: '08a740866bb6fbb6fa7810b5f84c52a7904346fd5adb38391f979829afdf18d2' });
+  const { root } = codeRepo({ code: false });
+  assert.deepEqual(changedUnits(root, join(root, 'src', 'a.lua')), ['all']);
+  assert.equal(codeLang(root, join(root, 'src', 'a.lua')), null);
+  writeFileSync(join(root, 'docs', 'reply.md'), 'See 2026-01-01-fx-experiment and https://nowhere.example/x.\n');
+  const r = codeCli(root, 'evidence', 'docs/reply.md', '--changed');
+  assert.equal(r.out, '2026-01-01-fx-experiment [experiment, active]\nuncovered: https://nowhere.example/x\nchanged units: all\n');
+  assert.doesNotMatch(r.out, /^unit /m);
+});

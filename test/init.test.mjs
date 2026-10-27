@@ -55,3 +55,30 @@ test('refreshDocs refuses a non-vault target', () => {
   assert.equal(r.refreshed, false);
   assert.match(r.reason, /not an existing vault/);
 });
+
+// Spec 15 D7: an existing vault sees nothing from code links. An entry carrying a field the schema does
+// not know survives refreshDocs and lint --check byte for byte, and lint stays clean.
+import { createHash } from 'node:crypto';
+import { readdirSync } from 'node:fs';
+import { put } from './helpers.mjs';
+import { lintAndReport } from '../bin/commands/lint.mjs';
+import { ENTRY_FOLDERS } from '../bin/lib/fsutil.mjs';
+
+test('refreshDocs and lint --check leave every entry of an existing vault unchanged, unknown field included', () => {
+  const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');
+  runInit({ vaultPath: dir });
+  const id = put(dir, 'source', '2026-01-01-keep', { source_type: 'article', source_url: 'https://e.com/keep' });
+  const entry = join(dir, 'sources', `${id}.md`);
+  writeFileSync(entry, readFileSync(entry, 'utf8').replace('\n---\n', '\nrecheck: version-change\n---\n'));
+  assert.match(readFileSync(entry, 'utf8'), /^recheck: version-change$/m);
+  lintAndReport(dir); // rebuild the manifest after the write, as lint does
+  const hashes = () => Object.fromEntries(ENTRY_FOLDERS.flatMap((f) => readdirSync(join(dir, f), { recursive: true })
+    .filter((n) => n.endsWith('.md')).map((n) => [`${f}/${n}`, createHash('sha256').update(readFileSync(join(dir, f, n))).digest('hex')])));
+  const before = hashes();
+  assert.ok(Object.keys(before).includes(`sources/${id}.md`));
+  assert.equal(refreshDocs({ vaultPath: dir }).refreshed, true);
+  const { violations } = lintAndReport(dir, { check: true });
+  assert.deepEqual(violations, []);
+  assert.deepEqual(hashes(), before);
+  assert.match(readFileSync(entry, 'utf8'), /^recheck: version-change$/m);
+});
