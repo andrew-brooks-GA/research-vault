@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **Maintainer-only docs left the repo.** `docs/specs/` (the numbered design rounds), `docs/EVALUATION.md` with its `evaluation-template.json`, and the `docs/img/` placeholder are no longer tracked; they served the maintainer, not a user of the plugin. `docs/specs/` is gitignored so a local copy can stay.
+
 ### Added
 - **Floor, path and concept cap.** `MISSION.md` gains `## Floor` with `### Known tools`, `### Known terms` and `### New to me` (the old `## Known tools` heading still parses); `PATH.md` (`PATH-FORMAT.md`) plans the lessons one line each with `terms:`, `tool:`, `after:` and, once built, `lesson:`; `teach next` prints the first unbuilt line as `path:`. The 300-word fact cap is gone. A lesson declares at most three `data-introduces` terms, each in a `<dfn>`; `teach lint` reports `LESSON_TERM_NOT_INTRODUCED` when a tracked term (Floor "New to me" plus every lesson's `data-introduces`) appears in a lesson's prose before the Floor or an earlier lesson allows it, `LESSON_INTRODUCES_TOO_MANY`, `LESSON_DFN_MISSING`, `LESSON_PATH_MISMATCH` when a built lesson disagrees with its path line, and warns `WARN_PATH_MISSING`.
 - **The `model` block.** Required in a lesson, before `fact`: a bridge from a Floor term, a `<figure>` diagram and how the parts relate. `LESSON_MODEL_NO_FIGURE` without a figure (or `data-no-figure`), `LESSON_CLAIM_UNCITED` without a citation in the block, and the warning `WARN_MODEL_LAB_ONLY` when it cites only experiment or snippet entries. The skill's interview now asks scope first, then only the terms and tools that scope needs, and captures the concept sources for every new term before the first lesson.

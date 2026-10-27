@@ -28,7 +28,7 @@ export function put(dir, type, id, extra = {}, body = `# ${id}\n`) {
 const ver = (date) => [{ date, by_type: 'human', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }];
 const LONG = 'The fixture function reads an integer and prints a value. '.repeat(5);
 
-// Claims-gate fixture vault (docs/EVALUATION.md "Claims gate"): the ids the gate fixtures
+// Claims-gate fixture vault: the ids the gate fixtures
 // cite, a snippet for `gate evidence --extra`, and one stale note. Returns the temp path.
 export function fixtureVault() {
   const dir = tmpVault('rv-gate-vault-');

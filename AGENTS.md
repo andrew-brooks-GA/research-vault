@@ -13,5 +13,4 @@ This repo is the research-vault plugin: a zero-dependency Node 22+ CLI (`bin/`),
 
 - `schema/AGENTS.golden.md` is generated from `schema/` by `bin/lib/agentsmd.mjs`. Never edit it by hand; change the schema or the generator and regenerate it (the drift script prints the command).
 - Every change gets a line under `## [Unreleased]` in `CHANGELOG.md`.
-- Specs live in `docs/specs/`, numbered, one per round of work; `docs/specs/README.md` indexes them.
 - ESM only, no dependencies, no classes. Keep a change small and in the style of the code around it.

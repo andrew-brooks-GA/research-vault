@@ -166,7 +166,6 @@ A vault is a folder of Markdown, so a shared team vault is one kept in a git rep
 - **Lint is the guarantee, not the hook.** Correctness lives in `lint`, which runs anywhere on any writer. The plugin's three Claude Code hooks (a post-edit lint-fix, a session-start summary, and a pre-web-fetch vault lookup that hands matching entries to the model before it searches) are conveniences.
 - **Everything agent-facing is generated.** `AGENTS.md` and each vault's `taxonomy.json` come from the schema at `init`; CI checks the generator against `schema/AGENTS.golden.md`.
 - **Orchestration is a reference implementation with a contract.** `research-orchestrate` drives vault-first research with eager source capture and a batch for the distilled layers; other orchestrators compose the same way. See [ORCHESTRATOR-INTEGRATION.md](ORCHESTRATOR-INTEGRATION.md).
-- **Graph work** is specified in [specs/](specs/README.md) and measured by [EVALUATION.md](EVALUATION.md).
 - **Migrating existing notes?** See [MIGRATION.md](MIGRATION.md).
 
 ## Development
