@@ -5,7 +5,8 @@ import { resolveVault } from '../lib/resolve.mjs';
 import { findProjectConfig } from '../lib/projectconfig.mjs';
 import { isInsideVault } from '../lib/containment.mjs';
 import { csvList } from '../lib/args.mjs';
-import { VERDICTS, recordVerdict, gateStatus, evidenceFor, renderEvidence, changedUnits } from '../lib/gate.mjs';
+import { VERDICTS, recordVerdict, gateStatus, evidenceFor, renderEvidence, changedUnits, codeLang, ledgerKey } from '../lib/gate.mjs';
+import { readVersions } from '../lib/codelinks.mjs';
 
 const USAGE = `usage: research-vault gate evidence <draft> [--extra ids] [--changed] [--json] | changed <draft> | record <file> <${VERDICTS.join('|')}> [note] | status <file> [--check]`;
 
@@ -28,9 +29,17 @@ export async function run(args) {
 
   if (sub === 'evidence') {
     const extra = csvList(args.extra);
-    const r = evidenceFor(abs, vaultPath, { extra });
+    const c = codeLang(repoRoot, abs);
+    const r = evidenceFor(abs, vaultPath, { extra, code: c && { lang: c.lang, versions: readVersions(c.cfg, repoRoot) } });
     if (args.changed) r.changed = changedUnits(repoRoot, abs);
-    process.stdout.write(args.json ? JSON.stringify(r, null, 2) + '\n' : renderEvidence(r) + (args.changed ? `changed units: ${r.changed.join(', ') || 'none'}\n` : ''));
+    if (args.json) { process.stdout.write(JSON.stringify(r, null, 2) + '\n'); return 0; }
+    let out = renderEvidence(r);
+    if (args.changed) {
+      out += `changed units: ${r.changed.join(', ') || 'none'}\n`;
+      // One line per changed code unit: its range and the worst status of its links, for the reviewer.
+      for (const u of r.units ?? []) if (r.changed.includes(u.unit)) out += `unit ${u.unit} ${ledgerKey(repoRoot, abs)}:${u.start}-${u.end} ${u.status}\n`;
+    }
+    process.stdout.write(out);
     return 0;
   }
   if (sub === 'changed') {
