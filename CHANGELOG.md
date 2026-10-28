@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **`obsidian` draws the code links.** When the vault lives inside a bound repo with a `code` block, the view gains one derived note per linked code file under `_obsidian/code/`, a heading per declaration and a `[[wikilink]]` per link with its pin as text, plus a `## code` section in the MOC; Obsidian then shows code → entry edges and each entry's code backlinks. Unbound vaults are unchanged.
+- **`obsidian` seeds the graph settings.** A view with no `_obsidian/.obsidian/graph.json` gets one: the MOC filtered out (it links every note and collapsed the graph into one star), a colour group per type tag with stale on top, labels at a lower zoom and wider spacing. Written once; an existing file is never touched.
 
 ### Fixed
 - **`check` no longer reads a markdown image URL as a citation.** A badge or figure (`![alt](url)`) was reported `uncovered` and failed `check --check`; an image is now dropped before extraction.

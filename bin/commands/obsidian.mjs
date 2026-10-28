@@ -1,8 +1,8 @@
 import { join, resolve, dirname, relative, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { buildManifest } from '../lib/manifest.mjs';
-import { entryNote, codeNote, moc } from '../lib/obsidianview.mjs';
+import { entryNote, codeNote, moc, graphSettings } from '../lib/obsidianview.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { codeFiles, extractCodeLinks, langFor } from '../lib/codelinks.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
@@ -41,6 +41,8 @@ export function obsidianView(vaultPath, outDir = '_obsidian', { now = new Date()
     writeFileSync(p, codeNote(c.file, c.links), 'utf8');
   }
   writeFileSync(join(out, 'MOC.md'), moc(m, code), 'utf8');
+  const graph = join(out, '.obsidian', 'graph.json');
+  if (!existsSync(graph)) { mkdirSync(dirname(graph), { recursive: true }); writeFileSync(graph, JSON.stringify(graphSettings(), null, 2) + '\n', 'utf8'); }
   return { entries: m.entries.length, code: code.length, out: outDir };
 }
 

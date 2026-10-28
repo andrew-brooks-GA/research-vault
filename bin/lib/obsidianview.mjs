@@ -58,3 +58,20 @@ export function moc(manifest, codeNotes = []) {
   if (codeNotes.length) out.push(`## code (${codeNotes.length})`, '', ...codeNotes.map(c => `- [[code/${c.file}]]`), '');
   return out.join('\n').trimEnd() + '\n';
 }
+
+// Obsidian's graph settings for a fresh view: the MOC hidden (it links every note, so it would pull
+// the graph into one star), one colour per type tag with stale on top, labels at a lower zoom, wider
+// spacing. Written once; Obsidian owns the file after that.
+const group = (query, rgb) => ({ query, color: { a: 1, rgb } });
+export function graphSettings() {
+  return {
+    'collapse-filter': false, search: '-file:MOC', showTags: false, showAttachments: false, hideUnresolved: false, showOrphans: false,
+    'collapse-color-groups': false,
+    colorGroups: [
+      group('tag:#freshness/stale', 0xe74c3c), group('tag:#type/code', 0xff9f43), group('tag:#type/snippet', 0x9b59b6),
+      group('tag:#type/note', 0x2ecc71), group('tag:#type/experiment', 0xf1c40f), group('tag:#type/source', 0x4c8bf5),
+    ],
+    'collapse-display': false, showArrows: true, textFadeMultiplier: -1.5, nodeSizeMultiplier: 1.3, lineSizeMultiplier: 1,
+    'collapse-forces': false, centerStrength: 0.2, repelStrength: 18, linkStrength: 0.8, linkDistance: 400, scale: 0.6, close: false,
+  };
+}

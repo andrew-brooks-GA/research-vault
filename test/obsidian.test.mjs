@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { obsidianView } from '../bin/commands/obsidian.mjs';
@@ -113,4 +113,16 @@ test('obsidian writes one code note per linked file of the bound repo, wikilinks
   assert.ok(b.includes('## ns.g\n\n- [[2026-01-01-fx-missing]] @dep=1.2.3 (line 1)\n'));
   assert.ok(readFileSync(join(vault, '_obsidian', 'MOC.md'), 'utf8').includes('## code (2)\n\n- [[code/src/a.lua]]\n- [[code/src/b.lua]]\n'));
   assert.equal(obsidianView(codeRepo({ code: false }).vault).code, 0, 'no code block, no code notes');
+});
+
+test('obsidian seeds .obsidian/graph.json once and never overwrites it', () => {
+  const dir = freshVault();
+  obsidianView(dir);
+  const p = join(dir, '_obsidian', '.obsidian', 'graph.json');
+  const g = JSON.parse(readFileSync(p, 'utf8'));
+  assert.equal(g.search, '-file:MOC');
+  assert.ok(g.colorGroups.some(c => c.query === 'tag:#type/code'));
+  writeFileSync(p, '{"search":"mine"}');
+  obsidianView(dir);
+  assert.equal(readFileSync(p, 'utf8'), '{"search":"mine"}', 'a user-edited graph.json is kept');
 });
