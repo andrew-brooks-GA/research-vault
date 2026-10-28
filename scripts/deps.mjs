@@ -75,6 +75,8 @@ export const COUPLINGS = [
   ['bin/lib/codelinks.mjs', 'agents/claims-reviewer.md', "the sym: unit name and the 'unit sym:<name> <file>:<start>-<end> <status>' line format"],
   ['bin/lib/codelinks.mjs', 'skills/research-authoring/SKILL.md', 'the <id>@<key>=<version> link form and the stale reason tag'],
   ['bin/lib/codelinks.mjs', 'docs/REFERENCE.md', 'the Lua row of LANGS is quoted as the language example'],
+  ['bin/lib/manifest.mjs', 'docs/REFERENCE.md', 'the manifest keys and entry fields listed under "Reading the graph from outside"'],
+  ['bin/commands/check.mjs', 'docs/REFERENCE.md', 'the check --json keys and row fields listed under "Reading the graph from outside"'],
   ['bin/commands/gate.mjs', 'skills/research-claims-gate/SKILL.md', "the 'changed units:' last line is quoted"],
   ['hooks/stop-gate.mjs', 'skills/research-claims-gate/SKILL.md', "the hook names the skill and the 'gate record <file> PASS|MERIT' form"],
   ['hooks/hooks.json', 'docs/REFERENCE.md', "'four Claude Code hooks' and their names"],

@@ -146,6 +146,15 @@ flowchart LR
 
 `.vault-manifest.json` lists every reference as a typed edge and inverts the backlink-forming ones. Each vault's generated `AGENTS.md` §5 documents the fields and §5.2 maps graph questions to commands.
 
+### Reading the graph from outside
+
+A project that keeps its own graph (a code dependency map, a Neo4j load, a Graphviz script) does not need the plugin's view of it. Two outputs carry everything, both plain JSON, neither stored in git, so run the command first:
+
+- **The vault graph**: `lint` writes `<vault>/.vault-manifest.json` with `generated`, `entries`, `edges` and `backlinks`. An entry row has `id`, `type`, `title`, `summary`, `domain`, `topics`, `source_url`, `content_hash`, `volatility`, `last_verified`, `status`, `subject`, `series`, `stage`, `state`, `confidence`, `outcome`, `authority_tier`, `authority_basis`, `superseded_by`, `related`, `contributing_ids` and `sources`; an absent field is `null` or `[]`, never missing. An edge is `{ from, rel, to }` with `rel` one of the reference fields above, sorted by `from`, `rel`, `to`. `backlinks` maps an id to the sorted ids that reference it. Bodies are not included: the id is the filename under the type's folder.
+- **The code edges**: `check --json` from the repo root prints `generated`, `summary`, `rows`, `skipped` and, with a `code` block, `versions`. A code row has `file`, `type`, `value`, `symbol`, `line`, `key`, `version`, `status` and, when covered, `id` and `volatility`, plus `reason` when stale; a prose row has `file`, `type`, `value`, `status` and, when covered, `id` and `volatility`. Join a row's `id` to an entry's `id` and the code side of the graph is complete.
+
+These keys are the integration contract: `test/contract.test.mjs` pins them, and a change is a breaking one in the CHANGELOG.
+
 Two facet tiers keep retrieval clean as a vault grows: **`domain`** is a small controlled set of broad areas (`software-engineering`, `systems-infrastructure`, `data-ml`, `security`, `learning`, `llm-assisted-dev`, `meta`); **`topics`** is freeform and is where specific tech lives.
 
 ## Commands
