@@ -236,18 +236,18 @@ test('check exits 2 on a versions file that is missing or unmatched and on a glo
   assert.equal(r.stderr, 'error: versions.dep: cannot read deps.txt\n');
   writeFileSync(join(root, 'deps.txt'), 'dep 1.2.3\n');
   const cfg = JSON.parse(readFileSync(join(root, '.research-vault.json'), 'utf8'));
-  cfg.code.globs.push('src/**/*.py');
+  cfg.code.globs.push('src/**/*.pyi');
   writeFileSync(join(root, '.research-vault.json'), JSON.stringify(cfg));
-  writeFileSync(join(root, 'src', 'p.py'), '# per 2026-01-01-fx-doc\ndef f():\n    pass\n');
+  writeFileSync(join(root, 'src', 'p.pyi'), '# per 2026-01-01-fx-doc\ndef f():\n    pass\n');
   r = cli(root);
   assert.equal(r.status, 2);
-  assert.equal(r.stderr, 'error: no language for .py in code.globs; add code.languages[".py"] = { comment, decl }\n');
+  assert.equal(r.stderr, 'error: no language for .pyi in code.globs; add code.languages[".pyi"] = { comment, decl }\n');
   // The project supplies the row and the engine runs on it unchanged (D0).
-  cfg.code.languages['.py'] = { comment: '^\\s*#(.*)$', decl: '^(?:async\\s+)?def\\s+(\\w+)|^class\\s+(\\w+)|^(\\w+)\\s*=(?!=)' };
+  cfg.code.languages['.pyi'] = { comment: '^\\s*#(.*)$', decl: '^(?:async\\s+)?def\\s+(\\w+)|^class\\s+(\\w+)|^(\\w+)\\s*=(?!=)' };
   writeFileSync(join(root, '.research-vault.json'), JSON.stringify(cfg));
-  writeFileSync(join(root, 'src', 'p.py'), '# per 2026-01-01-fx-doc@dep=1.0.0\ndef f():\n    pass\n');
-  r = cli(root, 'src/p.py');
-  assert.equal(r.stdout, 'STALE     src/p.py:1 f  2026-01-01-fx-doc  (dep 1.0.0 -> 1.2.3)\ncheck: 1 file(s); 0 ok, 1 stale, 0 uncovered, 0 unattached, 1 code link(s)\nversions: dep=1.2.3\n');
+  writeFileSync(join(root, 'src', 'p.pyi'), '# per 2026-01-01-fx-doc@dep=1.0.0\ndef f():\n    pass\n');
+  r = cli(root, 'src/p.pyi');
+  assert.equal(r.stdout, 'STALE     src/p.pyi:1 f  2026-01-01-fx-doc  (dep 1.0.0 -> 1.2.3)\ncheck: 1 file(s); 0 ok, 1 stale, 0 uncovered, 0 unattached, 1 code link(s)\nversions: dep=1.2.3\n');
 });
 
 // Absent state (spec 15 D7): without a code block the .lua files are not read unless named, named

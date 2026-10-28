@@ -124,12 +124,12 @@ test('checkCodeLinks: ok, uncovered, unattached and every stale reason', () => {
 // ---- the binding ----
 // vault null: the key is absent from the file.
 const cfg = (code, vault = 'research') => parseProjectConfig(JSON.stringify(vault === null ? { code } : { vault, code }), SCHEMA);
-const PY = { '.py': { comment: '^\\s*#(.*)$', decl: '^(?:async\\s+)?def\\s+(\\w+)|^class\\s+(\\w+)|^(\\w+)\\s*=(?!=)' } };
+const PY = { '.pyi': { comment: '^\\s*#(.*)$', decl: '^(?:async\\s+)?def\\s+(\\w+)|^class\\s+(\\w+)|^(\\w+)\\s*=(?!=)' } };
 
 test('parseProjectConfig accepts the code block on a relative vault and compiles its patterns', () => {
   const c = cfg({ globs: ['src/**/*.lua'], languages: PY, versions: { dep: { file: 'deps.txt', pattern: '^dep (\\S+)' } } });
   assert.deepEqual(c.code.globs, ['src/**/*.lua']);
-  assert.ok(c.code.languages['.py'].comment instanceof RegExp);
+  assert.ok(c.code.languages['.pyi'].comment instanceof RegExp);
   assert.equal(c.code.versions.dep.file, 'deps.txt');
   assert.equal(c.code.versions.dep.pattern.flags, 'm');
   assert.deepEqual(cfg({}).code, { globs: [], languages: {}, versions: {} });
@@ -170,10 +170,10 @@ test('readVersions reads the first capture of the first match per key; a missing
 });
 
 // ---- D0 contracts ----
-test('D0: the engine runs on a .py file whose only language row comes from code.languages', () => {
-  const c = cfg({ globs: ['**/*.py'], languages: PY });
-  assert.equal(LANGS['.py'], undefined, 'the plugin ships no Python row');
-  const lang = langFor('.py', c);
+test('D0: the engine runs on a .pyi file whose only language row comes from code.languages', () => {
+  const c = cfg({ globs: ['**/*.pyi'], languages: PY });
+  assert.equal(LANGS['.pyi'], undefined, 'the plugin ships no .pyi row');
+  const lang = langFor('.pyi', c);
   const text = `import os\n\n# per ${ID}@dep=3\ndef handler(evt):\n    return 1\n\n\nclass Thing:\n    pass\n\nLIMIT = 7\n`;
   assert.deepEqual(extractCodeLinks(text, lang).map(({ id, key, version, symbol, declLine }) => ({ id, key, version, symbol, declLine })),
     [{ id: ID, key: 'dep', version: '3', symbol: 'handler', declLine: 4 }]);
@@ -187,12 +187,40 @@ test('D0: a project .lua row overrides the shipped one; a .py glob with no row i
   assert.deepEqual(extractCodeLinks(`-- ${ID}\nlocal T = {}\n`, langFor('.lua', strict)).map((l) => l.symbol), [null], 'the stricter row sees no table declaration');
   assert.equal(langFor('.lua', cfg({ globs: [] })), LUA);
   assert.equal(langFor('.lua', null), LUA);
-  assert.throws(() => langFor('.py', cfg({ globs: ['**/*.py'] })), { message: 'no language for .py in code.globs; add code.languages[".py"] = { comment, decl }' });
+  assert.throws(() => langFor('.pyi', cfg({ globs: ['**/*.pyi'] })), { message: 'no language for .pyi in code.globs; add code.languages[".pyi"] = { comment, decl }' });
+});
+
+// One declaration form per shipped row, with the symbol it must yield; `#` marks the comment prefix for the row.
+const SHIPPED = {
+  '.js': ['// ', ['export default async function* gen() {', 'gen'], ['class Foo extends Bar {', 'Foo'], ['const x = 1;', 'x'], ['let y: number = 2;', 'y'],
+    ['module.exports.handler = () => {};', 'handler'], ['exports.util = 1;', 'util'], ['export interface Shape {', 'Shape'], ['type Id<T> = string;', 'Id'],
+    ['export enum Color {', 'Color'], ['declare namespace NS {', 'NS'], ['export abstract class Base {', 'Base']],
+  '.py': ['# ', ['def f(x):', 'f'], ['async def g():', 'g'], ['class C(Base):', 'C'], ['LIMIT = 7', 'LIMIT'], ['count: int = 0', 'count']],
+  '.go': ['// ', ['func main() {', 'main'], ['func (s *Server) Start() error {', 'Start'], ['type Server struct {', 'Server'], ['var ErrNope = errors.New("x")', 'ErrNope'], ['const Max = 3', 'Max']],
+  '.rs': ['/// ', ['pub fn run() {', 'run'], ['pub(crate) async fn go() {', 'go'], ['struct Point {', 'Point'], ['impl<T> Display for Wrapper<T> {', 'Display'], ['pub const MAX: u32 = 1;', 'MAX'], ['mod inner;', 'inner']],
+  '.zig': ['// ', ['pub fn main() !void {', 'main'], ['export fn add(a: i32) i32 {', 'add'], ['const std = @import("std");', 'std'], ['var count: u32 = 0;', 'count']],
+  '.rb': ['# ', ['def save!', 'save!'], ['def self.find(id)', 'find'], ['class User < Base', 'User'], ['module Util', 'Util']],
+  '.sh': ['# ', ['main() {', 'main'], ['function helper {', 'helper'], ['function other() {', 'other'], ['PATH_X=/tmp', 'PATH_X']],
+  '.c': ['// ', ['static int parse(const char *s) {', 'parse'], ['unsigned long hash(void)', 'hash'], ['#define MAX 3', 'MAX'], ['typedef struct node {', 'node'], ['void Foo::bar() {', 'Foo::bar']],
+};
+test('every shipped language row attaches a link to each of its declaration forms', () => {
+  for (const [ext, [prefix, ...forms]] of Object.entries(SHIPPED)) {
+    const lang = langFor(ext, null);
+    for (const [line, symbol] of forms) assert.deepEqual(extractCodeLinks(`${prefix}${ID}\n${line}\n`, lang).map((l) => l.symbol), [symbol], `${ext}: ${line}`);
+  }
+  for (const line of ['if (x) {', 'return foo(1);', 'else if (y) {', '  int indented(void) {']) {
+    assert.deepEqual(extractCodeLinks(`// ${ID}\n${line}\n`, langFor('.c', null)).map((l) => l.symbol), [null], line);
+  }
+  assert.deepEqual(extractCodeLinks(`/**\n * per ${ID}\n */\nexport function f() {}\n`, langFor('.ts', null)).map((l) => l.symbol), ['f'], 'block comment line');
+  assert.deepEqual(extractCodeLinks(`# ${ID}\n@dataclass\nclass C:\n`, langFor('.py', null)).map((l) => l.symbol), [null], 'a decorator line is not skipped');
+  for (const alias of ['.mjs', '.cjs', '.jsx', '.ts', '.mts', '.cts', '.tsx']) assert.equal(langFor(alias, null), langFor('.js', null), alias);
+  for (const alias of ['.h', '.cpp', '.hpp', '.cc', '.hh']) assert.equal(langFor(alias, null), langFor('.c', null), alias);
+  assert.equal(langFor('.bash', null).decl.source, langFor('.sh', null).decl.source);
 });
 
 test('D0: codelinks.mjs names no language outside LANGS, and LINK_RE is built from ID_RE', () => {
   const src = readFileSync(join(ROOT, 'bin', 'lib', 'codelinks.mjs'), 'utf8');
-  const start = src.indexOf('export const LANGS = {');
+  const start = src.indexOf('// ---- shipped language rows ----');
   const end = src.indexOf('\n};\n', start);
   assert.ok(start > 0 && end > start);
   const outside = src.slice(0, start) + src.slice(end + 4);

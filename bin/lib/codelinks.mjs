@@ -18,6 +18,23 @@ import { staleness } from './stale.mjs';
 import { expandFiles } from './files.mjs';
 import { isInsideVault } from './containment.mjs';
 
+// ---- shipped language rows ----
+// Each row is two regexes and nothing else (spec 15 D0): `comment` matches one whole comment line and
+// captures its text, `decl` matches one column-0 declaration and captures the name in its first
+// non-empty group. Not seen anywhere: an end-of-line comment after code, an indented declaration,
+// an id inside a string, and a decorator or attribute line between the comment and the declaration
+// (write the link below it). A project adds or overrides rows in code.languages.
+const hashComment = /^\s*#(.*)$/;
+// `//`, `///`, `//!`, and the `/*`, `/**` and ` *` lines of a block.
+const slashComment = /^\s*(?:\/\/[/!]?|\/\*\*?|\*)(.*)$/;
+const N = '[A-Za-z_$][\\w$]*';
+// function/class/const/let/var/interface/type/enum at column 0, with export/default/async/abstract/declare
+// prefixes, and the CommonJS `module.exports.X =` / `exports.X =` forms.
+const jsDecl = new RegExp(`^(?:export\\s+(?:default\\s+)?)?(?:declare\\s+)?(?:async\\s+)?(?:abstract\\s+)?(?:function\\*?\\s+(${N})|class\\s+(${N})|(?:const|let|var)\\s+(${N})\\s*[=:]|interface\\s+(${N})|type\\s+(${N})\\s*[=<]|enum\\s+(${N})|namespace\\s+(${N}))|^(?:module\\.)?exports\\.(${N})\\s*=`);
+const jsLike = { comment: slashComment, decl: jsDecl };
+// A function definition with a return type (`static int f(`), `#define X`, and struct/enum/union/class/typedef.
+const cDecl = /^#define\s+([A-Za-z_]\w*)|^(?:typedef\s+)?(?:struct|enum|union|class)\s+([A-Za-z_]\w*)|^(?!(?:if|for|while|switch|return|else)\b)(?:(?:static|inline|extern|const|unsigned|signed|virtual|constexpr|struct|enum)\s+)*[A-Za-z_][\w:<>]*[\s*&]+(?!(?:if|for|while|switch|return)\b)([A-Za-z_][\w:~]*)\s*\(/;
+const cLike = { comment: slashComment, decl: cDecl };
 export const LANGS = {
   '.lua': {
     // A whole-line short comment; the lookahead excludes a line that opens a long comment `--[[`.
@@ -28,6 +45,23 @@ export const LANGS = {
     // `local a, b =` or a bare `local x`. A string literal on the line is not inspected.
     decl: /^(?:local\s+)?function\s+([A-Za-z_][\w.:]*)\s*\(|^(?:local\s+)?([A-Za-z_][\w.]*)\s*=(?!=)/,
   },
+  '.js': jsLike, '.mjs': jsLike, '.cjs': jsLike, '.jsx': jsLike,
+  '.ts': jsLike, '.mts': jsLike, '.cts': jsLike, '.tsx': jsLike,
+  // `def f(`, `async def f(`, `class C`, `X = ` or `X: T = ` at column 0; a decorator above the def is not skipped.
+  '.py': { comment: hashComment, decl: /^(?:async\s+)?def\s+([A-Za-z_]\w*)|^class\s+([A-Za-z_]\w*)|^([A-Za-z_]\w*)\s*(?::[^=]+)?=(?!=)/ },
+  // `func f(`, `func (r *T) m(` (the method name, so two types' methods of one name share a symbol), type/var/const.
+  '.go': { comment: slashComment, decl: /^func\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)|^(?:type|var|const)\s+([A-Za-z_]\w*)/ },
+  // fn/struct/enum/trait/type/const/static/mod/impl with pub, async, const, unsafe or extern prefixes; an
+  // attribute line above the item is not skipped.
+  '.rs': { comment: slashComment, decl: /^(?:pub(?:\([^)]*\))?\s+)?(?:(?:async|const|unsafe|extern\s+"[^"]*")\s+)*(?:fn|struct|enum|trait|type|const|static|mod|union|impl(?:<[^>]*>)?)\s+([A-Za-z_]\w*)/ },
+  // `pub fn f(`, `export fn f(`, `const X =`, `var x =`.
+  '.zig': { comment: slashComment, decl: /^(?:pub\s+)?(?:export\s+|extern\s+|inline\s+)?(?:fn\s+([A-Za-z_]\w*)|(?:const|var)\s+([A-Za-z_]\w*))/ },
+  // `def f`, `def self.f`, `class C`, `module M`; a method name may end in ?, ! or =.
+  '.rb': { comment: hashComment, decl: /^def\s+(?:self\.)?([A-Za-z_]\w*[?!=]?)|^(?:class|module)\s+([A-Z]\w*)/ },
+  // `f()`, `function f`, `function f()`, `X=`; the shebang is a comment line with no id in it.
+  '.sh': { comment: hashComment, decl: /^(?:function\s+)?([A-Za-z_][\w-]*)\s*\(\)|^function\s+([A-Za-z_][\w-]*)|^([A-Za-z_]\w*)=/ },
+  '.bash': { comment: hashComment, decl: /^(?:function\s+)?([A-Za-z_][\w-]*)\s*\(\)|^function\s+([A-Za-z_][\w-]*)|^([A-Za-z_]\w*)=/ },
+  '.c': cLike, '.h': cLike, '.cpp': cLike, '.hpp': cLike, '.cc': cLike, '.hh': cLike,
 };
 
 // Group 1 the id, group 2 a key of code.versions, group 3 the pinned version.
