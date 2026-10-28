@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-27
+
 ### Added
 - **Adoption guide and worked join.** `docs/ADOPTING.md` is the ordered path for a code project (vault in the repo, versions key, first link, `check`, CI, gate, Obsidian, your own graph); `examples/graph-dot.mjs` joins the manifest and `check --json` into Graphviz DOT and is run by the contract test. The README install paragraph lists the shipped languages instead of Lua alone.
 - **The graph as an integration contract.** REFERENCE "Reading the graph from outside" lists the keys of `.vault-manifest.json` and `check --json` that an outside graph joins on, and `test/contract.test.mjs` pins them; a change to either is a breaking change from now on. A project keeps its own code graph and reads these two outputs, so the plugin stays with research.
