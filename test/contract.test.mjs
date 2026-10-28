@@ -36,3 +36,13 @@ test('check --json: top-level keys, a code row and a prose row', () => {
   const doc = readFileSync(join(process.cwd(), 'docs', 'REFERENCE.md'), 'utf8');
   for (const k of ENTRY) assert.ok(doc.includes('`' + k + '`'), `REFERENCE names ${k}`);
 });
+
+test('examples/graph-dot.mjs joins the two outputs into DOT with an edge per manifest edge and per code link', () => {
+  const { root } = codeRepo();
+  const dot = execFileSync(process.execPath, [join(process.cwd(), 'examples', 'graph-dot.mjs'), root], { encoding: 'utf8' });
+  assert.ok(dot.startsWith('digraph research {'));
+  assert.ok(dot.includes('"src/a.lua#f" -> "2026-01-01-fx-doc" [label="" color=black];'), dot);
+  assert.ok(dot.includes('"src/b.lua#ns.g" -> "2026-01-01-fx-missing" [label="dep=1.2.3" color=red];'), dot);
+  assert.ok(dot.includes('"docs/d.md" -> "2026-01-01-fx-doc"'), dot);
+  assert.ok(dot.includes('"2026-01-01-fx-snippet" -> "2026-01-01-fx-doc" [label="source_id"];'), 'a manifest edge');
+});

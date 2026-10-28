@@ -68,7 +68,7 @@ git clone https://github.com/andrew-brooks-GA/research-vault.git
 node research-vault/bin/research-vault.mjs init
 ```
 
-In a repo you work in, `research-vault init --project` writes a `.research-vault.json` that points the repo at a vault, so commands run inside it resolve there unless `--vault` is passed. To keep the vault inside the repo and let its code cite entries, run `research-vault init --vault research` first, then `research-vault init --project --vault research --code-links 'src/**/*.lua'`; the plugin ships the Lua comment and declaration patterns, and a project adds another language as two regexes in that file (a Python row was tested that way).
+In a repo you work in, `research-vault init --project` writes a `.research-vault.json` that points the repo at a vault, so commands run inside it resolve there unless `--vault` is passed. To keep the vault inside the repo and let its code cite entries, run `research-vault init --vault research` first, then `research-vault init --project --vault research --code-links 'src/**/*.ts'`; the plugin ships comment and declaration patterns for Lua, JavaScript and TypeScript, Python, Go, Rust, Zig, Ruby, shell and C/C++, and a project adds or overrides a language as two regexes in that file. [Adopting in a code project](docs/ADOPTING.md) walks the whole path from first link to CI to graph.
 
 ## Day to day
 
@@ -96,6 +96,7 @@ Notes point at their sources and syntheses at their notes, so the agent can trac
 ## Learn more
 
 - [Reference](docs/REFERENCE.md): commands and flags, where the vault lives, binding a repo, code links, extending the vocabulary, safety rules, design notes.
+- [Adopting in a code project](docs/ADOPTING.md): the ordered steps from a vault in the repo to a cited function, a failing CI check, a gated symbol and a graph, with the join for your own graph tool in `examples/graph-dot.mjs`.
 - [Migrating existing notes](docs/MIGRATION.md) · [Building your own orchestrator](docs/ORCHESTRATOR-INTEGRATION.md) · [Exporting for fine-tuning](docs/FINETUNING.md)
 - [Security](SECURITY.md) · [Changelog](CHANGELOG.md)
 
