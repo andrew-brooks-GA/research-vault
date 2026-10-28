@@ -35,7 +35,19 @@ export function entryNote(manifest, e, { schema, now }) {
   return out.join('\n').trimEnd() + '\n';
 }
 
-export function moc(manifest) {
+// A linked code file of the repo the vault lives in (spec 15): one heading per declaration, a wikilink
+// per link under it with its pin as text, so Obsidian draws code → entry edges and the entries' backlinks.
+export function codeNote(file, links) {
+  const bySym = {};
+  for (const l of links) (bySym[l.symbol ?? '(unattached)'] ||= []).push(l);
+  const out = ['---', 'tags:', '  - type/code', '---', `# ${file}`, '', `_Derived Obsidian view — do not edit. Canonical: ${file}._`, ''];
+  for (const [sym, ls] of Object.entries(bySym)) {
+    out.push(`## ${sym}`, '', ...ls.map(l => `- [[${l.id}]]${l.key ? ` @${l.key}=${l.version}` : ''} (line ${l.line})`), '');
+  }
+  return out.join('\n').trimEnd() + '\n';
+}
+
+export function moc(manifest, codeNotes = []) {
   const byType = {};
   for (const e of manifest.entries) (byType[e.type] ||= []).push(e);
   const out = ['# Map of Content', '', '_Derived Obsidian view — regenerated from the manifest; do not edit._', ''];
@@ -43,5 +55,6 @@ export function moc(manifest) {
     const rows = byType[t] || [];
     out.push(`## ${FOLDER[t]} (${rows.length})`, '', ...rows.map(e => `- [[${e.id}]] ${e.title || ''}`.trimEnd()), '');
   }
+  if (codeNotes.length) out.push(`## code (${codeNotes.length})`, '', ...codeNotes.map(c => `- [[code/${c.file}]]`), '');
   return out.join('\n').trimEnd() + '\n';
 }

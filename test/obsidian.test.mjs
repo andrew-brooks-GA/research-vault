@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { obsidianView } from '../bin/commands/obsidian.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
-import { tmpVault, put } from './helpers.mjs';
+import { tmpVault, put, codeRepo } from './helpers.mjs';
 
 const NOW = new Date('2026-06-01');
 
@@ -100,4 +100,17 @@ test('topic tags are normalised to Obsidian-safe ASCII, deduplicated and sorted'
   obsidianView(dir, '_obsidian', { now: NOW });
   const topics = stub(dir, '2026-01-01-t').split('---')[1].split('\n').filter(l => l.includes('topic/')).map(l => l.trim().slice(2));
   assert.deepEqual(topics, ['topic/a-b', 'topic/c-build-tools', 'topic/caf', 'topic/kubernetes', 'topic/snake_case-ok']);
+});
+
+test('obsidian writes one code note per linked file of the bound repo, wikilinks per symbol, pin as text', () => {
+  const { vault } = codeRepo();
+  const r = obsidianView(vault, '_obsidian', { now: NOW });
+  assert.equal(r.code, 2);
+  const a = readFileSync(join(vault, '_obsidian', 'code', 'src', 'a.lua.md'), 'utf8');
+  assert.ok(a.includes('  - type/code\n'));
+  assert.ok(a.includes('## f\n\n- [[2026-01-01-fx-doc]] (line 3)\n'));
+  const b = readFileSync(join(vault, '_obsidian', 'code', 'src', 'b.lua.md'), 'utf8');
+  assert.ok(b.includes('## ns.g\n\n- [[2026-01-01-fx-missing]] @dep=1.2.3 (line 1)\n'));
+  assert.ok(readFileSync(join(vault, '_obsidian', 'MOC.md'), 'utf8').includes('## code (2)\n\n- [[code/src/a.lua]]\n- [[code/src/b.lua]]\n'));
+  assert.equal(obsidianView(codeRepo({ code: false }).vault).code, 0, 'no code block, no code notes');
 });
