@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-11-01
+
 ### Added
 - **Path discovery (spec 20 D1-D5).** `teach path candidates [--topic a,b] [workspace]` pools the vault's non-superseded entries on the given topics (default: the binding's `defaults.topics`) and on every mission term whose slug is a vocabulary topic, runs `search`'s own topic, text and body filters for every mission and path term plus a depth-2 `related` walk from every cited id, and prints each uncited or linked entry once under the `PATH.md` line it would follow (terms: before a mission term in the title before tool:, --text hits only, highest line among equals) with the queries behind it, then every mission term no line covers; it writes nothing. `teach lint` warns `WARN_PATH_TERM_UNPLANNED` for a `New to me` term on no line's `terms:`. The research-teach skill runs the command after writing the path and before each lesson's plan; PATH-FORMAT names the warning. `searchVault`'s in-memory filters are now the exported `matchRows`.
 - Spec 20 (`docs/specs/20-path-discovery.md`): path discovery. `teach path candidates [--topic a,b] [workspace]` runs the vault's own topic, text and body searches over the mission's terms and a depth-2 `related` walk from every cited entry, and prints candidate entries grouped by the `PATH.md` line they would follow with the query behind each, for the path author to accept; `teach lint` gains `WARN_PATH_TERM_UNPLANNED` for a `New to me` term on no line; the skill runs it at the path and before each plan. Spec 19's edge pass is renamed `teach path edges`. Spec only; the file is force-added, since `docs/specs/` is otherwise ignored.
