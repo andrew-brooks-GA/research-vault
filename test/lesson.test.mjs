@@ -9,7 +9,7 @@ import { buildManifest } from '../bin/lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
 import { checkCitations } from '../bin/commands/check.mjs';
 import {
-  lessonClass, parseLesson, lintLesson, lintStore, lintWorkspace, QUIZ_MIN_ITEMS, QUIZ_SPREAD_MAX, MAX_INTRODUCES, readPath, missionFloor,
+  lessonClass, parseLesson, lintLesson, lintStore, lintWorkspace, QUIZ_MIN_ITEMS, QUIZ_SPREAD_MAX, MAX_INTRODUCES, readPath, missionFloor, pathFringe, lintPath,
 } from '../bin/lib/lesson.mjs';
 
 const FIX = join(process.cwd(), 'test', 'fixtures', 'teach');
@@ -288,7 +288,7 @@ test('missionFloor reads the two Floor term lists and readPath parses every fiel
   assert.deepEqual([...floor.knownTerms], ['function']);
   assert.deepEqual([...floor.newTerms], ['fx', 'sextuple']);
   const path = readPath(FIX);
-  assert.equal(path.length, 4);
+  assert.equal(path.length, 6);
   assert.deepEqual(path[0], { n: 1, title: 'What fx returns', terms: ['fx'], tool: null, after: ['floor'], lesson: '0001-good' });
   assert.deepEqual(path[3], { n: 4, title: 'The sextuple, named', terms: ['sextuple'], tool: null, after: ['1'], lesson: null });
   assert.equal(readPath(join(tmpdir(), 'nowhere-' + Date.now())), null);
@@ -329,4 +329,41 @@ test('a parked lesson still resolves the lesson field of records and attempts', 
   mkdirSync(join(dir, 'parked'), { recursive: true });
   renameSync(join(dir, 'lessons', '0001-gone.html'), join(dir, 'parked', '0001-good.html'));
   assert.ok(!codes(lintStore(dir, ctxFor(dir))).includes('DANGLING_REF'), 'a parked lesson resolves');
+});
+
+// Spec 17 D1 and D2, over inline paths; the probe workspaces of 2026-11-01-probe-teach-next-teach-lint-at.
+test('pathFringe offers every ready line and the built non-review lines nothing depends on; lintPath names forward, missing, own and cyclic after:', () => {
+  const L = (n, after, lesson = null) => ({ n, title: `L${n}`, terms: [], tool: null, after, lesson });
+  const ns = (ls) => ls.map((l) => l.n);
+  // The probe's branching path: 2 and 3 are ready, 4 waits; 1 is the inner fringe.
+  const a = [L(1, ['floor'], '0001-good'), L(2, ['1']), L(3, ['1']), L(4, ['2', '3'])];
+  assert.deepEqual(ns(pathFringe(a).fringe), [2, 3]);
+  assert.deepEqual(ns(pathFringe(a).inner), [1]);
+  assert.deepEqual(lintPath(a), []);
+  // The fixture path as extended: the review on 3 is not an item, so 2 is inner; 4 and 5 are ready, 6 waits.
+  const fx = readPath(FIX);
+  assert.deepEqual(ns(pathFringe(fx).fringe), [4, 5]);
+  assert.deepEqual(ns(pathFringe(fx).inner), [2]);
+  assert.deepEqual(lintPath(fx), []);
+  // No after: is ready; a value naming no line never is; a parked line is taken; all taken gives an empty fringe; most recent inner first.
+  assert.deepEqual(ns(pathFringe([L(1, []), L(2, ['9'])]).fringe), [1]);
+  assert.deepEqual(ns(pathFringe([L(1, ['floor'], '0001-a'), L(2, ['1'], '0002-b, parked'), L(3, ['2'])]).fringe), [3]);
+  const done = pathFringe([L(1, ['floor'], '0001-a'), L(2, ['floor'], '0002-b'), L(3, ['floor'], '0003-c')]);
+  assert.deepEqual(done.fringe, []);
+  assert.deepEqual(ns(done.inner), [3, 2, 1]);
+  // The probe's workspace B.
+  const b = [L(1, ['floor'], '0001-good'), L(2, ['3']), L(3, ['2']), L(4, ['9']), L(5, ['5'])];
+  assert.deepEqual(ns(pathFringe(b).fringe), []);
+  assert.deepEqual(lintPath(b).map((f) => `${f.code} ${f.message}`).sort(), [
+    'PATH_AFTER_CYCLE lines 2 -> 3 -> 2 form an after: cycle',
+    'PATH_AFTER_CYCLE lines 5 -> 5 form an after: cycle',
+    'PATH_AFTER_FORWARD line 2 after: 3 names a later line',
+    'PATH_AFTER_FORWARD line 4 after: 9 names no line',
+    'PATH_AFTER_FORWARD line 5 after: 5 names itself',
+  ]);
+  assert.ok(lintPath(b).every((f) => f.file === 'PATH.md' && f.warning === false));
+  // Through lintWorkspace, with file PATH.md.
+  const dir = copyFixture();
+  writeFileSync(join(dir, 'PATH.md'), readFileSync(join(dir, 'PATH.md'), 'utf8').replace('terms: sextuple | after: 1', 'terms: sextuple | after: 6'));
+  assert.ok(lintWorkspace(dir, ctxFor(dir)).some((f) => f.code === 'PATH_AFTER_FORWARD' && f.file === 'PATH.md' && f.message === 'line 4 after: 6 names a later line'));
 });

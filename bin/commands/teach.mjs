@@ -6,7 +6,7 @@ import { resolveVault } from '../lib/resolve.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
 import { writeRecord, supersedeRecord, writeAttempt, fixRecordFrontmatter, teachIndex, createServer, progress, progressText } from '../lib/teach.mjs';
-import { lintWorkspace, readPath } from '../lib/lesson.mjs';
+import { lintWorkspace, readPath, pathFringe } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | progress [workspace] | serve [workspace]';
@@ -50,17 +50,18 @@ function lint(ws, args) {
   return violations.length ? 1 : 0;
 }
 
-// The first PATH.md line no lesson has taken, as `path: N. <title> | terms ... | after ...`.
-function pathLine(ws) {
+// Spec 17 D1: one `fringe:` line per PATH.md line whose prerequisites are all built (the first is the
+// default) and one `inner:` line per built non-review line nothing depends on yet, most recent first.
+function pathLines(ws) {
   const path = readPath(ws);
-  if (path === null) return 'path: none (write PATH.md)';
-  const l = path.find((x) => !x.lesson);
-  if (!l) return 'path: complete';
-  const bits = [];
-  if (l.terms.length) bits.push(`terms: ${l.terms.join(', ')}`);
-  if (l.tool) bits.push(`tool: ${l.tool}`);
-  if (l.after.length) bits.push(`after: ${l.after.join(', ')}`);
-  return `path: ${l.n}. ${l.title}${bits.length ? ' | ' + bits.join(' | ') : ''}`;
+  if (path === null) return ['fringe: none (write PATH.md)'];
+  const fmt = (l) => `${l.n}. ${l.title}` + [['terms', l.terms.join(', ')], ['tool', l.tool], ['after', l.after.join(', ')], ['lesson', l.lesson]]
+    .filter(([, v]) => v).map(([k, v]) => ` | ${k}: ${v}`).join('');
+  const { fringe, inner } = pathFringe(path);
+  const head = path.every((l) => l.lesson) ? ['fringe: complete']
+    : fringe.length ? fringe.map((l) => `fringe: ${fmt(l)}`)
+      : ['fringe: none (every untaken line waits on an untaken or unknown line; run teach lint)'];
+  return [...head, ...(inner.length ? inner.map((l) => `inner: ${fmt(l)}`) : ['inner: none'])];
 }
 
 function next(ws) {
@@ -81,7 +82,7 @@ function next(ws) {
     '',
     `review-due: ${ids(active.filter((r) => r.reviewDue))}`,
     `review-failed: ${ids(active.filter((r) => r.reviewFailed))}`,
-    pathLine(ws),
+    ...pathLines(ws),
   ].join('\n'));
   return 0;
 }

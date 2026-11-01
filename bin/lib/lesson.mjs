@@ -386,12 +386,58 @@ export function lintStore(workspaceDir, ctx) {
   return findings;
 }
 
+// Spec 17 D1, over readPath's output and nothing else. `fringe`: every untaken line whose after: values
+// are all `floor` or a taken line's number, file order (the first is the default). `inner`: every taken
+// line whose lesson is not a review and that no other such line names in after:, most recently built first.
+const isReview = (l) => /^\d{4}-review-/.test(l.lesson ?? '');
+export function pathFringe(lines) {
+  const taken = new Set(lines.filter((l) => l.lesson).map((l) => String(l.n)));
+  const fringe = lines.filter((l) => !l.lesson && l.after.every((a) => a === 'floor' || taken.has(a)));
+  const items = lines.filter((l) => l.lesson && !isReview(l));
+  const needed = new Set(items.flatMap((l) => l.after));
+  const inner = items.filter((l) => !needed.has(String(l.n))).sort((a, b) => (a.lesson < b.lesson ? 1 : -1));
+  return { fringe, inner };
+}
+
+// Spec 17 D2. PATH_AFTER_FORWARD per after: value naming a missing, later or own line (a prerequisite has a
+// smaller number); PATH_AFTER_CYCLE once per loop, written from its smallest line. Both are violations.
+export function lintPath(lines) {
+  const findings = [];
+  const add = (code, message) => findings.push({ code, file: 'PATH.md', message, warning: false });
+  const byN = new Map(lines.map((l) => [String(l.n), l]));
+  for (const l of lines) {
+    for (const a of l.after) {
+      if (a === 'floor') continue;
+      if (!byN.has(a)) add('PATH_AFTER_FORWARD', `line ${l.n} after: ${a} names no line`);
+      else if (Number(a) === l.n) add('PATH_AFTER_FORWARD', `line ${l.n} after: ${a} names itself`);
+      else if (Number(a) > l.n) add('PATH_AFTER_FORWARD', `line ${l.n} after: ${a} names a later line`);
+    }
+  }
+  const state = new Map(); // 'gray' on the stack, 'black' done; a gray hit is one simple cycle
+  const walk = (n, stack) => {
+    if (state.get(n) === 'black') return;
+    if (state.get(n) === 'gray') {
+      const loop = stack.slice(stack.indexOf(n));
+      const k = loop.indexOf(Math.min(...loop));
+      const rot = [...loop.slice(k), ...loop.slice(0, k)];
+      return add('PATH_AFTER_CYCLE', `lines ${[...rot, rot[0]].join(' -> ')} form an after: cycle`);
+    }
+    state.set(n, 'gray');
+    for (const a of byN.get(String(n)).after) if (byN.has(a)) walk(Number(a), [...stack, n]);
+    state.set(n, 'black');
+  };
+  for (const l of lines) walk(l.n, []);
+  return findings;
+}
+
 export function lintWorkspace(workspaceDir, ctx) {
   const c = { ...ctx, workspaceDir };
   const findings = ['lessons', 'reference'].flatMap((d) =>
     listDir(join(workspaceDir, d), '.html').flatMap((f) => lintLesson(join(workspaceDir, d, f), c)));
   findings.push(...lintStore(workspaceDir, c));
-  if (listDir(join(workspaceDir, 'lessons'), '.html').length && readPath(workspaceDir) === null) {
+  const path = readPath(workspaceDir);
+  if (path !== null) findings.push(...lintPath(path));
+  else if (listDir(join(workspaceDir, 'lessons'), '.html').length) {
     findings.push({ code: 'WARN_PATH_MISSING', file: 'PATH.md', message: 'no PATH.md; teach next cannot name the next lesson (PATH-FORMAT.md)', warning: true });
   }
   return findings.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.code < b.code ? -1 : a.code > b.code ? 1 : 0));

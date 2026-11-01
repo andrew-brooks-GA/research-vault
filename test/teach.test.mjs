@@ -1,7 +1,7 @@
 // `teach` CLI verbs (record, attempt, lint, next) and the session brief (spec 12).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -209,18 +209,39 @@ test('CLI teach attempt add records a graded attempt', () => {
   assert.equal(attemptFiles(ws).length, after.length);
 });
 
+// Spec 17 D1: lines 4 and 5 both wait on the built line 1, line 6 waits on them; the review on line 3 is not
+// an item, so line 2 is the inner fringe.
+const FRINGE = 'fringe: 4. The sextuple, named | terms: sextuple | after: 1\nfringe: 5. The septuple, named | terms: septuple | after: 1\ninner: 2. A bad lesson | after: 1 | lesson: 0002-bad\n';
+
 test('CLI teach next prints criteria, the records table and the review lines', () => {
   const ws = copyFixture();
   const head = '1. Predict what fx prints for a given input\n2. Run fx on a new input and check the prediction\n\n' +
     '| id | kind | date | lesson | last attempt |\n|---|---|---|---|---|\n';
   const r1 = cli(['next', ws]);
   assert.equal(r1.status, 0);
-  assert.equal(r1.stdout, head + '| 0001-known | understanding | 2026-01-01 | 0001-good | none |\n\nreview-due: 0001-known\nreview-failed: none\npath: 4. The sextuple, named | terms: sextuple | after: 1\n');
+  assert.equal(r1.stdout, head + '| 0001-known | understanding | 2026-01-01 | 0001-good | none |\n\nreview-due: 0001-known\nreview-failed: none\n' + FRINGE);
   // A wrong answer on the review item today: no longer due, now failed. Run from the cwd.
   assert.equal(cli(['attempt', 'add', '--lesson', '0003-review-good', '--answers', '0,0,1', ws]).status, 0);
   const r2 = cli(['next'], ws);
   assert.equal(r2.status, 0);
-  assert.equal(r2.stdout, head + `| 0001-known | understanding | 2026-01-01 | 0001-good | 2/3 on ${TODAY} |\n\nreview-due: none\nreview-failed: 0001-known\npath: 4. The sextuple, named | terms: sextuple | after: 1\n`);
+  assert.equal(r2.stdout, head + `| 0001-known | understanding | 2026-01-01 | 0001-good | 2/3 on ${TODAY} |\n\nreview-due: none\nreview-failed: 0001-known\n` + FRINGE);
+});
+
+test('CLI teach next: fringe empty states, and teach lint reports a forward after: (spec 17)', () => {
+  const ws = copyFixture();
+  const path = join(ws, 'PATH.md');
+  const last = (r) => r.stdout.trim().split('\n').slice(-2).join('\n');
+  writeFileSync(path, '# Path\n\n1. Only | after: floor | lesson: 0001-good\n');
+  assert.equal(last(cli(['next', ws])), 'fringe: complete\ninner: 1. Only | after: floor | lesson: 0001-good');
+  writeFileSync(path, '# Path\n\n1. Waits | after: 2\n2. Waits too | after: 1\n');
+  assert.equal(last(cli(['next', ws])), 'fringe: none (every untaken line waits on an untaken or unknown line; run teach lint)\ninner: none');
+  rmSync(path);
+  assert.equal(last(cli(['next', ws])).split('\n').at(-1), 'fringe: none (write PATH.md)');
+  cpSync(join(FIX, 'PATH.md'), path);
+  writeFileSync(path, readFileSync(path, 'utf8').replace('terms: sextuple | after: 1', 'terms: sextuple | after: 6'));
+  const r = cli(['lint', ws]);
+  assert.equal(r.status, 1);
+  assert.ok(r.stdout.split('\n').includes('PATH_AFTER_FORWARD  PATH.md: line 4 after: 6 names a later line'), r.stdout);
 });
 
 test('CLI teach next without a Success section exits 2', () => {
