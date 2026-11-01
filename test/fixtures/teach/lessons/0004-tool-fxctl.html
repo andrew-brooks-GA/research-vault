@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The fxctl tool</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body data-lesson="0004-tool-fxctl" data-shape="tool" data-teaches="fxctl">
+<h1>The fxctl tool</h1>
+
+<section data-block="mission" aria-label="why this lesson">
+<p>This lesson gets you to run fx from the shell with fxctl and read what it prints. You will complete the command yourself.</p>
+</section>
+
+<section data-block="model" aria-label="the model">
+<p>fxctl is a command-line wrapper around fx: <code>fxctl run</code> takes one number, calls fx on it and prints the result.</p>
+<figure><svg viewBox="0 0 200 60" role="img" aria-label="fxctl run n prints fx of n"><rect x="70" y="15" width="60" height="30" fill="none" stroke="currentColor"/><text x="100" y="35" text-anchor="middle" font-size="14">fxctl</text><text x="30" y="35" text-anchor="middle" font-size="14">n</text><text x="170" y="35" text-anchor="middle" font-size="14">6n</text><line x1="45" y1="30" x2="70" y2="30" stroke="currentColor"/><line x1="130" y1="30" x2="155" y2="30" stroke="currentColor"/></svg><figcaption>fxctl run n prints fx(n).</figcaption></figure>
+<p>What it prints is what fx returns. <a data-cite="2026-01-01-fx-doc">[1]</a></p>
+</section>
+
+<section data-block="example" aria-label="the output, read with me">
+<p>Run fx on 7 through fxctl:</p>
+<pre><code>$ fxctl run 7
+42</code></pre>
+<p>The one line of output is fx(7), from the experiment <a data-cite="2026-01-01-fx-experiment">[3]</a>.</p>
+</section>
+
+<section data-block="complete" aria-label="do it yourself">
+<p>Fill in the missing word, then check the output you expect.</p>
+<pre><code>$ fxctl <mark aria-label="withheld">____</mark> 7</code></pre>
+<pre><code>42</code></pre>
+</section>
+
+<section data-block="step" aria-label="do it yourself">
+<p>Run this unaided. You should see <code>18</code> printed.</p>
+<pre><code>fxctl run 3</code></pre>
+</section>
+
+<section data-block="sources" aria-label="sources">
+<ul>
+<li><a data-cite="2026-01-01-fx-doc" href="https://example.org/fx">2026-01-01-fx-doc</a> (recommended read)</li>
+<li><a data-cite="2026-01-01-fx-snippet">2026-01-01-fx-snippet</a></li>
+<li><a data-cite="2026-01-01-fx-experiment">2026-01-01-fx-experiment</a></li>
+</ul>
+</section>
+
+<section data-block="followup" aria-label="follow up">
+<p>You can now run fx from the shell and read its output.</p>
+<p>You can ask follow-up questions in the terminal.</p>
+</section>
+
+<script type="module" src="../assets/quiz.js"></script>
+</body>
+</html>

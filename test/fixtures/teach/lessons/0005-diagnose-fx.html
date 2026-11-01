@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Reading what fx printed</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body data-lesson="0005-diagnose-fx" data-shape="diagnose">
+<h1>Reading what fx printed</h1>
+
+<section data-block="mission" aria-label="why this lesson">
+<p>This lesson gets you to read an output of fx and say which input produced it. You will read the output before the explanation.</p>
+</section>
+
+<section data-block="predict" aria-label="first look">
+<pre><code>$ node -e "console.log(fx(7))"
+42</code></pre>
+<script type="application/json" data-quiz>
+{ "items": [
+  { "q": "The function printed 42. Which input was it given?", "options": ["7", "6", "36"], "correct": 0,
+    "why": ["Seven times six is 42.", "Six times six is 36, not 42.", "That would print 216."] }
+] }
+</script>
+</section>
+
+<section data-block="model" aria-label="the model">
+<p>fx multiplies its input by six, so an output read backwards is the input times six: divide by six to find the input.</p>
+<figure><svg viewBox="0 0 200 60" role="img" aria-label="6n comes out of fx, so n went in"><rect x="70" y="15" width="60" height="30" fill="none" stroke="currentColor"/><text x="100" y="35" text-anchor="middle" font-size="14">fx</text><text x="30" y="35" text-anchor="middle" font-size="14">n</text><text x="170" y="35" text-anchor="middle" font-size="14">6n</text><line x1="45" y1="30" x2="70" y2="30" stroke="currentColor"/><line x1="130" y1="30" x2="155" y2="30" stroke="currentColor"/></svg><figcaption>An output of 6n came from n.</figcaption></figure>
+<p>The factor is six. <a data-cite="2026-01-01-fx-doc">[1]</a></p>
+</section>
+
+<section data-block="fact" aria-label="what the lab showed">
+<p>The body of fx is <code>return n * 6;</code>. <a data-cite="2026-01-01-fx-snippet">[2]</a></p>
+<p>Called with 7, fx returns 42. <a data-cite="2026-01-01-fx-experiment">[3]</a></p>
+</section>
+
+<section data-block="quiz" aria-label="check yourself">
+<script type="application/json" data-quiz>
+{ "items": [
+  { "q": "fx printed 60. What was the input?", "options": ["10", "54", "66"], "correct": 0,
+    "why": ["Sixty divided by six is 10.", "That subtracts six instead.", "That adds six instead."] },
+  { "q": "fx printed 72. What was the input?", "options": ["12", "66", "78"], "correct": 0,
+    "why": ["Seventy-two divided by six is 12.", "That subtracts six instead.", "That adds six instead."] },
+  { "q": "How do you read an output back?", "options": ["divide it by six", "subtract six from it", "take its square root"], "correct": 0,
+    "why": ["Right: fx multiplies by six.", "fx does not add six.", "fx does not square."] }
+] }
+</script>
+</section>
+
+<section data-block="sources" aria-label="sources">
+<ul>
+<li><a data-cite="2026-01-01-fx-doc" href="https://example.org/fx">2026-01-01-fx-doc</a> (recommended read)</li>
+<li><a data-cite="2026-01-01-fx-snippet">2026-01-01-fx-snippet</a></li>
+<li><a data-cite="2026-01-01-fx-experiment">2026-01-01-fx-experiment</a></li>
+</ul>
+</section>
+
+<section data-block="followup" aria-label="follow up">
+<p>You can now read an output of fx back to its input.</p>
+<p>You can ask follow-up questions in the terminal.</p>
+</section>
+
+<script type="module" src="../assets/quiz.js"></script>
+</body>
+</html>

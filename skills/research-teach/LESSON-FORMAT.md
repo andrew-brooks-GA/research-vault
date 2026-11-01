@@ -8,32 +8,59 @@ A lesson is one HTML page the learner opens in a browser. It is built from block
 - Review lessons: `lessons/NNNN-review-slug.html`, numbered in the same sequence.
 - Reference docs: `reference/<slug>.html`.
 - The body declares the terms the lesson introduces: `data-introduces="Envoy,data plane"`, at most three, each defined in a `<dfn>` element where it is first explained. See Terms.
+- The body declares the lesson's shape: `<body data-lesson="<id>" data-shape="tool">`, one of `concept`, `tool`, `diagnose` or `project` (see Shapes). A lesson with no `data-shape` is a `concept` lesson with the block list it had before shapes.
 - The body may declare the tools the lesson teaches: `<body data-lesson="<id>" data-teaches="istioctl">` (comma-separated). A later lesson may then run that tool; see Commands and tools.
 - The page loads the shared components with `<link rel="stylesheet" href="../assets/lesson.css">` in the head and `<script type="module" src="../assets/quiz.js"></script>` before `</body>`, and the body carries the lesson id: `<body data-lesson="<id>">`, where `data-lesson` equals the file name without `.html`. The widget takes the id from the served path `/lessons/<id>.html` first and falls back to `data-lesson`.
 - Links the lint resolves: `../GLOSSARY.md#<heading-slug>`, `<id>.html` for another lesson (`../lessons/<id>.html` from a reference doc), `../reference/<slug>.html` for a reference doc. A link to any of these that does not exist is a finding.
 
 ## Blocks
 
-Each block is an element with `data-block="<name>"`, normally a `<section>`. Order them as listed. Each block carries `aria-label` equal to the label the stylesheet shows above it (the label column below), so a screen reader gets the structure the labels show.
+Each block is an element with `data-block="<name>"`, normally a `<section>`. Order them as the lesson's shape lists them (Shapes). Each block carries `aria-label` equal to the label the stylesheet shows above it (the label column below), so a screen reader gets the structure the labels show.
 
 | Block | Label | Required for | Holds |
 |---|---|---|---|
 | `prereq` | before you start | optional in a lesson or review | Links to earlier lessons and glossary anchors |
-| `mission` | why this lesson | lesson, review | One sentence tying the win to `MISSION.md` |
-| `model` | the model | lesson | The mental model: a bridge from a Floor term, at least one `<figure>` diagram, and how the parts relate, with at least one citation anchor in the block (a `source` or `note`, since a model is what the docs say) |
-| `fact` | what the lab showed | lesson | What the probe showed, every `<p>` ending in a citation anchor |
-| `example` | the output, read with me | lesson | The probe's input and verbatim output, cited to its `snippet` and `experiment` |
-| `quiz` | check yourself | lesson, review | The quiz data block (below) |
-| `step` | do it yourself | lesson | One real-world action, the command to run, and the observable result |
+| `mission` | why this lesson | lesson, review | One sentence tying the win to `MISSION.md`, then in a shaped lesson one naming the activity ("you will complete the command yourself") |
+| `predict` | first look | diagnose | One `<pre>` output and a `data-quiz` with one item, asked before the explanation |
+| `model` | the model | concept, tool, diagnose | The mental model: a bridge from a Floor term, at least one `<figure>` diagram, and how the parts relate, with at least one citation anchor in the block (a `source` or `note`, since a model is what the docs say) |
+| `fact` | what the lab showed | concept, diagnose | What the probe showed, every `<p>` ending in a citation anchor |
+| `example` | the output, read with me | tool | The probe's input and verbatim output, cited to its `snippet` and `experiment` |
+| `quiz` | check yourself | concept, diagnose, review | The quiz data block (below) |
+| `complete` | do it yourself | tool | The example's command with one part withheld: one `<pre>` command with `<mark aria-label="withheld">____</mark>` over that part, then one `<pre>` expected output |
+| `scaffold` | do it yourself | project | A completion task in the `complete` form over the reference solution |
+| `step` | do it yourself | tool, project | One real-world action, the command to run, and the observable result |
+| `connect` | say it back | concept | The terminal prompt: say how the new term relates to two terms you already hold |
 | `sources` | sources | lesson, review, reference | The vault ids cited, with one marked `(recommended read)`; source anchors carry `href` (Citation anchors) |
-| `followup` | follow up | lesson, review | Exactly the sentence `You can ask follow-up questions in the terminal.` |
+| `followup` | follow up | lesson, review | Exactly the sentence `You can ask follow-up questions in the terminal.`, after one sentence stating the win now held |
 | `note` | reference | reference | The rendered vault note body, with `data-cite` on the block element |
+
+A lesson with no `data-shape` needs `mission`, `model`, `fact`, `example`, `quiz`, `step`, `sources` and `followup`. A missing required block is `LESSON_SHAPE_BLOCK_MISSING`.
 
 In `step`, state the command exactly as the experiment's Result quotes it, so the claims gate can match it. When the step names the probe's path, keep that path in the captured snippet.
 
+## Shapes
+
+A lesson declares its shape with `data-shape` on the `<body>`. The frame is the same on every page: `prereq` (optional), `mission`, the shape's middle, `sources`, `followup`. Only the middle varies, and `bin/lib/lesson.mjs` reads it from one table, `SHAPES`:
+
+| Shape | The win | Middle blocks, in order | The retrieval it must contain |
+|---|---|---|---|
+| `concept` | a term set and the model behind it | `model`, `fact`, `quiz`, `connect`; `example` and `step` optional | a quiz whose wrong options are nameable misreadings, then `connect` |
+| `tool` | one tool: what it is, one command, how to read its output | `model`, `example`, `complete`, `step`; `quiz` optional | `complete`, the worked command with one part withheld, then the unaided `step` |
+| `diagnose` | reading output and deciding what it means | `predict`, `model`, `fact`, `quiz`; `step` optional | `predict`, one question on the output before the explanation; quiz lures are the misreadings |
+| `project` | a whole task that needs several earlier lessons at once | `scaffold`, `step` | the task itself; `step` is the check command and its expected output, and the learner's run is the attempt |
+
+Review lessons keep their own list (Review lessons) and ignore `data-shape`.
+
+- A `data-shape` outside the table is `LESSON_SHAPE_UNKNOWN`.
+- A `tool` lesson declares the tool it teaches with `data-teaches`, and no other shape carries `data-teaches`; either break is `LESSON_SHAPE_MISMATCH`. A lesson with no `data-shape` is not checked against this rule.
+- In `complete`, the command with the withheld part filled must be a command the `example` block ran (a `$ ` line there); the lint reads the mark as any text. A `complete` block whose command does not match, or that has no `<pre>` holding the mark, is `LESSON_COMPLETE_NOT_WORKED`.
+- `predict` holds a `<pre>` output and a `<script type="application/json" data-quiz>` with exactly one item; anything else is `LESSON_PREDICT_INVALID`. The item's question, options and whys are prose for the term rule (Terms), so they use only terms allowed before this lesson's `data-introduces`.
+- `connect` is a prompt answered in the terminal, not a quiz item: the skill judges the answer in conversation and records an understanding record when it holds.
+- A `project` lesson's `mission` states the goal as the mission criterion it serves and the observable result that proves it; `prereq` names the lessons it assumes and nothing else; `step` is the check command whose output proves the goal; `sources` links the reference solution's snippet instead of printing it.
+
 ## Terms
 
-A lesson uses only terms the learner already has. The workspace tracks every term under `## Floor` / `### New to me` in `MISSION.md` plus every lesson's `data-introduces`. For a lesson, the allowed terms are the Floor's `### Known terms` plus the `data-introduces` of this and every earlier lesson. `teach lint` reports `LESSON_TERM_NOT_INTRODUCED` when a tracked term appears in the lesson's prose (every block but `sources` and `followup`, with `<pre>` output excluded and the quiz included) before it is allowed. A lesson introduces at most three terms (`LESSON_INTRODUCES_TOO_MANY`), each in a `<dfn>` (`LESSON_DFN_MISSING`). There is no word cap: the cap is on new ideas.
+A lesson uses only terms the learner already has. The workspace tracks every term under `## Floor` / `### New to me` in `MISSION.md` plus every lesson's `data-introduces`. For a lesson, the allowed terms are the Floor's `### Known terms` plus the `data-introduces` of this and every earlier lesson. `teach lint` reports `LESSON_TERM_NOT_INTRODUCED` when a tracked term appears in the lesson's prose (every block but `sources` and `followup`, with `<pre>` output excluded and the `predict` and `quiz` items included) before it is allowed. A lesson introduces at most three terms (`LESSON_INTRODUCES_TOO_MANY`), each in a `<dfn>` (`LESSON_DFN_MISSING`). There is no word cap: the cap is on new ideas.
 
 ## The model block
 
@@ -99,15 +126,16 @@ A reference doc renders one vault note. The note body goes in `<div data-block="
 
 ## Plan before probe
 
-Before any probe or draft, write `evidence/NNNN/PLAN.md` for lesson NNNN, in five parts:
+Before any probe or draft, write `evidence/NNNN/PLAN.md` for lesson NNNN, in six parts:
 
 1. The win, one sentence. The first line names the mission criterion it serves.
 2. The fact to teach.
 3. The claims, one per line, each the sentence the probe must support.
 4. The probe: what to run and what output would support each claim.
 5. The step: the real-world action and its observable result.
+6. Elements, under an `## Elements` heading: the parts the learner must hold at once to understand this win, one per line, each marked `held` (a Floor term, an earlier lesson's term or tool, a learning record) or `new`. A lesson adds one `new` structure.
 
-Write the probe against the claim lines. The `fact` block states only claims the plan lists. When a probe contradicts a claim line, or the claims gate narrows one, never edit the line: append a `## Revisions` section naming the line, the result or finding, and the replacement claim. For a lesson NNNN that has a `fact` block (not a review lesson), an `evidence/NNNN/` folder with no `PLAN.md` is a lint finding.
+Write the probe against the claim lines. The `fact` block states only claims the plan lists. When a probe contradicts a claim line, or the claims gate narrows one, never edit the line: append a `## Revisions` section naming the line, the result or finding, and the replacement claim. For a lesson NNNN that has a `fact` block or declares `data-shape` (not a review lesson), an `evidence/NNNN/` folder with no `PLAN.md` is a lint finding. The `fact` block states claims about `new` elements; a `held` element gets a link to the lesson that taught it instead of a restatement. A lesson that declares `data-shape` needs the Elements part in its plan (`LESSON_PLAN_NO_ELEMENTS`). A plan for a lesson with no `data-shape` predates the part and is not checked for it.
 
 ## Example
 

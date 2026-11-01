@@ -18,11 +18,22 @@ export const FIGURE_VIEWBOX_MAX = 440;
 export const FIGURE_LABEL_MIN = 14;
 export const FIGURE_LABEL_MAX = 40;
 const FOLLOWUP = 'You can ask follow-up questions in the terminal.';
-const REQUIRED = {
-  lesson: ['mission', 'model', 'fact', 'example', 'quiz', 'step', 'sources', 'followup'],
-  review: ['mission', 'quiz', 'followup', 'sources'],
+// Spec 22 D1: a lesson is the frame (prereq optional) around its shape's middle, in this one table.
+const FRAME = ['mission', 'sources', 'followup'];
+export const SHAPES = {
+  concept: ['model', 'fact', 'quiz', 'connect'],
+  tool: ['model', 'example', 'complete', 'step'],
+  diagnose: ['predict', 'model', 'fact', 'quiz'],
+  project: ['scaffold', 'step'],
+};
+// A lesson with no data-shape is a concept lesson with the list it had before shapes (D0.3); review
+// lessons and reference docs keep their own lists.
+const UNSHAPED = {
+  lesson: [...FRAME, 'model', 'fact', 'example', 'quiz', 'step'],
+  review: [...FRAME, 'quiz'],
   reference: ['note', 'sources'],
 };
+const WITHHELD = /<mark\b[^>]*\baria-label\s*=\s*(["'])withheld\1[^>]*>[\s\S]*?<\/mark>/i;
 
 const textOf = (s) => s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 const listDir = (dir, ext) => (existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(ext)).sort() : []);
@@ -69,9 +80,10 @@ function parseQuiz(html) {
 }
 
 export function parseLesson(html) {
+  const blocks = parseBlocks(html);
   return {
-    blocks: parseBlocks(html),
-    quiz: parseQuiz(html),
+    blocks,
+    quiz: parseQuiz(blocks.get('quiz')?.html ?? html),
     cites: extractCites(html),
     links: [...html.matchAll(/\bhref\s*=\s*(["'])(.*?)\1/gi)].map((m) => m[2]),
   };
@@ -200,14 +212,15 @@ export function trackedTerms(workspaceDir) {
 }
 
 // The prose a term rule reads: every block except sources and followup, with <pre> blocks removed
-// (output and YAML name things before the lesson defines them) and quiz text included.
+// (output and YAML name things before the lesson defines them) and the predict and quiz items included.
 function proseOf(blocks, quiz) {
   let text = '';
   for (const [name, b] of blocks) {
     if (name === 'sources' || name === 'followup') continue;
     text += ' ' + textOf(b.html.replace(/<pre\b[\s\S]*?<\/pre>/gi, ' ').replace(/<script\b[\s\S]*?<\/script>/gi, ' '));
   }
-  for (const it of quiz.items ?? []) text += ' ' + [it.q, ...(it.options ?? []), ...(it.why ?? [])].join(' ');
+  const predict = blocks.has('predict') ? parseQuiz(blocks.get('predict').html).items ?? [] : [];
+  for (const it of [...predict, ...(quiz.items ?? [])]) text += ' ' + [it.q, ...(it.options ?? []), ...(it.why ?? [])].join(' ');
   return text;
 }
 
@@ -244,6 +257,11 @@ export function taughtTools(workspaceDir, lessonId) {
   return out;
 }
 
+const preLines = (html) => [...html.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi)]
+  .flatMap((pre) => unescapeHtml(pre[1].replace(/<[^>]*>/g, '')).split('\n').map((l) => l.trim()));
+// The commands an example block runs: its `$ ` lines, without the prompt.
+const exampleCommands = (blocks) => preLines(blocks.get('example')?.html ?? '').filter((l) => l.startsWith('$ ')).map((l) => l.slice(2).trim());
+
 // The tools a lesson's commands invoke, as a Map of tool -> block name. In `example`, a command is a <pre>
 // line starting with `$ `; in `step`, every non-empty, non-comment <pre> line is a command. One tool per
 // pipe, `&&` or `;` segment, skipping VAR=value prefixes. Tokens with a path separator are not tools.
@@ -252,20 +270,26 @@ export function commandTools(blocks) {
   for (const name of ['example', 'step']) {
     const b = blocks.get(name);
     if (!b) continue;
-    for (const pre of b.html.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi)) {
-      for (const raw of unescapeHtml(pre[1].replace(/<[^>]*>/g, '')).split('\n')) {
-        let line = raw.trim();
-        if (!line || line.startsWith('#')) continue;
-        if (name === 'example') { if (!line.startsWith('$ ')) continue; line = line.slice(2); }
-        for (const seg of line.split(/\s\|\s|\s&&\s|\s;\s/)) {
-          const words = seg.trim().split(/\s+/).filter((w) => w && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w));
-          const tool = words[0]?.replace(/^\.\//, '').toLowerCase();
-          if (tool && /^[a-z0-9._-]+$/.test(tool) && !tools.has(tool)) tools.set(tool, name);
-        }
+    const lines = name === 'example' ? exampleCommands(blocks) : preLines(b.html).filter((l) => l && !l.startsWith('#'));
+    for (const line of lines) {
+      for (const seg of line.split(/\s\|\s|\s&&\s|\s;\s/)) {
+        const words = seg.trim().split(/\s+/).filter((w) => w && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w));
+        const tool = words[0]?.replace(/^\.\//, '').toLowerCase();
+        if (tool && /^[a-z0-9._-]+$/.test(tool) && !tools.has(tool)) tools.set(tool, name);
       }
     }
   }
   return tools;
+}
+
+// Spec 22 D1: the complete block's command, its withheld part as a wildcard, must be one the example ran.
+function completeFindings(blocks, add) {
+  const pre = [...blocks.get('complete').html.matchAll(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi)].find((m) => WITHHELD.test(m[1]));
+  if (!pre) { add('LESSON_COMPLETE_NOT_WORKED', 'complete block has no <pre> command with <mark aria-label="withheld">'); return; }
+  const line = unescapeHtml(pre[1].replace(WITHHELD, '\0').replace(/<[^>]*>/g, '')).split('\n').map((l) => l.trim()).find((l) => l.includes('\0'));
+  const cmd = line.replace(/^\$ /, '');
+  const re = new RegExp(`^${cmd.split('\0').map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.+')}$`);
+  if (!exampleCommands(blocks).some((c) => re.test(c))) add('LESSON_COMPLETE_NOT_WORKED', `complete command "${cmd.replace('\0', '____')}" with the withheld part filled is no command the example block ran`);
 }
 
 // Spec 22 D4: advisory checks on each inline <svg> in a <figure>, one finding per code per figure.
@@ -314,7 +338,18 @@ export function lintLesson(filePath, ctx) {
   const raw = readFileSync(filePath, 'utf8');
   const { blocks, quiz, cites, links } = parseLesson(raw);
 
-  for (const b of REQUIRED[cls]) if (!blocks.has(b)) add('LESSON_BLOCK_MISSING', `missing block: ${b}`);
+  const shape = cls === 'lesson' ? (/<body\b[^>]*\bdata-shape\s*=\s*(["'])([^"']*)\1/i.exec(raw)?.[2].trim().toLowerCase() ?? '') : '';
+  const shaped = Object.hasOwn(SHAPES, shape);
+  if (shape && !shaped) add('LESSON_SHAPE_UNKNOWN', `data-shape ${shape} is not one of ${Object.keys(SHAPES).join(', ')}`);
+  const required = shaped ? [...FRAME, ...SHAPES[shape]] : shape ? FRAME : UNSHAPED[cls];
+  for (const b of required) if (!blocks.has(b)) add('LESSON_SHAPE_BLOCK_MISSING', `missing block: ${b}${shape ? ` (shape ${shape})` : ''}`);
+  const teaches = bodyAttrList(raw, 'data-teaches');
+  if (shaped && (shape === 'tool') !== (teaches.length > 0)) add('LESSON_SHAPE_MISMATCH', shape === 'tool' ? 'shape tool needs data-teaches naming the tool it teaches' : `shape ${shape} carries data-teaches; only a tool lesson does`);
+  if (blocks.has('complete')) completeFindings(blocks, add);
+  if (blocks.has('predict')) {
+    const pq = parseQuiz(blocks.get('predict').html);
+    if (!/<pre\b/i.test(blocks.get('predict').html) || pq.error || pq.items.length !== 1) add('LESSON_PREDICT_INVALID', `predict block needs one <pre> output and a data-quiz with one item${pq.error ? ` (${pq.error})` : ''}`);
+  }
   const followup = blocks.get('followup');
   if (followup && !textOf(followup.html).includes(FOLLOWUP)) add('LESSON_FOLLOWUP_MISSING', `followup block lacks: ${FOLLOWUP}`);
 
@@ -372,7 +407,6 @@ export function lintLesson(filePath, ctx) {
     const path = readPath(ws);
     const line = path?.find((l) => l.lesson === id);
     if (line) {
-      const teaches = bodyAttrList(html, 'data-teaches');
       const same = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
       if (!same(line.terms, introduces) || (line.tool ?? null) !== (teaches[0] ?? null)) add('LESSON_PATH_MISMATCH', `PATH.md line ${line.n} says terms: ${line.terms.join(', ') || 'none'}; tool: ${line.tool ?? 'none'}, the lesson declares data-introduces ${introduces.join(', ') || 'none'}; data-teaches ${teaches.join(', ') || 'none'}`);
     }
@@ -389,10 +423,13 @@ export function lintLesson(filePath, ctx) {
     }
   }
 
-  if (cls === 'lesson' && fact) {
+  // Spec 22 D2: a lesson that declares data-shape postdates the Elements part, so its plan must carry one.
+  if (cls === 'lesson' && (fact || shape)) {
     const ev = join(ws, 'evidence', basename(filePath).slice(0, 4));
+    const plan = join(ev, 'PLAN.md');
     if (!existsSync(ev)) add('WARN_EVIDENCE_FOLDER_MISSING', `no evidence/${basename(ev)}/ folder (lesson predates plan-before-probe)`);
-    else if (!existsSync(join(ev, 'PLAN.md'))) add('EVIDENCE_PLAN_MISSING', `evidence/${basename(ev)}/ has no PLAN.md`);
+    else if (!existsSync(plan)) add('EVIDENCE_PLAN_MISSING', `evidence/${basename(ev)}/ has no PLAN.md`);
+    else if (shape && !/^#{1,6}\s+elements\b/im.test(readFileSync(plan, 'utf8'))) add('LESSON_PLAN_NO_ELEMENTS', `evidence/${basename(ev)}/PLAN.md has no Elements part`);
   }
   return findings;
 }

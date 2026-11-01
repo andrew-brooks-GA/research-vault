@@ -24,7 +24,7 @@ The directory `/research-teach` was run in. One mission per workspace.
 | `learning-records/NNNN-slug.md` | What the learner has demonstrated; sets the zone of proximal development. Frontmatter the teach schema validates; written by `teach record add` | learner state |
 | `attempts/` | What the learner scored; written by `teach serve` or `teach attempt add`, never edited | learner state |
 | `NOTES.md` | Preferences, chapter progress | learner state |
-| `GATE-LOG.md` | Claims-gate merit decisions, append-only | gate record |
+| `GATE-LOG.md` | Reader verdicts and the third-round decision, claims-gate decisions, and the path-edges record of what was proposed and taken; append-only | gate record |
 | `lessons/NNNN-slug.html` | One tightly scoped win each; the unit of teaching | view |
 | `reference/*.html` | Compressed essence, printable, revisited | view of vault notes |
 | `assets/` | `lesson.css`, `quiz.js` (copied from the skill), other reusable components | view |
@@ -49,7 +49,7 @@ Then write `PATH.md` (`PATH-FORMAT.md`): one line per planned lesson, in order, 
 
 ## 3. Knowledge comes from the vault or the probe, never memory
 
-Plan before you probe. Write `evidence/NNNN/PLAN.md` first, in the five parts `LESSON-FORMAT.md` names: the win, the fact, the claims (one per line), the probe, the step. Write the probe against the claim lines. Never edit a claim line; when a probe contradicts one, or the claims gate narrows one, append a `## Revisions` section naming the line, the result or finding, and the replacement claim.
+Plan before you probe. Write `evidence/NNNN/PLAN.md` first, in the six parts `LESSON-FORMAT.md` names: the win, the fact, the claims (one per line), the probe, the step, the Elements. Write the probe against the claim lines. Never edit a claim line; when a probe contradicts one, or the claims gate narrows one, append a `## Revisions` section naming the line, the result or finding, and the replacement claim.
 
 0. Capture the concept sources up front, once per path: for every `New to me` term, the primary page that defines it (the project's own concepts or architecture page, the API reference), as a `source` with `--store-body --ack-data-egress`. A lesson's `model` block is a "the docs say" claim cited to these; the probe then confirms the instance. Without them every explanation gets cut back to "in the lab it was".
 1. Search the vault before the web: `search --topic`, `--text`, `--body` (`teach path candidates` builds a pool with `search`'s topic filter, runs its text filter over the pool for every mission and path term and matches each term against each pooled entry's file, at once). Fresh entries answer; stale ones get re-verified (research-vault-usage §2) before they are taught.

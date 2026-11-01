@@ -10,7 +10,7 @@ import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
 import { checkCitations } from '../bin/commands/check.mjs';
 import {
   lessonClass, parseLesson, lintLesson, lintStore, lintWorkspace, QUIZ_MIN_ITEMS, QUIZ_SPREAD_MAX, MAX_INTRODUCES, readPath, missionFloor, pathFringe, lintPath,
-  lintPathTerms, pathCandidates, topicSlug, pathEdges, lessonUses, FIGURE_VIEWBOX_MAX, FIGURE_LABEL_MIN, FIGURE_LABEL_MAX,
+  lintPathTerms, pathCandidates, topicSlug, pathEdges, lessonUses, SHAPES, FIGURE_VIEWBOX_MAX, FIGURE_LABEL_MIN, FIGURE_LABEL_MAX,
 } from '../bin/lib/lesson.mjs';
 
 const FIX = join(process.cwd(), 'test', 'fixtures', 'teach');
@@ -59,7 +59,8 @@ test('parseLesson finds blocks, quiz, cites and links', () => {
 });
 
 test('a good lesson lints clean', () => {
-  const lessons = ['lessons/0001-good.html', 'lessons/0003-review-good.html', 'reference/good.html'];
+  const lessons = ['lessons/0001-good.html', 'lessons/0003-review-good.html', 'reference/good.html',
+    'lessons/0004-tool-fxctl.html', 'lessons/0005-diagnose-fx.html', 'lessons/0006-project-fx.html'];
   for (const rel of lessons) {
     const f = lintFile(FIX, rel);
     console.log(`${rel}: ${f.length} finding(s)`);
@@ -70,13 +71,13 @@ test('a good lesson lints clean', () => {
 test('a bad lesson reports each expected code exactly once', () => {
   const f = lintFile(FIX, 'lessons/0002-bad.html');
   const expected = [
-    'EVIDENCE_PLAN_MISSING', 'LESSON_BLOCK_MISSING', 'LESSON_CITE_UNRESOLVED', 'LESSON_CLAIM_UNCITED',
-    'LESSON_LINK_DANGLING', 'LESSON_MODEL_NO_FIGURE', 'LESSON_TERM_NOT_INTRODUCED', 'LESSON_TOOL_NOT_INTRODUCED', 'QUIZ_ANSWER_SPREAD', 'QUIZ_CORRECT_RANGE', 'QUIZ_TOO_FEW', 'QUIZ_WHY_MISSING',
+    'EVIDENCE_PLAN_MISSING', 'LESSON_CITE_UNRESOLVED', 'LESSON_CLAIM_UNCITED',
+    'LESSON_LINK_DANGLING', 'LESSON_MODEL_NO_FIGURE', 'LESSON_SHAPE_BLOCK_MISSING', 'LESSON_TERM_NOT_INTRODUCED', 'LESSON_TOOL_NOT_INTRODUCED', 'QUIZ_ANSWER_SPREAD', 'QUIZ_CORRECT_RANGE', 'QUIZ_TOO_FEW', 'QUIZ_WHY_MISSING',
   ];
   for (const x of f) console.log(`${x.code}  ${x.file}: ${x.message}`);
   assert.deepEqual(codes(f), expected);
   const by = Object.fromEntries(f.map((x) => [x.code, x]));
-  assert.equal(by.LESSON_BLOCK_MISSING.message, 'missing block: step');
+  assert.equal(by.LESSON_SHAPE_BLOCK_MISSING.message, 'missing block: step');
   assert.match(by.LESSON_CITE_UNRESOLVED.message, /2026-01-01-nope/);
   assert.match(by.LESSON_LINK_DANGLING.message, /0009-missing\.html/);
   assert.equal(by.LESSON_TOOL_NOT_INTRODUCED.message, 'example runs fxctl, which is neither in MISSION.md "Known tools" nor taught by this or an earlier lesson (data-teaches)');
@@ -101,7 +102,7 @@ test('lesson-specific codes fire on their own fixture and not on the good lesson
   assert.deepEqual(variant('unchanged', (h) => h), []);
   assert.deepEqual(codes(variant('no fixed sentence', (h) => h.replace('You can ask follow-up questions in the terminal.', 'Ask me anything.'))), ['LESSON_FOLLOWUP_MISSING']);
   const noFollowup = variant('no followup block', (h) => h.replace(/<section data-block="followup" aria-label="follow up">[\s\S]*?<\/section>/, ''));
-  assert.deepEqual(codes(noFollowup), ['LESSON_BLOCK_MISSING']);
+  assert.deepEqual(codes(noFollowup), ['LESSON_SHAPE_BLOCK_MISSING']);
   assert.equal(noFollowup[0].message, 'missing block: followup');
   assert.deepEqual(codes(variant('two options', (h) => h.replace('["42", "13", "49"]', '["42", "13"]').replace(', "That squares seven."]', ']'))), ['QUIZ_OPTION_COUNT']);
   assert.deepEqual(codes(variant('bad glossary anchor', (h) => h.replace('GLOSSARY.md#term', 'GLOSSARY.md#nope'))), ['LESSON_LINK_DANGLING']);
@@ -115,6 +116,55 @@ test('lesson-specific codes fire on their own fixture and not on the good lesson
   console.log(`reference without data-cite: ${codes(rf).join(', ')}`);
   assert.deepEqual(codes(rf), ['LESSON_CLAIM_UNCITED']);
   assert.equal(rf[0].message, 'note block has no data-cite');
+});
+
+// Spec 22 D1-D2: one fixture lesson per shape (0001-good is concept by default); each code on an edited copy.
+test('lesson shapes: SHAPES table, shape codes, complete, predict and the Elements part', () => {
+  assert.deepEqual(SHAPES, {
+    concept: ['model', 'fact', 'quiz', 'connect'], tool: ['model', 'example', 'complete', 'step'],
+    diagnose: ['predict', 'model', 'fact', 'quiz'], project: ['scaffold', 'step'],
+  });
+  const dir = copyFixture();
+  const run = (rel, edit) => {
+    const path = join(dir, rel);
+    const before = readFileSync(path, 'utf8');
+    writeFileSync(path, edit(before));
+    const f = lintFile(dir, rel).map((x) => `${x.code} ${x.message}`).sort();
+    writeFileSync(path, before);
+    console.log(`${rel}: ${f.join(' | ') || 'clean'}`);
+    return f;
+  };
+  const tool = 'lessons/0004-tool-fxctl.html';
+  const diag = 'lessons/0005-diagnose-fx.html';
+  const proj = 'lessons/0006-project-fx.html';
+  assert.deepEqual(run('lessons/0001-good.html', (h) => h.replace('<body ', '<body data-shape="lab" ')), [
+    'LESSON_PLAN_NO_ELEMENTS evidence/0001/PLAN.md has no Elements part',
+    'LESSON_SHAPE_UNKNOWN data-shape lab is not one of concept, tool, diagnose, project',
+  ]);
+  // A declared concept lesson needs connect; the old list's example and step become optional.
+  assert.deepEqual(run('lessons/0001-good.html', (h) => h.replace('<body ', '<body data-shape="concept" ')), [
+    'LESSON_PLAN_NO_ELEMENTS evidence/0001/PLAN.md has no Elements part',
+    'LESSON_SHAPE_BLOCK_MISSING missing block: connect (shape concept)',
+  ]);
+  // Dropping or adding data-teaches also breaks the PATH.md line (and the tool rule), so only the shape finding is compared.
+  const shapeOnly = (f) => f.filter((x) => x.startsWith('LESSON_SHAPE_'));
+  assert.deepEqual(shapeOnly(run(tool, (h) => h.replace(' data-teaches="fxctl"', ''))), ['LESSON_SHAPE_MISMATCH shape tool needs data-teaches naming the tool it teaches']);
+  assert.deepEqual(shapeOnly(run(diag, (h) => h.replace('<body ', '<body data-teaches="fxctl" '))), ['LESSON_SHAPE_MISMATCH shape diagnose carries data-teaches; only a tool lesson does']);
+  assert.deepEqual(run(tool, (h) => h.replace(/<section data-block="complete"[\s\S]*?<\/section>/, '')), ['LESSON_SHAPE_BLOCK_MISSING missing block: complete (shape tool)']);
+  assert.deepEqual(run(tool, (h) => h.replace('fxctl <mark aria-label="withheld">____</mark> 7', 'fxctl <mark aria-label="withheld">____</mark> 8')),
+    ['LESSON_COMPLETE_NOT_WORKED complete command "fxctl ____ 8" with the withheld part filled is no command the example block ran']);
+  assert.deepEqual(run(tool, (h) => h.replace('<mark aria-label="withheld">____</mark>', 'run')),
+    ['LESSON_COMPLETE_NOT_WORKED complete block has no <pre> command with <mark aria-label="withheld">']);
+  assert.deepEqual(run(diag, (h) => h.replace('"correct": 0,\n    "why": ["Seven', '"correct": 0, "why": ["x", "y", "z"] },\n  { "q": "Again?", "options": ["7", "6", "36"], "correct": 0,\n    "why": ["Seven')),
+    ['LESSON_PREDICT_INVALID predict block needs one <pre> output and a data-quiz with one item']);
+  // The predict item is prose for the term rule; the quiz block, not the predict block, is the lesson's quiz.
+  assert.deepEqual(run(diag, (h) => h.replace('Which input was it given?', 'Is 7 a sextuple?')),
+    ['LESSON_TERM_NOT_INTRODUCED uses the term "sextuple" before this or an earlier lesson introduces it (data-introduces) and it is not in the Floor\'s known terms']);
+  const plan = join(dir, 'evidence', '0006', 'PLAN.md');
+  writeFileSync(plan, readFileSync(plan, 'utf8').replace(/## Elements[\s\S]*$/, ''));
+  assert.deepEqual(codes(lintFile(dir, proj)), ['LESSON_PLAN_NO_ELEMENTS']);
+  // A review lesson keeps its list whatever it declares.
+  assert.deepEqual(run('lessons/0003-review-good.html', (h) => h.replace('<body ', '<body data-shape="tool" ')), []);
 });
 
 test('malformed quiz JSON is QUIZ_JSON_INVALID, not a throw', () => {
@@ -256,11 +306,11 @@ test('lintWorkspace walks lessons, reference, records and attempts', () => {
     'learning-records/0002-legacy.md WARN_RECORD_FRONTMATTER_MISSING',
     'learning-records/0003-legacy-frontmatter.md MISSING_REQUIRED',
     'lessons/0002-bad.html EVIDENCE_PLAN_MISSING',
-    'lessons/0002-bad.html LESSON_BLOCK_MISSING',
     'lessons/0002-bad.html LESSON_CITE_UNRESOLVED',
     'lessons/0002-bad.html LESSON_CLAIM_UNCITED',
     'lessons/0002-bad.html LESSON_LINK_DANGLING',
     'lessons/0002-bad.html LESSON_MODEL_NO_FIGURE',
+    'lessons/0002-bad.html LESSON_SHAPE_BLOCK_MISSING',
     'lessons/0002-bad.html LESSON_TERM_NOT_INTRODUCED',
     'lessons/0002-bad.html LESSON_TOOL_NOT_INTRODUCED',
     'lessons/0002-bad.html QUIZ_ANSWER_SPREAD',
@@ -279,7 +329,7 @@ test('lintWorkspace walks lessons, reference, records and attempts', () => {
     'attempts/a-20260101-120000-0001.md MISSING_REQUIRED',
     'learning-records/0002-legacy.md WARN_RECORD_FRONTMATTER_MISSING',
     'learning-records/0003-legacy-frontmatter.md MISSING_REQUIRED',
-    'reference/good.html LESSON_BLOCK_MISSING',
+    'reference/good.html LESSON_SHAPE_BLOCK_MISSING',
   ]);
 });
 
@@ -292,7 +342,7 @@ test('missionFloor reads the two Floor term lists and readPath parses every fiel
   assert.deepEqual([...floor.knownTerms], ['function']);
   assert.deepEqual([...floor.newTerms], ['fx', 'sextuple']);
   const path = readPath(FIX);
-  assert.equal(path.length, 6);
+  assert.equal(path.length, 9);
   assert.deepEqual(path[0], { n: 1, title: 'What fx returns', terms: ['fx'], tool: null, after: ['floor'], lesson: '0001-good' });
   assert.deepEqual(path[3], { n: 4, title: 'The sextuple, named', terms: ['sextuple'], tool: null, after: ['1'], lesson: null });
   assert.equal(readPath(join(tmpdir(), 'nowhere-' + Date.now())), null);
@@ -387,10 +437,11 @@ test('pathFringe offers every ready line and the built non-review lines nothing 
   assert.deepEqual(ns(pathFringe(a).fringe), [2, 3]);
   assert.deepEqual(ns(pathFringe(a).inner), [1]);
   assert.deepEqual(lintPath(a), []);
-  // The fixture path as extended: the review on 3 is not an item, so 2 is inner; 4 and 5 are ready, 6 waits.
+  // The fixture path as extended: the review on 3 is not an item, so 2 is inner, and 9 (the project on 7 and 8);
+  // 4 and 5 are ready, 6 waits.
   const fx = readPath(FIX);
   assert.deepEqual(ns(pathFringe(fx).fringe), [4, 5]);
-  assert.deepEqual(ns(pathFringe(fx).inner), [2]);
+  assert.deepEqual(ns(pathFringe(fx).inner), [9, 2]);
   assert.deepEqual(lintPath(fx), []);
   // No after: is ready; a value naming no line never is; a parked line is taken; all taken gives an empty fringe; most recent inner first.
   assert.deepEqual(ns(pathFringe([L(1, []), L(2, ['9'])]).fringe), [1]);

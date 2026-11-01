@@ -37,12 +37,12 @@ test('teach skill no longer writes the in-draft claims-gate marker', () => {
 
 test('LESSON-FORMAT.md names every block, the quiz rules and PLAN.md', () => {
   const f = read('skills/research-teach/LESSON-FORMAT.md');
-  for (const b of ['mission', 'fact', 'example', 'quiz', 'step', 'sources', 'followup', 'prereq', 'note']) {
+  for (const b of ['mission', 'fact', 'example', 'quiz', 'step', 'sources', 'followup', 'prereq', 'note', 'complete', 'predict', 'connect', 'scaffold']) {
     assert.ok(f.includes(`\`${b}\``), `format lacks block ${b}`);
   }
   for (const s of [
     'lessons/NNNN-slug.html', 'lessons/NNNN-review-slug.html', 'reference/<slug>.html', 'data-cite', 'data-quiz', 'data-lesson',
-    '"record"', 'data-introduces', 'at most three', '`model`', '<dfn>', 'PATH-FORMAT.md', 'at least 3 items', '3 or 4', '1.6', 'evidence/NNNN/PLAN.md', '## Revisions',
+    '"record"', 'data-introduces', 'at most three', '`model`', '<dfn>', 'PATH-FORMAT.md', 'at least 3 items', '3 or 4', '1.6', 'evidence/NNNN/PLAN.md', '## Revisions', 'data-shape', 'Elements',
     'You can ask follow-up questions in the terminal.', '../assets/lesson.css', '../assets/quiz.js', 'teach lint',
   ]) {
     assert.ok(f.includes(s), `format lacks ${s}`);

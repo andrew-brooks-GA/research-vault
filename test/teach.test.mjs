@@ -53,10 +53,10 @@ test('CLI teach lint on the workspace exits 1 and prints the bad codes in the va
   const lessonLines = violations.filter((l) => l !== recordLine);
   for (const l of lessonLines) assert.match(l, /^[A-Z_]+ {2}lessons\/0002-bad\.html: \S/);
   assert.deepEqual(lessonLines.map((l) => l.split(' ')[0]).sort(), [
-    'EVIDENCE_PLAN_MISSING', 'LESSON_BLOCK_MISSING', 'LESSON_CITE_UNRESOLVED', 'LESSON_CLAIM_UNCITED', 'LESSON_LINK_DANGLING', 'LESSON_MODEL_NO_FIGURE', 'LESSON_TERM_NOT_INTRODUCED', 'LESSON_TOOL_NOT_INTRODUCED',
+    'EVIDENCE_PLAN_MISSING', 'LESSON_CITE_UNRESOLVED', 'LESSON_CLAIM_UNCITED', 'LESSON_LINK_DANGLING', 'LESSON_MODEL_NO_FIGURE', 'LESSON_SHAPE_BLOCK_MISSING', 'LESSON_TERM_NOT_INTRODUCED', 'LESSON_TOOL_NOT_INTRODUCED',
     'QUIZ_ANSWER_SPREAD', 'QUIZ_CORRECT_RANGE', 'QUIZ_TOO_FEW', 'QUIZ_WHY_MISSING',
   ]);
-  assert.ok(violations.includes('LESSON_BLOCK_MISSING  lessons/0002-bad.html: missing block: step'));
+  assert.ok(violations.includes('LESSON_SHAPE_BLOCK_MISSING  lessons/0002-bad.html: missing block: step'));
   assert.deepEqual(warnings, ['warning WARN_RECORD_FRONTMATTER_MISSING  learning-records/0002-legacy.md: no frontmatter; run teach lint --fix']);
   assert.ok(!r.stdout.includes('lint: clean'));
   // Warnings print after the violations, as the vault lint does.
@@ -210,8 +210,9 @@ test('CLI teach attempt add records a graded attempt', () => {
 });
 
 // Spec 17 D1: lines 4 and 5 both wait on the built line 1, line 6 waits on them; the review on line 3 is not
-// an item, so line 2 is the inner fringe.
-const FRINGE = 'fringe: 4. The sextuple, named | terms: sextuple | after: 1\nfringe: 5. The septuple, named | terms: septuple | after: 1\ninner: 2. A bad lesson | after: 1 | lesson: 0002-bad\n';
+// an item, so line 2 is on the inner fringe, after line 9, the project lesson nothing depends on.
+const FRINGE = 'fringe: 4. The sextuple, named | terms: sextuple | after: 1\nfringe: 5. The septuple, named | terms: septuple | after: 1\n' +
+  'inner: 9. Predict, then run | after: 7, 8 | lesson: 0006-project-fx\ninner: 2. A bad lesson | after: 1 | lesson: 0002-bad\n';
 
 test('CLI teach next prints criteria, the records table and the review lines', () => {
   const ws = copyFixture();
@@ -256,7 +257,7 @@ test('CLI teach path candidates: no topic exits 2; with --topic it prints the gr
   assert.equal(r.stderr, '');
   assert.equal(r.status, 0);
   // The fixture's Known term "function" has no entry on topic fx, so it is not printed; the entry is a `fx` hit too (line 1), but line 4 wins the tie.
-  assert.equal(r.stdout, `candidates for ${ws} | topics: fx 1 | pool 1 | cited 5 (lessons 0001, 0002, 0003)\n` +
+  assert.equal(r.stdout, `candidates for ${ws} | topics: fx 1 | pool 1 | cited 5 (lessons 0001, 0002, 0003, 0004, 0005, 0006)\n` +
     '4. The sextuple, named | terms: sextuple | after: 1\n' +
     '  2026-01-02-sextuple-doc [source] The sextuple explained | uncited | search --topic fx; search --topic fx --text "sextuple"\n' +
     'terms with no line: none\n');
@@ -277,10 +278,10 @@ test('CLI teach path candidates: no topic exits 2; with --topic it prints the gr
 
 test('CLI teach path edges: none on the fixture, proposals once line 2 no longer reaches line 1, the PATH.md-less state (spec 19)', () => {
   const ws = copyFixture();
-  assert.equal(cli(['path', 'edges', ws]).stdout, `edges for ${ws} | built 0001, 0002, 0003 | proposals 0\nedges: none\n`);
+  assert.equal(cli(['path', 'edges', ws]).stdout, `edges for ${ws} | built 0001, 0002, 0003, 0004, 0005, 0006 | proposals 0\nedges: none\n`);
   writeFileSync(join(ws, 'PATH.md'), readFileSync(join(ws, 'PATH.md'), 'utf8').replace('2. A bad lesson | after: 1', '2. A bad lesson | after: floor'));
   // Lines 2 and 3 both use fx in their prose; neither reaches line 1 now.
-  assert.equal(cli(['path', 'edges', ws]).stdout, `edges for ${ws} | built 0001, 0002, 0003 | proposals 2\n` +
+  assert.equal(cli(['path', 'edges', ws]).stdout, `edges for ${ws} | built 0001, 0002, 0003, 0004, 0005, 0006 | proposals 2\n` +
     '2. A bad lesson | after: floor | lesson: 0002-bad\n  after: 1 | 0002-bad uses "fx" | line 1 introduces it (0001-good)\n' +
     '3. Review of 1 to 2 | after: 2 | lesson: 0003-review-good\n  after: 1 | 0003-review-good uses "fx" | line 1 introduces it (0001-good)\n');
   rmSync(join(ws, 'PATH.md'));
@@ -321,7 +322,7 @@ test('CLI teach lint with a positional path that is missing or lacks MISSION.md 
   // Positive control: the fixture copy, which holds MISSION.md, lints.
   const ok = cli(['lint', copyFixture()]);
   assert.equal(ok.status, 1);
-  assert.match(ok.stdout, /LESSON_BLOCK_MISSING/);
+  assert.match(ok.stdout, /LESSON_SHAPE_BLOCK_MISSING/);
 });
 
 test('session brief names review-due, stale docs and the last attempt', () => {
@@ -340,7 +341,8 @@ test('CLI teach progress prints every attempt per lesson with first, latest and 
   assert.equal(r1.status, 0);
   assert.equal(r1.stdout, '| lesson | attempts | first | latest | best |\n|---|---|---|---|---|\n' +
     '| 0001-good | 1 | 2/3 on 2026-01-01 | 2/3 on 2026-01-01 | 2/3 on 2026-01-01 |\n' +
-    '| 0002-bad | 0 | none | none | none |\n| 0003-review-good | 0 | none | none | none |\n\n' +
+    '| 0002-bad | 0 | none | none | none |\n| 0003-review-good | 0 | none | none | none |\n' +
+    '| 0004-tool-fxctl | 0 | none | none | none |\n| 0005-diagnose-fx | 0 | none | none | none |\n| 0006-project-fx | 0 | none | none | none |\n\n' +
     'attempts: 1\nrecords: 1 active (understanding 1)\nreview-due: 0001-known\nreview-failed: none\n');
   assert.equal(cli(['attempt', 'add', '--lesson', '0001-good', '--answers', '0,1,3', ws]).status, 0);
   const r2 = cli(['progress', ws]);

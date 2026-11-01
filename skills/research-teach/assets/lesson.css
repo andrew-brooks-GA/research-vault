@@ -84,6 +84,13 @@ table.progress th { color: var(--muted); font-size: 0.78rem; text-transform: upp
 [data-block="prereq"]::before { content: "before you start"; }
 [data-block="note"] { border-left-color: var(--c-note); }
 [data-block="note"]::before { content: "reference"; }
+/* Spec 22 D1 shape blocks: complete and scaffold take the step colour, predict and connect the quiz colour. */
+[data-block="complete"], [data-block="scaffold"] { border-left-color: var(--c-step); }
+[data-block="complete"]::before, [data-block="scaffold"]::before { content: "do it yourself"; }
+[data-block="predict"] { border-left-color: var(--c-quiz); }
+[data-block="predict"]::before { content: "first look"; }
+[data-block="connect"] { border-left-color: var(--c-quiz); }
+[data-block="connect"]::before { content: "say it back"; }
 
 /* Model: the picture first, then the prose. A figure is sized by its viewBox: 440 units draw at scale 1
    at the 27.5rem minimum, and a narrower screen scrolls the figure sideways rather than shrinking it. */
@@ -134,7 +141,7 @@ a[data-cite]:not(.cite):not([href]) { font: 0.75em/1 Inter, system-ui, sans-seri
 /* Two columns from 1100px: fact beside example, quiz beside step; everything else spans. */
 @media (min-width: 1100px) {
   body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 1.5rem; padding: 2.5rem 2rem 4rem; }
-  h1, .lesson-nav, [data-block="prereq"], [data-block="mission"], [data-block="model"], [data-block="sources"], [data-block="followup"], [data-block="note"], [data-block="index"], [data-block="reference-index"], [data-block="progress"], [data-block="timeline"] { grid-column: 1 / -1; }
+  h1, .lesson-nav, [data-block="prereq"], [data-block="mission"], [data-block="model"], [data-block="sources"], [data-block="followup"], [data-block="note"], [data-block="complete"], [data-block="predict"], [data-block="connect"], [data-block="scaffold"], [data-block="index"], [data-block="reference-index"], [data-block="progress"], [data-block="timeline"] { grid-column: 1 / -1; }
   /* Command output keeps its columns; a wide table scrolls inside its own block instead of wrapping. */
   pre { white-space: pre; overflow-x: auto; font-size: 0.76rem; }
   .pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }

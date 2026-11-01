@@ -106,7 +106,7 @@ test('serves a lesson and the glossary; returns 404 for NOTES.md, a record, an a
     const idx = await req(port, { path: '/lessons.json' });
     assert.equal(idx.headers['content-type'], 'application/json');
     const parsed = JSON.parse(idx.text);
-    assert.deepEqual(parsed.lessons.map((l) => l.id), ['0001-good', '0002-bad', '0003-review-good']);
+    assert.deepEqual(parsed.lessons.map((l) => l.id), ['0001-good', '0002-bad', '0003-review-good', '0004-tool-fxctl', '0005-diagnose-fx', '0006-project-fx']);
     assert.equal(parsed.lessons[0].title, 'What fx returns');
     assert.deepEqual(parsed.reference.map((r) => r.path), ['/reference/good.html']);
     const page = await req(port, { path: '/lessons/0001-good.html' });
