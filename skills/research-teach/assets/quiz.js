@@ -40,6 +40,24 @@ export function neighbours(lessons, id) {
   return { prev: i > 0 ? lessons[i - 1] : null, next: i >= 0 && i < lessons.length - 1 ? lessons[i + 1] : null };
 }
 
+// Spec 22 D6.6: `line N of M` for the lesson's PATH.md line, or null when /lessons.json has no line for it.
+export function pathPosition(index, id) {
+  const line = (index.lessons ?? []).find((l) => l.id === id)?.line;
+  return Number.isInteger(line) && Number.isInteger(index.lines) ? `line ${line} of ${index.lines}` : null;
+}
+
+// Spec 22 D1, D6.5: the lesson's one attempt takes the predict block's quiz first (item 0), then every
+// other quiz in page order. `parts` are { predict, items } in page order; bin/lib/lesson.mjs lessonItems
+// reads the same order on the server.
+export function mergeQuizzes(parts) {
+  return [...parts.filter((p) => p.predict), ...parts.filter((p) => !p.predict)];
+}
+
+// Spec 22 D6.5: the visible text a revealed option carries, so colour is not the only signal.
+export function answerMark(chosen, correct) {
+  return chosen === correct ? 'Correct' : 'Not this one';
+}
+
 async function renderNav() {
   if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(location.origin)) return;
   let index;
@@ -55,6 +73,8 @@ async function renderNav() {
   nav.append(link('/', 'All lessons', 'lesson-nav-index'));
   nav.append(link('/progress', 'Progress', 'lesson-nav-progress'));
   if (prev) nav.append(link(prev.path, `\u2190 ${prev.title}`, 'lesson-nav-prev'));
+  const pos = pathPosition(index, id);
+  if (pos) nav.append(el('span', 'lesson-nav-line', pos));
   if (next) nav.append(link(next.path, `${next.title} \u2192`, 'lesson-nav-next'));
   document.body.prepend(nav);
 }
@@ -82,50 +102,64 @@ function el(tag, cls, text) {
   return e;
 }
 
-export function renderQuiz(container, data, { rand = Math.random, submit = postAttempt } = {}) {
-  const items = data.items;
+// `parts` are { container, items } in attempt order (mergeQuizzes): every item joins one attempt, one
+// answers array and one POST; the score goes after the last part's items.
+export function renderQuiz(parts, { rand = Math.random, submit = postAttempt } = {}) {
+  const items = parts.flatMap((p) => p.items);
   const answers = new Array(items.length);
   let answered = 0;
-  const root = el('div', 'quiz');
   const result = el('p', 'quiz-result');
-
-  items.forEach((authored, n) => {
-    const item = shuffleOptions(authored, rand);
-    const box = el('div', 'quiz-item');
-    box.append(el('p', 'quiz-q', item.q));
-    const why = el('p', 'quiz-why');
-    item.options.forEach((text, k) => {
-      const btn = el('button', 'quiz-option', text);
-      btn.type = 'button';
-      btn.addEventListener('click', async () => {
-        if (answers[n] !== undefined) return;
-        answers[n] = item.order[k];
-        btn.classList.add(k === item.correct ? 'correct' : 'wrong');
-        why.textContent = item.why[k] ?? '';
-        box.querySelectorAll('button').forEach((b) => { b.disabled = true; });
-        if (++answered < items.length) return;
-        const { total, wrong } = grade(items, answers);
-        result.textContent = `Score: ${total - wrong.length}/${total}`;
-        const reply = await submit({ lesson: lessonIdFrom(location.pathname, document.body.dataset.lesson), answers });
-        result.append(el('span', null, ` ${reply ?? TERMINAL}`));
+  result.setAttribute('role', 'status');
+  let n = 0;
+  parts.forEach((part, pi) => {
+    const root = el('div', 'quiz');
+    for (const authored of part.items) {
+      const i = n++;
+      const item = shuffleOptions(authored, rand);
+      const box = el('div', 'quiz-item');
+      const q = el('p', 'quiz-q', item.q);
+      q.id = `quiz-q-${i}`;
+      box.setAttribute('role', 'group');
+      box.setAttribute('aria-labelledby', q.id);
+      box.append(q);
+      const why = el('p', 'quiz-why');
+      why.setAttribute('role', 'status');
+      item.options.forEach((text, k) => {
+        const btn = el('button', 'quiz-option', text);
+        btn.type = 'button';
+        btn.addEventListener('click', async () => {
+          if (answers[i] !== undefined) return;
+          answers[i] = item.order[k];
+          btn.classList.add(k === item.correct ? 'correct' : 'wrong');
+          btn.textContent = `${answerMark(k, item.correct)}: ${text}`;
+          why.textContent = item.why[k] ?? '';
+          // aria-disabled, not disabled: the buttons stay focusable, the guard above ignores a second click.
+          box.querySelectorAll('button').forEach((b) => { b.setAttribute('aria-disabled', 'true'); });
+          if (++answered < items.length) return;
+          const { total, wrong } = grade(items, answers);
+          result.textContent = `Score: ${total - wrong.length}/${total}`;
+          const reply = await submit({ lesson: lessonIdFrom(location.pathname, document.body.dataset.lesson), answers });
+          result.append(el('span', null, ` ${reply ?? TERMINAL}`));
+        });
+        box.append(btn);
       });
-      box.append(btn);
-    });
-    box.append(why);
-    root.append(box);
+      box.append(why);
+      root.append(box);
+    }
+    if (pi === parts.length - 1) root.append(result);
+    part.container.append(root);
   });
-  root.append(result);
-  container.append(root);
 }
 
 if (typeof document !== 'undefined') {
   renderNav();
-  for (const script of document.querySelectorAll('script[data-quiz]')) {
-    let target = script.closest('[data-block="quiz"]');
-    if (!target) {
-      target = el('div');
-      script.after(target);
+  const parts = [...document.querySelectorAll('script[data-quiz]')].map((script) => {
+    let container = script.closest('[data-block="quiz"]');
+    if (!container) {
+      container = el('div');
+      script.after(container);
     }
-    renderQuiz(target, JSON.parse(script.textContent));
-  }
+    return { container, items: JSON.parse(script.textContent).items, predict: !!script.closest('[data-block="predict"]') };
+  });
+  if (parts.length) renderQuiz(mergeQuizzes(parts));
 }

@@ -51,6 +51,7 @@ pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
 .lesson-nav-next { margin-left: auto; }
 .lesson-index { padding-left: 1.5rem; }
 .lesson-index li { margin: 0.4rem 0; }
+.lesson-index .lesson-shape { color: var(--muted); font-size: 0.85em; margin-left: 0.5em; }
 .lesson-index small { color: var(--muted); font-family: "Roboto Mono", ui-monospace, monospace; font-size: 0.75em; margin-left: 0.5em; }
 [data-block="index"]::before { content: "lessons"; }
 [data-block="reference-index"]::before { content: "reference"; }
@@ -130,8 +131,8 @@ a[data-cite]:not(.cite):not([href]) { font: 0.75em/1 Inter, system-ui, sans-seri
 .quiz-q { font-weight: 600; margin-bottom: 0.6rem; }
 .quiz-q::before { counter-increment: q; content: counter(q) ". "; color: var(--muted); }
 .quiz-option { display: block; width: 100%; text-align: left; margin: 0.35rem 0; padding: 0.6rem 0.9rem; font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--rule); border-radius: 6px; cursor: pointer; }
-.quiz-option:hover:not(:disabled) { border-color: var(--muted); background: var(--chip); }
-.quiz-option:disabled { cursor: default; }
+.quiz-option:hover:not([aria-disabled="true"]) { border-color: var(--muted); background: var(--chip); }
+.quiz-option[aria-disabled="true"] { cursor: default; }
 .quiz .correct { background: var(--ok-bg); border-color: var(--ok); }
 .quiz .wrong { background: var(--bad-bg); border-color: var(--bad); }
 .quiz-why { color: var(--muted); margin-top: 0.5rem; }

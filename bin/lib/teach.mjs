@@ -11,6 +11,7 @@ import { allowedValues } from './validate.mjs';
 import { slugify } from './ids.mjs';
 import { isInsideVault } from './containment.mjs';
 import { grade } from '../../skills/research-teach/assets/quiz.js';
+import { lessonItems, readPath } from './lesson.mjs';
 
 export const SPACING_DAYS = 21;
 export const ATTEMPT_BODY_MAX = 4096;
@@ -106,14 +107,11 @@ export function supersedeRecord(workspaceDir, id, byId, reason, schema) {
   return { path };
 }
 
+// The predict item (when the lesson has one) is item 0 of the one attempt, then the quiz items.
 export function readQuiz(workspaceDir, lessonId) {
-  const bad = () => new Error(`quiz JSON invalid in ${lessonId}`);
-  const json = extractQuizJson(readFileSync(join(workspaceDir, 'lessons', `${lessonId}.html`), 'utf8'));
-  if (json === null) throw bad();
-  let quiz;
-  try { quiz = JSON.parse(json); } catch { throw bad(); }
-  if (!quiz || !Array.isArray(quiz.items) || !quiz.items.every((it) => it && Array.isArray(it.options))) throw bad();
-  return { items: quiz.items };
+  const { items } = lessonItems(readFileSync(join(workspaceDir, 'lessons', `${lessonId}.html`), 'utf8'));
+  if (!items) throw new Error(`quiz JSON invalid in ${lessonId}`);
+  return { items };
 }
 
 export function attemptId(now, lessonNumber, exists) {
@@ -376,26 +374,46 @@ export function serveFile(workspaceDir, urlPath, { titles } = {}) {
 
 // The workspace's lessons and reference docs for navigation: id, title and served path, lessons in id
 // order. GET / renders it as an HTML index; GET /lessons.json returns it so a lesson page can link to
-// its neighbours.
+// its neighbours. Spec 22 D6.6: `lines` is the PATH.md line count (null without PATH.md) and each lesson
+// carries its PATH.md `line` number, its `shape` (data-shape) and the `project` that closes its group:
+// the title of the first line at or after its own whose title starts `Project:` (each null when absent).
 export function lessonIndex(ws) {
+  const path = readPath(ws);
+  const lessonLine = (id) => path?.findIndex((l) => l.lesson === id) ?? -1;
   const read = (dir, isLesson) => {
     const d = join(ws, dir);
     return (existsSync(d) ? readdirSync(d).sort() : [])
       .filter((f) => f.endsWith('.html') && (!isLesson || LESSON_ID_RE.test(f.slice(0, -5))))
-      .map((f) => { const id = f.slice(0, -5); return { id, title: lessonTitle(readFileSync(join(d, f), 'utf8'), id), path: `/${dir}/${f}` }; });
+      .map((f) => {
+        const id = f.slice(0, -5);
+        const html = readFileSync(join(d, f), 'utf8');
+        const entry = { id, title: lessonTitle(html, id), path: `/${dir}/${f}` };
+        if (!isLesson) return entry;
+        const i = lessonLine(id);
+        const shape = /<body\b[^>]*\bdata-shape\s*=\s*(["'])([^"']*)\1/i.exec(html)?.[2].trim().toLowerCase() || null;
+        const project = i === -1 ? null : path.slice(i).find((l) => /^project:/i.test(l.title))?.title ?? null;
+        return { ...entry, line: i === -1 ? null : path[i].n, shape, project };
+      });
   };
-  return { lessons: read('lessons', true), reference: read('reference', false) };
+  return { lines: path ? path.length : null, lessons: read('lessons', true), reference: read('reference', false) };
 }
 
 const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+// Lessons in id order, each consecutive run under the project that closes its group as an h2.
 export function indexHtml(ws) {
   const { lessons, reference } = lessonIndex(ws);
-  const li = (e) => `<li><a href="${escapeHtml(e.path)}">${escapeHtml(e.title)}</a> <small>${escapeHtml(e.id)}</small></li>`;
+  const li = (e) => `<li><a href="${escapeHtml(e.path)}">${escapeHtml(e.title)}</a>${e.shape ? ` <span class="lesson-shape">${escapeHtml(e.shape)}</span>` : ''} <small>${escapeHtml(e.id)}</small></li>`;
+  const runs = [];
+  for (const l of lessons) {
+    if (runs.at(-1)?.project !== l.project) runs.push({ project: l.project, lessons: [] });
+    runs.at(-1).lessons.push(l);
+  }
+  const lessonHtml = runs.map((r) => `${r.project ? `<h2>${escapeHtml(r.project)}</h2>` : ''}<ol class="lesson-index">${r.lessons.map(li).join('')}</ol>`).join('');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Lessons</title><link rel="stylesheet" href="/assets/lesson.css"></head>
 <body><h1>Lessons</h1>
-<section data-block="index"><ol class="lesson-index">${lessons.map(li).join('')}</ol></section>
+<section data-block="index">${lessonHtml || '<ol class="lesson-index"></ol>'}</section>
 ${reference.length ? `<section data-block="reference-index"><ul class="lesson-index">${reference.map(li).join('')}</ul></section>` : ''}
 </body></html>
 `;

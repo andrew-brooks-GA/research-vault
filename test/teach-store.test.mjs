@@ -8,7 +8,7 @@ import { parseFrontmatter } from '../bin/lib/frontmatter.mjs';
 import {
   SPACING_DAYS, ATTEMPT_ID_RE, LESSON_ID_RE, RECORD_ID_RE, STORED_DERIVED,
   validateEntry, nextRecordId, attemptId, writeRecord, supersedeRecord, readQuiz,
-  writeAttempt, teachIndex, fixRecordFrontmatter,
+  writeAttempt, teachIndex, fixRecordFrontmatter, lessonIndex, indexHtml,
 } from '../bin/lib/teach.mjs';
 import { footnoteCitations } from '../bin/lib/teach.mjs';
 
@@ -318,4 +318,36 @@ test('footnoteCitations numbers citations by their position in the sources list,
   assert.equal(footnoteCitations('<p>no cites</p>'), '<p>no cites</p>');
   assert.ok(footnoteCitations('<p><a data-cite="z">z</a></p>').includes('title="z">[1]</a>'), 'an unknown id keeps the id as its title');
   assert.ok(footnoteCitations(html.replace('</p>', ' <a data-cite="w">w</a></p>')).includes('title="w">[3]</a>'), 'an id the sources list lacks numbers after the list');
+});
+
+test('writeAttempt merges the predict item as item 0 of the one attempt', () => {
+  const dir = ws();
+  cpSync('test/fixtures/teach/lessons/0005-diagnose-fx.html', join(dir, 'lessons', '0005-diagnose-fx.html'), { recursive: true });
+  const { items } = readQuiz(dir, '0005-diagnose-fx');
+  assert.deepEqual(items.map((it) => it.q.slice(0, 22)), ['The function printed 4', 'fx printed 60. What wa', 'fx printed 72. What wa', 'How do you read an out']);
+  assert.throws(() => writeAttempt(dir, { lesson: '0005-diagnose-fx', answers: [0, 0, 0], now: NOW }, schema), /\(4 items\)/);
+  const r = writeAttempt(dir, { lesson: '0005-diagnose-fx', answers: [1, 0, 0, 0], now: NOW }, schema);
+  assert.deepEqual({ score: r.score, total: r.total, wrong: r.wrong }, { score: 3, total: 4, wrong: [0] });
+  assert.equal(parseFrontmatter(readFileSync(r.path, 'utf8')).data.total, 4);
+});
+
+test('lessonIndex carries the PATH.md line count, each lesson line, shape and closing project; the index groups by project', () => {
+  const fx = lessonIndex('test/fixtures/teach');
+  assert.equal(fx.lines, 9);
+  assert.deepEqual(fx.lessons.map((l) => [l.id, l.line, l.shape, l.project]), [
+    ['0001-good', 1, null, null], ['0002-bad', 2, null, null], ['0003-review-good', 3, null, null],
+    ['0004-tool-fxctl', 7, 'tool', null], ['0005-diagnose-fx', 8, 'diagnose', null], ['0006-project-fx', 9, 'project', null]]);
+  const dir = ws();
+  lesson(dir, '0001-a', [item(0)], 'A');
+  lesson(dir, '0002-b', [item(0)], 'B');
+  lesson(dir, '0003-c', [item(0)], 'C');
+  lesson(dir, '0004-d', [item(0)], 'D');
+  writeFileSync(join(dir, 'PATH.md'), '1. A | lesson: 0001-a\n2. B | after: 1 | lesson: 0002-b\n3. Project: build it | after: 2 | lesson: 0003-c\n4. D | after: 3 | lesson: 0004-d\n');
+  const idx = lessonIndex(dir);
+  assert.equal(idx.lines, 4);
+  assert.deepEqual(idx.lessons.map((l) => l.project), ['Project: build it', 'Project: build it', 'Project: build it', null]);
+  const html = indexHtml(dir);
+  assert.match(html, /<section data-block="index"><h2>Project: build it<\/h2><ol class="lesson-index"><li><a href="\/lessons\/0001-a.html">A<\/a> <small>0001-a<\/small><\/li><li>.*0003-c.*<\/ol><ol class="lesson-index"><li><a href="\/lessons\/0004-d.html">D<\/a>/);
+  assert.deepEqual(lessonIndex(ws()), { lines: null, lessons: [], reference: [] });
+  assert.match(indexHtml('test/fixtures/teach'), /Reading what fx printed<\/a> <span class="lesson-shape">diagnose<\/span>/);
 });

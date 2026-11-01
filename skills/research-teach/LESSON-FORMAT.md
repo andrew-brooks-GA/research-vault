@@ -54,7 +54,7 @@ Review lessons keep their own list (Review lessons) and ignore `data-shape`.
 - A `data-shape` outside the table is `LESSON_SHAPE_UNKNOWN`.
 - A `tool` lesson declares the tool it teaches with `data-teaches`, and no other shape carries `data-teaches`; either break is `LESSON_SHAPE_MISMATCH`. A lesson with no `data-shape` is not checked against this rule.
 - In `complete`, the command with the withheld part filled must be a command the `example` block ran (a `$ ` line there); the lint reads the mark as any text. A `complete` block whose command does not match, or that has no `<pre>` holding the mark, is `LESSON_COMPLETE_NOT_WORKED`.
-- `predict` holds a `<pre>` output and a `<script type="application/json" data-quiz>` with exactly one item; anything else is `LESSON_PREDICT_INVALID`. The item's question, options and whys are prose for the term rule (Terms), so they use only terms allowed before this lesson's `data-introduces`.
+- `predict` holds a `<pre>` output and a `<script type="application/json" data-quiz>` with exactly one item; anything else is `LESSON_PREDICT_INVALID`. The item's question, options and whys are prose for the term rule (Terms), so they use only terms allowed before this lesson's `data-introduces`. The widget merges the item into the lesson's one attempt as item 0, before the quiz items: one answers list, one POST, one score on `/progress`.
 - `connect` is a prompt answered in the terminal, not a quiz item: the skill judges the answer in conversation and records an understanding record when it holds.
 - A `project` lesson's `mission` states the goal as the mission criterion it serves and the observable result that proves it; `prereq` names the lessons it assumes and nothing else; `step` is the check command whose output proves the goal; `sources` links the reference solution's snippet instead of printing it.
 
@@ -108,13 +108,16 @@ The `quiz` block holds one `<script type="application/json" data-quiz>` element:
 ```
 
 - A quiz has at least 3 items.
-- Each item has 3 or 4 non-empty options.
+- Each item has 3 non-empty options by default; 4 are allowed.
+- Each wrong option is an answer a learner with a nameable misreading would give, and its `why` names that misreading. No lint checks this; it is the author's rule, beside the hygiene rules here.
 - `correct` is an index into `options` in authored order. The widget shuffles options when it renders, so never arrange positions by hand.
 - `why` holds one non-empty string per option, in the same order; the learner sees it after clicking that option.
 - Answer length spread, the longest option divided by the shortest, is at most 1.6. Pad the short options or cut the long one.
 - No formatting tells: format every option alike.
 
-Lessons are opened through `teach serve`: Chrome blocks `<script type="module">` on `file://`, so a lesson opened from disk there renders no quiz. Served, the widget posts the answers after the last item and shows `recorded <id>: <score>/<total>`. It posts only when the page origin matches `http://127.0.0.1:<port>`; otherwise, or when the POST fails or returns an error, it shows the score and "Tell me your score in the terminal."; record it with `teach attempt add --lesson <id> --answers <comma list>`.
+Lessons are opened through `teach serve`: Chrome blocks `<script type="module">` on `file://`, so a lesson opened from disk there renders no quiz. Served, the widget posts the answers after the last item and shows `recorded <id>: <score>/<total>`. It posts only when the page origin matches `http://127.0.0.1:<port>`; otherwise, or when the POST fails or returns an error, it shows the score and "Tell me your score in the terminal."; record it with `teach attempt add --lesson <id> --answers <comma list>` (the `predict` answer first when the lesson has one).
+
+Each item is a `role="group"` labelled by its question. A clicked option shows `Correct` or `Not this one` before its text, so colour is not the only signal; the `why` line (`.quiz-why`) and the score line (`.quiz-result`) are `role="status"`; after an answer the item's options are `aria-disabled`, not `disabled`, so they stay reachable from the keyboard.
 
 ## Review lessons
 

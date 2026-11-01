@@ -89,6 +89,17 @@ export function parseLesson(html) {
   };
 }
 
+// The items of the lesson's one attempt (spec 22 D1, D6.5): the predict block's item first, as item 0,
+// then the quiz block's items (the whole page's first data-quiz when there is neither block). quiz.js
+// renders the same order. `{ error }` when either part does not parse.
+export function lessonItems(html) {
+  const blocks = parseBlocks(html);
+  const parts = [blocks.get('predict')?.html, blocks.get('quiz')?.html ?? (blocks.has('predict') ? undefined : html)]
+    .filter((h) => h !== undefined).map(parseQuiz);
+  const bad = parts.find((p) => p.error);
+  return bad ?? (parts.length ? { items: parts.flatMap((p) => p.items) } : { error: 'no quiz data block' });
+}
+
 // GitHub-style heading slug: lowercase, punctuation other than hyphens dropped, spaces to hyphens.
 const slug = (s) => s.trim().toLowerCase().replace(/[^\p{L}\p{N}_\- ]/gu, '').replace(/ /g, '-');
 
