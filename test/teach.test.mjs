@@ -14,7 +14,7 @@ const BIN = join(ROOT, 'bin', 'research-vault.mjs');
 const FIX = join(ROOT, 'test', 'fixtures', 'teach');
 const VAULT = fixtureVault();
 const TODAY = new Date().toISOString().slice(0, 10);
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | progress [workspace] | serve [workspace]\n';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | serve [workspace]\n';
 
 const copyFixture = () => {
   const dir = mkdtempSync(join(tmpdir(), 'rv-teach-'));
@@ -273,6 +273,20 @@ test('CLI teach path candidates: no topic exits 2; with --topic it prints the gr
   const l = cli(['lint', clean]);
   assert.equal(l.status, 0);
   assert.equal(l.stdout, 'lint: clean\nwarning WARN_PATH_TERM_UNPLANNED  PATH.md: New to me term "octuple" is on no line\'s terms: (PATH-FORMAT: every New to me term appears on a line); teach path candidates lists the vault\'s entries for it\n');
+});
+
+test('CLI teach path edges: none on the fixture, proposals once line 2 no longer reaches line 1, the PATH.md-less state (spec 19)', () => {
+  const ws = copyFixture();
+  assert.equal(cli(['path', 'edges', ws]).stdout, `edges for ${ws} | built 0001, 0002, 0003 | proposals 0\nedges: none\n`);
+  writeFileSync(join(ws, 'PATH.md'), readFileSync(join(ws, 'PATH.md'), 'utf8').replace('2. A bad lesson | after: 1', '2. A bad lesson | after: floor'));
+  // Lines 2 and 3 both use fx in their prose; neither reaches line 1 now.
+  assert.equal(cli(['path', 'edges', ws]).stdout, `edges for ${ws} | built 0001, 0002, 0003 | proposals 2\n` +
+    '2. A bad lesson | after: floor | lesson: 0002-bad\n  after: 1 | 0002-bad uses "fx" | line 1 introduces it (0001-good)\n' +
+    '3. Review of 1 to 2 | after: 2 | lesson: 0003-review-good\n  after: 1 | 0003-review-good uses "fx" | line 1 introduces it (0001-good)\n');
+  rmSync(join(ws, 'PATH.md'));
+  const r = cli(['path', 'edges', ws]);
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, 'edges: none (write PATH.md)\n');
 });
 
 test('CLI teach next without a Success section exits 2', () => {

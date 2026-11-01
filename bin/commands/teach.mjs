@@ -9,10 +9,10 @@ import { TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
 import { writeRecord, supersedeRecord, writeAttempt, fixRecordFrontmatter, teachIndex, createServer, progress, progressText } from '../lib/teach.mjs';
-import { lintWorkspace, readPath, pathFringe, pathCandidates, missionFloor } from '../lib/lesson.mjs';
+import { lintWorkspace, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | progress [workspace] | serve [workspace]';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | serve [workspace]';
 
 const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
 const out = (s) => process.stdout.write(s + '\n');
@@ -125,6 +125,32 @@ function candidates(ws, args) {
   return 0;
 }
 
+// Spec 19 D1-D3: `teach path edges`. Reads PATH.md and the built lessons, writes nothing, prints one after:
+// proposal per term or tool a line uses that an earlier line its after: does not reach introduces or teaches.
+function edges(ws) {
+  const path = readPath(ws);
+  if (path === null) { out('edges: none (write PATH.md)'); return 0; }
+  const terms = [...new Set(path.flatMap((l) => [...l.terms, ...(l.tool ? [l.tool] : [])]))];
+  const uses = new Map();
+  for (const l of path) {
+    const file = l.lesson ? join(ws, 'lessons', `${l.lesson}.html`) : null;
+    if (file && existsSync(file)) {
+      const html = readFileSync(file, 'utf8');
+      uses.set(l.n, [...lessonUses(html, terms).map((term) => ({ term, via: 'uses' })), ...[...commandTools(parseLesson(html).blocks).keys()].map((term) => ({ term, via: 'runs' }))]);
+    } else if (!l.lesson) {
+      const slug = topicSlug(l.title);
+      uses.set(l.n, terms.filter((t) => slug.includes(topicSlug(t))).map((term) => ({ term, via: 'names' })));
+    }
+  }
+  const groups = pathEdges({ lines: path, uses });
+  const n = groups.reduce((s, g) => s + g.proposals.length, 0);
+  const lines = [`edges for ${ws} | built ${path.filter((l) => l.lesson).map((l) => l.lesson.slice(0, 4)).join(', ') || 'none'} | proposals ${n}`];
+  if (!n) lines.push('edges: none');
+  for (const g of groups) lines.push(fmt(g.line), ...g.proposals.map((p) => `  after: ${p.after} | ${g.line.lesson ?? 'title'} ${p.via} "${p.term}" | line ${p.after} ${p.by.tool === p.term ? 'teaches' : 'introduces'} it (${p.by.lesson ?? 'untaken'})`));
+  out(lines.join('\n'));
+  return 0;
+}
+
 // Runs until killed: the returned promise settles only when the server closes.
 async function serve(ws, teachSchema, titles) {
   const server = createServer(ws, { schema: teachSchema, titles });
@@ -155,10 +181,10 @@ export async function run(args) {
     if (!ws) return usage();
     return verb === 'lint' ? lint(ws, args) : next(ws);
   }
-  if (verb === 'path' && sub === 'candidates') {
+  if (verb === 'path' && (sub === 'candidates' || sub === 'edges')) {
     const ws = workspace(rest[0]);
     if (!ws) return usage();
-    return candidates(ws, args);
+    return sub === 'edges' ? edges(ws) : candidates(ws, args);
   }
   if (verb === 'record' && sub === 'add') {
     const ws = workspace(rest[0]);

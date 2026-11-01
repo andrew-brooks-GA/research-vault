@@ -76,12 +76,12 @@ test('teach skill names teach next, PLAN.md, teach lint, the assets copy, teach 
   for (const x of [
     'LESSON-FORMAT.md', 'teach next', 'evidence/NNNN/PLAN.md', '## Revisions', 'teach lint', 'cp -n', '.gitignore',
     '.teach-serve.json', 'kill -0', 'teach serve', 'http://127.0.0.1:<port>/lessons/<id>.html', 'xdg-open', '`open`',
-    'attempts/', 'teach record add', 'teach record supersede', 'lessons/NNNN-review-slug.html', 'review-due', 'review-failed', 'fringe:', 'inner:', 'teach path candidates',
+    'attempts/', 'teach record add', 'teach record supersede', 'lessons/NNNN-review-slug.html', 'review-due', 'review-failed', 'fringe:', 'inner:', 'teach path candidates', 'teach path edges',
   ]) {
     assert.ok(s.includes(x), `teach skill lacks ${x}`);
   }
   const pf = read('skills/research-teach/PATH-FORMAT.md');
-  for (const x of ['PATH_AFTER_FORWARD', 'PATH_AFTER_CYCLE', 'fringe', 'WARN_PATH_TERM_UNPLANNED']) assert.ok(pf.includes(x), `PATH-FORMAT lacks ${x}`);
+  for (const x of ['PATH_AFTER_FORWARD', 'PATH_AFTER_CYCLE', 'fringe', 'WARN_PATH_TERM_UNPLANNED', 'teach path edges']) assert.ok(pf.includes(x), `PATH-FORMAT lacks ${x}`);
   // Lint comes before the gate in §5.
   const s5 = s.slice(s.indexOf('## 5.'), s.indexOf('## 6.'));
   assert.ok(s5.indexOf('teach lint') >= 0 && s5.indexOf('teach lint') < s5.indexOf('`research-claims-gate` skill'), 'lint before gate in §5');

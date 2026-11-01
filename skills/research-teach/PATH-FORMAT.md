@@ -18,7 +18,7 @@
 - The number and title are required. The title is the win in a few words.
 - `terms:` names the terms the lesson introduces, at most three, matching the lesson's `data-introduces`.
 - `tool:` names the one tool the lesson teaches, matching the lesson's `data-teaches`.
-- `after:` lists prerequisite line numbers, or `floor`. Numbers name earlier lines only; a line with no `after:` is ready from the start, as `floor` is. `teach lint` reports `PATH_AFTER_FORWARD` for a value naming a later, missing or own line and `PATH_AFTER_CYCLE` for a loop.
+- `after:` lists prerequisite line numbers, or `floor`. Numbers name earlier lines only; a line with no `after:` is ready from the start, as `floor` is. `teach lint` reports `PATH_AFTER_FORWARD` for a value naming a later, missing or own line and `PATH_AFTER_CYCLE` for a loop. `teach path edges` proposes an `after:` value when a built lesson's prose uses a term, or its commands run a tool, that an earlier line introduces or teaches and this line's `after:` does not reach, and when an untaken line's title names one; it writes nothing.
 - `lesson:` is added when the lesson is built, with the lesson id. `teach lint` checks the built lesson against its line.
 
 ## Rules

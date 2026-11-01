@@ -432,6 +432,39 @@ export function lintPath(lines) {
   return findings;
 }
 
+// Spec 19 D2: the introducer terms a lesson's prose uses, read as the term rule reads a lesson (proseOf, termRe).
+export function lessonUses(html, terms) {
+  const { blocks, quiz } = parseLesson(html);
+  const prose = proseOf(blocks, quiz);
+  return [...new Set(terms)].filter((t) => termRe(t).test(prose));
+}
+
+// Spec 19 D3. `uses` maps a line number to [{ term, via }] (via: uses | runs | names). One proposal per
+// (line, introducer line, term) when the introducer is an earlier line the line's after: does not reach.
+export function pathEdges({ lines, uses }) {
+  const byN = new Map(lines.map((l) => [String(l.n), l]));
+  const introducer = new Map();
+  for (const l of lines) for (const t of [...l.terms, ...(l.tool ? [l.tool] : [])]) if (!introducer.has(t) || introducer.get(t).n > l.n) introducer.set(t, l);
+  const reach = (l) => {
+    const seen = new Set();
+    const stack = [...l.after];
+    while (stack.length) { const a = stack.pop(); if (seen.has(a) || !byN.has(a)) continue; seen.add(a); stack.push(...byN.get(a).after); }
+    return seen;
+  };
+  const out = [];
+  for (const l of lines) {
+    const r = reach(l);
+    const proposals = [];
+    for (const { term, via } of uses.get(l.n) ?? []) {
+      const y = introducer.get(term);
+      if (!y || y.n >= l.n || r.has(String(y.n)) || proposals.some((p) => p.term === term)) continue;
+      proposals.push({ after: y.n, term, via, by: y });
+    }
+    if (proposals.length) out.push({ line: l, proposals: proposals.sort((a, b) => a.after - b.after || (a.term < b.term ? -1 : a.term > b.term ? 1 : 0)) });
+  }
+  return out;
+}
+
 // Spec 20 D5. One advisory per `New to me` term that no line's terms: names; the term becomes a
 // violation only when a lesson uses it (LESSON_TERM_NOT_INTRODUCED). Known terms need no lesson.
 export function lintPathTerms(lines, newTerms) {

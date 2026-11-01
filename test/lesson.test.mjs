@@ -10,7 +10,7 @@ import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
 import { checkCitations } from '../bin/commands/check.mjs';
 import {
   lessonClass, parseLesson, lintLesson, lintStore, lintWorkspace, QUIZ_MIN_ITEMS, QUIZ_SPREAD_MAX, MAX_INTRODUCES, readPath, missionFloor, pathFringe, lintPath,
-  lintPathTerms, pathCandidates, topicSlug,
+  lintPathTerms, pathCandidates, topicSlug, pathEdges, lessonUses,
 } from '../bin/lib/lesson.mjs';
 
 const FIX = join(process.cwd(), 'test', 'fixtures', 'teach');
@@ -441,4 +441,25 @@ test('lintPathTerms warns for a New to me term on no line and is quiet on the fi
   const dir = copyFixture();
   writeFileSync(join(dir, 'MISSION.md'), readFileSync(join(dir, 'MISSION.md'), 'utf8').replace('- sextuple\n', '- sextuple\n- octuple\n'));
   assert.ok(lintWorkspace(dir, ctxFor(dir)).some((x) => x.code === 'WARN_PATH_TERM_UNPLANNED' && x.file === 'PATH.md'));
+});
+
+test('pathEdges proposes after: for a term, tool or title use across a missing edge; lessonUses reads the prose as the term rule does (spec 19)', () => {
+  const L = (n, after, lesson = null, extra = {}) => ({ n, title: `L${n}`, terms: [], tool: null, after, lesson, ...extra });
+  const lines = [L(1, ['floor'], '0001-a', { terms: ['fx'] }), L(2, ['1'], '0002-b', { tool: 'kind' }), L(3, ['2'], '0003-c'), L(4, ['floor'], '0004-d'), L(5, ['floor'], null, { terms: ['six'] }), L(6, ['floor'], null, { title: 'The six and the fx' })];
+  const run = (uses) => pathEdges({ lines, uses: new Map(Object.entries(uses).map(([k, v]) => [Number(k), v])) }).map((g) => [g.line.n, g.proposals.map((p) => [p.after, p.term, p.via, p.by.n])]);
+  // A built line using a term an earlier unreached line introduces; one reached through a chain gives none.
+  assert.deepEqual(run({ 4: [{ term: 'fx', via: 'uses' }], 3: [{ term: 'fx', via: 'uses' }] }), [[4, [[1, 'fx', 'uses', 1]]]]);
+  // A tool run against the line whose tool: matches; an unbuilt title naming an introducer; sorted by after then term.
+  assert.deepEqual(run({ 4: [{ term: 'kind', via: 'runs' }, { term: 'fx', via: 'uses' }], 6: [{ term: 'six', via: 'names' }, { term: 'fx', via: 'names' }] }),
+    [[4, [[1, 'fx', 'uses', 1], [2, 'kind', 'runs', 2]]], [6, [[1, 'fx', 'names', 1], [5, 'six', 'names', 5]]]]);
+  // A tool both named in the prose and run in the commands is one proposal, the first way it was used.
+  assert.deepEqual(run({ 4: [{ term: 'kind', via: 'uses' }, { term: 'kind', via: 'runs' }] }), [[4, [[2, 'kind', 'uses', 2]]]]);
+  // The line's own term, an introducer on a later line, a term no line introduces: nothing.
+  assert.deepEqual(run({ 1: [{ term: 'fx', via: 'uses' }], 4: [{ term: 'six', via: 'uses' }, { term: 'nope', via: 'uses' }] }), []);
+  // A floor or unknown after: value contributes nothing to reach; a term on two lines takes the lower as its
+  // introducer, so line 2's own use of fx proposes line 1 and line 3, which reaches only line 2, proposes line 1 too.
+  const dup = [L(1, ['floor'], '0001-a', { terms: ['fx'] }), L(2, ['9'], '0002-b', { terms: ['fx'] }), L(3, ['2'], '0003-c')];
+  assert.deepEqual(pathEdges({ lines: dup, uses: new Map([[3, [{ term: 'fx', via: 'uses' }]], [2, [{ term: 'fx', via: 'uses' }]]]) }).map((g) => [g.line.n, g.proposals.map((p) => p.after)]), [[2, [1]], [3, [1]]]);
+  const good = readFileSync(join(FIX, 'lessons', '0001-good.html'), 'utf8');
+  assert.deepEqual(lessonUses(good, ['fx', 'sextuple', 'fx']), ['fx']);
 });
