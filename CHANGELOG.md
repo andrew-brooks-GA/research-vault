@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Hygiene bundle (spec 18 D1-D5).** `writeManifest` refuses to drop an entry the current manifest lists while its type folder is missing or its file is still there (`manifest not written: ...`; delete the manifest to accept the shrink); `manifest --rebuild` reports every edge to a missing entry on stderr before writing; each claims-ledger row carries `reviewer`, the sha256 of `agents/claims-reviewer.md`, and a row counts only while that hash is absent or current (`gate status` says `none (reviewer changed)` otherwise); `manifest --topics` lists the topic vocabulary with counts, and the research-vault-usage skill tells the agent to choose search terms from it.
 - Spec 18 (`docs/specs/18-hygiene-bundle.md`): the hygiene bundle, evaluation 16's item 3, with today's behaviour probed first. Spec only; the file is force-added, since `docs/specs/` is otherwise ignored.
+- **`examples/blast-radius.mjs`.** Given the manifest, one entry id and one or more `check --json` outputs, walks `sources` and `contributing_ids` inward and lists the entries that rest on the id and every code symbol or document citing one of them (evaluation 16's item 4); run by the contract test, named in REFERENCE and ADOPTING. No new CLI surface.
 
 ## [0.8.1] - 2026-11-01
 

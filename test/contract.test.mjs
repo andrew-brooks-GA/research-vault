@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { buildManifest } from '../bin/lib/manifest.mjs';
-import { codeRepo } from './helpers.mjs';
+import { codeRepo, put } from './helpers.mjs';
 
 const ENTRY = ['id', 'type', 'title', 'summary', 'domain', 'topics', 'source_url', 'content_hash', 'volatility', 'last_verified', 'status',
   'subject', 'series', 'stage', 'state', 'confidence', 'outcome', 'authority_tier', 'authority_basis', 'superseded_by', 'related', 'contributing_ids', 'sources'];
@@ -45,4 +45,24 @@ test('examples/graph-dot.mjs joins the two outputs into DOT with an edge per man
   assert.ok(dot.includes('"src/b.lua#ns.g" -> "2026-01-01-fx-missing" [label="dep=1.2.3" color=red];'), dot);
   assert.ok(dot.includes('"docs/d.md" -> "2026-01-01-fx-doc"'), dot);
   assert.ok(dot.includes('"2026-01-01-fx-snippet" -> "2026-01-01-fx-doc" [label="source_id"];'), 'a manifest edge');
+});
+
+test('examples/blast-radius.mjs walks sources and contributing_ids inward and lists every check row citing a dependent', () => {
+  const { root, vault } = codeRepo();
+  put(vault, 'note', '2026-01-02-fx-note', { sources: ['2026-01-01-fx-doc'], confidence: 'medium' });
+  put(vault, 'synthesis', '2026-01-03-fx-syn', { contributing_ids: ['2026-01-02-fx-note'] });
+  writeFileSync(join(root, 'src', 'c.lua'), '-- per 2026-01-03-fx-syn\nlocal function h()\n  return 3\nend\n');
+  writeFileSync(join(root, 'docs', 'e.md'), 'See 2026-01-02-fx-note.\n');
+  const bin = join(process.cwd(), 'bin', 'research-vault.mjs');
+  execFileSync(process.execPath, [bin, 'manifest', '--rebuild', '--vault', vault], { cwd: root });
+  writeFileSync(join(root, 'check.json'), execFileSync(process.execPath, [bin, 'check', '--json'], { cwd: root, encoding: 'utf8' }));
+  const out = execFileSync(process.execPath, [join(process.cwd(), 'examples', 'blast-radius.mjs'), join(vault, '.vault-manifest.json'), '2026-01-01-fx-doc', 'check.json'], { cwd: root, encoding: 'utf8' });
+  const lines = out.trim().split('\n');
+  assert.equal(lines[0], 'downstream of 2026-01-01-fx-doc: 2026-01-02-fx-note (1), 2026-01-03-fx-syn (2)');
+  assert.deepEqual(lines.slice(1), [
+    'check.json  docs/d.md  ok  cites 2026-01-01-fx-doc (distance 0)',
+    'check.json  docs/e.md  ok  cites 2026-01-02-fx-note (distance 1)',
+    'check.json  src/a.lua#f:3  ok  cites 2026-01-01-fx-doc (distance 0)',
+    'check.json  src/c.lua#h:1  ok  cites 2026-01-03-fx-syn (distance 2)',
+  ]);
 });
