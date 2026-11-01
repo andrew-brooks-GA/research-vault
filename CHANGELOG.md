@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-01
+
 ### Added
 - **Teach fringe (spec 17 D0-D4).** `teach next` prints one `fringe:` line per `PATH.md` line whose `after:` lines are all built (file order, the first the default) and one `inner:` line per built non-review line nothing depends on yet (most recent first), in place of the single `path:` line; `fringe: none (...)` and `fringe: complete` name the empty states. `teach lint` reports `PATH_AFTER_FORWARD` for an `after:` value naming a later, missing or own line and `PATH_AFTER_CYCLE` once per loop. The research-teach skill picks the next lesson from the fringe and draws review items from review-due and review-failed records, then the inner fringe; PATH-FORMAT states the rules; the fixture path branches and joins.
 - Spec 17 (`docs/specs/17-teach-fringe.md`): the teach fringe. `teach next` offers every `PATH.md` line whose `after:` lines are all built (one `fringe:` line each, the first the default) and the inner fringe (`inner:` lines, the most recently built lessons nothing depends on yet) for review lessons; `teach lint` gains `PATH_AFTER_FORWARD` and `PATH_AFTER_CYCLE`; the skill picks from the fringe and reviews from the inner fringe. Evaluation 16's item 1, with today's behaviour probed first. Spec only; the file is force-added, since `docs/specs/` is otherwise ignored.
