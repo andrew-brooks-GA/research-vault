@@ -72,7 +72,7 @@ test('CLI teach lint: a command tool must be in Known tools or taught by this or
   }
   const good = readFileSync(join(FIX, 'lessons', '0001-good.html'), 'utf8');
   const second = good.replace('data-lesson="0001-good"', 'data-lesson="0002-fxctl"')
-    .replace('<section data-block="step">', '<section data-block="step">\n<pre><code>FX_ENV=lab fxctl run 3 | node -e "process.stdin.pipe(process.stdout)"</code></pre>');
+    .replace('<section data-block="step" aria-label="do it yourself">', '<section data-block="step" aria-label="do it yourself">\n<pre><code>FX_ENV=lab fxctl run 3 | node -e "process.stdin.pipe(process.stdout)"</code></pre>');
   writeFileSync(join(dir, 'lessons', '0002-fxctl.html'), second);
   mkdirSync(join(dir, 'evidence', '0002'));
   cpSync(join(FIX, 'evidence', '0001', 'PLAN.md'), join(dir, 'evidence', '0002', 'PLAN.md'));

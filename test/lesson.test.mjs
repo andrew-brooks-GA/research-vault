@@ -10,7 +10,7 @@ import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
 import { checkCitations } from '../bin/commands/check.mjs';
 import {
   lessonClass, parseLesson, lintLesson, lintStore, lintWorkspace, QUIZ_MIN_ITEMS, QUIZ_SPREAD_MAX, MAX_INTRODUCES, readPath, missionFloor, pathFringe, lintPath,
-  lintPathTerms, pathCandidates, topicSlug, pathEdges, lessonUses,
+  lintPathTerms, pathCandidates, topicSlug, pathEdges, lessonUses, FIGURE_VIEWBOX_MAX, FIGURE_LABEL_MIN, FIGURE_LABEL_MAX,
 } from '../bin/lib/lesson.mjs';
 
 const FIX = join(process.cwd(), 'test', 'fixtures', 'teach');
@@ -32,6 +32,9 @@ test('constants match the spec', () => {
   assert.equal(MAX_INTRODUCES, 3);
   assert.equal(QUIZ_MIN_ITEMS, 3);
   assert.equal(QUIZ_SPREAD_MAX, 1.6);
+  assert.equal(FIGURE_VIEWBOX_MAX, 440);
+  assert.equal(FIGURE_LABEL_MIN, 14);
+  assert.equal(FIGURE_LABEL_MAX, 40);
 });
 
 test('lessonClass by file name', () => {
@@ -97,7 +100,7 @@ test('lesson-specific codes fire on their own fixture and not on the good lesson
   // Positive control: the unedited copy is clean.
   assert.deepEqual(variant('unchanged', (h) => h), []);
   assert.deepEqual(codes(variant('no fixed sentence', (h) => h.replace('You can ask follow-up questions in the terminal.', 'Ask me anything.'))), ['LESSON_FOLLOWUP_MISSING']);
-  const noFollowup = variant('no followup block', (h) => h.replace(/<section data-block="followup">[\s\S]*?<\/section>/, ''));
+  const noFollowup = variant('no followup block', (h) => h.replace(/<section data-block="followup" aria-label="follow up">[\s\S]*?<\/section>/, ''));
   assert.deepEqual(codes(noFollowup), ['LESSON_BLOCK_MISSING']);
   assert.equal(noFollowup[0].message, 'missing block: followup');
   assert.deepEqual(codes(variant('two options', (h) => h.replace('["42", "13", "49"]', '["42", "13"]').replace(', "That squares seven."]', ']'))), ['QUIZ_OPTION_COUNT']);
@@ -314,13 +317,56 @@ test('term rule: a tracked term is allowed by the Floor or by data-introduces on
   assert.ok(codes(f).includes('LESSON_DFN_MISSING'));
   assert.ok(codes(f).includes('LESSON_PATH_MISMATCH'));
   // A model block that cites only an experiment warns; one with no figure and no data-no-figure fails.
-  writeFileSync(join(dir, 'lessons', '0004-sextuple.html'), four.replace('<a data-cite="2026-01-01-fx-doc">2026-01-01-fx-doc</a></p>\n</section>\n\n<section data-block="fact">', '<a data-cite="2026-01-01-fx-experiment">2026-01-01-fx-experiment</a></p>\n</section>\n\n<section data-block="fact">').replace(/<figure>[\s\S]*?<\/figure>/, ''));
+  writeFileSync(join(dir, 'lessons', '0004-sextuple.html'), four.replace('<a data-cite="2026-01-01-fx-doc">[1]</a></p>\n</section>\n\n<section data-block="fact"', '<a data-cite="2026-01-01-fx-experiment">[3]</a></p>\n</section>\n\n<section data-block="fact"').replace(/<figure>[\s\S]*?<\/figure>/, ''));
   f = lintFile(dir, 'lessons/0004-sextuple.html');
   assert.ok(codes(f).includes('LESSON_MODEL_NO_FIGURE'));
   assert.ok(codes(f).includes('WARN_MODEL_LAB_ONLY'));
   // A workspace with lessons and no PATH.md warns once.
   rmSync(join(dir, 'PATH.md'));
   assert.ok(lintWorkspace(dir, ctxFor(dir)).some((x) => x.code === 'WARN_PATH_MISSING' && x.file === 'PATH.md'));
+});
+
+test('figure warnings: each fires on its own svg, once per figure, and not on the good lesson', () => {
+  const dir = copyFixture();
+  const good = readFileSync(join(dir, 'lessons', '0001-good.html'), 'utf8');
+  const svg = /<svg[\s\S]*?<\/svg>/;
+  const cases = {
+    WARN_FIGURE_FIXED_SIZE: (h) => h.replace('<svg viewBox="0 0 200 60"', '<svg viewBox="0 0 200 60" width="200"'),
+    WARN_FIGURE_VIEWBOX_WIDE: (h) => h.replace('viewBox="0 0 200 60"', 'viewBox="0 0 441 60"'),
+    WARN_FIGURE_LABEL_SMALL: (h) => h.replace('font-size="14">fx<', 'font-size="13">fx<'),
+    WARN_FIGURE_LABEL_LONG: (h) => h.replace('>6n</text>', '>6n<tspan>, which is the input value scaled by a factor of six</tspan></text>'),
+    WARN_FIGURE_COLOR: (h) => h.replace('fill="none" stroke="currentColor"', 'fill="none" stroke="#c00"'),
+    WARN_FIGURE_NO_ALT: (h) => h.replace(' role="img"', ''),
+  };
+  for (const [code, edit] of Object.entries(cases)) {
+    writeFileSync(join(dir, 'lessons', '0001-good.html'), edit(good));
+    const f = lintFile(dir, 'lessons/0001-good.html');
+    for (const x of f) console.log(`${x.code}  ${x.message}`);
+    assert.deepEqual(codes(f), [code], code);
+    assert.ok(f[0].warning && f[0].message.startsWith('figure 1: '), code);
+  }
+  // Labels resolve their size through an ancestor's font-size; no font-size anywhere is unknown and warns.
+  const grouped = good.replace(svg, (m) => m.replace(/ font-size="14"/g, '').replace('<rect', '<g font-size="16"><rect').replace('</svg>', '</g></svg>'));
+  writeFileSync(join(dir, 'lessons', '0001-good.html'), grouped);
+  assert.deepEqual(lintFile(dir, 'lessons/0001-good.html'), []);
+  writeFileSync(join(dir, 'lessons', '0001-good.html'), good.replace(/ font-size="14"/g, ''));
+  assert.match(lintFile(dir, 'lessons/0001-good.html')[0].message, /3 label\(s\) under 14 units or of unknown size \(unknown\)/);
+  // var(--muted) is allowed; a second figure is numbered on its own.
+  writeFileSync(join(dir, 'lessons', '0001-good.html'), good.replace('stroke="currentColor"/>', 'stroke="var(--muted)"/>').replace(/<figure>[\s\S]*?<\/figure>/, (m) => m + m.replace(' role="img"', '')));
+  assert.deepEqual(lintFile(dir, 'lessons/0001-good.html').map((x) => x.message), ['figure 2: <svg> needs role="img" and an aria-label']);
+});
+
+test('LESSON_CITE_NUMBER: an authored [n] must be the id\'s position in the sources list', () => {
+  const dir = copyFixture();
+  const good = readFileSync(join(dir, 'lessons', '0001-good.html'), 'utf8');
+  writeFileSync(join(dir, 'lessons', '0001-good.html'), good.replace('<a data-cite="2026-01-01-fx-doc">[1]</a>', '<a data-cite="2026-01-01-fx-doc">[2]</a>')
+    .replace('Called with 7, fx returns 42. <a data-cite="2026-01-01-fx-experiment">[3]</a>', 'Called with 7, fx returns 42. <a data-cite="2026-01-01-fx-gone">[4]</a>'));
+  const f = lintFile(dir, 'lessons/0001-good.html');
+  assert.deepEqual(f.map((x) => `${x.code} ${x.message}`), [
+    'LESSON_CITE_NUMBER data-cite 2026-01-01-fx-doc is numbered [2] but is source 1 in the sources list',
+    'LESSON_CITE_NUMBER data-cite 2026-01-01-fx-gone is numbered [4] but is not in the sources list',
+  ]);
+  assert.ok(f.every((x) => x.warning === false));
 });
 
 test('a parked lesson still resolves the lesson field of records and attempts', () => {

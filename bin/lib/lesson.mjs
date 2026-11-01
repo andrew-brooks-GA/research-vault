@@ -13,6 +13,10 @@ import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
 
 export const QUIZ_MIN_ITEMS = 3;
 export const QUIZ_SPREAD_MAX = 1.6;
+// Figure constants (spec 22 D4): lesson.css sets min-width 27.5rem (440px) so 440 units draw at scale 1.
+export const FIGURE_VIEWBOX_MAX = 440;
+export const FIGURE_LABEL_MIN = 14;
+export const FIGURE_LABEL_MAX = 40;
 const FOLLOWUP = 'You can ask follow-up questions in the terminal.';
 const REQUIRED = {
   lesson: ['mission', 'model', 'fact', 'example', 'quiz', 'step', 'sources', 'followup'],
@@ -264,6 +268,42 @@ export function commandTools(blocks) {
   return tools;
 }
 
+// Spec 22 D4: advisory checks on each inline <svg> in a <figure>, one finding per code per figure.
+// A label's size is the nearest font-size attribute on the <text> or an ancestor; none is unknown and warns.
+function figureFindings(html, add) {
+  [...html.matchAll(/<figure\b[\s\S]*?<\/figure>/gi)].flatMap((f) => [...f[0].matchAll(/<svg\b([^>]*)>([\s\S]*?)<\/svg>/gi)]).forEach((svg, i) => {
+    const [, attrs, inner] = svg;
+    const at = (a, name) => new RegExp(`\\s${name}\\s*=\\s*(["'])(.*?)\\1`, 'i').exec(a)?.[2];
+    const n = `figure ${i + 1}`;
+    if (at(attrs, 'width') !== undefined || at(attrs, 'height') !== undefined) add('WARN_FIGURE_FIXED_SIZE', `${n}: <svg> has a width or height attribute; size it from viewBox alone`);
+    const vbw = Number(at(attrs, 'viewBox')?.trim().split(/[\s,]+/)[2]);
+    if (vbw > FIGURE_VIEWBOX_MAX) add('WARN_FIGURE_VIEWBOX_WIDE', `${n}: viewBox width ${vbw} (max ${FIGURE_VIEWBOX_MAX})`);
+    if (!/\srole\s*=\s*(["'])img\1/i.test(attrs) || !at(attrs, 'aria-label')?.trim()) add('WARN_FIGURE_NO_ALT', `${n}: <svg> needs role="img" and an aria-label`);
+    const colors = new Set();
+    const small = [];
+    const long = [];
+    const stack = [attrs];
+    for (const t of inner.matchAll(/<(\/?)([a-z][\w:-]*)\b([^>]*?)(\/?)>/gi)) {
+      const [, close, tag, a, self] = t;
+      if (close) { stack.pop(); continue; }
+      for (const c of a.matchAll(/\s(?:fill|stroke)\s*=\s*(["'])(.*?)\1/gi)) colors.add(c[2]);
+      if (tag.toLowerCase() === 'text') {
+        const size = [a, ...stack.slice().reverse()].map((x) => at(x, 'font-size')).find((x) => x !== undefined);
+        if (size === undefined || !(parseFloat(size) >= FIGURE_LABEL_MIN)) small.push(size ?? 'unknown');
+        const end = inner.indexOf('</text>', t.index);
+        const label = unescapeHtml(textOf(inner.slice(t.index, end === -1 ? undefined : end)));
+        if (label.length > FIGURE_LABEL_MAX) long.push(label.length);
+      }
+      if (!self) stack.push(a);
+    }
+    for (const c of [at(attrs, 'fill'), at(attrs, 'stroke')]) if (c !== undefined) colors.add(c);
+    const bad = [...colors].filter((c) => !/^\s*(currentColor|none|var\(--muted\))\s*$/i.test(c));
+    if (bad.length) add('WARN_FIGURE_COLOR', `${n}: fill or stroke ${bad.join(', ')}; use currentColor, none or var(--muted)`);
+    if (small.length) add('WARN_FIGURE_LABEL_SMALL', `${n}: ${small.length} label(s) under ${FIGURE_LABEL_MIN} units or of unknown size (${[...new Set(small)].join(', ')})`);
+    if (long.length) add('WARN_FIGURE_LABEL_LONG', `${n}: ${long.length} label(s) over ${FIGURE_LABEL_MAX} characters (longest ${Math.max(...long)}); a label names, the paragraph explains`);
+  });
+}
+
 export function lintLesson(filePath, ctx) {
   const cls = lessonClass(filePath);
   if (!cls) return [];
@@ -271,7 +311,8 @@ export function lintLesson(filePath, ctx) {
   const file = relative(ws, filePath).replace(/\\/g, '/');
   const findings = [];
   const add = (code, message) => findings.push({ code, file, message, warning: code.startsWith('WARN_') });
-  const { blocks, quiz, cites, links } = parseLesson(readFileSync(filePath, 'utf8'));
+  const raw = readFileSync(filePath, 'utf8');
+  const { blocks, quiz, cites, links } = parseLesson(raw);
 
   for (const b of REQUIRED[cls]) if (!blocks.has(b)) add('LESSON_BLOCK_MISSING', `missing block: ${b}`);
   const followup = blocks.get('followup');
@@ -290,6 +331,16 @@ export function lintLesson(filePath, ctx) {
   for (const r of checkCitations(cites.map((value) => ({ type: 'id', value })), ctx.entries, ctx.schema, ctx.now)) {
     if (r.status === 'uncovered') add('LESSON_CITE_UNRESOLVED', `data-cite ${r.value} has no vault entry`);
   }
+  // Spec 22 D6.3: an authored [n] is the cited id's position in the sources list, as teach serve numbers it.
+  const order = extractCites(blocks.get('sources')?.html ?? '');
+  for (const [name, b] of blocks) {
+    if (name === 'sources') continue;
+    for (const m of b.html.matchAll(/<a\b[^>]*\bdata-cite\s*=\s*(["'])([^"']+)\1[^>]*>\s*\[(\d+)\]\s*<\/a>/gi)) {
+      const pos = order.indexOf(m[2]) + 1;
+      if (Number(m[3]) !== pos) add('LESSON_CITE_NUMBER', `data-cite ${m[2]} is numbered [${m[3]}] but is ${pos ? `source ${pos}` : 'not'} in the sources list`);
+    }
+  }
+  figureFindings(raw, add);
   for (const href of new Set(links)) {
     if (!linkResolves(ws, dirname(filePath), href)) add('LESSON_LINK_DANGLING', `href ${href} does not resolve`);
   }
@@ -297,7 +348,7 @@ export function lintLesson(filePath, ctx) {
   if (cls !== 'reference' && blocks.has('quiz')) quizFindings(quiz, cls, ws, add);
 
   if (cls === 'lesson') {
-    const html = readFileSync(filePath, 'utf8');
+    const html = raw;
     const id = basename(filePath).slice(0, -5);
     const model = blocks.get('model');
     if (model) {

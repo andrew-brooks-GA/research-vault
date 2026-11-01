@@ -328,15 +328,16 @@ function send(req, res, status, body = '', type = 'text/plain; charset=utf-8', c
 }
 
 // Citations as the learner sees them: every `<a data-cite="ID">` outside the sources block becomes a
-// numbered footnote `[n]` (first appearance order) carrying the entry's title, and the sources block's
+// numbered footnote `[n]` (its position in the sources list, as an unserved page's authored [n] is; an id
+// the list lacks numbers after it) carrying the entry's title, and the sources block's
 // anchors get `id="src-ID"`, their title as text, and their number. The file on disk is untouched, so
 // the claims-gate hash is unaffected. `titles` maps vault id to title; an unknown id keeps the id as its title.
 export function footnoteCitations(html, titles = {}) {
-  const order = [];
-  const num = (id) => { let i = order.indexOf(id); if (i === -1) { order.push(id); i = order.length - 1; } return i + 1; };
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const srcRe = /(<[a-z][a-z0-9]*\b[^>]*\bdata-block\s*=\s*(["'])sources\2[^>]*>)([\s\S]*?)(<\/section>|<\/div>)/i;
   const m = srcRe.exec(html);
+  const order = m ? extractCites(m[3]) : [];
+  const num = (id) => { let i = order.indexOf(id); if (i === -1) { order.push(id); i = order.length - 1; } return i + 1; };
   const before = m ? html.slice(0, m.index) : html;
   const sources = m ? m[3] : '';
   const after = m ? html.slice(m.index + m[0].length) : '';
