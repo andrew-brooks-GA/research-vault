@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, cpSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { searchVault } from '../bin/commands/search.mjs';
+import { searchVault, matchRows } from '../bin/commands/search.mjs';
+import { buildManifest } from '../bin/lib/manifest.mjs';
 import { relatedTo } from '../bin/commands/related.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
 
@@ -98,4 +99,11 @@ test('search hides superseded entries unless --include-superseded (spec 09)', as
   assert.ok(!/A first \(superseded/.test(textAll), 'active rows get no suffix');
   assert.deepEqual(JSON.parse(await cli({ json: true })).map(e => e.id), ACTIVE, 'json default hides superseded');
   assert.deepEqual(JSON.parse(await cli({ json: true, 'include-superseded': true })).map(e => e.id), ALL);
+});
+
+test('matchRows is searchVault without the body walk and the superseded gate (spec 20 D0)', () => {
+  const rows = buildManifest(VAULT).entries.filter(e => e.status !== 'superseded');
+  for (const q of [{ type: 'source', topic: 'x' }, { text: 'a' }, { topic: 'tdd' }]) {
+    assert.deepEqual(matchRows(rows, q, { tdd: 'test-driven-development' }).map(e => e.id), searchVault(VAULT, q).map(e => e.id));
+  }
 });

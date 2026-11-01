@@ -5,11 +5,14 @@ import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../lib/resolve.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
+import { TYPE_FOLDER } from '../lib/fsutil.mjs';
+import { loadProjectConfig } from '../lib/projectconfig.mjs';
+import { csvList } from '../lib/args.mjs';
 import { writeRecord, supersedeRecord, writeAttempt, fixRecordFrontmatter, teachIndex, createServer, progress, progressText } from '../lib/teach.mjs';
-import { lintWorkspace, readPath, pathFringe } from '../lib/lesson.mjs';
+import { lintWorkspace, readPath, pathFringe, pathCandidates, missionFloor } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | progress [workspace] | serve [workspace]';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | progress [workspace] | serve [workspace]';
 
 const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
 const out = (s) => process.stdout.write(s + '\n');
@@ -52,11 +55,12 @@ function lint(ws, args) {
 
 // Spec 17 D1: one `fringe:` line per PATH.md line whose prerequisites are all built (the first is the
 // default) and one `inner:` line per built non-review line nothing depends on yet, most recent first.
+const fmt = (l) => `${l.n}. ${l.title}` + [['terms', l.terms.join(', ')], ['tool', l.tool], ['after', l.after.join(', ')], ['lesson', l.lesson]]
+  .filter(([, v]) => v).map(([k, v]) => ` | ${k}: ${v}`).join('');
+
 function pathLines(ws) {
   const path = readPath(ws);
   if (path === null) return ['fringe: none (write PATH.md)'];
-  const fmt = (l) => `${l.n}. ${l.title}` + [['terms', l.terms.join(', ')], ['tool', l.tool], ['after', l.after.join(', ')], ['lesson', l.lesson]]
-    .filter(([, v]) => v).map(([k, v]) => ` | ${k}: ${v}`).join('');
   const { fringe, inner } = pathFringe(path);
   const head = path.every((l) => l.lesson) ? ['fringe: complete']
     : fringe.length ? fringe.map((l) => `fringe: ${fmt(l)}`)
@@ -84,6 +88,40 @@ function next(ws) {
     `review-failed: ${ids(active.filter((r) => r.reviewFailed))}`,
     ...pathLines(ws),
   ].join('\n'));
+  return 0;
+}
+
+// Spec 20 D1-D3: `teach path candidates`. Reads the workspace and the vault, writes nothing, prints every
+// candidate entry under the PATH.md line it would follow with the query that produced it.
+function candidates(ws, args) {
+  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws });
+  if (!existsSync(vaultPath)) {
+    process.stderr.write(`teach path candidates: no vault at ${vaultPath}\n`);
+    return 2;
+  }
+  const schema = loadSchema(REPO_ROOT, { vaultPath });
+  const topics = args.topic ? csvList(args.topic) : (loadProjectConfig(ws, { schema })?.config.defaults?.topics ?? []);
+  if (!topics.length) {
+    process.stderr.write('teach path candidates: no topic (pass --topic a,b or set defaults.topics in .research-vault.json)\n');
+    return 2;
+  }
+  const idx = teachIndex(ws, { now: new Date() });
+  const manifest = buildManifest(vaultPath);
+  const byId = new Map(manifest.entries.map((e) => [e.id, e]));
+  const readBody = (id) => { const p = join(vaultPath, TYPE_FOLDER[byId.get(id)?.type] ?? '', `${id}.md`); return existsSync(p) ? readFileSync(p, 'utf8') : ''; };
+  const r = pathCandidates({
+    lines: readPath(ws) ?? [], floor: missionFloor(ws), topics, manifest, readBody, aliases: schema.taxonomy.topic_aliases,
+    cites: [...idx.lessons.flatMap((l) => l.cites), ...idx.reference.flatMap((d) => d.cites)],
+  });
+  const entry = (c, reasons = c.reasons) => `  ${c.id} [${c.type}] ${c.title}${reasons?.length ? ` | ${reasons.join(', ')}` : ''} | ${c.queries.join('; ')}`;
+  const lessons = idx.lessons.filter((l) => l.cites.length).map((l) => l.number);
+  const lines = [`candidates for ${ws} | topics: ${r.poolTopics.map(([t, n]) => `${t} ${n}`).join(', ')} | pool ${r.pool} | cited ${r.cited.length} (lessons ${lessons.join(', ') || 'none'})`];
+  if (!r.groups.length && !r.noLine.length && !r.uncovered.length) lines.push('candidates: none');
+  for (const g of r.groups) lines.push(fmt(g.line), ...g.candidates.map((c) => entry(c)));
+  if (r.noLine.length) lines.push('no line', ...r.noLine.map((c) => entry(c)));
+  for (const u of r.uncovered) lines.push(`term "${u.term}": no path line covers it`, ...(u.hits.length ? u.hits.map((h) => entry(h, null)) : ['  (no entry)']));
+  if (!r.uncovered.length) lines.push('terms with no line: none');
+  out(lines.join('\n'));
   return 0;
 }
 
@@ -116,6 +154,11 @@ export async function run(args) {
     const ws = workspace(sub);
     if (!ws) return usage();
     return verb === 'lint' ? lint(ws, args) : next(ws);
+  }
+  if (verb === 'path' && sub === 'candidates') {
+    const ws = workspace(rest[0]);
+    if (!ws) return usage();
+    return candidates(ws, args);
   }
   if (verb === 'record' && sub === 'add') {
     const ws = workspace(rest[0]);

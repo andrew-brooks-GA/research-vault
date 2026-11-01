@@ -7,18 +7,24 @@ import { resolveVault } from '../lib/resolve.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-export function searchVault(vaultPath, q, repoRoot = REPO_ROOT) {
-  const schema = loadSchema(repoRoot);
-  const aliases = schema.taxonomy.topic_aliases;
+// The in-memory filters (type, domain, series, topic through the aliases, text over title, topics and
+// summary) over manifest rows; shared with `teach path candidates`, which runs them over one manifest.
+export function matchRows(rows, q, aliases = {}) {
   const expand = t => aliases[t] || t;
-  let rows = buildManifest(vaultPath).entries;
-  // Validity gate: superseded entries are retired from search; traversal (`related`) still sees them.
-  if (!q.includeSuperseded) rows = rows.filter(e => e.status !== 'superseded');
   if (q.type) rows = rows.filter(e => e.type === q.type);
   if (q.domain) rows = rows.filter(e => e.domain.includes(q.domain));
   if (q.series) rows = rows.filter(e => e.series === q.series);
   if (q.topic) { const want = expand(q.topic); rows = rows.filter(e => e.topics.map(expand).includes(want)); }
   if (q.text) { const t = q.text.toLowerCase(); rows = rows.filter(e => (e.title || '').toLowerCase().includes(t) || e.topics.join(' ').toLowerCase().includes(t) || (e.summary || '').toLowerCase().includes(t)); }
+  return rows;
+}
+
+export function searchVault(vaultPath, q, repoRoot = REPO_ROOT) {
+  const schema = loadSchema(repoRoot);
+  let rows = buildManifest(vaultPath).entries;
+  // Validity gate: superseded entries are retired from search; traversal (`related`) still sees them.
+  if (!q.includeSuperseded) rows = rows.filter(e => e.status !== 'superseded');
+  rows = matchRows(rows, q, schema.taxonomy.topic_aliases);
   if (q.body) {
     const needle = q.body.toLowerCase();
     const bodyById = new Map();

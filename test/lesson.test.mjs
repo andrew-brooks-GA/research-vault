@@ -10,6 +10,7 @@ import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
 import { checkCitations } from '../bin/commands/check.mjs';
 import {
   lessonClass, parseLesson, lintLesson, lintStore, lintWorkspace, QUIZ_MIN_ITEMS, QUIZ_SPREAD_MAX, MAX_INTRODUCES, readPath, missionFloor, pathFringe, lintPath,
+  lintPathTerms, pathCandidates, topicSlug,
 } from '../bin/lib/lesson.mjs';
 
 const FIX = join(process.cwd(), 'test', 'fixtures', 'teach');
@@ -366,4 +367,78 @@ test('pathFringe offers every ready line and the built non-review lines nothing 
   const dir = copyFixture();
   writeFileSync(join(dir, 'PATH.md'), readFileSync(join(dir, 'PATH.md'), 'utf8').replace('terms: sextuple | after: 1', 'terms: sextuple | after: 6'));
   assert.ok(lintWorkspace(dir, ctxFor(dir)).some((f) => f.code === 'PATH_AFTER_FORWARD' && f.file === 'PATH.md' && f.message === 'line 4 after: 6 names a later line'));
+});
+
+// Spec 20 D2-D3: candidates from the vault's own filters and traversal, grouped by the line they would follow.
+test('pathCandidates pools by topic and term slugs, groups by the strongest --text match, lists uncovered terms and linked notes', () => {
+  const L = (n, title, extra = {}) => ({ n, title, terms: [], tool: null, after: ['floor'], lesson: null, ...extra });
+  const row = (id, type, title, topics, extra = {}) => ({ id, type, title, topics, status: 'active', summary: null, ...extra });
+  const lines = [
+    L(1, 'Two control planes', { lesson: '0001-a' }),
+    L(2, 'The vcluster CLI', { tool: 'vcluster' }),
+    L(3, 'Private nodes: real nodes joined', {}),
+    L(4, 'Platform', { terms: ['platform agent'] }),
+  ];
+  const floor = { knownTerms: new Set(['private node', 'standalone']), newTerms: new Set(['platform agent', 'backing store']) };
+  const entries = [
+    row('2026-01-01-cited', 'source', 'vCluster docs', ['vcluster']),
+    row('2026-01-02-cli', 'source', 'vcluster connect reference', ['vcluster'], { summary: 'lists all virtual clusters' }),
+    row('2026-01-03-pn', 'source', 'X private-node architecture', ['vcluster']),
+    row('2026-01-04-agent', 'source', 'Agent chart', ['vcluster-platform'], { summary: 'the Platform Agent chart' }),
+    row('2026-01-05-sa', 'source', 'Standalone guide', ['standalones']),
+    row('2026-01-06-old', 'source', 'Old vcluster page', ['vcluster'], { status: 'superseded' }),
+    row('2026-01-07-note', 'note', 'A note over the cited doc', ['other']),
+    row('2026-01-08-syn', 'synthesis', 'A synthesis over the note', ['other']),
+    row('2026-01-09-body', 'source', 'Unrelated title', ['vcluster']),
+    row('2026-01-10-far', 'note', 'Three hops away', ['other']),
+  ];
+  const edges = [
+    { from: '2026-01-07-note', rel: 'sources', to: '2026-01-01-cited' },
+    { from: '2026-01-08-syn', rel: 'contributing_ids', to: '2026-01-07-note' },
+    { from: '2026-01-10-far', rel: 'sources', to: '2026-01-08-syn' },
+  ];
+  const readBody = (id) => (id === '2026-01-09-body' ? 'The backing store is etcd.' : '');
+  const r = pathCandidates({ lines, floor, cites: ['2026-01-01-cited'], manifest: { entries, edges, backlinks: {} }, topics: ['vcluster'], readBody });
+  // Pool: the given topic, plus `standalone` through its plural (the slug of a Known term); platform-agent is on no entry, so it does not widen.
+  assert.deepEqual(r.poolTopics, [['vcluster', 4], ['standalones', 1]]);
+  assert.equal(r.pool, 5);
+  assert.deepEqual(r.cited, ['2026-01-01-cited']);
+  const group = (n) => r.groups.find((g) => g.line.n === n)?.candidates.map((c) => c.id) ?? [];
+  // The CLI reference matches line 2 through its tool and nothing stronger; "private node" meets "private-node" in a title via the slug query.
+  assert.deepEqual(group(2), ['2026-01-02-cli', '2026-01-09-body']);
+  assert.deepEqual(group(3), ['2026-01-03-pn']);
+  const pn = r.groups.find((g) => g.line.n === 3).candidates[0];
+  assert.deepEqual(pn.reasons, ['uncited']);
+  assert.deepEqual(pn.queries, ['search --topic vcluster', 'search --topic vcluster --text "private-node"']);
+  // A body-only hit is evidence, not grouping: the unrelated title lands on line 2 through `vcluster` in its title, not on line 4 through "backing store".
+  assert.ok(r.groups.find((g) => g.line.n === 2).candidates.find((c) => c.id === '2026-01-09-body').queries.includes('search --topic vcluster --text "vcluster"'));
+  // The linked note and synthesis (distance 1 and 2 from the cited id) are candidates outside the pool; the third hop is not; the cited entry and the superseded one never are.
+  const ids = [...r.groups.flatMap((g) => g.candidates), ...r.noLine].map((c) => c.id);
+  assert.ok(ids.includes('2026-01-07-note') && ids.includes('2026-01-08-syn'));
+  assert.ok(!ids.includes('2026-01-10-far') && !ids.includes('2026-01-01-cited') && !ids.includes('2026-01-06-old'));
+  const syn = r.noLine.find((c) => c.id === '2026-01-08-syn');
+  assert.deepEqual(syn.reasons, ['linked']);
+  assert.deepEqual(syn.queries, ['related 2026-01-01-cited --depth 2']);
+  // The Standalone guide is in the pool through the plural topic and matches no line.
+  assert.ok(r.noLine.some((c) => c.id === '2026-01-05-sa' && c.queries.includes('search --topic standalones')));
+  // Uncovered mission terms: "standalone" (Known, no line names it, one hit) and "backing store" (New to me, body-only hit). "platform agent" and "private node" are covered.
+  assert.deepEqual(r.uncovered.map((u) => [u.term, u.hits.map((h) => h.id)]), [['standalone', ['2026-01-05-sa']], ['backing store', ['2026-01-09-body']]]);
+  assert.deepEqual(r.uncovered[1].hits[0].queries, ['search --topic vcluster --body "backing store"']);
+  // A Known term with no entry is not printed; a New to me term with none is, with no hits.
+  const f2 = { knownTerms: new Set(['nowhere']), newTerms: new Set(['also nowhere']) };
+  assert.deepEqual(pathCandidates({ lines, floor: f2, cites: [], manifest: { entries, edges, backlinks: {} }, topics: ['vcluster'] }).uncovered, [{ term: 'also nowhere', hits: [] }]);
+  // Empty everything.
+  const none = pathCandidates({ lines: [], floor: { knownTerms: null, newTerms: null }, cites: [], manifest: { entries: [], edges: [], backlinks: {} }, topics: ['x'] });
+  assert.deepEqual(none, { poolTopics: [['x', 0]], pool: 0, cited: [], groups: [], noLine: [], uncovered: [] });
+  assert.equal(topicSlug(' vCluster Platform! '), 'vcluster-platform');
+});
+
+test('lintPathTerms warns for a New to me term on no line and is quiet on the fixture (spec 20 D5)', () => {
+  assert.deepEqual(lintPathTerms(readPath(FIX), missionFloor(FIX).newTerms), []);
+  const f = lintPathTerms(readPath(FIX), new Set(['fx', 'octuple']));
+  assert.deepEqual(f.map((x) => [x.code, x.file, x.warning]), [['WARN_PATH_TERM_UNPLANNED', 'PATH.md', true]]);
+  assert.match(f[0].message, /^New to me term "octuple" is on no line's terms:/);
+  const dir = copyFixture();
+  writeFileSync(join(dir, 'MISSION.md'), readFileSync(join(dir, 'MISSION.md'), 'utf8').replace('- sextuple\n', '- sextuple\n- octuple\n'));
+  assert.ok(lintWorkspace(dir, ctxFor(dir)).some((x) => x.code === 'WARN_PATH_TERM_UNPLANNED' && x.file === 'PATH.md'));
 });

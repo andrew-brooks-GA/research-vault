@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { fixtureVault } from './helpers.mjs';
+import { fixtureVault, put } from './helpers.mjs';
 import { workspaceBrief } from '../hooks/session-start.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -14,7 +14,7 @@ const BIN = join(ROOT, 'bin', 'research-vault.mjs');
 const FIX = join(ROOT, 'test', 'fixtures', 'teach');
 const VAULT = fixtureVault();
 const TODAY = new Date().toISOString().slice(0, 10);
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | progress [workspace] | serve [workspace]\n';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | progress [workspace] | serve [workspace]\n';
 
 const copyFixture = () => {
   const dir = mkdtempSync(join(tmpdir(), 'rv-teach-'));
@@ -242,6 +242,37 @@ test('CLI teach next: fringe empty states, and teach lint reports a forward afte
   const r = cli(['lint', ws]);
   assert.equal(r.status, 1);
   assert.ok(r.stdout.split('\n').includes('PATH_AFTER_FORWARD  PATH.md: line 4 after: 6 names a later line'), r.stdout);
+});
+
+// Spec 20 D1-D3.
+test('CLI teach path candidates: no topic exits 2; with --topic it prints the groups; lint warns on an unplanned New to me term', () => {
+  const ws = copyFixture();
+  const r0 = cli(['path', 'candidates', ws]);
+  assert.equal(r0.status, 2);
+  assert.equal(r0.stderr, 'teach path candidates: no topic (pass --topic a,b or set defaults.topics in .research-vault.json)\n');
+  const vault = fixtureVault();
+  put(vault, 'source', '2026-01-02-sextuple-doc', { title: 'The sextuple explained', topics: ['fx'], source_type: 'article', source_url: 'https://example.org/six' });
+  const r = spawnSync(process.execPath, [BIN, 'teach', 'path', 'candidates', '--topic', 'fx', ws], { encoding: 'utf8', env: { ...process.env, RESEARCH_VAULT_PATH: vault } });
+  assert.equal(r.stderr, '');
+  assert.equal(r.status, 0);
+  // The fixture's Known term "function" has no entry on topic fx, so it is not printed; the entry is a `fx` hit too (line 1), but line 4 wins the tie.
+  assert.equal(r.stdout, `candidates for ${ws} | topics: fx 1 | pool 1 | cited 5 (lessons 0001, 0002, 0003)\n` +
+    '4. The sextuple, named | terms: sextuple | after: 1\n' +
+    '  2026-01-02-sextuple-doc [source] The sextuple explained | uncited | search --topic fx; search --topic fx --text "sextuple"\n' +
+    'terms with no line: none\n');
+  assert.equal(cli(['path', 'candidates', '--topic', 'nothing', ws]).stdout.split('\n')[1], 'candidates: none');
+  assert.equal(cli(['path', ws]).status, 2);
+  // The warning on a workspace that is otherwise clean: still exit 0.
+  const clean = mkdtempSync(join(tmpdir(), 'rv-teach-unplanned-'));
+  for (const f of ['MISSION.md', 'PATH.md', 'GLOSSARY.md', 'lessons/0001-good.html', 'lessons/0003-review-good.html', 'reference/good.html',
+    'learning-records/0001-known.md', 'attempts/a-20260101-120000-0001.md', 'evidence/0001/PLAN.md']) {
+    mkdirSync(dirname(join(clean, f)), { recursive: true });
+    cpSync(join(FIX, f), join(clean, f));
+  }
+  writeFileSync(join(clean, 'MISSION.md'), readFileSync(join(clean, 'MISSION.md'), 'utf8').replace('- sextuple\n', '- sextuple\n- octuple\n'));
+  const l = cli(['lint', clean]);
+  assert.equal(l.status, 0);
+  assert.equal(l.stdout, 'lint: clean\nwarning WARN_PATH_TERM_UNPLANNED  PATH.md: New to me term "octuple" is on no line\'s terms: (PATH-FORMAT: every New to me term appears on a line); teach path candidates lists the vault\'s entries for it\n');
 });
 
 test('CLI teach next without a Success section exits 2', () => {

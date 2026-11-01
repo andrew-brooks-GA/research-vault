@@ -4,6 +4,8 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { parseFrontmatter } from './frontmatter.mjs';
 import { checkCitations } from '../commands/check.mjs';
+import { matchRows } from '../commands/search.mjs';
+import { traverse } from './graph.mjs';
 import {
   extractQuizJson, extractCites, validateEntry, ENUM_CODES, LESSON_ID_RE, RECORD_ID_RE,
 } from './teach.mjs';
@@ -430,14 +432,106 @@ export function lintPath(lines) {
   return findings;
 }
 
+// Spec 20 D5. One advisory per `New to me` term that no line's terms: names; the term becomes a
+// violation only when a lesson uses it (LESSON_TERM_NOT_INTRODUCED). Known terms need no lesson.
+export function lintPathTerms(lines, newTerms) {
+  const planned = new Set(lines.flatMap((l) => l.terms));
+  return [...newTerms].filter((t) => !planned.has(t)).map((t) => ({
+    code: 'WARN_PATH_TERM_UNPLANNED', file: 'PATH.md', warning: true,
+    message: `New to me term "${t}" is on no line's terms: (PATH-FORMAT: every New to me term appears on a line); teach path candidates lists the vault's entries for it`,
+  }));
+}
+
+// Spec 20 D2-D3: `teach path candidates`, pure over readPath's lines, missionFloor's sets, the cited ids,
+// the manifest, the topic list and the taxonomy's topic_aliases; `readBody(id)` returns an entry's body
+// (pool entries only are read). Candidates come from the vault's own filters (matchRows) and traverse.
+const uniq = (xs) => [...new Set(xs)];
+export const topicSlug = (s) => String(s).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
+export function pathCandidates({ lines, floor, cites, manifest, topics, aliases = {}, readBody = () => '' }) {
+  const expand = (t) => aliases[t] || t;
+  const rows = manifest.entries.filter((e) => e.status !== 'superseded');
+  const vocab = new Map();
+  for (const e of rows) for (const t of e.topics.map(expand)) vocab.set(t, (vocab.get(t) ?? 0) + 1);
+  const missionTerms = uniq([...(floor.knownTerms ?? []), ...(floor.newTerms ?? [])]);
+  const terms = uniq([...missionTerms, ...lines.flatMap((l) => [...l.terms, ...(l.tool ? [l.tool] : [])])]);
+  // Pool topics: the given ones, plus a term's slug (or its plural) when the vocabulary has it.
+  const poolTopics = uniq([...topics.map(expand), ...terms.map(topicSlug).flatMap((s) => [s, `${s}s`]).filter((s) => vocab.has(s))]);
+  const pool = new Map(); // id -> { row, topics }
+  for (const t of poolTopics) for (const e of matchRows(rows, { topic: t }, aliases)) (pool.get(e.id) ?? pool.set(e.id, { row: e, topics: [] }).get(e.id)).topics.push(t);
+  const poolRows = [...pool.values()].map((p) => p.row);
+  // Term hits: term -> Map(id -> queries), each query in the CLI's own words so the author can rerun it.
+  const query = (id, flag, needle) => `search --topic ${pool.get(id).topics[0]} ${flag} "${needle}"`;
+  const hits = new Map(); // term -> Map(id -> [{ q, body }])
+  for (const t of terms) {
+    const m = new Map();
+    const add = (id, q, body) => (m.get(id) ?? m.set(id, []).get(id)).push({ q, body });
+    for (const e of matchRows(poolRows, { text: t }, aliases)) add(e.id, query(e.id, '--text', t), false);
+    const s = topicSlug(t);
+    if (s !== t) for (const e of matchRows(poolRows, { text: s }, aliases)) add(e.id, query(e.id, '--text', s), false);
+    for (const e of poolRows) if (String(readBody(e.id)).toLowerCase().includes(t)) add(e.id, query(e.id, '--body', t), true);
+    hits.set(t, m);
+  }
+  const cited = new Set(cites);
+  const cands = new Map(); // id -> { row, reasons, queries }
+  const cand = (row) => cands.get(row.id) ?? cands.set(row.id, { row, reasons: [], queries: [] }).get(row.id);
+  for (const { row, topics: ts } of pool.values()) {
+    if (cited.has(row.id)) continue;
+    const c = cand(row);
+    c.reasons.push('uncited');
+    c.queries.push(...ts.map((t) => `search --topic ${t}`));
+  }
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  for (const c of cites) {
+    for (const n of traverse(manifest, c, { depth: 2, direction: 'both' }).nodes) {
+      const r = byId.get(n.id);
+      if (!r || n.distance === 0 || cited.has(n.id) || (r.type !== 'note' && r.type !== 'synthesis')) continue;
+      const k = cand(r);
+      k.reasons.push('linked');
+      k.queries.push(`related ${c} --depth 2`);
+    }
+  }
+  // Grouping: a candidate follows the line one of whose terms it is a --text hit for (title, topics and
+  // summary; body hits are evidence, not grouping), the line's terms: before a mission term in its title
+  // before its tool: (the tool is often the product's name), the highest-numbered line among equals.
+  const lineTerms = (l) => [[0, l.terms], [1, missionTerms.filter((t) => topicSlug(l.title).includes(topicSlug(t)))], [2, l.tool ? [l.tool] : []]]
+    .flatMap(([rank, ts]) => ts.map((t) => [rank, t]));
+  const groups = new Map(lines.map((l) => [l.n, []]));
+  const noLine = [];
+  for (const c of [...cands.values()].sort((a, b) => a.row.id.localeCompare(b.row.id))) {
+    let best = null;
+    for (const l of lines) {
+      for (const [rank, t] of lineTerms(l)) {
+        const qs = (hits.get(t)?.get(c.row.id) ?? []).filter((h) => !h.body).map((h) => h.q);
+        if (qs.length && (!best || rank < best.rank || (rank === best.rank && l.n > best.line.n))) best = { line: l, rank, qs };
+      }
+    }
+    const out = { id: c.row.id, type: c.row.type, title: c.row.title ?? c.row.id, reasons: uniq(c.reasons), queries: uniq([...c.queries, ...(best?.qs ?? [])]) };
+    if (best) groups.get(best.line.n).push(out); else noLine.push(out);
+  }
+  // Uncovered mission terms: every New to me term, and a Known term only when the pool holds an entry for it
+  // (the Floor needs no lesson; an entry on a known term that no line teaches is still worth a look).
+  const covered = (t) => lines.some((l) => l.terms.includes(t) || l.tool === t || topicSlug(l.title).includes(topicSlug(t)));
+  const known = new Set(floor.knownTerms ?? []);
+  const uncovered = missionTerms.filter((t) => !covered(t) && (!known.has(t) || hits.get(t)?.size)).map((t) => ({
+    term: t, hits: [...(hits.get(t) ?? [])].sort(([a], [b]) => a.localeCompare(b)).map(([id, hs]) => { const r = pool.get(id).row; return { id, type: r.type, title: r.title ?? id, queries: uniq(hs.map((h) => h.q)) }; }),
+  }));
+  return {
+    poolTopics: poolTopics.map((t) => [t, vocab.get(t) ?? 0]), pool: pool.size, cited: [...cited],
+    groups: lines.filter((l) => groups.get(l.n).length).map((l) => ({ line: l, candidates: groups.get(l.n) })), noLine, uncovered,
+  };
+}
+
 export function lintWorkspace(workspaceDir, ctx) {
   const c = { ...ctx, workspaceDir };
   const findings = ['lessons', 'reference'].flatMap((d) =>
     listDir(join(workspaceDir, d), '.html').flatMap((f) => lintLesson(join(workspaceDir, d, f), c)));
   findings.push(...lintStore(workspaceDir, c));
   const path = readPath(workspaceDir);
-  if (path !== null) findings.push(...lintPath(path));
-  else if (listDir(join(workspaceDir, 'lessons'), '.html').length) {
+  if (path !== null) {
+    findings.push(...lintPath(path));
+    const newTerms = missionFloor(workspaceDir).newTerms;
+    if (newTerms !== null) findings.push(...lintPathTerms(path, newTerms));
+  } else if (listDir(join(workspaceDir, 'lessons'), '.html').length) {
     findings.push({ code: 'WARN_PATH_MISSING', file: 'PATH.md', message: 'no PATH.md; teach next cannot name the next lesson (PATH-FORMAT.md)', warning: true });
   }
   return findings.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
