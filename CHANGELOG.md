@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Evaluation 16 (`docs/specs/16-graphify-evaluation.md`): Graphify-Labs/graphify read at 0.9.100 and judged concept by concept against the plugin's code links, the vault and the teach workflow, with the education literature on prerequisite graphs, knowledge spaces and concept maps captured into the vault (synthesis 2026-11-01-graph-helps-learner-by-exposing-ready). Outcome: enforce and walk `after:` in PATH.md so `teach next` offers the ready-to-learn fringe, propose term prerequisites for the path author to accept, and take graphify's shrink guard and weakest-hop honesty rules; do not take its extraction, clustering or hub analytics. Planning only; the file is force-added, since `docs/specs/` is otherwise ignored.
+
 ### Fixed
 - **The Stop gate no longer fires on files git says are clean.** `missingGates` took any gated file with an mtime after the session start as changed, so a worktree, a fresh clone or a checkout tripped it on every unchanged fixture and lesson. A tracked file with no working-tree change is now skipped; outside git, or on any git error, the mtime rule stands.
 
