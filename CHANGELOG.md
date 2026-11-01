@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Spec 20 (`docs/specs/20-path-discovery.md`): path discovery. `teach path candidates [--topic a,b] [workspace]` runs the vault's own topic, text and body searches over the mission's terms and a depth-2 `related` walk from every cited entry, and prints candidate entries grouped by the `PATH.md` line they would follow with the query behind each, for the path author to accept; `teach lint` gains `WARN_PATH_TERM_UNPLANNED` for a `New to me` term on no line; the skill runs it at the path and before each plan. Spec 19's edge pass is renamed `teach path edges`. Spec only; the file is force-added, since `docs/specs/` is otherwise ignored.
+
 ## [0.8.2] - 2026-11-01
 
 ### Added
