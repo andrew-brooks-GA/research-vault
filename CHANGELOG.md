@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Spec 18 (`docs/specs/18-hygiene-bundle.md`): the hygiene bundle, evaluation 16's item 3, with today's behaviour probed first. Spec only; the file is force-added, since `docs/specs/` is otherwise ignored.
+
 ## [0.8.1] - 2026-11-01
 
 ### Added
