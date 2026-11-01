@@ -18,6 +18,7 @@ const ENTRIES = [
   { id: '2026-01-10-nakama-pins', source_url: normalizeUrl('https://heroiclabs.com/docs'), volatility: 'fast', last_verified: '2026-01-15' },
   { id: '2024-09-09-raii-classic', source_url: null, volatility: 'stable', last_verified: '2024-09-09' },
   { id: '2026-03-03-current-model', source_url: normalizeUrl('https://example.com/models'), volatility: 'volatile', last_verified: '2026-05-30' },
+  { id: '2026-01-01-gone', source_url: normalizeUrl('https://example.com/gone'), volatility: 'stable', last_verified: '2026-05-30', status: 'superseded', superseded_by: '2024-09-09-raii-classic' },
 ];
 const NOW = '2026-06-01';
 
@@ -46,6 +47,11 @@ test('a vault id citation matches by id', () => {
 });
 test('a volatile entry is always stale', () => {
   assert.equal(checkCitations([{ type: 'id', value: '2026-03-03-current-model' }], ENTRIES, SCHEMA, NOW)[0].status, 'stale');
+});
+test('a superseded entry is stale for a prose citation, by id or URL, with its replacement as the reason', () => {
+  for (const c of [{ type: 'id', value: '2026-01-01-gone' }, { type: 'url', value: 'https://example.com/gone' }]) {
+    assert.deepEqual(checkCitations([c], ENTRIES, SCHEMA, NOW), [{ ...c, status: 'stale', id: '2026-01-01-gone', volatility: 'stable', reason: 'superseded by 2024-09-09-raii-classic' }]);
+  }
 });
 test('an unknown id citation is uncovered', () => {
   assert.equal(checkCitations([{ type: 'id', value: '2099-01-01-nope' }], ENTRIES, SCHEMA, NOW)[0].status, 'uncovered');

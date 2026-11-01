@@ -20,7 +20,8 @@ import { langFor, codeFiles, extractCodeLinks, readVersions, checkCodeLinks } fr
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-// Pure: classify each citation as ok | stale | uncovered against the manifest entries.
+// Pure: classify each citation as ok | stale | uncovered against the manifest entries. A superseded
+// entry is stale for prose as it is for code (spec 15 D3), with its replacement as the reason.
 export function checkCitations(citations, entries, schema, now) {
   const byUrl = new Map();
   const byId = new Map();
@@ -38,8 +39,9 @@ export function checkCitations(citations, entries, schema, now) {
       entry = byId.get(c.value);
     }
     if (!entry) return { type: c.type, value: c.value, status: 'uncovered' };
-    const status = staleness(entry, schema, new Date(now)) ? 'stale' : 'ok';
-    return { type: c.type, value: c.value, status, id: entry.id, volatility: entry.volatility };
+    const row = { type: c.type, value: c.value, status: 'ok', id: entry.id, volatility: entry.volatility };
+    if (entry.status === 'superseded') return { ...row, status: 'stale', reason: `superseded by ${entry.superseded_by}` };
+    return staleness(entry, schema, new Date(now)) ? { ...row, status: 'stale' } : row;
   });
 }
 
