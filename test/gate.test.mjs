@@ -355,6 +355,25 @@ test('a Markdown draft is one unit per heading section, and an edit reopens only
   assert.equal(gateStatus(root, file).verdict, 'MERIT');
 });
 
+test('a Markdown table row is its own unit keyed by its first cell, and gate evidence --changed after a one-row edit lists that row only', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  const md = (init) => `# Ref\n\n## Commands\n\nIntro.\n\n| Command | Does |\n|---|---|\n| \`init\` | ${init} |\n| \`gate\` | \`a\\|b\` |\n| \`gate\` | dup |\n\nAfter.\n\n| not | a table |\n`;
+  writeFileSync(join(root, 'docs', 'ref.md'), md('Scaffold.'));
+  assert.deepEqual(mdUnits(md('Scaffold.')).map((u) => [u.unit, u.start, u.end]), [
+    ['sec:ref', 1, 1], ['sec:commands', 3, 15], ['sec:commands/init', 9, 9], ['sec:commands/gate', 10, 10], ['sec:commands/gate#', 11, 11],
+  ]);
+  assert.deepEqual(unitHashes('# A\n\ntext\n'), { 'sec:a': contentHash('# A\n\ntext') }, 'a section without a table hashes as before');
+  assert.equal(gateCli(root, vault, 'record', 'docs/ref.md', 'PASS').code, 0);
+  writeFileSync(join(root, 'docs', 'ref.md'), md('Scaffold a vault.'));
+  const r = gateCli(root, vault, 'evidence', 'docs/ref.md', '--changed');
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, 'changed units: sec:commands/init\nunit sec:commands/init docs/ref.md:9-9 prose\n');
+  // Prose outside the table still reopens the section, and only the section.
+  writeFileSync(join(root, 'docs', 'ref.md'), md('Scaffold.').replace('Intro.', 'Intro, revised.'));
+  assert.deepEqual(changedUnits(root, join(root, 'docs', 'ref.md')), ['sec:commands']);
+});
+
 test('unitHashes over the shared parseBlocks keeps the hashes ledger rows were keyed to (spec 13)', () => {
   const f = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'teach', 'lessons', '0001-good.html');
   assert.deepEqual(unitHashes(readFileSync(f)), {

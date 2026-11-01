@@ -43,33 +43,45 @@ export function ledgerKey(repoRoot, filePath) {
 // Markdown sections: one unit per ATX heading, `sec:<slug>`, from the heading line to the line before
 // the next heading (headings inside fenced code are text); what precedes the first heading is
 // `sec:preamble`. A document with no heading has no sections. Line numbers are 1-based.
+// Each data row of a table (the `|` lines after a `|---|` separator) is its own unit,
+// `sec:<slug>/<first-cell slug>` with `row: true`, listed after its section, so a one-row edit reopens
+// that row only; the header and separator stay in the section.
 const HEADING_RE = /^#{1,6}\s+(.+?)\s*#*\s*$/;
+const TABLE_SEP_RE = /^\s*\|[\s:|-]*-[\s:|-]*$/;
+const slugOf = (s) => s.toLowerCase().replace(/`/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'untitled';
 export function mdUnits(text) {
   const lines = text.split(/\r?\n/);
   const out = [];
-  let fence = false, cur = null;
+  let fence = false, table = false, cur = null, rows = [];
+  const uniq = (name) => { while (out.some((u) => u.unit === name) || rows.some((u) => u.unit === name)) name += '#'; return name; };
   const close = (end) => {
     while (cur && end > cur.start - 1 && !lines[end - 1].trim()) end--; // trailing blank lines belong to no section
     if (cur && end >= cur.start) out.push({ ...cur, end });
-    cur = null;
+    out.push(...rows);
+    cur = null; rows = [];
   };
   lines.forEach((line, i) => {
     if (/^\s*(```|~~~)/.test(line)) fence = !fence;
     const m = !fence && HEADING_RE.exec(line);
-    if (!m) { if (!cur) cur = { unit: 'sec:preamble', start: i + 1 }; return; }
+    if (!m) {
+      if (!cur) cur = { unit: 'sec:preamble', start: i + 1 };
+      const pipe = !fence && /^\s*\|/.test(line);
+      if (pipe && table) rows.push({ unit: uniq(`${cur.unit}/${slugOf(line.split(/(?<!\\)\|/)[1])}`), start: i + 1, end: i + 1, row: true });
+      else table = pipe && TABLE_SEP_RE.test(line) && /^\s*\|/.test(lines[i - 1] ?? '');
+      return;
+    }
     close(i);
-    let slug = m[1].toLowerCase().replace(/`/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'untitled';
-    while (out.some((u) => u.unit === `sec:${slug}`)) slug += '#';
-    cur = { unit: `sec:${slug}`, start: i + 1 };
+    table = false;
+    cur = { unit: uniq(`sec:${slugOf(m[1])}`), start: i + 1 };
   });
   close(lines.length);
-  return out.some((u) => u.unit !== 'sec:preamble') ? out : [];
+  return out.some((u) => u.unit !== 'sec:preamble' && !u.row) ? out : [];
 }
 
 // Claim units of a draft, each hashed on its own: for a lesson, every data-block (the fact block
 // per <p>, the quiz per item), so a verdict carries over to the units an edit did not touch.
 // With a language, one `sym:<name>` unit per linked declaration; a Markdown draft without data-block
-// elements is one unit per heading section (mdUnits); anything else, or a code file without an
+// elements is one unit per heading section and per table row (mdUnits); anything else, or a code file without an
 // attached link, is one unit, "all".
 export function unitHashes(content, lang = null) {
   const html = typeof content === 'string' ? content : content.toString('utf8');
@@ -81,7 +93,10 @@ export function unitHashes(content, lang = null) {
   const blocks = parseBlocks(html);
   if (!blocks.size) {
     const lines = html.split(/\r?\n/);
-    for (const u of mdUnits(html)) units[u.unit] = contentHash(lines.slice(u.start - 1, u.end).join('\n'));
+    const md = mdUnits(html);
+    const rowLines = new Set(md.filter((u) => u.row).map((u) => u.start));
+    // A section hashes without its table rows, so a row edit leaves the section's hash as it was.
+    for (const u of md) units[u.unit] = contentHash(lines.slice(u.start - 1, u.end).filter((_, k) => u.row || !rowLines.has(u.start + k)).join('\n'));
     return Object.keys(units).length ? units : { all: contentHash(html) };
   }
   for (const [name, { html: inner }] of blocks) {
