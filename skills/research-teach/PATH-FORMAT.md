@@ -24,6 +24,6 @@
 ## Rules
 
 - **One new thing per line.** A line with both `terms:` and `tool:` is two lessons.
-- **Every "New to me" term appears on a line** before any line that needs it. The Floor is the only other source of allowed terms. `teach lint` warns `WARN_PATH_TERM_UNPLANNED` for a "New to me" term on no line's `terms:`; `teach path candidates` lists the vault's entries for it.
+- **Every "New to me" term appears on a line** before any line that needs it. The Floor is the only other source of allowed terms. `teach lint` warns `WARN_PATH_TERM_UNPLANNED` for a "New to me" term on no line's `terms:`; when no line's `terms:`, `tool:` or title carries the term either, `teach path candidates` prints it as `term "...": no path line covers it` with the matching entries from its pool (the `--topic` or `defaults.topics` topics, plus any mission or path term whose slug is a vault topic), or `(no entry)`.
 - **Reviews are lines too**, every six or seven lessons, named `Review of N to M`.
 - **Reorder freely; never delete a built line.** A built lesson that no longer fits moves to `parked/` and its line keeps `lesson:` with `parked` appended. Renumbering changes what `after:` means, so run `teach lint` after a reorder.
