@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Spec 19 (`docs/specs/19-path-edges.md`): path edges. `teach path edges [workspace]` derives `after:` proposals from the workspace alone (the lines' `terms:` and `tool:` as introducers; a built lesson's prose and commands, or an untaken line's title, as uses) and prints each with the lesson and the term behind it, for the path author to accept; `near:` stays out until a stall has been observed. Today's behaviour on the vcluster workspace probed first. Spec only; the file is force-added, since `docs/specs/` is otherwise ignored.
+
 ## [0.8.3] - 2026-11-01
 
 ### Added
