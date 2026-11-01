@@ -84,4 +84,11 @@ node /path/to/research-vault/examples/graph-dot.mjs . > graph.dot
 dot -Tsvg graph.dot > graph.svg
 ```
 
-Rebuild the research outputs whenever the code graph is rebuilt; neither is stored, so they are exactly as fresh as the last run.
+`examples/blast-radius.mjs` is the other direction, for the day a source is superseded: given the manifest, the entry's id and the `check --json` of every repo that cites the vault, it walks `sources` and `contributing_ids` inward and lists the entries that rest on it and every symbol or document citing one of them.
+
+```text
+node /path/to/research-vault/bin/research-vault.mjs check --json > check.json
+node /path/to/research-vault/examples/blast-radius.mjs research/.vault-manifest.json <id> check.json ../other-repo/check.json
+```
+
+Rebuild the research outputs whenever the code graph is rebuilt; neither is committed, so they are exactly as fresh as the last run.
