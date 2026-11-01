@@ -1,6 +1,6 @@
 # PATH.md Format
 
-`PATH.md` lives at the workspace root. It is the curriculum: the lessons planned from the mission interview, in order, one line each. `teach next` prints the fringe, every line whose `after:` lines are all built, the first being the default, and the inner fringe, the most recently built lessons nothing depends on yet. The learner confirms the path before lesson one and may reorder it at any time.
+`PATH.md` lives at the workspace root. It is the curriculum: the lessons planned from the mission interview, in order, one line each. `teach next` prints the fringe, every untaken line whose `after:` lines are all built (or `floor`), in file order, the first being the default, and the inner fringe, the built non-review lines that no other built non-review line names in `after:`, highest lesson number first. The learner confirms the path before lesson one and may reorder it at any time.
 
 ## Template
 
