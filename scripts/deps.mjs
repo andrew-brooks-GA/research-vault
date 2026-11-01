@@ -67,7 +67,7 @@ export const COUPLINGS = [
   ['bin/lib/files.mjs', '.gitignore', 'SKIP_DIRS and the ignore list both name _index and _obsidian'],
   ['bin/commands/check.mjs', 'bin/lib/gate.mjs', "checkCitations status values 'ok', 'stale', 'uncovered'"],
   ['bin/lib/gate.mjs', 'skills/research-claims-gate/SKILL.md', 'VERDICTS, LEDGER_FILENAME and the fact:N/quiz:N unit names'],
-  ['bin/lib/gate.mjs', 'agents/claims-reviewer.md', 'the renderEvidence line format, unit names and verdict tokens'],
+  ['bin/lib/gate.mjs', 'agents/claims-reviewer.md', 'the renderEvidence line format, unit names and verdict tokens; recordVerdict hashes this file into the reviewer field'],
   ['bin/lib/gate.mjs', 'hooks/stop-gate.mjs', 'the PASS|MERIT text the hook prints'],
   ['bin/lib/gate.mjs', 'docs/REFERENCE.md', 'the ledger filename and the verdicts'],
   ['bin/lib/gate.mjs', 'bin/lib/lesson.mjs', "unitHashes depends on the data-block names 'fact' and 'quiz'"],

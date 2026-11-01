@@ -11,6 +11,8 @@ import { VERDICTS, recordVerdict, gateStatus, evidenceFor, renderEvidence, chang
 import { readVersions } from '../lib/codelinks.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+// `none (reviewer changed)`: the file's passing rows were given by another version of the reviewer.
+const label = (s) => s.verdict ?? (s.reviewerChanged ? 'none (reviewer changed)' : 'none');
 const USAGE = `usage: research-vault gate evidence <draft> [--extra ids] [--changed] [--json] | changed <draft> | record <file> <${VERDICTS.join('|')}> [note] | status <file> [--check] | staged [--check]`;
 
 export async function run(args) {
@@ -27,7 +29,7 @@ export async function run(args) {
     const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd });
     const rows = stagedGates(dirname(hit.path), vaultPath, hit.config, cwd);
     if (!rows.length) process.stdout.write('staged gated files: none\n');
-    for (const r of rows) process.stdout.write(`${r.file}: ${r.verdict ?? 'none'}\n`);
+    for (const r of rows) process.stdout.write(`${r.file}: ${label(r)}\n`);
     return args.check && rows.some((r) => !r.verdict) ? 1 : 0;
   }
   const abs = resolve(cwd, file);
@@ -67,6 +69,6 @@ export async function run(args) {
     return 0;
   }
   const s = gateStatus(repoRoot, abs);
-  process.stdout.write(`${s.file}: ${s.verdict ?? 'none'} @ ${s.sha256.slice(0, 12)}${s.units?.length && !(s.units.length === 1 && s.units[0] === 'all') ? ` (changed units: ${s.units.join(', ')})` : ''}\n`);
+  process.stdout.write(`${s.file}: ${label(s)} @ ${s.sha256.slice(0, 12)}${s.units?.length && !(s.units.length === 1 && s.units[0] === 'all') ? ` (changed units: ${s.units.join(', ')})` : ''}\n`);
   return args.check && !s.verdict ? 1 : 0;
 }

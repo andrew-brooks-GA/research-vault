@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpVault, put, fixtureVault } from './helpers.mjs';
 import {
   unitHashes, changedUnits, mdUnits,
-  LEDGER_FILENAME, contentHash, ledgerKey, recordVerdict, gateStatus,
+  LEDGER_FILENAME, contentHash, ledgerKey, recordVerdict, gateStatus, reviewerHash,
   evidenceFor, renderEvidence, findWorkspaces, gatedFiles,
 } from '../bin/lib/gate.mjs';
 
@@ -459,4 +459,28 @@ test('unitHashes and gate evidence without a code block are today\'s', () => {
   const r = codeCli(root, 'evidence', 'docs/reply.md', '--changed');
   assert.equal(r.out, '2026-01-01-fx-experiment [experiment, active]\nuncovered: https://nowhere.example/x\nchanged units: all\n');
   assert.doesNotMatch(r.out, /^unit /m);
+});
+
+test('a row carries the reviewer hash; a row from another reviewer counts for nothing; a row without the field keeps standing (spec 18 D3)', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  const file = join(root, 'docs', 'reply.md');
+  writeFileSync(file, 'hello\n\n## One\n\ntext\n');
+  const row = recordVerdict(root, file, 'PASS');
+  assert.equal(row.reviewer, contentHash(readFileSync(join(process.cwd(), 'agents', 'claims-reviewer.md'))));
+  assert.equal(reviewerHash(), row.reviewer);
+  assert.equal(gateStatus(root, file).verdict, 'PASS');
+  const ledger = join(root, LEDGER_FILENAME);
+  writeFileSync(ledger, JSON.stringify({ ...row, reviewer: 'f'.repeat(64) }) + '\n');
+  const s = gateStatus(root, file);
+  assert.equal(s.verdict, null);
+  assert.equal(s.reviewerChanged, true);
+  assert.deepEqual(changedUnits(root, file), ['sec:preamble', 'sec:one'], 'its units cover nothing');
+  const r = gateCli(root, vault, 'status', 'docs/reply.md');
+  assert.ok(r.out.startsWith('docs/reply.md: none (reviewer changed) @ '), r.out);
+  const { reviewer, ...old } = row;
+  writeFileSync(ledger, JSON.stringify(old) + '\n');
+  const t = gateStatus(root, file);
+  assert.equal(t.verdict, 'PASS');
+  assert.ok(!('reviewerChanged' in t));
 });

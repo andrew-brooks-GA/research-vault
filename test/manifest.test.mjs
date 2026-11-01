@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildManifest, lastVerified } from '../bin/lib/manifest.mjs';
+import { buildManifest, lastVerified, writeManifest, danglingEdges } from '../bin/lib/manifest.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
 import { tmpVault, put } from './helpers.mjs';
 
@@ -157,4 +158,56 @@ test('manifest row carries per-type facets and superseded_by, null when absent (
     assert.strictEqual(m['2026-01-04-y'][k], null, k);
   for (const k of ['state', 'confidence', 'outcome', 'authority_tier', 'authority_basis', 'superseded_by'])
     assert.strictEqual(m['2026-01-07-p'][k], null, k);
+});
+
+const CLI = join(process.cwd(), 'bin', 'research-vault.mjs');
+const cli = (...args) => spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' });
+
+test('writeManifest refuses to drop a listed entry whose folder is missing or whose file is present; a deleted file is gone; removing the manifest is the override (spec 18 D1)', () => {
+  const dir = tmpVault('rv-shrink-');
+  put(dir, 'source', '2026-01-01-s', { source_type: 'article', source_url: 'https://example.com/s' });
+  put(dir, 'note', '2026-01-02-n', { sources: ['2026-01-01-s'], confidence: 'medium' });
+  writeManifest(dir);
+  const mf = join(dir, '.vault-manifest.json');
+  const before = readFileSync(mf, 'utf8');
+  renameSync(join(dir, 'notes'), join(dir, 'notes.off'));
+  assert.throws(() => writeManifest(dir), { message: `manifest not written: it would drop 1 listed entry that is not gone (2026-01-02-n: notes/ is missing); remove ${mf} to accept the shrink` });
+  assert.equal(readFileSync(mf, 'utf8'), before, 'the file on disk is untouched');
+  renameSync(join(dir, 'notes.off'), join(dir, 'notes'));
+  rmSync(join(dir, 'notes', '2026-01-02-n.md'));
+  writeManifest(dir);
+  assert.equal(JSON.parse(readFileSync(mf, 'utf8')).entries.length, 1, 'a deleted file is gone');
+  // A listed file the walk never sees (INDEX.md is skipped) is "still exists".
+  writeFileSync(join(dir, 'sources', 'INDEX.md'), '# index\n');
+  writeFileSync(mf, JSON.stringify({ entries: [{ id: '2026-01-01-s', type: 'source' }, { id: 'INDEX', type: 'source' }] }));
+  assert.throws(() => writeManifest(dir), /INDEX: sources\/INDEX\.md still exists/);
+  rmSync(mf);
+  writeManifest(dir);
+  assert.equal(JSON.parse(readFileSync(mf, 'utf8')).entries.length, 1, 'no previous manifest: written');
+  writeFileSync(mf, 'not json');
+  writeManifest(dir);
+  assert.equal(JSON.parse(readFileSync(mf, 'utf8')).entries.length, 1, 'an unparsable previous manifest guards nothing');
+});
+
+test('danglingEdges lists the edges to no entry, and manifest --rebuild reports them on stderr before writing (spec 18 D2)', () => {
+  assert.deepEqual(danglingEdges(buildManifest(VAULT)), []);
+  const dir = tmpVault('rv-dangling-');
+  put(dir, 'note', '2026-01-03-d', { sources: ['2026-01-09-missing'], confidence: 'medium' });
+  assert.deepEqual(danglingEdges(buildManifest(dir)), [{ from: '2026-01-03-d', rel: 'sources', to: '2026-01-09-missing' }]);
+  const r = cli('manifest', '--rebuild', '--vault', dir);
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, 'manifest: 1 dangling edge(s)\n  2026-01-03-d --sources--> 2026-01-09-missing\n');
+  assert.equal(r.stdout, 'manifest: 1 entries\n');
+  assert.equal(JSON.parse(readFileSync(join(dir, '.vault-manifest.json'), 'utf8')).edges.length, 1, 'still written');
+});
+
+test('manifest --topics lists the topic vocabulary with counts, superseded entries left out, in either flag position (spec 18 D4)', () => {
+  const dir = tmpVault('rv-topics-');
+  put(dir, 'source', '2026-01-01-s', { source_type: 'article', source_url: 'https://example.com/s', topics: ['zig', 'vulkan'] });
+  put(dir, 'source', '2026-01-02-t', { source_type: 'article', source_url: 'https://example.com/t', topics: ['zig'] });
+  put(dir, 'source', '2026-01-03-u', { source_type: 'article', source_url: 'https://example.com/u', topics: ['old'], status: 'superseded', superseded_by: '2026-01-02-t' });
+  assert.equal(cli('manifest', '--topics', '--vault', dir).stdout, 'vulkan 1\nzig 2\n');
+  assert.equal(cli('manifest', '--vault', dir, '--topics').stdout, 'vulkan 1\nzig 2\n');
+  const r = cli('manifest', '--rebuild', '--topics', '--vault', dir);
+  assert.equal(r.stdout, 'manifest: 3 entries\nvulkan 1\nzig 2\n', 'with --rebuild: written, then the list instead of the JSON');
 });

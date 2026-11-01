@@ -1,7 +1,7 @@
-import { readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { walkEntries, readEntry } from './fsutil.mjs';
+import { walkEntries, readEntry, TYPE_FOLDER } from './fsutil.mjs';
 import { normalizeUrlSafe } from './ids.mjs';
 
 // Edge fields are declared once in the schema (see edge_fields) and shared with lint's
@@ -62,8 +62,33 @@ export function buildManifest(vaultPath) {
   return { generated: new Date().toISOString().slice(0, 10), entries, edges, backlinks: sortedBacklinks };
 }
 
+// Edges whose `to` names no entry: what lint reports as DANGLING_REF, for the command that writes.
+export function danglingEdges(manifest) {
+  const ids = new Set(manifest.entries.map((e) => e.id));
+  return manifest.edges.filter((e) => !ids.has(e.to));
+}
+
+// Shrink guard (spec 18 D1). An entry the previous manifest lists and the new one drops is gone only
+// when its type folder is there and its file is not (the author deleted it); a missing folder or a
+// still-present file means the walk saw less than the vault holds, and the derived file is kept.
+// Removing the derived file is the override.
+function refuseShrink(vaultPath, path, manifest) {
+  let prev;
+  try { prev = JSON.parse(readFileSync(path, 'utf8')); } catch { return; } // none, or unreadable: nothing to guard
+  const ids = new Set(manifest.entries.map((e) => e.id));
+  const kept = [];
+  for (const e of prev.entries ?? []) {
+    const folder = TYPE_FOLDER[e.type];
+    if (ids.has(e.id) || !folder) continue;
+    if (!existsSync(join(vaultPath, folder))) kept.push(`${e.id}: ${folder}/ is missing`);
+    else if (existsSync(join(vaultPath, folder, `${e.id}.md`))) kept.push(`${e.id}: ${folder}/${e.id}.md still exists`);
+  }
+  if (kept.length) throw new Error(`manifest not written: it would drop ${kept.length} listed ${kept.length === 1 ? 'entry that is' : 'entries that are'} not gone (${kept[0]}); remove ${path} to accept the shrink`);
+}
+
 export function writeManifest(vaultPath, manifest = buildManifest(vaultPath)) {
   const path = join(vaultPath, '.vault-manifest.json');
+  refuseShrink(vaultPath, path, manifest);
   writeFileSync(path + '.tmp', JSON.stringify(manifest, null, 2), 'utf8');
   renameSync(path + '.tmp', path);
 }

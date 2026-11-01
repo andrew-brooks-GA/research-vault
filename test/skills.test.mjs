@@ -96,3 +96,9 @@ test('research-authoring has a Code section whose first sentence states the code
   assert.match(read('agents/claims-reviewer.md'), /A `sym:<name>` unit is a code symbol/);
   assert.match(read('agents/claims-reviewer.md'), /`unit sym:<name> <file>:<start>-<end> <status>`/);
 });
+
+test('research-vault-usage tells the agent to take search terms from manifest --topics (spec 18 D5)', () => {
+  const skill = read('skills/research-vault-usage/SKILL.md');
+  assert.ok(skill.includes('`manifest --topics`'));
+  assert.ok(skill.includes('rather than inventing a synonym'));
+});

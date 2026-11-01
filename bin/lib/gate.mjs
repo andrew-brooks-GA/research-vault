@@ -23,6 +23,15 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const LEDGER_FILENAME = '.research-vault-ledger.jsonl';
 export const VERDICTS = ['PASS', 'FAIL-as-sent', 'MERIT'];
 const SATISFIES = new Set(['PASS', 'MERIT']);
+const REVIEWER_FILE = join(REPO_ROOT, 'agents', 'claims-reviewer.md');
+
+// The reviewer is the agent file: its frontmatter pins the model and effort, its body is the
+// procedure. Its hash goes into every row (spec 18 D3); null when the file is not shipped.
+export function reviewerHash() { return existsSync(REVIEWER_FILE) ? contentHash(readFileSync(REVIEWER_FILE)) : null; }
+
+// A row counts for a file while its verdict passes and the reviewer that gave it is the one
+// installed; a row written before the reviewer field keeps standing.
+const counts = (r, file, reviewer) => r.event === 'claims' && r.file === file && SATISFIES.has(r.verdict) && (r.reviewer == null || r.reviewer === reviewer);
 
 // Raw bytes (a Buffer) or a string; a string hashes as its UTF-8 encoding.
 export function contentHash(data) { return createHash('sha256').update(data).digest('hex'); }
@@ -113,8 +122,9 @@ export function changedUnits(repoRoot, filePath) {
   const file = ledgerKey(repoRoot, filePath);
   const units = unitHashes(readFileSync(resolve(repoRoot, filePath)), codeLang(repoRoot, filePath)?.lang);
   const covered = new Set();
+  const reviewer = reviewerHash();
   for (const r of ledgerRows(repoRoot)) {
-    if (r.event !== 'claims' || r.file !== file || !SATISFIES.has(r.verdict)) continue;
+    if (!counts(r, file, reviewer)) continue;
     for (const h of Object.values(r.units ?? {})) covered.add(h);
   }
   return Object.entries(units).filter(([, h]) => !covered.has(h)).map(([id]) => id);
@@ -127,6 +137,8 @@ export function recordVerdict(repoRoot, filePath, verdict, note) {
     ts: new Date().toISOString(), event: 'claims', file: ledgerKey(repoRoot, filePath),
     sha256: contentHash(content), verdict, units: unitHashes(content, codeLang(repoRoot, filePath)?.lang),
   };
+  const reviewer = reviewerHash();
+  if (reviewer) row.reviewer = reviewer;
   if (note !== undefined) row.note = note;
   appendFileSync(join(repoRoot, LEDGER_FILENAME), JSON.stringify(row) + '\n');
   return row;
@@ -136,12 +148,17 @@ export function gateStatus(repoRoot, filePath) {
   const file = ledgerKey(repoRoot, filePath);
   const sha256 = contentHash(readFileSync(resolve(repoRoot, filePath)));
   const rows = ledgerRows(repoRoot);
-  const hit = rows.findLast((r) => r.event === 'claims' && r.file === file && r.sha256 === sha256 && SATISFIES.has(r.verdict));
+  const reviewer = reviewerHash();
+  const hit = rows.findLast((r) => counts(r, file, reviewer) && r.sha256 === sha256);
   if (hit) return { file, sha256, verdict: hit.verdict, ts: hit.ts, units: [] };
   // No row for these exact bytes: the draft still passes when every unit of it was passed in some row.
   const pending = changedUnits(repoRoot, filePath);
-  if (pending.length) return { file, sha256, verdict: null, ts: null, units: pending };
-  const last = rows.findLast((r) => r.event === 'claims' && r.file === file && SATISFIES.has(r.verdict) && r.units);
+  if (pending.length) {
+    // Say why a file covered yesterday is not today: a passing row exists, from another reviewer.
+    const reviewerChanged = rows.some((r) => r.event === 'claims' && r.file === file && SATISFIES.has(r.verdict) && r.reviewer != null && r.reviewer !== reviewer);
+    return { file, sha256, verdict: null, ts: null, units: pending, ...(reviewerChanged && { reviewerChanged }) };
+  }
+  const last = rows.findLast((r) => counts(r, file, reviewer) && r.units);
   return { file, sha256, verdict: last ? `${last.verdict} (by unit)` : null, ts: last?.ts ?? null, units: [] };
 }
 
@@ -234,7 +251,7 @@ export function stagedGates(repoRoot, vaultPath, cfg, cwd = repoRoot) {
     staged = git('diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z').split('\0').filter(Boolean).map((f) => resolve(top, f));
   } catch { return []; }
   const gated = new Set(gatedFiles(top, vaultPath, cfg));
-  return staged.filter((f) => gated.has(f)).map((f) => { const s = gateStatus(repoRoot, f); return { file: s.file, verdict: s.verdict }; });
+  return staged.filter((f) => gated.has(f)).map((f) => { const { file, verdict, reviewerChanged } = gateStatus(repoRoot, f); return { file, verdict, ...(reviewerChanged && { reviewerChanged }) }; });
 }
 
 export function gatedFiles(repoRoot, vaultPath, cfg) {
