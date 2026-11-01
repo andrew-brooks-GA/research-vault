@@ -3,6 +3,7 @@
 // from what it cites, and finds the files the gate covers. A code file the binding's
 // code.globs name is keyed by linked symbol (spec 15); everything else as before.
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { readFileSync, appendFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve, relative, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,10 +31,37 @@ export function ledgerKey(repoRoot, filePath) {
   return relative(resolve(repoRoot), resolve(repoRoot, filePath)).replace(/\\/g, '/');
 }
 
+// Markdown sections: one unit per ATX heading, `sec:<slug>`, from the heading line to the line before
+// the next heading (headings inside fenced code are text); what precedes the first heading is
+// `sec:preamble`. A document with no heading has no sections. Line numbers are 1-based.
+const HEADING_RE = /^#{1,6}\s+(.+?)\s*#*\s*$/;
+export function mdUnits(text) {
+  const lines = text.split(/\r?\n/);
+  const out = [];
+  let fence = false, cur = null;
+  const close = (end) => {
+    while (cur && end > cur.start - 1 && !lines[end - 1].trim()) end--; // trailing blank lines belong to no section
+    if (cur && end >= cur.start) out.push({ ...cur, end });
+    cur = null;
+  };
+  lines.forEach((line, i) => {
+    if (/^\s*(```|~~~)/.test(line)) fence = !fence;
+    const m = !fence && HEADING_RE.exec(line);
+    if (!m) { if (!cur) cur = { unit: 'sec:preamble', start: i + 1 }; return; }
+    close(i);
+    let slug = m[1].toLowerCase().replace(/`/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'untitled';
+    while (out.some((u) => u.unit === `sec:${slug}`)) slug += '#';
+    cur = { unit: `sec:${slug}`, start: i + 1 };
+  });
+  close(lines.length);
+  return out.some((u) => u.unit !== 'sec:preamble') ? out : [];
+}
+
 // Claim units of a draft, each hashed on its own: for a lesson, every data-block (the fact block
 // per <p>, the quiz per item), so a verdict carries over to the units an edit did not touch.
-// With a language, one `sym:<name>` unit per linked declaration; a draft without data-block
-// elements, or a code file without an attached link, is one unit, "all".
+// With a language, one `sym:<name>` unit per linked declaration; a Markdown draft without data-block
+// elements is one unit per heading section (mdUnits); anything else, or a code file without an
+// attached link, is one unit, "all".
 export function unitHashes(content, lang = null) {
   const html = typeof content === 'string' ? content : content.toString('utf8');
   if (lang) {
@@ -42,7 +70,11 @@ export function unitHashes(content, lang = null) {
   }
   const units = {};
   const blocks = parseBlocks(html);
-  if (!blocks.size) return { all: contentHash(html) };
+  if (!blocks.size) {
+    const lines = html.split(/\r?\n/);
+    for (const u of mdUnits(html)) units[u.unit] = contentHash(lines.slice(u.start - 1, u.end).join('\n'));
+    return Object.keys(units).length ? units : { all: contentHash(html) };
+  }
   for (const [name, { html: inner }] of blocks) {
     if (name === 'fact') {
       [...inner.matchAll(/<p\b[^>]*>[\s\S]*?<\/p>/gi)].forEach((pm, i) => { units[`fact:${i}`] = contentHash(pm[0]); });
@@ -155,6 +187,10 @@ export function evidenceFor(draftPath, vaultPath, { extra = [], code = null } = 
     out.units = codeUnits(text, code.lang).map((u) => ({
       unit: u.unit, start: u.start, end: u.end, status: worstStatus(rows.filter((r, i) => links[i].declLine === u.declLine)),
     }));
+  } else if (!parseBlocks(text).size) {
+    // A Markdown draft: one line per heading section, so the reviewer can read only the changed ones.
+    const sections = mdUnits(text);
+    if (sections.length) out.units = sections.map((u) => ({ ...u, status: 'prose' }));
   }
   return out;
 }
@@ -185,6 +221,22 @@ export function findWorkspaces(repoRoot, vaultPath) {
 }
 
 // Workspace lessons and reference docs, gates.globs, and every code.globs file with an attached link.
+// Staged files that are gated, each with the verdict for its current content. Empty outside git.
+// The index is the one git finds from cwd, so a worktree that inherits the binding above it is
+// judged by its own index and the binding's globs expanded at its own top; the ledger key stays
+// relative to the bound root, as `gate record` writes it.
+// ponytail: judges the working copy, not the index; a partially staged file reads as its working copy.
+export function stagedGates(repoRoot, vaultPath, cfg, cwd = repoRoot) {
+  let top, staged;
+  try {
+    const git = (...a) => execFileSync('git', ['-C', cwd, ...a], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
+    top = git('rev-parse', '--show-toplevel').trim();
+    staged = git('diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z').split('\0').filter(Boolean).map((f) => resolve(top, f));
+  } catch { return []; }
+  const gated = new Set(gatedFiles(top, vaultPath, cfg));
+  return staged.filter((f) => gated.has(f)).map((f) => { const s = gateStatus(repoRoot, f); return { file: s.file, verdict: s.verdict }; });
+}
+
 export function gatedFiles(repoRoot, vaultPath, cfg) {
   const files = findWorkspaces(repoRoot, vaultPath).flatMap((ws) => expandFiles(['lessons/*.html', 'reference/*.html'], ws));
   const globs = cfg?.gates?.globs ?? [];

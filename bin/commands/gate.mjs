@@ -1,21 +1,35 @@
 // Claims-gate CLI: derive a draft's evidence list, record a reviewer verdict keyed to the
 // draft's content hash, and report whether the current content carries a passing verdict.
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../lib/resolve.mjs';
-import { findProjectConfig } from '../lib/projectconfig.mjs';
+import { findProjectConfig, loadProjectConfig } from '../lib/projectconfig.mjs';
+import { loadSchema } from '../lib/schema.mjs';
 import { isInsideVault } from '../lib/containment.mjs';
 import { csvList } from '../lib/args.mjs';
-import { VERDICTS, recordVerdict, gateStatus, evidenceFor, renderEvidence, changedUnits, codeLang, ledgerKey } from '../lib/gate.mjs';
+import { VERDICTS, recordVerdict, gateStatus, evidenceFor, renderEvidence, changedUnits, codeLang, ledgerKey, stagedGates } from '../lib/gate.mjs';
 import { readVersions } from '../lib/codelinks.mjs';
 
-const USAGE = `usage: research-vault gate evidence <draft> [--extra ids] [--changed] [--json] | changed <draft> | record <file> <${VERDICTS.join('|')}> [note] | status <file> [--check]`;
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const USAGE = `usage: research-vault gate evidence <draft> [--extra ids] [--changed] [--json] | changed <draft> | record <file> <${VERDICTS.join('|')}> [note] | status <file> [--check] | staged [--check]`;
 
 export async function run(args) {
   const cwd = args.cwd ?? process.cwd();
   const [, sub, file, verdict, note] = args._;
   const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
-  if (!file || !['evidence', 'changed', 'record', 'status'].includes(sub)) return usage();
+  if (!['evidence', 'changed', 'record', 'status', 'staged'].includes(sub) || (!file && sub !== 'staged')) return usage();
   if (sub === 'record' && !VERDICTS.includes(verdict)) return usage();
+
+  // The pre-commit form: every staged gated file and its verdict; --check exits 1 while one has none.
+  if (sub === 'staged') {
+    const hit = loadProjectConfig(cwd, { schema: loadSchema(REPO_ROOT) });
+    if (!hit) { process.stderr.write('gate: not inside a repo bound with .research-vault.json\n'); return 2; }
+    const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd });
+    const rows = stagedGates(dirname(hit.path), vaultPath, hit.config, cwd);
+    if (!rows.length) process.stdout.write('staged gated files: none\n');
+    for (const r of rows) process.stdout.write(`${r.file}: ${r.verdict ?? 'none'}\n`);
+    return args.check && rows.some((r) => !r.verdict) ? 1 : 0;
+  }
   const abs = resolve(cwd, file);
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: dirname(abs) });
   const cfg = findProjectConfig(dirname(abs));

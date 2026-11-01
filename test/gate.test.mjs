@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { tmpVault, put, fixtureVault } from './helpers.mjs';
 import {
-  unitHashes, changedUnits,
+  unitHashes, changedUnits, mdUnits,
   LEDGER_FILENAME, contentHash, ledgerKey, recordVerdict, gateStatus,
   evidenceFor, renderEvidence, findWorkspaces, gatedFiles,
 } from '../bin/lib/gate.mjs';
@@ -215,12 +215,37 @@ test('CLI gate record then status --check exits 0, after an edit exits 1', () =>
   assert.equal(gateCli(root, vault, 'status', 'docs/reply.md').code, 0, 'without --check a missing verdict exits 0');
 });
 
+test('CLI gate staged lists staged gated files and --check exits 1 until each has a verdict', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault, gates: { globs: ['docs/*.md'] } }) + '\n');
+  writeFileSync(join(root, 'docs', 'second.md'), 'Second draft.\n');
+  writeFileSync(join(root, 'README.md'), 'not gated\n');
+  const git = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  git('add', 'docs/reply.md', 'docs/second.md', 'README.md');
+  const missing = gateCli(root, vault, 'staged', '--check');
+  assert.equal(missing.code, 1, missing.err);
+  assert.equal(missing.out, 'docs/reply.md: none\ndocs/second.md: none\n');
+  assert.equal(gateCli(root, vault, 'staged').code, 0, 'without --check a missing verdict exits 0');
+  gateCli(root, vault, 'record', 'docs/reply.md', 'PASS');
+  const half = gateCli(join(root, 'docs'), vault, 'staged', '--check');
+  assert.equal(half.code, 1, 'one of two still has no verdict');
+  assert.equal(half.out, 'docs/reply.md: PASS\ndocs/second.md: none\n');
+  gateCli(root, vault, 'record', 'docs/second.md', 'MERIT');
+  const ok = gateCli(join(root, 'docs'), vault, 'staged', '--check');
+  assert.equal(ok.code, 0, ok.err);
+  assert.equal(ok.out, 'docs/reply.md: PASS\ndocs/second.md: MERIT\n');
+  git('reset', '-q');
+  assert.equal(gateCli(root, vault, 'staged', '--check').out, 'staged gated files: none\n');
+});
+
 test('CLI gate record rejects a bad verdict with exit 2 and no ledger', () => {
   const vault = fixtureVault();
   const root = boundRepo(vault);
   const r = gateCli(root, vault, 'record', 'docs/reply.md', 'pass');
   assert.equal(r.code, 2);
-  assert.match(r.err, /^usage: research-vault gate evidence <draft> \[--extra ids\] \[--changed\] \[--json\] \| changed <draft> \| record <file> <PASS\|FAIL-as-sent\|MERIT> \[note\] \| status <file> \[--check\]$/m);
+  assert.match(r.err, /^usage: research-vault gate evidence <draft> \[--extra ids\] \[--changed\] \[--json\] \| changed <draft> \| record <file> <PASS\|FAIL-as-sent\|MERIT> \[note\] \| status <file> \[--check\] \| staged \[--check\]$/m);
   assert.equal(existsSync(join(root, LEDGER_FILENAME)), false);
   assert.equal(gateCli(root, vault, 'bogus').code, 2);
   assert.equal(gateCli(root, vault).code, 2);
@@ -314,6 +339,20 @@ test('per-unit gate: an edit reopens only the units it touched, and a unit passe
   // A draft without data-block elements is one unit.
   writeFileSync(f, '<p>plain</p>');
   assert.deepEqual(Object.keys(unitHashes(readFileSync(f))), ['all']);
+});
+
+test('a Markdown draft is one unit per heading section, and an edit reopens only its section', () => {
+  const { root, file } = draft('intro line\n\n# Title\n\ntext a\n\n## Gate\n\nclaim one\n\n```sh\n# not a heading\n```\n\n## Gate\n\ndup heading\n');
+  assert.deepEqual(Object.keys(unitHashes(readFileSync(file))), ['sec:preamble', 'sec:title', 'sec:gate', 'sec:gate#']);
+  assert.deepEqual(mdUnits(readFileSync(file, 'utf8')).map((u) => [u.unit, u.start, u.end]), [['sec:preamble', 1, 1], ['sec:title', 3, 5], ['sec:gate', 7, 13], ['sec:gate#', 15, 17]]);
+  assert.deepEqual(unitHashes('no headings here\n'), { all: contentHash('no headings here\n') });
+  recordVerdict(root, file, 'PASS');
+  assert.deepEqual(changedUnits(root, file), []);
+  writeFileSync(file, readFileSync(file, 'utf8').replace('claim one', 'claim one, revised'));
+  assert.deepEqual(changedUnits(root, file), ['sec:gate']);
+  assert.equal(gateStatus(root, file).verdict, null);
+  recordVerdict(root, file, 'MERIT');
+  assert.equal(gateStatus(root, file).verdict, 'MERIT');
 });
 
 test('unitHashes over the shared parseBlocks keeps the hashes ledger rows were keyed to (spec 13)', () => {

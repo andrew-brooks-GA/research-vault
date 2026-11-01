@@ -8,6 +8,7 @@ This repo is the research-vault plugin: a zero-dependency Node CLI (`bin/`, `eng
 - `npm run lint:self`: the vault template lints clean.
 - `node scripts/check-agentsmd-drift.mjs`: the generated vault AGENTS.md matches `schema/AGENTS.golden.md`.
 - `node scripts/check-encoding.mjs`: no BOM, CR byte or double-encoded mojibake sequence in tracked `.md`, `.mjs` and `.json` files.
+- `node bin/research-vault.mjs gate staged --check`: every staged gated file (this repo's binding gates `docs/**/*.md`, so every spec, plan and reference doc) carries a `PASS` or `MERIT` claims verdict for its current content; run the `research-claims-gate` skill on it first. `git config core.hooksPath .githooks` makes git refuse the commit otherwise.
 
 ## Rules
 
