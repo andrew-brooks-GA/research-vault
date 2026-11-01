@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The research-teach skill states the reader rule in use (a third `REVISE` round splits the lesson only when its findings name scope, otherwise the round is recorded in `GATE-LOG.md` as the decision and the claims gate follows from it), passes `--topic <mission topic>` to `teach path candidates` when the binding's topics are broader than the mission, closes each group of path lines with a `Project:` line, chooses the lesson's shape and writes an Elements part in `PLAN.md` at step 2, pairs each model figure with its paragraph, and ends a `concept` lesson with a `connect` prompt (spec 21 P4 and P5, spec 22 D1 to D4; issue #30).
+
 ### Fixed
 - The `COUPLINGS` rows in `scripts/deps.mjs` that tied `.teach-serve.json` and the `127.0.0.1` binding to `bin/lib/teach.mjs` now name `bin/commands/teach.mjs`, which writes the file and binds the port: the `SKILL.md` row of `bin/commands/teach.mjs` names `.teach-serve.json`, a new `bin/commands/teach.mjs` to `SECURITY.md` row carries the file, the binding and the serving line, and the two `bin/lib/teach.mjs` rows keep only the values that file holds (`SPACING_DAYS`, the `/lessons/` path, `ATTEMPT_BODY_MAX`, the allowlisted dirs and the `Host` check) (issue #29).
 
