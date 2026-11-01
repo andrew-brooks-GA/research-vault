@@ -4,6 +4,7 @@
 // session declares a version some link is still pinned to the old value of (spec 15). Silent
 // outside a bound repo; always exits 0, and says so in a systemMessage when it fails open.
 import { statSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../bin/lib/resolve.mjs';
@@ -16,10 +17,22 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 export const TWELVE_HOURS = 12 * 60 * 60 * 1000;
 
+// A tracked file with no working-tree change is not "changed this session" whatever its mtime says:
+// a worktree, a clone or a checkout rewrites every file. Empty porcelain output means tracked and clean
+// (untracked prints ??, ignored prints !! under --ignored). git runs from the file's own directory, not the
+// bound root, so a file inside a worktree is judged by that worktree and not seen as ignored by its parent.
+// Outside git, or on any error, defer to mtime.
+export function cleanInGit(repoRoot, file) {
+  const abs = resolve(repoRoot, file);
+  try {
+    return execFileSync('git', ['-C', dirname(abs), 'status', '--porcelain', '--ignored', '--', abs], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' }) === '';
+  } catch { return false; }
+}
+
 // Rows of two shapes: { file, sha256 } for a gated file without a verdict, and
 // { file, line, symbol, id, key, version, declared } for a link pinned to a version a changed versions file no longer declares.
 export function missingGates(repoRoot, vaultPath, cfg, since) {
-  const changed = (f) => statSync(f).mtimeMs >= since;
+  const changed = (f) => statSync(f).mtimeMs >= since && !cleanInGit(repoRoot, f);
   const out = gatedFiles(repoRoot, vaultPath, cfg)
     .filter(changed)
     .map((f) => gateStatus(repoRoot, f))

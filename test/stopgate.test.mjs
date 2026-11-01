@@ -54,6 +54,18 @@ test('missingGates lists a lesson again after it changes post-record', () => {
   ]);
 });
 
+test('missingGates ignores a tracked file git reports clean, whatever its mtime, and lists it once edited', () => {
+  const { root, vault } = repo();
+  const git = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  git('add', '.');
+  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'fixtures');
+  // Fresh mtimes, nothing edited: a worktree or checkout looks like this.
+  assert.deepEqual(missingGates(root, vault, {}, 0), []);
+  appendFileSync(join(root, 'learn/lessons/a.html'), 'edit\n');
+  assert.deepEqual(missingGates(root, vault, {}, 0).map((m) => m.file), ['learn/lessons/a.html']);
+});
+
 test('CLI exits 0 with no output when stop_hook_active is true', () => {
   const { root } = repo();
   const r = hook({ stop_hook_active: true, transcript_path: join(root, 'nope.jsonl'), cwd: root });

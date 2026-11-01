@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **The Stop gate no longer fires on files git says are clean.** `missingGates` took any gated file with an mtime after the session start as changed, so a worktree, a fresh clone or a checkout tripped it on every unchanged fixture and lesson. A tracked file with no working-tree change is now skipped; outside git, or on any git error, the mtime rule stands.
+
 ## [0.8.0] - 2026-10-27
 
 ### Added
