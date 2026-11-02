@@ -203,9 +203,9 @@ export async function run(args) {
   }
   if (verb === 'attempt' && sub === 'add') {
     const ws = workspace(rest[0]);
-    if (!ws || !args.lesson || !args.answers) return usage();
-    const r = writeAttempt(ws, { lesson: args.lesson, answers: parseAnswers(args.answers), now }, teachSchema);
-    out(`recorded ${r.id}: ${r.score}/${r.total}`);
+    if (!ws || !args.lesson || !args.answers === !args.result) return usage(); // exactly one of --answers, --result
+    const r = writeAttempt(ws, { lesson: args.lesson, answers: args.answers && parseAnswers(args.answers), result: args.result, now }, teachSchema);
+    out(`recorded ${r.id}: ${r.result ?? `${r.score}/${r.total}`}`);
     return 0;
   }
   if (verb === 'serve') {

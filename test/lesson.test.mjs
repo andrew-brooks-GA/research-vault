@@ -122,7 +122,7 @@ test('lesson-specific codes fire on their own fixture and not on the good lesson
 test('lesson shapes: SHAPES table, shape codes, complete, predict and the Elements part', () => {
   assert.deepEqual(SHAPES, {
     concept: ['model', 'fact', 'quiz', 'connect'], tool: ['model', 'example', 'complete', 'step'],
-    diagnose: ['predict', 'model', 'fact', 'quiz'], project: ['scaffold', 'step'],
+    diagnose: ['predict', 'model', 'fact', 'quiz'], project: ['step'],
   });
   const dir = copyFixture();
   const run = (rel, edit) => {
@@ -160,6 +160,8 @@ test('lesson shapes: SHAPES table, shape codes, complete, predict and the Elemen
   // The predict item is prose for the term rule; the quiz block, not the predict block, is the lesson's quiz.
   assert.deepEqual(run(diag, (h) => h.replace('Which input was it given?', 'Is 7 a sextuple?')),
     ['LESSON_TERM_NOT_INTRODUCED uses the term "sextuple" before this or an earlier lesson introduces it (data-introduces) and it is not in the Floor\'s known terms']);
+  // Spec 22 D3: a later project carries no scaffold, so a project lesson without one is clean.
+  assert.deepEqual(run(proj, (h) => h.replace(/<section data-block="scaffold"[\s\S]*?<\/section>/, '')), []);
   const plan = join(dir, 'evidence', '0006', 'PLAN.md');
   writeFileSync(plan, readFileSync(plan, 'utf8').replace(/## Elements[\s\S]*$/, ''));
   assert.deepEqual(codes(lintFile(dir, proj)), ['LESSON_PLAN_NO_ELEMENTS']);
@@ -437,12 +439,15 @@ test('pathFringe offers every ready line and the built non-review lines nothing 
   assert.deepEqual(ns(pathFringe(a).fringe), [2, 3]);
   assert.deepEqual(ns(pathFringe(a).inner), [1]);
   assert.deepEqual(lintPath(a), []);
-  // The fixture path as extended: the review on 3 is not an item, so 2 is inner, and 9 (the project on 7 and 8);
-  // 4 and 5 are ready, 6 waits.
+  // The fixture path as extended: the review on 3 is not an item, so 2 is inner; the Project: line 9 on 7 and 8
+  // counts as a review (spec 22 D3), so 7 and 8 stay inner and 9 is not; 4 and 5 are ready, 6 waits.
   const fx = readPath(FIX);
   assert.deepEqual(ns(pathFringe(fx).fringe), [4, 5]);
-  assert.deepEqual(ns(pathFringe(fx).inner), [9, 2]);
+  assert.deepEqual(ns(pathFringe(fx).inner), [8, 7, 2]);
   assert.deepEqual(lintPath(fx), []);
+  // PATH_PROJECT_AFTER: a Project: line whose after: names fewer than two lines (floor is not a line).
+  assert.deepEqual(lintPath([L(1, ['floor']), { ...L(2, ['1', 'floor']), title: 'Project: one' }, { ...L(3, ['1', '2']), title: 'project: two' }])
+    .map((f) => `${f.code} ${f.message}`), ['PATH_PROJECT_AFTER line 2 is a Project: line whose after: names 1 line(s); a project integrates at least two']);
   // No after: is ready; a value naming no line never is; a parked line is taken; all taken gives an empty fringe; most recent inner first.
   assert.deepEqual(ns(pathFringe([L(1, []), L(2, ['9'])]).fringe), [1]);
   assert.deepEqual(ns(pathFringe([L(1, ['floor'], '0001-a'), L(2, ['1'], '0002-b, parked'), L(3, ['2'])]).fringe), [3]);
@@ -553,6 +558,9 @@ test('pathEdges proposes after: for a term, tool or title use across a missing e
   assert.deepEqual(run({ 4: [{ term: 'kind', via: 'uses' }, { term: 'kind', via: 'runs' }] }), [[4, [[2, 'kind', 'uses', 2]]]]);
   // The line's own term, an introducer on a later line, a term no line introduces: nothing.
   assert.deepEqual(run({ 1: [{ term: 'fx', via: 'uses' }], 4: [{ term: 'six', via: 'uses' }, { term: 'nope', via: 'uses' }] }), []);
+  // Spec 22 D3: a Project: line gets no proposals, whatever it uses.
+  const proj = lines.map((l) => (l.n === 4 ? { ...l, title: 'Project: the fx kind' } : l));
+  assert.deepEqual(pathEdges({ lines: proj, uses: new Map([[4, [{ term: 'fx', via: 'uses' }]]]) }), []);
   // A floor or unknown after: value contributes nothing to reach; a term on two lines takes the lower as its
   // introducer, so line 2's own use of fx proposes line 1 and line 3, which reaches only line 2, proposes line 1 too.
   const dup = [L(1, ['floor'], '0001-a', { terms: ['fx'] }), L(2, ['9'], '0002-b', { terms: ['fx'] }), L(3, ['2'], '0003-c')];

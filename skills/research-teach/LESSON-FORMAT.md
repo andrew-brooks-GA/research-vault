@@ -47,7 +47,7 @@ A lesson declares its shape with `data-shape` on the `<body>`. The frame is the 
 | `concept` | a term set and the model behind it | `model`, `fact`, `quiz`, `connect`; `example` and `step` optional | a quiz whose wrong options are nameable misreadings, then `connect` |
 | `tool` | one tool: what it is, one command, how to read its output | `model`, `example`, `complete`, `step`; `quiz` optional | `complete`, the worked command with one part withheld, then the unaided `step` |
 | `diagnose` | reading output and deciding what it means | `predict`, `model`, `fact`, `quiz`; `step` optional | `predict`, one question on the output before the explanation; quiz lures are the misreadings |
-| `project` | a whole task that needs several earlier lessons at once | `scaffold`, `step` | the task itself; `step` is the check command and its expected output, and the learner's run is the attempt |
+| `project` | a whole task that needs several earlier lessons at once | `scaffold` on the mission's first project, then `step` | the task itself; `step` is the check command and its expected output, and the learner's run is the attempt |
 
 Review lessons keep their own list (Review lessons) and ignore `data-shape`.
 
@@ -56,7 +56,7 @@ Review lessons keep their own list (Review lessons) and ignore `data-shape`.
 - In `complete`, the command with the withheld part filled must be a command the `example` block ran (a `$ ` line there); the lint reads the mark as any text. A `complete` block whose command does not match, or that has no `<pre>` holding the mark, is `LESSON_COMPLETE_NOT_WORKED`.
 - `predict` holds a `<pre>` output and a `<script type="application/json" data-quiz>` with exactly one item; anything else is `LESSON_PREDICT_INVALID`. The item's question, options and whys are prose for the term rule (Terms), so they use only terms allowed before this lesson's `data-introduces`. The widget merges the item into the lesson's one attempt as item 0, before the quiz items: one answers list, one POST, one score on `/progress`.
 - `connect` is a prompt answered in the terminal, not a quiz item: the skill judges the answer in conversation and records an understanding record when it holds.
-- A `project` lesson's `mission` states the goal as the mission criterion it serves and the observable result that proves it; `prereq` names the lessons it assumes and nothing else; `step` is the check command whose output proves the goal; `sources` links the reference solution's snippet instead of printing it.
+- A `project` lesson's `mission` states the goal as the mission criterion it serves and the observable result that proves it; `prereq` names the lessons it assumes and nothing else; `step` is the check command whose output proves the goal, stated exactly as the reference run's Result quotes it; `sources` links the reference solution's snippet instead of printing it. `scaffold` belongs on the mission's first project; a later project carries one only when its plan says why. The learner's run is the attempt, recorded with `teach attempt add --lesson <id> --result pass|fail`.
 
 ## Terms
 

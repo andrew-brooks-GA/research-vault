@@ -109,7 +109,7 @@ test('serves a lesson and the glossary; returns 404 for NOTES.md, a record, an a
     assert.deepEqual(parsed.lessons.map((l) => l.id), ['0001-good', '0002-bad', '0003-review-good', '0004-tool-fxctl', '0005-diagnose-fx', '0006-project-fx']);
     assert.equal(parsed.lessons[0].title, 'What fx returns');
     assert.equal(parsed.lines, 9);
-    assert.deepEqual(parsed.lessons[4], { id: '0005-diagnose-fx', title: 'Reading what fx printed', path: '/lessons/0005-diagnose-fx.html', line: 8, shape: 'diagnose', project: null });
+    assert.deepEqual(parsed.lessons[4], { id: '0005-diagnose-fx', title: 'Reading what fx printed', path: '/lessons/0005-diagnose-fx.html', line: 8, shape: 'diagnose', project: 'Project: Predict, then run' });
     assert.deepEqual(parsed.reference.map((r) => r.path), ['/reference/good.html']);
     const page = await req(port, { path: '/lessons/0001-good.html' });
     assert.ok(page.text.includes('class="cite" href="#src-2026-01-01-fx-doc" title="2026-01-01-fx-doc">[1]</a>'), 'inline citations render as numbered footnotes');

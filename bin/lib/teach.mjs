@@ -11,7 +11,7 @@ import { allowedValues } from './validate.mjs';
 import { slugify } from './ids.mjs';
 import { isInsideVault } from './containment.mjs';
 import { grade } from '../../skills/research-teach/assets/quiz.js';
-import { lessonItems, readPath } from './lesson.mjs';
+import { lessonItems, readPath, isProject } from './lesson.mjs';
 
 export const SPACING_DAYS = 21;
 export const ATTEMPT_BODY_MAX = 4096;
@@ -122,17 +122,26 @@ export function attemptId(now, lessonNumber, exists) {
   return id;
 }
 
-export function writeAttempt(workspaceDir, { lesson, answers, now }, schema) {
-  if (!LESSON_ID_RE.test(String(lesson))) throw new Error(`invalid lesson id: ${lesson}`);
-  if (!existsSync(join(workspaceDir, 'lessons', `${lesson}.html`))) throw new Error(`no lesson: ${lesson}`);
+// Spec 22 D3: `result` (pass|fail) records a project run in place of answers, stored as one item, 1/1 or 0/1.
+function gradeAttempt(workspaceDir, lesson, answers, result) {
+  if (result !== undefined) {
+    if (result !== 'pass' && result !== 'fail') throw new Error(`result must be pass or fail: ${result}`);
+    return { result, total: 1, wrong: result === 'pass' ? [] : [0], records: [] };
+  }
   const { items } = readQuiz(workspaceDir, lesson);
   if (!Array.isArray(answers) || answers.length !== items.length ||
       !answers.every((a, i) => Number.isInteger(a) && a >= 0 && a < items[i].options.length)) {
     throw new Error(`answers must be one in-range integer per quiz item (${items.length} items)`);
   }
   const { total, wrong } = grade(items, answers);
-  const records = uniq(wrong.map((i) => items[i].record).filter(Boolean));
-  const data = { type: 'attempt', date: isoDate(now), lesson, total, wrong, records };
+  return { total, wrong, records: uniq(wrong.map((i) => items[i].record).filter(Boolean)) };
+}
+
+export function writeAttempt(workspaceDir, { lesson, answers, result, now }, schema) {
+  if (!LESSON_ID_RE.test(String(lesson))) throw new Error(`invalid lesson id: ${lesson}`);
+  if (!existsSync(join(workspaceDir, 'lessons', `${lesson}.html`))) throw new Error(`no lesson: ${lesson}`);
+  const data = { type: 'attempt', date: isoDate(now), lesson, ...gradeAttempt(workspaceDir, lesson, answers, result) };
+  const { total, wrong } = data;
   assertValid(data, schema);
   const dir = join(workspaceDir, 'attempts');
   mkdirSync(dir, { recursive: true });
@@ -146,7 +155,7 @@ export function writeAttempt(workspaceDir, { lesson, answers, now }, schema) {
       if (e.code === 'EEXIST') continue; // lost a race to another writer; the next id is free
       throw e;
     }
-    return { id, path, score: total - wrong.length, total, wrong };
+    return { id, path, score: total - wrong.length, total, wrong, result: data.result };
   }
 }
 
@@ -258,7 +267,7 @@ export function progress(workspaceDir, { now }) {
     const total = Number(a.total) || 0;
     const wrong = Array.isArray(a.wrong) ? a.wrong : [];
     if (!byLesson.has(a.lesson)) byLesson.set(a.lesson, { id: a.lesson, title: a.lesson, class: 'lesson', attempts: [] });
-    byLesson.get(a.lesson).attempts.push({ id: a.id, date: String(a.date), score: total - wrong.length, total, wrong });
+    byLesson.get(a.lesson).attempts.push({ id: a.id, date: String(a.date), score: total - wrong.length, total, wrong, ...(a.result ? { result: String(a.result) } : {}) });
   }
   const ratio = (x) => (x.total ? x.score / x.total : 0);
   const lessons = [...byLesson.values()].map((l) => ({
@@ -278,7 +287,8 @@ export function progress(workspaceDir, { now }) {
   };
 }
 
-const fmtScore = (a) => (a ? `${a.score}/${a.total} on ${a.date}` : 'none');
+const scoreOf = (a) => a.result ?? `${a.score}/${a.total}`; // a project run shows pass or fail
+const fmtScore = (a) => (a ? `${scoreOf(a)} on ${a.date}` : 'none');
 
 export function progressText(p) {
   const lines = ['| lesson | attempts | first | latest | best |', '|---|---|---|---|---|'];
@@ -290,11 +300,11 @@ export function progressText(p) {
 
 export function progressHtml(p) {
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const cell = (a) => (a ? `<td><b>${a.score}/${a.total}</b> <small>${esc(a.date)}</small></td>` : '<td>none</td>');
+  const cell = (a) => (a ? `<td><b>${esc(scoreOf(a))}</b> <small>${esc(a.date)}</small></td>` : '<td>none</td>');
   const rows = p.lessons.map((l) => `<tr><td><a href="/lessons/${esc(l.id)}.html">${esc(l.title)}</a></td><td>${l.attempts.length}</td>${cell(l.first)}${cell(l.latest)}${cell(l.best)}</tr>`).join('');
   const timeline = p.lessons.flatMap((l) => l.attempts.map((a) => ({ ...a, lesson: l.title, lid: l.id })))
     .sort((a, b) => (a.id < b.id ? -1 : 1))
-    .map((a) => `<li><small>${esc(a.date)}</small> <a href="/lessons/${esc(a.lid)}.html">${esc(a.lesson)}</a>: <b>${a.score}/${a.total}</b>${a.wrong.length ? ` <small>(missed item${a.wrong.length > 1 ? 's' : ''} ${a.wrong.map((i) => i + 1).join(', ')})</small>` : ''}</li>`).join('');
+    .map((a) => `<li><small>${esc(a.date)}</small> <a href="/lessons/${esc(a.lid)}.html">${esc(a.lesson)}</a>: <b>${esc(scoreOf(a))}</b>${a.wrong.length && !a.result ? ` <small>(missed item${a.wrong.length > 1 ? 's' : ''} ${a.wrong.map((i) => i + 1).join(', ')})</small>` : ''}</li>`).join('');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Progress</title><link rel="stylesheet" href="/assets/lesson.css"></head>
 <body><h1>Progress</h1>
@@ -391,7 +401,7 @@ export function lessonIndex(ws) {
         if (!isLesson) return entry;
         const i = lessonLine(id);
         const shape = /<body\b[^>]*\bdata-shape\s*=\s*(["'])([^"']*)\1/i.exec(html)?.[2].trim().toLowerCase() || null;
-        const project = i === -1 ? null : path.slice(i).find((l) => /^project:/i.test(l.title))?.title ?? null;
+        const project = i === -1 ? null : path.slice(i).find(isProject)?.title ?? null;
         return { ...entry, line: i === -1 ? null : path[i].n, shape, project };
       });
   };

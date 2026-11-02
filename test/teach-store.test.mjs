@@ -333,10 +333,11 @@ test('writeAttempt merges the predict item as item 0 of the one attempt', () => 
 
 test('lessonIndex carries the PATH.md line count, each lesson line, shape and closing project; the index groups by project', () => {
   const fx = lessonIndex('test/fixtures/teach');
+  const P = 'Project: Predict, then run'; // the fixture's line 9 closes every lesson's group (spec 22 D3)
   assert.equal(fx.lines, 9);
   assert.deepEqual(fx.lessons.map((l) => [l.id, l.line, l.shape, l.project]), [
-    ['0001-good', 1, null, null], ['0002-bad', 2, null, null], ['0003-review-good', 3, null, null],
-    ['0004-tool-fxctl', 7, 'tool', null], ['0005-diagnose-fx', 8, 'diagnose', null], ['0006-project-fx', 9, 'project', null]]);
+    ['0001-good', 1, null, P], ['0002-bad', 2, null, P], ['0003-review-good', 3, null, P],
+    ['0004-tool-fxctl', 7, 'tool', P], ['0005-diagnose-fx', 8, 'diagnose', P], ['0006-project-fx', 9, 'project', P]]);
   const dir = ws();
   lesson(dir, '0001-a', [item(0)], 'A');
   lesson(dir, '0002-b', [item(0)], 'B');

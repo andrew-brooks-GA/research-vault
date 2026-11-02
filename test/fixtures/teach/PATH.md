@@ -8,4 +8,4 @@
 6. Join of 4 and 5 | after: 4, 5
 7. The fxctl tool | tool: fxctl | after: 1 | lesson: 0004-tool-fxctl
 8. Reading what fx printed | after: 1 | lesson: 0005-diagnose-fx
-9. Predict, then run | after: 7, 8 | lesson: 0006-project-fx
+9. Project: Predict, then run | after: 7, 8 | lesson: 0006-project-fx

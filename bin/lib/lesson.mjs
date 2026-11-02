@@ -19,12 +19,13 @@ export const FIGURE_LABEL_MIN = 14;
 export const FIGURE_LABEL_MAX = 40;
 const FOLLOWUP = 'You can ask follow-up questions in the terminal.';
 // Spec 22 D1: a lesson is the frame (prereq optional) around its shape's middle, in this one table.
+// D3: a project's scaffold is optional (the mission's first project carries one), so it is not listed.
 const FRAME = ['mission', 'sources', 'followup'];
 export const SHAPES = {
   concept: ['model', 'fact', 'quiz', 'connect'],
   tool: ['model', 'example', 'complete', 'step'],
   diagnose: ['predict', 'model', 'fact', 'quiz'],
-  project: ['scaffold', 'step'],
+  project: ['step'],
 };
 // A lesson with no data-shape is a concept lesson with the list it had before shapes (D0.3); review
 // lessons and reference docs keep their own lists.
@@ -490,11 +491,13 @@ export function lintStore(workspaceDir, ctx) {
 // Spec 17 D1, over readPath's output and nothing else. `fringe`: every untaken line whose after: values
 // are all `floor` or a taken line's number, file order (the first is the default). `inner`: every taken
 // line whose lesson is not a review and that no other such line names in after:, most recently built first.
+// Spec 22 D3: a `Project:` line counts as a review here, so a built project keeps the lines it names inner.
 const isReview = (l) => /^\d{4}-review-/.test(l.lesson ?? '');
+export const isProject = (l) => /^project:/i.test(l.title);
 export function pathFringe(lines) {
   const taken = new Set(lines.filter((l) => l.lesson).map((l) => String(l.n)));
   const fringe = lines.filter((l) => !l.lesson && l.after.every((a) => a === 'floor' || taken.has(a)));
-  const items = lines.filter((l) => l.lesson && !isReview(l));
+  const items = lines.filter((l) => l.lesson && !isReview(l) && !isProject(l));
   const needed = new Set(items.flatMap((l) => l.after));
   const inner = items.filter((l) => !needed.has(String(l.n))).sort((a, b) => (a.lesson < b.lesson ? 1 : -1));
   return { fringe, inner };
@@ -502,11 +505,14 @@ export function pathFringe(lines) {
 
 // Spec 17 D2. PATH_AFTER_FORWARD per after: value naming a missing, later or own line (a prerequisite has a
 // smaller number); PATH_AFTER_CYCLE once per loop, written from its smallest line. Both are violations.
+// Spec 22 D3: PATH_PROJECT_AFTER when a `Project:` line's after: names fewer than two lines.
 export function lintPath(lines) {
   const findings = [];
   const add = (code, message) => findings.push({ code, file: 'PATH.md', message, warning: false });
   const byN = new Map(lines.map((l) => [String(l.n), l]));
   for (const l of lines) {
+    const named = l.after.filter((a) => a !== 'floor').length;
+    if (isProject(l) && named < 2) add('PATH_PROJECT_AFTER', `line ${l.n} is a Project: line whose after: names ${named} line(s); a project integrates at least two`);
     for (const a of l.after) {
       if (a === 'floor') continue;
       if (!byN.has(a)) add('PATH_AFTER_FORWARD', `line ${l.n} after: ${a} names no line`);
@@ -540,6 +546,7 @@ export function lessonUses(html, terms) {
 
 // Spec 19 D3. `uses` maps a line number to [{ term, via }] (via: uses | runs | names). One proposal per
 // (line, introducer line, term) when the introducer is an earlier line the line's after: does not reach.
+// Spec 22 D3: no proposals for a `Project:` line; it uses every term it integrates.
 export function pathEdges({ lines, uses }) {
   const byN = new Map(lines.map((l) => [String(l.n), l]));
   const introducer = new Map();
@@ -552,6 +559,7 @@ export function pathEdges({ lines, uses }) {
   };
   const out = [];
   for (const l of lines) {
+    if (isProject(l)) continue;
     const r = reach(l);
     const proposals = [];
     for (const { term, via } of uses.get(l.n) ?? []) {

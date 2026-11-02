@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { fixtureVault, put } from './helpers.mjs';
 import { workspaceBrief } from '../hooks/session-start.mjs';
+import { progress, progressHtml } from '../bin/lib/teach.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'research-vault.mjs');
@@ -210,9 +211,11 @@ test('CLI teach attempt add records a graded attempt', () => {
 });
 
 // Spec 17 D1: lines 4 and 5 both wait on the built line 1, line 6 waits on them; the review on line 3 is not
-// an item, so line 2 is on the inner fringe, after line 9, the project lesson nothing depends on.
+// an item, so line 2 is on the inner fringe. Spec 22 D3: the built Project: line 9 counts as a review, so
+// lines 7 and 8, which it names in after:, stay on the inner fringe and 9 is not on it.
 const FRINGE = 'fringe: 4. The sextuple, named | terms: sextuple | after: 1\nfringe: 5. The septuple, named | terms: septuple | after: 1\n' +
-  'inner: 9. Predict, then run | after: 7, 8 | lesson: 0006-project-fx\ninner: 2. A bad lesson | after: 1 | lesson: 0002-bad\n';
+  'inner: 8. Reading what fx printed | after: 1 | lesson: 0005-diagnose-fx\ninner: 7. The fxctl tool | tool: fxctl | after: 1 | lesson: 0004-tool-fxctl\n' +
+  'inner: 2. A bad lesson | after: 1 | lesson: 0002-bad\n';
 
 test('CLI teach next prints criteria, the records table and the review lines', () => {
   const ws = copyFixture();
@@ -348,4 +351,23 @@ test('CLI teach progress prints every attempt per lesson with first, latest and 
   const r2 = cli(['progress', ws]);
   assert.match(r2.stdout, new RegExp(`\\| 0001-good \\| 2 \\| 2/3 on 2026-01-01 \\| 3/3 on ${TODAY} \\| 3/3 on ${TODAY} \\|`));
   assert.match(r2.stdout, /attempts: 2/);
+});
+
+test('CLI teach attempt add --result records a project run; progress and /progress show pass or fail (spec 22 D3)', () => {
+  const ws = copyFixture();
+  const r = cli(['attempt', 'add', '--lesson', '0006-project-fx', '--result', 'fail', ws]);
+  assert.equal(r.status, 0, r.stderr);
+  const id = /^recorded (a-\d{8}-\d{6}-0006): fail$/.exec(r.stdout.trim())[1];
+  assert.equal(readFileSync(join(ws, 'attempts', `${id}.md`), 'utf8'),
+    `---\ntype: attempt\ndate: ${TODAY}\nlesson: 0006-project-fx\nresult: fail\ntotal: 1\nwrong: [0]\nrecords: []\n---\n`);
+  assert.equal(cli(['attempt', 'add', '--lesson', '0006-project-fx', '--result', 'pass', ws]).status, 0);
+  assert.match(cli(['progress', ws]).stdout, new RegExp(`\\| 0006-project-fx \\| 2 \\| fail on ${TODAY} \\| pass on ${TODAY} \\| pass on ${TODAY} \\|`));
+  const html = progressHtml(progress(ws, { now: new Date() }));
+  assert.match(html, /<td><a href="\/lessons\/0006-project-fx.html">Project: Predict, then run<\/a><\/td><td>2<\/td><td><b>fail<\/b>/);
+  assert.match(html, /0006-project-fx.html">Project: Predict, then run<\/a>: <b>fail<\/b><\/li>/, 'a failed run lists no missed item');
+  // Neither or both forms is usage; a result other than pass or fail is an error.
+  assert.equal(cli(['attempt', 'add', '--lesson', '0006-project-fx', '--result', 'pass', '--answers', '0', ws]).status, 2);
+  const bad = cli(['attempt', 'add', '--lesson', '0006-project-fx', '--result', 'maybe', ws]);
+  assert.equal(bad.status, 2);
+  assert.match(bad.stderr, /^error: result must be pass or fail: maybe/);
 });
