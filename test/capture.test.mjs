@@ -10,6 +10,7 @@ import { readEntry, writeEntry } from '../bin/lib/fsutil.mjs';
 import { lintVault } from '../bin/lib/lintrules.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
 import { refreshVault } from '../bin/commands/refresh.mjs';
+import { writeBlocklist } from './blocklist.test.mjs';
 import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
 import { buildExport } from '../bin/lib/exportjsonl.mjs';
 
@@ -470,4 +471,22 @@ test('captureEntry refuses an id already used in another folder and names it', (
   assert.equal(exp.dedup.id, snip.id);
   assert.match(exp.dedup.reason, /^entry id 2026-10-27-gate-round-lines already exists in snippets\/ \(supersede via verify, do not overwrite\)$/);
   assert.equal(existsSync(join(vault, 'experiments', `${snip.id}.md`)), false);
+});
+
+test('capture refuses a blocklisted source, --force captures it with the override in the seed notes; run rejects without force (spec 32 D2)', async () => {
+  const dir = freshVault();
+  writeBlocklist(dir);
+  assert.throws(() => captureEntry(dir, { type: 'source', title: 'Spam', url: 'https://spam.example.com/a' }), /blocked source: spam.example.com \(domain\): content farm/);
+  assert.ok(!existsSync(join(dir, 'sources', `${makeId(new Date().toISOString().slice(0, 10), 'Spam')}.md`)));
+  const r = captureEntry(dir, { type: 'source', title: 'Spam', url: 'https://spam.example.com/a', force: true });
+  const e = readEntry(r.path);
+  assert.match(e.data.verifications[0].notes, /captured with --force past the blocklist: spam.example.com/);
+  assert.equal(e.data.captured_via, undefined);
+  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+  const orig = process.stdout.write.bind(process.stdout);
+  process.stdout.write = () => true;
+  try {
+    await assert.rejects(run({ type: 'source', title: 'Spam two', url: 'https://spam.example.com/b', vault: dir }), /blocked source/);
+    assert.equal(await run({ type: 'source', title: 'Spam two', url: 'https://spam.example.com/b', vault: dir, force: true }), 0);
+  } finally { process.stdout.write = orig; }
 });

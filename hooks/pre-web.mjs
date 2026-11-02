@@ -7,6 +7,7 @@ import { walkEntries, readEntry } from '../bin/lib/fsutil.mjs';
 import { listStale } from '../bin/lib/stale.mjs';
 import { termsOf } from '../bin/lib/terms.mjs';
 import { appendUsage } from '../bin/lib/usagelog.mjs';
+import { loadBlocklist, matchBlock } from '../bin/lib/blocklist.mjs';
 import { loadProjectConfig } from '../bin/lib/projectconfig.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
 import { join, dirname } from 'node:path';
@@ -18,6 +19,10 @@ const normUrl = u => String(u || '').trim().replace(/#.*$/, '').replace(/\/+$/, 
 
 export function vaultContext(vaultPath, toolName, toolInput = {}, opts = {}) {
   const url = toolName === 'WebFetch' ? normUrl(toolInput.url) : '';
+  // The source blocklist (spec 32): name the reason before a fetch; a broken list never changes the answer.
+  let block = null;
+  try { block = url ? matchBlock(loadBlocklist(vaultPath), toolInput.url) : null; } catch { /* lint reports the list */ }
+  const withBlock = rest => [block && `research-vault: this URL is on the vault's source blocklist (${block.pattern}, ${block.scope}): ${block.reason}.`, rest].filter(Boolean).join('\n');
   const text = [toolInput.query, toolInput.prompt, toolInput.url].filter(Boolean).join(' ');
   const terms = termsOf(text).slice(0, 12);
   // ponytail: term-count scoring over title+topics+summary; swap for the manifest search index if it proves too coarse.
@@ -39,9 +44,9 @@ export function vaultContext(vaultPath, toolName, toolInput = {}, opts = {}) {
   // The usage log (spec 29): what was asked, what was surfaced. Free text only behind usage.text.
   const ids = urlHit ? [urlHit.id] : top.map(h => h.e.id);
   try { appendUsage(vaultPath, { kind: 'queried', via: 'pre-web', tool: toolName, outcome: urlHit ? 'url-hit' : ids.length ? 'hits' : 'no-match', ids, text: opts.text ? terms.join(' ') : undefined }); } catch { /* never change the hook's answer */ }
-  if (urlHit) return `research-vault: this URL is already captured as ${urlHit.id}${stale.has(urlHit.id) ? ' (STALE: verify it rather than re-reading from memory)' : ''}. Cite it; do not capture a duplicate.`;
-  if (top.length) return `Vault entries matching this query:\n${top.map(h => line(h.e)).join('\n')}`;
-  return terms.length ? `research-vault: no entry matches [${terms.join(', ')}].` : '';
+  if (urlHit) return withBlock(`research-vault: this URL is already captured as ${urlHit.id}${stale.has(urlHit.id) ? ' (STALE: verify it rather than re-reading from memory)' : ''}. Cite it; do not capture a duplicate.`);
+  if (top.length) return withBlock(`Vault entries matching this query:\n${top.map(h => line(h.e)).join('\n')}`);
+  return withBlock(terms.length ? `research-vault: no entry matches [${terms.join(', ')}].` : '');
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) {

@@ -9,6 +9,8 @@ import { lintAndReport } from '../bin/commands/lint.mjs';
 import { writeEntry } from '../bin/lib/fsutil.mjs';
 import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
 import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS } from '../bin/lib/validate.mjs';
+import { writeBlocklist } from './blocklist.test.mjs';
+import { BLOCKLIST } from '../bin/lib/blocklist.mjs';
 
 const GOOD = fileURLToPath(new URL('./fixtures/vault', import.meta.url));
 const BAD = fileURLToPath(new URL('./fixtures/bad', import.meta.url));
@@ -278,4 +280,18 @@ test('intended_targets is documentation only: a note whose sources names a quest
   handWrite(dir, 'questions', 'question', '2026-01-02-q', { question: 'q?', state: 'open' });
   handWrite(dir, 'notes', 'note', '2026-01-03-n', { sources: ['2026-01-02-q'], confidence: 'medium' });
   assert.deepEqual(lintVault(dir, process.cwd()).violations, []);
+});
+
+test('lint warns WARN_SOURCE_BLOCKED on a source matching the blocklist and reports a list that does not parse as BLOCKLIST_INVALID (spec 32 D2)', () => {
+  const dir = freshVault();
+  writeBlocklist(dir);
+  handWrite(dir, 'sources', 'source', '2026-01-01-spam', { source_type: 'article', source_url: 'https://spam.example.com/a' });
+  const r = lintVault(dir, process.cwd());
+  assert.equal(r.violations.length, 0);
+  const w = r.warnings.filter(x => x.code === 'WARN_SOURCE_BLOCKED');
+  assert.equal(w.length, 1);
+  assert.match(w[0].msg, /content farm/);
+  writeFileSync(join(dir, BLOCKLIST), '{}', 'utf8');
+  const bad = lintVault(dir, process.cwd());
+  assert.equal(bad.violations.filter(x => x.code === 'BLOCKLIST_INVALID').length, 1);
 });

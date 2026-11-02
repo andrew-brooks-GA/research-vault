@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { tmpVault, put } from './helpers.mjs';
 import { vaultContext } from '../hooks/pre-web.mjs';
+import { writeBlocklist } from './blocklist.test.mjs';
 
 test('pre-web hook surfaces matching entries and exact URL hits', () => {
   const v = tmpVault('rv-preweb-');
@@ -47,4 +48,17 @@ test('pre-web hook logs one queried event per call: hits, url-hit, no-match; tex
   assert.ok(r.every(e => !('text' in e)));
   vaultContext(v, 'WebSearch', { query: 'zig format specifiers print' }, { text: true });
   assert.equal(readUsage(v).at(-1).text, 'zig format specifiers print');
+});
+
+test('pre-web names a blocklisted URL\'s reason before a fetch, ahead of the captured-already line; WebSearch is unchanged (spec 32 D2)', () => {
+  const v = tmpVault('rv-preweb-block-');
+  writeBlocklist(v);
+  const first = "research-vault: this URL is on the vault's source blocklist (spam.example.com, domain): content farm.";
+  assert.equal(vaultContext(v, 'WebFetch', { url: 'https://spam.example.com/a', prompt: 'x' }), first);
+  put(v, 'source', '2026-01-01-spam', { source_url: 'https://spam.example.com/a', source_type: 'article' });
+  const both = vaultContext(v, 'WebFetch', { url: 'https://spam.example.com/a', prompt: 'x' }).split('\n');
+  assert.equal(both.length, 2);
+  assert.equal(both[0], first);
+  assert.match(both[1], /already captured as 2026-01-01-spam/);
+  assert.doesNotMatch(vaultContext(v, 'WebSearch', { query: 'spam example content' }), /blocklist/);
 });

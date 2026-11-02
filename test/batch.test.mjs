@@ -8,6 +8,7 @@ import { runBatch, run, ingest } from '../bin/commands/capture.mjs';
 import { makeId, sha256 } from '../bin/lib/ids.mjs';
 import { lintVault } from '../bin/lib/lintrules.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
+import { writeBlocklist } from './blocklist.test.mjs';
 
 function freshVault() {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-batch-')), 'v');
@@ -277,4 +278,14 @@ test('capture --batch via run(): a URL list goes to ingest, exits 1 with the fai
   assert.equal(code, 1);
   assert.equal(parsed.created.length, 2);
   assert.equal(parsed.errors[0].error, 'fetch failed: boom');
+});
+
+test('batch: a blocklisted source is the item error even with force in the spec; nothing created (spec 32 D2)', () => {
+  const dir = freshVault();
+  writeBlocklist(dir);
+  const r = runBatch(dir, writePlan([{ type: 'source', title: 'Spam', url: 'https://spam.example.com/a', force: true }]), NOW);
+  assert.deepEqual(r.created, []);
+  assert.equal(r.errors.length, 1);
+  assert.equal(r.errors[0].index, 0);
+  assert.match(r.errors[0].error, /^blocked source: spam.example.com \(domain\): content farm/);
 });

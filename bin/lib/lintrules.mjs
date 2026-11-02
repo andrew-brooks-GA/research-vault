@@ -1,9 +1,10 @@
 import { readFileSync, writeFileSync } from 'node:fs';
-import { basename } from 'node:path';
+import { basename, join } from 'node:path';
 import { walkEntries, readEntry, FOLDER_TYPE } from './fsutil.mjs';
 import { loadSchema, stageAllowedInFolder, fieldOrder } from './schema.mjs';
 import { serializeFrontmatter } from './frontmatter.mjs';
 import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, allowedValues } from './validate.mjs';
+import { BLOCKLIST, loadBlocklist, matchBlock } from './blocklist.mjs';
 
 const MONOLITHIC_SYNTHESIS_WORDS = 1500;
 
@@ -72,6 +73,9 @@ export function lintVault(vaultPath, repoRoot) {
   const add = (file, code, msg) => violations.push({ file, code, msg });
   const warnings = [];
   const warn = (file, code, msg) => warnings.push({ file, code, msg });
+  // The source blocklist (spec 32): a list that does not parse is a violation; a match is a warning.
+  let blocklist = [];
+  try { blocklist = loadBlocklist(vaultPath); } catch (e) { add(join(vaultPath, BLOCKLIST), 'BLOCKLIST_INVALID', e.message); }
 
   // First pass: build id -> type map for cross-entry checks (e.g. synthesis note-coverage).
   const idType = new Map();
@@ -163,6 +167,9 @@ export function lintVault(vaultPath, repoRoot) {
     for (const slot of stringSlots(data))
       if (unwrapQuoteArtifact(slot.get()) !== null)
         warn(abs, 'WARN_QUOTE_ARTIFACT', `${slot.field} value is itself wrapped in quotes (${slot.get()}); run lint --fix to unwrap`);
+
+    const blocked = data.type === 'source' && data.source_url ? matchBlock(blocklist, data.source_url) : null;
+    if (blocked) warn(abs, 'WARN_SOURCE_BLOCKED', `source_url matches the blocklist: ${blocked.pattern} (${blocked.scope}): ${blocked.reason}`);
 
     for (const t of (data.topics || [])) if (schema.taxonomy.topic_aliases[t]) warn(abs, 'WARN_TOPIC_ALIAS', `topic '${t}' should be normalized to '${schema.taxonomy.topic_aliases[t]}'`);
 

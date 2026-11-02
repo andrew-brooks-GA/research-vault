@@ -11,6 +11,7 @@ import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
 import { fetchSource } from '../lib/fetchsource.mjs';
 import { parseFrontmatter } from '../lib/frontmatter.mjs';
+import { loadBlocklist, matchBlock } from '../lib/blocklist.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -29,6 +30,9 @@ function prepareEntry(vaultPath, opts, ctx = {}) {
     throw new Error('--store-body requires --ack-data-egress (storing source text is a data-egress / copyright surface)');
   if (!opts.title) throw new Error('title required');
   if (opts.type === 'source' && !opts.url) throw new Error('source requires url');
+  // The source blocklist (spec 32): refused before the dedup check; --force records the override.
+  const hit = opts.type === 'source' ? matchBlock(loadBlocklist(vaultPath), opts.url) : null;
+  if (hit && !opts.force) throw new Error(`blocked source: ${hit.pattern} (${hit.scope}): ${hit.reason}; --force captures anyway`);
   if (opts.type === 'note' && !(opts.sources && String(opts.sources).length)) throw new Error('note requires sources');
   if (opts.type === 'synthesis' && !(opts.contributingIds && String(opts.contributingIds).length)) throw new Error('synthesis requires contributingIds');
 
@@ -64,7 +68,7 @@ function prepareEntry(vaultPath, opts, ctx = {}) {
     topics: csvList(opts.topics).map(t => schema.taxonomy.topic_aliases[t] || t),
     status: 'active', related: csvList(opts.related),
     volatility: opts.volatility || 'slow',
-    verifications: [{ date: now, by_type: 'agent', by_id: opts.byId || '', method: 'captured', result: 'confirmed', notes: '' }],
+    verifications: [{ date: now, by_type: 'agent', by_id: opts.byId || '', method: 'captured', result: 'confirmed', notes: hit ? `captured with --force past the blocklist: ${hit.pattern} (${hit.scope}): ${hit.reason}` : '' }],
   };
   if (opts.type === 'source') {
     data.source_type = opts.sourceType || 'article';
@@ -134,6 +138,7 @@ function specToOpts(spec, cliOpts) {
     sources: csv(spec.sources), contributingIds: csv(spec.contributingIds),
     content: cfBuf ? cfBuf.toString('utf8') : spec.content, contentBytes: cfBuf ?? spec.contentBytes,
     ackDataEgress: !!cliOpts.ackDataEgress, now: cliOpts.now, repoRoot: cliOpts.repoRoot,
+    force: false, // a plan cannot force past the blocklist (spec 32)
   };
 }
 
@@ -264,7 +269,7 @@ export async function run(args) {
     authorityTier: args['authority-tier'], authorityBasis: args['authority-basis'],
     language: args.language, tested: args.tested,
     provider: args.provider, modelId: args['model-id'], dateRun: args['date-run'], task: args.task, outcome: args.outcome, state: args.state, answerSummary: args['answer-summary'],
-    scaffold: !!args.scaffold,
+    scaffold: !!args.scaffold, force: !!args.force,
     body: args['body-file'] ? readFileSync(args['body-file'], 'utf8') : undefined,
   });
   if (r.dedup) {
