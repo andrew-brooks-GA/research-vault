@@ -9,7 +9,7 @@ import { buildManifest } from '../bin/lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
 import { checkCitations } from '../bin/commands/check.mjs';
 import {
-  lessonClass, parseLesson, lintLesson, lintStore, lintWorkspace, QUIZ_MIN_ITEMS, QUIZ_SPREAD_MAX, MAX_INTRODUCES, readPath, missionFloor, pathFringe, lintPath,
+  lessonClass, parseLesson, lintLesson, lintStore, lintWorkspace, proseMetrics, QUIZ_MIN_ITEMS, QUIZ_SPREAD_MAX, MAX_INTRODUCES, readPath, missionFloor, pathFringe, lintPath,
   lintPathTerms, pathCandidates, topicSlug, pathEdges, lessonUses, SHAPES, FIGURE_VIEWBOX_MAX, FIGURE_LABEL_MIN, FIGURE_LABEL_MAX,
 } from '../bin/lib/lesson.mjs';
 
@@ -585,4 +585,18 @@ test('WARN_LESSON_TIME_WORD: a time-relative word in a paragraph outside pre and
   const r = lintFile(dir, 'reference/good.html').filter((f) => f.code === 'WARN_LESSON_TIME_WORD');
   assert.equal(r.length, 1);
   assert.match(r[0].message, /^note paragraph 0 says "nowadays"/);
+});
+
+test('proseMetrics counts paragraphs, sentences, average and longest per prose block over the spec 37 text (spec 39 D1)', () => {
+  const rows = proseMetrics(FIX);
+  const row = (file, block) => rows.find((r) => r.file === file && r.block === block);
+  assert.equal(row('lessons/0001-good.html', 'mission').paragraphs, 1);
+  const note = row('reference/good.html', 'note');
+  assert.deepEqual([note.paragraphs, note.sentences], [2, 2]);
+  const dir = copyFixture();
+  const good = readFileSync(join(dir, 'lessons', '0001-good.html'), 'utf8');
+  const mission = row('lessons/0001-good.html', 'mission');
+  assert.equal(mission.sentences, 2);
+  const onlyFirst = (() => { const copy = copyFixture(); writeFileSync(join(copy, 'lessons', '0001-good.html'), good.replace(/<section data-block="model" aria-label="the model">[\s\S]*?<\/section>/, '<section data-block="model" aria-label="the model"><p>One two three. Four five! Six <code>skipped words here</code>seven eight nine? Ten<pre>not counted at all</pre></p></section>')); return proseMetrics(copy).find((r) => r.file === 'lessons/0001-good.html' && r.block === 'model'); })();
+  assert.deepEqual([onlyFirst.paragraphs, onlyFirst.sentences, onlyFirst.longest, onlyFirst.avg], [1, 3, 4, 3]);
 });

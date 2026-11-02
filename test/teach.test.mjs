@@ -15,7 +15,7 @@ const BIN = join(ROOT, 'bin', 'research-vault.mjs');
 const FIX = join(ROOT, 'test', 'fixtures', 'teach');
 const VAULT = fixtureVault();
 const TODAY = new Date().toISOString().slice(0, 10);
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | serve [workspace]\n';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | serve [workspace]\n';
 
 const copyFixture = () => {
   const dir = mkdtempSync(join(tmpdir(), 'rv-teach-'));
@@ -370,4 +370,21 @@ test('CLI teach attempt add --result records a project run; progress and /progre
   const bad = cli(['attempt', 'add', '--lesson', '0006-project-fx', '--result', 'maybe', ws]);
   assert.equal(bad.status, 2);
   assert.match(bad.stderr, /^error: result must be pass or fail: maybe/);
+});
+
+test('teach lint --prose keeps the first line and the exit code and adds one prose line per prose block (spec 39 D1)', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'rv-teach-prose-'));
+  writeFileSync(join(repo, '.research-vault.json'), JSON.stringify({ vault: VAULT }) + '\n');
+  const dir = join(repo, 'learn', 'fx');
+  for (const f of ['MISSION.md', 'PATH.md', 'GLOSSARY.md', 'lessons/0001-good.html', 'reference/good.html', 'evidence/0001/PLAN.md']) {
+    mkdirSync(dirname(join(dir, f)), { recursive: true });
+    cpSync(join(FIX, f), join(dir, f));
+  }
+  const plain = cli(['lint', dir], repo);
+  const prose = cli(['lint', '--prose', dir], repo);
+  assert.equal(prose.status, plain.status);
+  assert.equal(prose.stdout.split('\n')[0], plain.stdout.split('\n')[0]);
+  assert.match(prose.stdout, /^prose lessons\/0001-good\.html mission: 1 paragraphs, 2 sentences, avg /m);
+  assert.match(prose.stdout, /^prose reference\/good\.html note: 2 paragraphs, 2 sentences, avg /m);
+  assert.equal(plain.stdout.includes('prose '), false);
 });

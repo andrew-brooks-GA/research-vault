@@ -673,6 +673,28 @@ export function pathCandidates({ lines, floor, cites, manifest, topics, aliases 
   };
 }
 
+// Spec 39: prose numbers per block, for the reader round and the GATE-LOG record; no threshold.
+// The text is the one spec 37 scans; a sentence ends at . ! or ? before a space or the paragraph's end.
+const PROSE_BLOCKS = ['mission', 'model', 'fact', 'example', 'note'];
+export function proseMetrics(workspaceDir) {
+  const rows = [];
+  for (const d of ['lessons', 'reference']) {
+    for (const f of listDir(join(workspaceDir, d), '.html')) {
+      const { blocks } = parseLesson(readFileSync(join(workspaceDir, d, f), 'utf8'));
+      for (const block of PROSE_BLOCKS) {
+        if (!blocks.has(block)) continue;
+        const paras = [...blocks.get(block).html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+          .map((m) => textOf(m[1].replace(/<pre\b[\s\S]*?<\/pre>/gi, ' ').replace(/<code\b[\s\S]*?<\/code>/gi, ' ')));
+        const sentences = paras.flatMap((t) => [...t.matchAll(/(\S[^.!?]*?[.!?])(?=\s|$)/g)].map((m) => m[1].trim()));
+        const counts = sentences.map((x) => x.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length);
+        const words = counts.reduce((a, b) => a + b, 0);
+        rows.push({ file: `${d}/${f}`, block, paragraphs: paras.length, sentences: sentences.length, avg: sentences.length ? Math.round((words / sentences.length) * 10) / 10 : 0, longest: counts.length ? Math.max(...counts) : 0 });
+      }
+    }
+  }
+  return rows;
+}
+
 export function lintWorkspace(workspaceDir, ctx) {
   const c = { ...ctx, workspaceDir };
   const findings = ['lessons', 'reference'].flatMap((d) =>

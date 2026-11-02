@@ -116,6 +116,8 @@ export const COUPLINGS = [
   ['bin/commands/teach.mjs', 'skills/research-teach/PATH-FORMAT.md', 'the PATH.md line grammar is parsed by next, which prints the fringe: and inner: lines (a built Project: line keeps the lines it names inner)'],
   ['bin/commands/teach.mjs', 'skills/research-teach/SKILL.md', 'the teach verbs, the serving line, .teach-serve.json, the line N of M nav and the index grouped by Project: line with each shape, the fringe: and inner: lines, teach attempt add with --answers and --result pass|fail, teach path candidates with its no line and term groups, and teach path edges are quoted', '.teach-serve.json'],
   ['bin/lib/lesson.mjs', 'bin/commands/related.mjs', 'path candidates prints `related <id> --depth 2` as the query behind a linked candidate'],
+  ['bin/lib/lesson.mjs', 'docs/REFERENCE.md', 'the prose line shape: paragraphs, sentences, avg words, longest', 'longest'],
+  ['bin/commands/teach.mjs', 'skills/research-teach/SKILL.md', 'the --prose flag of teach lint', 'prose'],
   ['bin/commands/teach.mjs', 'SECURITY.md', ".teach-serve.json and its { port, pid }, the listen(0, '127.0.0.1') binding and the serving line", '127.0.0.1'],
   ['bin/lib/teach.mjs', 'skills/research-teach/SKILL.md', "SPACING_DAYS as '21 days' and the lesson URL's /lessons/<id>.html path", '/lessons/'],
   ['bin/lib/teach.mjs', 'SECURITY.md', 'ATTEMPT_BODY_MAX, the allowlisted dirs, the exact Host 127.0.0.1:<port> check, and what GET / and /lessons.json read and return', 'ATTEMPT_BODY_MAX'],

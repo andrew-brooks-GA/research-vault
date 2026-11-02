@@ -9,10 +9,10 @@ import { TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
 import { writeRecord, supersedeRecord, writeAttempt, fixRecordFrontmatter, teachIndex, createServer, progress, progressText } from '../lib/teach.mjs';
-import { lintWorkspace, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
+import { lintWorkspace, proseMetrics, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | serve [workspace]';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | serve [workspace]';
 
 const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
 const out = (s) => process.stdout.write(s + '\n');
@@ -50,6 +50,8 @@ function lint(ws, args) {
   if (violations.length === 0) out('lint: clean');
   else for (const v of violations) out(`${v.code}  ${v.file}: ${v.message}`);
   for (const w of findings.filter((f) => f.warning)) out(`warning ${w.code}  ${w.file}: ${w.message}`);
+  // Spec 39: numbers, not findings; the exit code is unchanged.
+  if (args.prose) for (const r of proseMetrics(ws)) out(`prose ${r.file} ${r.block}: ${r.paragraphs} paragraphs, ${r.sentences} sentences, avg ${r.avg} words, longest ${r.longest}`);
   return violations.length ? 1 : 0;
 }
 
