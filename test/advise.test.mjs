@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, cpSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { advise } from '../bin/lib/advise.mjs';
+import { execFileSync } from 'node:child_process';
+import { advise, OPEN_QUESTION_DAYS } from '../bin/lib/advise.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
 import { tmpVault, put } from './helpers.mjs';
@@ -191,4 +192,18 @@ test('advise with a pinned now agrees with listStale on the same clock', () => {
   src(dir, '2026-01-01-s', STALE);
   src(dir, '2026-01-01-f', FRESH);
   assert.deepEqual(advise(dir, process.cwd(), { now: NOW }).stale, listStale(dir, { now: NOW, repoRoot: process.cwd() }));
+});
+
+test('advise lists active questions not yet answered and older than 60 days by their id date (spec 25 D1)', () => {
+  const dir = tmpVault();
+  put(dir, 'question', '2026-01-01-q', { question: 'Q?', state: 'open' });
+  put(dir, 'question', '2026-01-01-i', { question: 'I?', state: 'investigating' });
+  put(dir, 'question', '2026-01-01-a', { question: 'A?', state: 'answered', answer_summary: 'Yes.' });
+  assert.equal(OPEN_QUESTION_DAYS, 60);
+  assert.deepEqual(advise(dir, process.cwd(), { now: '2026-03-15' }).openQuestions,
+    [{ id: '2026-01-01-i', state: 'investigating', ageDays: 73 }, { id: '2026-01-01-q', state: 'open', ageDays: 73 }]);
+  assert.deepEqual(advise(dir, process.cwd(), { now: '2026-03-02' }).openQuestions, []);
+  assert.equal(advise(dir, process.cwd(), { now: '2026-03-03' }).openQuestions.length, 2);
+  const out = execFileSync('node', ['bin/research-vault.mjs', 'advise', '--vault', dir], { encoding: 'utf8' });
+  assert.match(out, /^open questions over 60 days \(2\): 2026-01-01-i \(investigating, \d+d\), 2026-01-01-q \(open, \d+d\)$/m);
 });

@@ -4,7 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, cpSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { applyVerification } from '../bin/commands/verify.mjs';
+import { applyVerification, answerQuestion, run as verifyRun } from '../bin/commands/verify.mjs';
+import { advise } from '../bin/lib/advise.mjs';
+import { tmpVault, put } from './helpers.mjs';
 import { listStale } from '../bin/lib/stale.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { readEntry } from '../bin/lib/fsutil.mjs';
@@ -169,4 +171,41 @@ test('a volatile entry (window 0) is always flagged regardless of last_verified'
   const hit = listStale(dir, { now: '2030-01-02', repoRoot: process.cwd() }).find(s => s.id === '2026-01-01-vol');
   assert.ok(hit, 'volatile is always stale');
   assert.equal(hit.reason, 'always re-check');
+});
+
+test('verify --answered-by closes a question: state, the answering entry summary, contributing, updated, no verification row (spec 25 D2)', () => {
+  const dir = tmpVault();
+  put(dir, 'question', '2026-01-01-q', { question: 'Q?', state: 'open' });
+  put(dir, 'synthesis', '2026-02-01-s', { summary: 'The answer.', contributing_ids: ['2026-01-01-q'] });
+  assert.deepEqual(answerQuestion(dir, { id: '2026-01-01-q', answeredBy: '2026-02-01-s', now: '2026-03-01', repoRoot: process.cwd() }), { action: 'answered' });
+  const { data } = readEntry(join(dir, 'questions', '2026-01-01-q.md'));
+  assert.equal(data.state, 'answered');
+  assert.equal(data.answer_summary, 'The answer.');
+  assert.deepEqual(data.contributing, ['2026-02-01-s']);
+  assert.equal(data.updated, '2026-03-01');
+  assert.equal(data.verifications.length, 1);
+  const m = buildManifest(dir);
+  assert.equal(m.entries.find(e => e.id === '2026-01-01-q').state, 'answered');
+  assert.ok(m.edges.some(e => e.from === '2026-01-01-q' && e.rel === 'contributing' && e.to === '2026-02-01-s'));
+  const r = lintVault(dir, process.cwd());
+  const codes = [...r.violations, ...r.warnings].map(v => v.code);
+  assert.ok(!codes.includes('DANGLING_REF') && !codes.includes('WARN_ANSWERED_NO_SUMMARY'), codes.join(','));
+  assert.deepEqual(advise(dir, process.cwd(), { now: '2026-06-01' }).openQuestions, []);
+});
+
+test('verify --answered-by: the flag summary wins, a non-question and a missing answering id are refused, run returns 0 (spec 25 D2, D4)', async () => {
+  const dir = tmpVault();
+  put(dir, 'question', '2026-01-01-q', { question: 'Q?', state: 'open' });
+  put(dir, 'synthesis', '2026-02-01-s', { summary: 'The answer.', contributing_ids: ['2026-01-01-q'] });
+  put(dir, 'source', '2026-01-01-src', { source_type: 'article', source_url: 'https://example.com/s' });
+  assert.throws(() => answerQuestion(dir, { id: '2026-01-01-src', answeredBy: '2026-02-01-s' }), /not a question/);
+  assert.throws(() => answerQuestion(dir, { id: '2026-01-01-q', answeredBy: '2026-02-01-missing' }), /entry not found/);
+  assert.equal(readEntry(join(dir, 'questions', '2026-01-01-q.md')).data.state, 'open');
+  answerQuestion(dir, { id: '2026-01-01-q', answeredBy: '2026-02-01-s', answerSummary: 'Given.', now: '2026-03-01' });
+  assert.equal(readEntry(join(dir, 'questions', '2026-01-01-q.md')).data.answer_summary, 'Given.');
+  const dir2 = tmpVault();
+  put(dir2, 'question', '2026-01-01-q', { question: 'Q?', state: 'open' });
+  put(dir2, 'synthesis', '2026-02-01-s', { summary: 'The answer.', contributing_ids: ['2026-01-01-q'] });
+  assert.equal(await verifyRun({ vault: dir2, id: '2026-01-01-q', 'answered-by': '2026-02-01-s' }), 0);
+  assert.equal(readEntry(join(dir2, 'questions', '2026-01-01-q.md')).data.state, 'answered');
 });

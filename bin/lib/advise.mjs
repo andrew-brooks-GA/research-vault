@@ -78,6 +78,17 @@ function listStaleEvidence(m, schema, now) {
   return out;
 }
 
+export const OPEN_QUESTION_DAYS = 60;
+
+// Active questions not yet answered, older than the threshold by their id's date prefix (a
+// manifest row carries no creation date).
+function listOpenQuestions(m, now) {
+  return m.entries
+    .filter(e => e.type === 'question' && e.status === 'active' && e.state !== 'answered')
+    .map(e => ({ id: e.id, state: e.state, ageDays: Math.floor((now - new Date(e.id.slice(0, 10))) / 86400000) }))
+    .filter(q => q.ageDays > OPEN_QUESTION_DAYS);
+}
+
 export function advise(vaultPath, repoRoot, { now } = {}) {
   const m = buildManifest(vaultPath);
   const schema = loadSchema(repoRoot);
@@ -96,5 +107,6 @@ export function advise(vaultPath, repoRoot, { now } = {}) {
     stubBodies: listStubBodies(vaultPath),
     aliasable: m.entries.filter(e => e.topics.some(t => aliases[t])).map(e => e.id),
     quoteResidue: listQuoteResidue(vaultPath),
+    openQuestions: listOpenQuestions(m, date),
   };
 }

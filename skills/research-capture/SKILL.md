@@ -20,7 +20,7 @@ argument-hint: "[type] [title] [url]"
 - Notes/Syntheses: `--summary "<one-line claim>"` — the load-bearing claim; indexed in the manifest, scanned by `search --text`, and exported ungated. Skipping it trips the advisory `WARN_MISSING_SUMMARY`.
 - Notes: `--sources <id,id>` and `--confidence <high|medium|low>`.
 - Experiments: `--provider`, `--model-id`, `--task`, `--outcome <success|partial|failure|inconclusive>`.
-- Questions: `--state <open|investigating|answered>` and `--answer-summary "<one-line answer>"` — the answered-question payload the default `export` emits; set it when marking a question `answered` (batch key `answerSummary`).
+- Questions: `--state <open|investigating|answered>` and `--answer-summary "<one-line answer>"` — the answered-question payload the default `export` emits; set it when marking a question `answered` (batch key `answerSummary`). To close an existing question once the entry that answers it is captured: `verify --id <question> --answered-by <id> [--answer-summary "<one-line answer>"]`.
 - Any type: `--scaffold` seeds a per-type body skeleton (headings only; default off).
 - Any non-source type: `--body-file <path>` writes the entry body from a file (author prose, ungated — unlike `--store-body`, which copies external source text and stays egress-gated).
 - Batch mode: `--batch <plan.json>` captures an ordered JSON array of entries in one validate-then-write call — every entry is validated first (unknown enums, missing note `sources` / synthesis `contributingIds`, unresolved references) and nothing is written if any entry fails. Later entries may reference earlier ones by their deterministic id (`YYYY-MM-DD-slug`). Duplicates are reported as `skipped`, the content-changed tripwire as an error. Spec keys are the camelCase capture opts (`subjectName`, `contributingIds`, …); list fields may be JSON arrays. Authored types (note/synthesis/snippet/question/experiment) should carry a `body` key with the entry's prose; a `body` on a source is rejected (use `--store-body`). Used by `research-orchestrate` to persist a capture plan; `--store-body` inside a plan still requires the CLI-level `--ack-data-egress`.
@@ -29,7 +29,7 @@ argument-hint: "[type] [title] [url]"
 Persistence is the last step, not the planning step. Primary control lives in the vault's `AGENTS.md` §2.6 (pre-synthesis checkpoint). Before invoking `capture --type synthesis`, confirm:
 
 1. **Notes:** does each load-bearing source in `contributing_ids` have a corresponding `note` (possibly multi-source) that's already captured, OR is `synthesis_basis: primary-rollup` justified by a factual-rollup scope (release-note matrix, version diff, standards summary)?
-2. **Questions:** were any ambiguities encountered? If yes, capture each as a `question` first and include their ids in `contributing_ids`.
+2. **Questions:** were any ambiguities encountered? If yes, capture each as a `question` first and include their ids in `contributing_ids`. After the synthesis is captured, close each question it answers with `verify --id <question> --answered-by <synthesis id>`.
 3. **Experiments:** did any tool/model/empirical run inform a claim? Capture as `experiment` first and reference it.
 4. **Snippets:** any reusable YAML/config/code you'd otherwise embed in the synthesis body? Capture as `snippet` first.
 
