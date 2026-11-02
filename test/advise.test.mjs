@@ -246,3 +246,25 @@ test('advise pairs supersede suspects by source_url or subject at one version, o
   const out = execFileSync('node', ['bin/research-vault.mjs', 'advise', '--vault', dir], { encoding: 'utf8' });
   assert.match(out, /^supersede suspects \(2\): 2026-03-01-c -> 2026-04-01-d \(subject\), 2026-06-01-f -> 2026-07-01-g \(subject\)$/m);
 });
+
+test('advise pairs near duplicates by host and path or by title terms, older first; a superseded side drops the pair (spec 28 D1)', () => {
+  const dir = tmpVault();
+  const src = (id, title, url) => put(dir, 'source', id, { title, source_type: 'article', source_url: url });
+  src('2026-01-01-a', 'Install guide for Linux', 'https://docs.example.com/guide/install/linux');
+  src('2026-02-01-b', 'Second copy', 'https://docs.example.com/guide/install/linux?v=2');
+  src('2026-03-01-c', 'Linux install guide, second edition', 'https://other.example.com/guide/install/linux');
+  src('2026-04-01-d', 'Unrelated post', 'https://docs.example.com/guide/blog/post');
+  src('2026-05-01-e', 'Install guide for Linux', 'https://docs.example.com/guide/install/linux/');
+  const r = advise(dir, process.cwd());
+  assert.deepEqual(r.nearDuplicates, [
+    { older: '2026-01-01-a', newer: '2026-02-01-b', by: 'url' },
+    { older: '2026-01-01-a', newer: '2026-03-01-c', by: 'title' },
+    { older: '2026-02-01-b', newer: '2026-05-01-e', by: 'url' },
+    { older: '2026-03-01-c', newer: '2026-05-01-e', by: 'title' },
+  ]);
+  assert.deepEqual(r.supersedeSuspects, [{ older: '2026-01-01-a', newer: '2026-05-01-e', by: 'source_url' }]);
+  applyVerification(dir, { id: '2026-01-01-a', method: 'cross-referenced', result: 'outdated', supersededBy: '2026-05-01-e', repoRoot: process.cwd() });
+  assert.ok(advise(dir, process.cwd()).nearDuplicates.every(p => p.older !== '2026-01-01-a' && p.newer !== '2026-01-01-a'));
+  const out = execFileSync('node', ['bin/research-vault.mjs', 'advise', '--vault', dir], { encoding: 'utf8' });
+  assert.match(out, /^near duplicates \(2\): 2026-02-01-b -> 2026-05-01-e \(url\), 2026-03-01-c -> 2026-05-01-e \(title\)$/m);
+});

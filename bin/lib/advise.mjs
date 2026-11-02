@@ -6,6 +6,7 @@ import { traverse, DEPENDENCY_RELS } from './graph.mjs';
 import { loadSchema } from './schema.mjs';
 import { walkEntries, readEntry } from './fsutil.mjs';
 import { verKey } from './ids.mjs';
+import { termsOf } from './terms.mjs';
 
 export const isStubBody = body => !(body || '').split('\n').some(l => {
   const t = l.trim();
@@ -107,6 +108,29 @@ function listSupersedeSuspects(m) {
   return out;
 }
 
+// Pairs of live sources at different normalised URLs that look like one page captured twice: the
+// same host with more than half of the longer path's segments shared, or titles sharing at least
+// two terms and more than half of the longer title's terms. Equal URLs belong to supersedeSuspects.
+function listNearDuplicates(m) {
+  const live = m.entries.filter(e => e.type === 'source' && e.status !== 'superseded').map(e => {
+    let url = null;
+    try { url = new URL(e.source_url); } catch { /* unparsable: no url signal */ }
+    return { id: e.id, source_url: e.source_url, host: url?.host, segs: url ? url.pathname.split('/').filter(Boolean) : [], terms: termsOf(e.title) };
+  });
+  const most = (shared, a, b) => shared * 2 > Math.max(a.length, b.length);
+  const out = [];
+  for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) {
+    const a = live[i], b = live[j];
+    if (a.source_url && a.source_url === b.source_url) continue;
+    const segs = a.segs.filter(s => b.segs.includes(s)).length;
+    const terms = a.terms.filter(t => b.terms.includes(t)).length;
+    const by = a.host && a.host === b.host && a.segs.length && b.segs.length && most(segs, a.segs, b.segs) ? 'url'
+      : terms >= 2 && most(terms, a.terms, b.terms) ? 'title' : null;
+    if (by) out.push({ older: a.id, newer: b.id, by });
+  }
+  return out;
+}
+
 export function advise(vaultPath, repoRoot, { now } = {}) {
   const m = buildManifest(vaultPath);
   const schema = loadSchema(repoRoot, { vaultPath });
@@ -127,5 +151,6 @@ export function advise(vaultPath, repoRoot, { now } = {}) {
     quoteResidue: listQuoteResidue(vaultPath),
     openQuestions: listOpenQuestions(m, date),
     supersedeSuspects: listSupersedeSuspects(m),
+    nearDuplicates: listNearDuplicates(m),
   };
 }
