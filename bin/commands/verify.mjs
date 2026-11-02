@@ -59,6 +59,25 @@ export function applyVerification(vaultPath, opts) {
   return { action: CONFIRMING_RESULTS.includes(opts.result) ? 'updated' : 'recorded' };
 }
 
+// Close a question: a state change, not a check of its claim, so no verification row is appended.
+export function answerQuestion(vaultPath, opts) {
+  const schema = loadSchema(opts.repoRoot || REPO_ROOT, { vaultPath });
+  const now = opts.now || new Date().toISOString().slice(0, 10);
+  const abs = findEntry(vaultPath, opts.id);
+  const entry = readEntry(abs);
+  if (entry.data.type !== 'question') throw new Error(`not a question: ${opts.id}`);
+  const answering = readEntry(findEntry(vaultPath, opts.answeredBy));
+  entry.data.state = 'answered';
+  const summary = opts.answerSummary || answering.data.summary;
+  if (summary && String(summary).trim()) entry.data.answer_summary = summary;
+  entry.data.contributing = [...new Set([...(entry.data.contributing || []), opts.answeredBy])];
+  entry.data.updated = now;
+  assertControlledValues(entry.data, schema);
+  writeEntry(abs, entry.data, entry.body, fieldOrder(schema, entry.data.type));
+  writeManifest(vaultPath);
+  return { action: 'answered' };
+}
+
 export async function run(args) {
   const resolved = resolveVault({ flag: args.vault ?? null });
   const vaultPath = resolved.path;
@@ -69,6 +88,11 @@ export async function run(args) {
     return 0;
   }
   reportFallback(resolved);
+  if (args['answered-by']) {
+    const r = answerQuestion(vaultPath, { id: args.id, answeredBy: args['answered-by'], answerSummary: args['answer-summary'] });
+    process.stdout.write(`verify: ${r.action}\n`);
+    return 0;
+  }
   const r = applyVerification(vaultPath, { id: args.id, method: args.method, result: args.result, byId: args['by-id'], notes: args.notes, supersededBy: args['superseded-by'], succession: !!args.succession });
   process.stdout.write(`verify: ${r.action}\n`);
   if (r.action === 'version-succeeded') process.stdout.write(`Entry kept active. Capture the new version as a sibling: research-vault capture --type source --title "..." --subject-version <new> --series <same-series>\n`);

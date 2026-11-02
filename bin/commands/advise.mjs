@@ -1,6 +1,6 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { advise } from '../lib/advise.mjs';
+import { advise, OPEN_QUESTION_DAYS } from '../lib/advise.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -21,5 +21,6 @@ export async function run(args) {
   section('stub bodies (scaffold or empty, no prose)', r.stubBodies);
   section('aliasable topics', r.aliasable);
   section('quote residue (baked-in \\" — see upgrade notes)', r.quoteResidue);
+  process.stdout.write(`open questions over ${OPEN_QUESTION_DAYS} days (${r.openQuestions.length}): ${r.openQuestions.length ? r.openQuestions.map(q => `${q.id} (${q.state}, ${q.ageDays}d)`).join(', ') : '—'}\n`);
   return 0;
 }

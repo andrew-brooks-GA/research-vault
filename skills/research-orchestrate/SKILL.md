@@ -27,7 +27,7 @@ Use the Workflow tool with the reference script below, adapted to the question. 
 | Fetch+Seed | Per URL: fetch, capture a `source` eagerly via the CLI, return a structured extraction |
 | Verify | Adversarial check of load-bearing claims — fetched, not recalled; tool-bearing claims also probed per `meta/prompt-templates/probe-tool.md` when a manifest exists |
 | Plan | Walk the §2.6 four prompts; emit the batch plan JSON (notes, questions, snippets, experiments, synthesis) |
-| Persist+Gate | `capture --batch` the plan, then `lint`; decompose further if a `WARN_SYNTHESIS_*` fires |
+| Persist+Gate | `capture --batch` the plan, then `lint`; decompose further if a `WARN_SYNTHESIS_*` fires; then `verify --id <question> --answered-by <synthesis id>` for each question the synthesis answers |
 
 ```javascript
 export const meta = {
@@ -71,14 +71,14 @@ Walk the four prompts: (1) notes distilling load-bearing sources, (2) questions 
 Every entry MUST carry a body field with real prose. Notes: load-bearing claims + caveats + how-I'd-use. Snippets: usage context + fenced code block + caveats. Questions: why it matters + what would answer it. Synthesis: written for a colleague who reads it once, cold, to decide what to do: the answer first, then the reasoning in paragraphs with each checked claim (research-vault-usage §4) as a sentence, then the recommendation; detail stays in the notes. summary stays ONE sentence — the substance lives in body. Return planJson: a JSON array string for capture --batch using camelCase capture opts keys (type, title, body, sources, contributingIds, topics, summary, confidence, state, question, language, tested, synthesisBasis...).`, { phase: 'Plan', schema: PLAN })
 
 phase('Persist+Gate')
-const result = await agent(`Write this JSON to a temp file and run: ${CLI}capture --batch <file>. If it returns errors, fix the plan per the per-entry report and retry (max 3 attempts). Then run ${CLI}lint. If WARN_SYNTHESIS_NO_NOTE_COVERAGE or WARN_SYNTHESIS_MONOLITHIC fires, either decompose further (more notes) and re-batch, or declare synthesis_basis: primary-rollup only if honestly a factual rollup. Return the final created/skipped ids and lint status.
+const result = await agent(`Write this JSON to a temp file and run: ${CLI}capture --batch <file>. If it returns errors, fix the plan per the per-entry report and retry (max 3 attempts). Then run ${CLI}lint. If WARN_SYNTHESIS_NO_NOTE_COVERAGE or WARN_SYNTHESIS_MONOLITHIC fires, either decompose further (more notes) and re-batch, or declare synthesis_basis: primary-rollup only if honestly a factual rollup. Then, for each question the synthesis answers, run ${CLI}verify --id <question> --answered-by <synthesis id>. Return the final created/skipped ids, the closed question ids and lint status.
 PLAN: ${plan.planJson}`, { phase: 'Persist+Gate' })
 return { recon, created: result }
 ```
 
 ## 3. Degraded mode (no Workflow tool)
 
-Run the same lifecycle inline and sequentially: vault search → web search/fetch with an eager `capture --type source` per kept URL → walk §2.6 → write the batch plan JSON → `capture --batch` → `lint`. Conformance comes from the same checklist and the same validate-then-write batch call; only the parallelism is lost. Write the synthesis body as the Plan step in §2 describes.
+Run the same lifecycle inline and sequentially: vault search → web search/fetch with an eager `capture --type source` per kept URL → walk §2.6 → write the batch plan JSON → `capture --batch` → `lint` → `verify --id <question> --answered-by <synthesis id>` for each question the synthesis answers. Conformance comes from the same checklist and the same validate-then-write batch call; only the parallelism is lost. Write the synthesis body as the Plan step in §2 describes.
 
 ## 4. Close out
 
