@@ -20,7 +20,7 @@ Each block is an element with `data-block="<name>"`, normally a `<section>`. Ord
 | Block | Label | Required for | Holds |
 |---|---|---|---|
 | `prereq` | before you start | optional in a lesson or review | Links to earlier lessons and glossary anchors |
-| `mission` | why this lesson | lesson, review | One sentence tying the win to `MISSION.md`, then in a shaped lesson one naming the activity ("you will complete the command yourself") |
+| `mission` | why this lesson | lesson, review | One sentence tying the win to `MISSION.md`; in a `concept`, `tool` or `diagnose` lesson one stating the idea, what is true about the subject, in terms allowed before this lesson's `data-introduces` and without naming the new term; then in a shaped lesson one naming the activity ("you will complete the command yourself"). Review and `project` lessons carry no idea sentence. |
 | `predict` | first look | diagnose | One `<pre>` output and a `data-quiz` with one item, asked before the explanation |
 | `model` | the model | concept, tool, diagnose | The mental model: a bridge from a Floor term, at least one `<figure>` diagram, and how the parts relate, with at least one citation anchor in the block (a `source` or `note`, since a model is what the docs say) |
 | `fact` | what the lab showed | concept, diagnose | What the probe showed, every `<p>` ending in a citation anchor |
@@ -48,6 +48,8 @@ A lesson declares its shape with `data-shape` on the `<body>`. The frame is the 
 | `tool` | one tool: what it is, one command, how to read its output | `model`, `example`, `complete`, `step`; `quiz` optional | `complete`, the worked command with one part withheld, then the unaided `step` |
 | `diagnose` | reading output and deciding what it means | `predict`, `model`, `fact`, `quiz`; `step` optional | `predict`, one question on the output before the explanation; quiz lures are the misreadings |
 | `project` | a whole task that needs several earlier lessons at once | `scaffold` on the mission's first project, then `step` | the task itself; `step` is the check command and its expected output, and the learner's run is the attempt |
+
+The idea sentence in `mission` is the page's lead: what the reader can say the page teaches after the mission block, distinct from the win (what they can do afterwards) and the activity (what they do on the page).
 
 Review lessons keep their own list (Review lessons) and ignore `data-shape`.
 
@@ -160,7 +162,7 @@ A complete minimal lesson that passes `teach lint`:
 </section>
 
 <section data-block="mission" aria-label="why this lesson">
-<p>This lesson gets you to predict what fx prints for a given input.</p>
+<p>This lesson gets you to predict what fx prints for a given input. A function here scales the number it is given by one fixed factor, so its output can be predicted from its input.</p>
 </section>
 
 <section data-block="model" aria-label="the model">

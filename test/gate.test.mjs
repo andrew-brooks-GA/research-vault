@@ -378,7 +378,7 @@ test('unitHashes over the shared parseBlocks keeps the hashes ledger rows were k
   const f = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'teach', 'lessons', '0001-good.html');
   assert.deepEqual(unitHashes(readFileSync(f)), {
     prereq: 'a2f78466c34816b23168b1d3a8d6197e591900357ac054ade858f1f2f137b06e',
-    mission: '93ae37de93dea817e91c3500bdfb7fd0f6923d3edb0afe687ac02eff14a2ed11',
+    mission: '1e495a726619cc2b3d278a380870119ef5c906d411b8aa374c949af8c4093b9d',
     model: 'f75cbbf765f4e9563a212d9090f9f7e6b425b0abc59c6ecb6c5e3f9c470a8f23',
     'fact:0': 'ad47b501da76642ec606c953af1346f5bff9952302b527710a56a33a5d2de653',
     'fact:1': '3b91005be86f18c73d5e3c7a7cee5036afa1cadd975ca56c22f09632a544b6e0',

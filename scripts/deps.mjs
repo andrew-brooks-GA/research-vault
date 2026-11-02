@@ -134,6 +134,7 @@ export const COUPLINGS = [
   ['bin/lib/advise.mjs', 'skills/research-librarian/SKILL.md', "'thirteen sections', their list and OPEN_QUESTION_DAYS as 60 days", /\b60\b/],
   ['bin/lib/advise.mjs', 'docs/REFERENCE.md', 'OPEN_QUESTION_DAYS is written as 60 days in the advise row', /\b60\b/],
   ['bin/lib/advise.mjs', 'bin/commands/search.mjs', 'the queried event fields kind, ids, topic and outcome that the usage report counts', 'no-match'],
+  ['skills/research-teach/LESSON-FORMAT.md', 'skills/research-teach/SKILL.md', "the mission block's sentence list (the win, the idea, the activity) is restated in step 5", 'the idea'],
   ['bin/lib/advise.mjs', 'hooks/pre-web.mjs', "the queried event's kind and ids that the usage report counts", "'queried'"],
   ['bin/lib/advise.mjs', 'hooks/post-tool-use.mjs', "the cited event's kind and id that the usage report counts", "'cited'"],
   ['bin/commands/capture.mjs', 'skills/research-orchestrate/SKILL.md', 'the --batch camelCase keys', 'contributingIds'],
