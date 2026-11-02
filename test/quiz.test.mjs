@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { shuffleOptions, grade, answerLengthSpread, lessonIdFrom, neighbours, pathPosition, mergeQuizzes, answerMark, renderQuiz } from '../skills/research-teach/assets/quiz.js';
 
@@ -149,4 +150,8 @@ test('renderQuiz: one attempt over predict and quiz, group roles, status roles, 
     delete globalThis.document;
     delete globalThis.location;
   }
+});
+
+test('the navigation bar links the reading page (spec 38)', () => {
+  assert.match(readFileSync(QUIZ, 'utf8'), /link\('\/assets\/reading\.html', 'How to read', 'lesson-nav-reading'\)/);
 });

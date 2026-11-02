@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cpSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadTeachSchema } from '../bin/lib/schema.mjs';
 import { parseFrontmatter } from '../bin/lib/frontmatter.mjs';
 import {
@@ -351,4 +352,18 @@ test('lessonIndex carries the PATH.md line count, each lesson line, shape and cl
   assert.match(html, /<section data-block="index"><h2>Project: build it<\/h2><ol class="lesson-index"><li><a href="\/lessons\/0001-a.html">A<\/a> <small>0001-a<\/small><\/li><li>.*0003-c.*<\/ol><ol class="lesson-index"><li><a href="\/lessons\/0004-d.html">D<\/a>/);
   assert.deepEqual(lessonIndex(ws()), { lines: null, lessons: [], reference: [] });
   assert.match(indexHtml('test/fixtures/teach'), /Reading what fx printed<\/a> <span class="lesson-shape">diagnose<\/span>/);
+});
+
+test('the reading page exists, links lesson.css, and explains every label of the format\'s Blocks table; indexHtml links it before the index (spec 38)', () => {
+  const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const page = readFileSync(join(ROOT, 'skills', 'research-teach', 'assets', 'reading.html'), 'utf8');
+  assert.match(page, /<link rel="stylesheet" href="lesson.css">/);
+  assert.match(page, /<h1>How to read a lesson<\/h1>/);
+  const format = readFileSync(join(ROOT, 'skills', 'research-teach', 'LESSON-FORMAT.md'), 'utf8');
+  const table = format.split('| Block | Label |')[1].split('\n\n')[0].split('\n').slice(2);
+  const labels = table.map((row) => row.split('|')[2].trim()).filter(Boolean);
+  assert.ok(labels.length >= 14, `labels parsed: ${labels.length}`);
+  for (const label of labels) assert.ok(page.includes(`aria-label="${label}"`), label);
+  const html = indexHtml('test/fixtures/teach');
+  assert.ok(html.indexOf('<a href="/assets/reading.html">How to read a lesson</a>') < html.indexOf('<section data-block="index">'));
 });

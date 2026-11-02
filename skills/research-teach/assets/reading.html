@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>How to read a lesson</title>
+<link rel="stylesheet" href="lesson.css">
+</head>
+<body>
+<h1>How to read a lesson</h1>
+<p>Every lesson is a column of labelled blocks. The label above each block, in small capitals, says what the block asks of you. This page explains each label once, then the four marks you will meet inside the blocks.</p>
+
+<section data-block="prereq" aria-label="before you start">
+<p>Links to the earlier lessons and glossary entries this page assumes. Open any you do not remember before reading on.</p>
+</section>
+
+<section data-block="mission" aria-label="why this lesson">
+<p>What you will be able to do after this page, the one idea it teaches, and what you will do on the page. Read it first; if the idea sentence is missing, the page is not finished.</p>
+</section>
+
+<section data-block="predict" aria-label="first look">
+<p>An output shown before it is explained, with one question. Answer it from what you can see; being wrong here is the point.</p>
+</section>
+
+<section data-block="model" aria-label="the model">
+<p>The picture of how the parts fit, with a figure beside the paragraph it illustrates. Read the figure and the paragraph together; the new term is defined here, where it is first explained.</p>
+</section>
+
+<section data-block="fact" aria-label="what the lab showed">
+<p>What was observed when the thing was run. Each paragraph ends in a bracketed number pointing at the source it rests on.</p>
+</section>
+
+<section data-block="example" aria-label="the output, read with me">
+<p>A command and what it printed, with a sentence before each saying what to look at. Follow the sentence, then look at the output.</p>
+</section>
+
+<section data-block="quiz" aria-label="check yourself">
+<p>Questions answered on the page. Each wrong option is a plausible misreading; the line that appears after you choose says why it is right or wrong.</p>
+</section>
+
+<section data-block="complete" aria-label="do it yourself">
+<p>The example's command with one part blanked out. Supply the blank from the example, then check the output you expect against the one shown.</p>
+</section>
+
+<section data-block="scaffold" aria-label="do it yourself">
+<p>A project task with one part blanked out over the reference solution. Fill the blank, then run the check in the step.</p>
+</section>
+
+<section data-block="step" aria-label="do it yourself">
+<p>One real action to take unaided: the command to run and what you should see. Run it; the result is your attempt.</p>
+</section>
+
+<section data-block="connect" aria-label="say it back">
+<p>A prompt to answer in the terminal, not on the page: say how the new term relates to two terms you already hold.</p>
+</section>
+
+<section data-block="sources" aria-label="sources">
+<p>The vault entries the page cites, numbered in order. The one marked recommended is the read to go on with.</p>
+</section>
+
+<section data-block="followup" aria-label="follow up">
+<p>What you can now do, and a reminder that you can ask follow-up questions in the terminal.</p>
+</section>
+
+<section data-block="note" aria-label="reference">
+<p>On a reference page: one vault note, rendered as it is in the vault, with its sources below.</p>
+</section>
+
+<section data-block="reading" aria-label="reading">
+<p>Four marks appear inside the blocks.</p>
+<p><strong>The prompt.</strong> A line starting with <code>$ </code> is a command, without the <code>$</code>; the lines after it are its output.</p>
+<p><strong>The blank.</strong> <mark aria-label="withheld">____</mark> in a "do it yourself" command is the part withheld for you to supply.</p>
+<p><strong>The numbers.</strong> A bracketed number such as [1] is a source, numbered by its place in the sources block; on a served page it is a link to that source.</p>
+<p><strong>The follow-up.</strong> "You can ask follow-up questions in the terminal": questions about the page go to the terminal, not the page.</p>
+</section>
+</body>
+</html>

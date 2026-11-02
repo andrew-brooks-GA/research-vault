@@ -423,6 +423,7 @@ export function indexHtml(ws) {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Lessons</title><link rel="stylesheet" href="/assets/lesson.css"></head>
 <body><h1>Lessons</h1>
+<p class="reading-link"><a href="/assets/reading.html">How to read a lesson</a></p>
 <section data-block="index">${lessonHtml || '<ol class="lesson-index"></ol>'}</section>
 ${reference.length ? `<section data-block="reference-index"><ul class="lesson-index">${reference.map(li).join('')}</ul></section>` : ''}
 </body></html>

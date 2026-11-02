@@ -72,6 +72,7 @@ async function renderNav() {
   const link = (href, text, cls) => { const a = el('a', cls, text); a.href = href; return a; };
   nav.append(link('/', 'All lessons', 'lesson-nav-index'));
   nav.append(link('/progress', 'Progress', 'lesson-nav-progress'));
+  nav.append(link('/assets/reading.html', 'How to read', 'lesson-nav-reading'));
   if (prev) nav.append(link(prev.path, `\u2190 ${prev.title}`, 'lesson-nav-prev'));
   const pos = pathPosition(index, id);
   if (pos) nav.append(el('span', 'lesson-nav-line', pos));

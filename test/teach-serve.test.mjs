@@ -1,7 +1,7 @@
 // `teach serve`: host, origin, content-type, body-size and path limits (spec 12 "Serving and recording").
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, readdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -257,4 +257,19 @@ test('serve writes and removes .teach-serve.json', async () => {
   console.log(`exit ${code}; file present after exit: ${existsSync(file)}`);
   assert.equal(code, 0);
   assert.equal(existsSync(file), false);
+});
+
+test('GET /assets/reading.html serves the copied reading page as html without footnoting, and 404s when the workspace lacks it (spec 38)', async () => {
+  const ws = copyFixture();
+  const { server, port } = await start(ws);
+  try {
+    const missing = await req(port, { path: '/assets/reading.html' });
+    assert.equal(missing.status, 404);
+    mkdirSync(join(ws, 'assets'), { recursive: true });
+    cpSync(join(ROOT, 'skills', 'research-teach', 'assets', 'reading.html'), join(ws, 'assets', 'reading.html'));
+    const r = await req(port, { path: '/assets/reading.html' });
+    assert.equal(r.status, 200);
+    assert.equal(r.headers['content-type'], 'text/html; charset=utf-8');
+    assert.equal(r.text, readFileSync(join(ws, 'assets', 'reading.html'), 'utf8'), 'served as it is, not footnoted');
+  } finally { server.close(); }
 });
