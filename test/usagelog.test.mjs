@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpVault } from './helpers.mjs';
 import { appendUsage, readUsage, USAGE_LOG } from '../bin/lib/usagelog.mjs';
@@ -18,4 +18,6 @@ test('usage log: append one JSON line per event with a timestamp; undefined keys
   assert.equal(typeof r[0].ts, 'string');
   assert.equal(r[0].kind, 'queried');
   assert.equal(r[1].id, 'a');
+  appendFileSync(join(v, USAGE_LOG), 'not json\n');
+  assert.equal(readUsage(v).length, 2, 'a line that is not JSON is skipped (spec 30 D0.3)');
 });

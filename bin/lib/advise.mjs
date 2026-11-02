@@ -7,6 +7,7 @@ import { loadSchema } from './schema.mjs';
 import { walkEntries, readEntry } from './fsutil.mjs';
 import { verKey } from './ids.mjs';
 import { termsOf } from './terms.mjs';
+import { readUsage } from './usagelog.mjs';
 
 export const isStubBody = body => !(body || '').split('\n').some(l => {
   const t = l.trim();
@@ -131,6 +132,23 @@ function listNearDuplicates(m) {
   return out;
 }
 
+// The usage report (spec 30), from the spec 29 log alone: per entry how often a `queried` event
+// surfaced it and a `cited` event cited it; per logged `topic` the query and no-match counts; and
+// the live sources never cited, split by whether one of their topics was ever queried.
+function listUsage(vaultPath, m) {
+  const surfaced = {}, cited = {}, topics = {};
+  for (const ev of readUsage(vaultPath)) {
+    if (ev.kind === 'queried') {
+      for (const id of ev.ids || []) surfaced[id] = (surfaced[id] || 0) + 1;
+      if (ev.topic) { const t = topics[ev.topic] ||= { queried: 0, noMatch: 0 }; t.queried++; if (ev.outcome === 'no-match') t.noMatch++; }
+    } else if (ev.kind === 'cited' && ev.id) cited[ev.id] = (cited[ev.id] || 0) + 1;
+  }
+  const entries = m.entries.filter(e => surfaced[e.id] || cited[e.id]).map(e => ({ id: e.id, surfaced: surfaced[e.id] || 0, cited: cited[e.id] || 0 })).sort((a, b) => a.id.localeCompare(b.id));
+  const cold = m.entries.filter(e => e.type === 'source' && e.status !== 'superseded' && !cited[e.id]);
+  const asked = e => e.topics.some(t => topics[t]);
+  return { entries, topics, cold: { queried: cold.filter(asked).map(e => e.id), unqueried: cold.filter(e => !asked(e)).map(e => e.id) } };
+}
+
 export function advise(vaultPath, repoRoot, { now } = {}) {
   const m = buildManifest(vaultPath);
   const schema = loadSchema(repoRoot, { vaultPath });
@@ -152,5 +170,6 @@ export function advise(vaultPath, repoRoot, { now } = {}) {
     openQuestions: listOpenQuestions(m, date),
     supersedeSuspects: listSupersedeSuspects(m),
     nearDuplicates: listNearDuplicates(m),
+    usage: listUsage(vaultPath, m),
   };
 }

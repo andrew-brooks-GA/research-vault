@@ -12,6 +12,7 @@ import { tmpVault, put } from './helpers.mjs';
 import { run as adviseRun } from '../bin/commands/advise.mjs';
 import { listStale } from '../bin/lib/stale.mjs';
 import { applyVerification } from '../bin/commands/verify.mjs';
+import { appendUsage } from '../bin/lib/usagelog.mjs';
 
 function freshVault() {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');
@@ -267,4 +268,33 @@ test('advise pairs near duplicates by host and path or by title terms, older fir
   assert.ok(advise(dir, process.cwd()).nearDuplicates.every(p => p.older !== '2026-01-01-a' && p.newer !== '2026-01-01-a'));
   const out = execFileSync('node', ['bin/research-vault.mjs', 'advise', '--vault', dir], { encoding: 'utf8' });
   assert.match(out, /^near duplicates \(2\): 2026-02-01-b -> 2026-05-01-e \(url\), 2026-03-01-c -> 2026-05-01-e \(title\)$/m);
+});
+
+test('advise reports usage from the log: surfaced and cited counts, topic counts, and cold sources split by a queried topic (spec 30 D1)', () => {
+  const dir = tmpVault();
+  const src = (id, extra) => put(dir, 'source', id, { source_type: 'article', source_url: `https://example.com/${id}`, ...extra });
+  src('2026-01-01-a', { topics: ['kubernetes'] });
+  src('2026-02-01-b', { topics: ['zig'] });
+  src('2026-03-01-c', { topics: ['zig'] });
+  src('2026-04-01-d', { topics: ['kubernetes'], status: 'superseded', superseded_by: '2026-01-01-a' });
+  put(dir, 'note', '2026-05-01-n', { sources: ['2026-01-01-a'], confidence: 'medium' });
+  appendUsage(dir, { kind: 'queried', via: 'search', topic: 'kubernetes', outcome: 'hits', ids: ['2026-01-01-a'] });
+  appendUsage(dir, { kind: 'queried', via: 'search', topic: 'kubernetes', outcome: 'no-match', ids: [] });
+  appendUsage(dir, { kind: 'queried', via: 'pre-web', tool: 'WebSearch', outcome: 'hits', ids: ['2026-01-01-a', '2026-05-01-n', 'ghost'] });
+  appendUsage(dir, { kind: 'cited', via: 'post-tool-use', file: 'docs/x.md', id: '2026-05-01-n' });
+  appendUsage(dir, { kind: 'cited', via: 'post-tool-use', file: 'docs/y.md', id: '2026-05-01-n' });
+  appendUsage(dir, { kind: 'cited', via: 'post-tool-use', file: 'docs/y.md', id: '2026-02-01-b' });
+  assert.deepEqual(advise(dir, process.cwd()).usage, {
+    entries: [{ id: '2026-01-01-a', surfaced: 2, cited: 0 }, { id: '2026-02-01-b', surfaced: 0, cited: 1 }, { id: '2026-05-01-n', surfaced: 1, cited: 2 }],
+    topics: { kubernetes: { queried: 2, noMatch: 1 } },
+    cold: { queried: ['2026-01-01-a'], unqueried: ['2026-03-01-c'] },
+  });
+  const empty = tmpVault();
+  put(empty, 'source', '2026-01-01-s', { source_type: 'article', source_url: 'https://example.com/s' });
+  assert.deepEqual(advise(empty, process.cwd()).usage, { entries: [], topics: {}, cold: { queried: [], unqueried: ['2026-01-01-s'] } });
+  const out = execFileSync('node', ['bin/research-vault.mjs', 'advise', '--vault', dir], { encoding: 'utf8' });
+  assert.match(out, /^usage \(3\): 2026-01-01-a \(surfaced 2, cited 0\), 2026-02-01-b \(surfaced 0, cited 1\), 2026-05-01-n \(surfaced 1, cited 2\)$/m);
+  assert.match(out, /^topics queried \(1\): kubernetes \(2 queried, 1 no-match\)$/m);
+  assert.match(out, /^cold sources under a queried topic \(1\): 2026-01-01-a$/m);
+  assert.match(out, /^cold sources never queried \(1\): 2026-03-01-c$/m);
 });

@@ -24,5 +24,10 @@ export async function run(args) {
   process.stdout.write(`open questions over ${OPEN_QUESTION_DAYS} days (${r.openQuestions.length}): ${r.openQuestions.length ? r.openQuestions.map(q => `${q.id} (${q.state}, ${q.ageDays}d)`).join(', ') : '—'}\n`);
   process.stdout.write(`supersede suspects (${r.supersedeSuspects.length}): ${r.supersedeSuspects.length ? r.supersedeSuspects.map(p => `${p.older} -> ${p.newer} (${p.by})`).join(', ') : '—'}\n`);
   process.stdout.write(`near duplicates (${r.nearDuplicates.length}): ${r.nearDuplicates.length ? r.nearDuplicates.map(p => `${p.older} -> ${p.newer} (${p.by})`).join(', ') : '—'}\n`);
+  const u = r.usage, topics = Object.entries(u.topics);
+  process.stdout.write(`usage (${u.entries.length}): ${u.entries.length ? u.entries.map(e => `${e.id} (surfaced ${e.surfaced}, cited ${e.cited})`).join(', ') : '—'}\n`);
+  process.stdout.write(`topics queried (${topics.length}): ${topics.length ? topics.map(([t, c]) => `${t} (${c.queried} queried, ${c.noMatch} no-match)`).join(', ') : '—'}\n`);
+  section('cold sources under a queried topic', u.cold.queried);
+  section('cold sources never queried', u.cold.unqueried);
   return 0;
 }

@@ -13,5 +13,6 @@ export function appendUsage(vaultPath, event) {
 
 export function readUsage(vaultPath) {
   const p = join(vaultPath, USAGE_LOG);
-  return existsSync(p) ? readFileSync(p, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)) : [];
+  // A line that is not JSON is skipped (spec 30), as the claims ledger's reader skips one.
+  return existsSync(p) ? readFileSync(p, 'utf8').split('\n').filter(Boolean).flatMap(l => { try { return [JSON.parse(l)]; } catch { return []; } }) : [];
 }
