@@ -2,7 +2,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { loadSchema, fieldOrder } from '../lib/schema.mjs';
-import { makeId, normalizeUrl, normalizeUrlSafe, sha256 } from '../lib/ids.mjs';
+import { makeId, normalizeUrl, normalizeUrlSafe, sha256, verKey } from '../lib/ids.mjs';
 import { buildManifest, writeManifest } from '../lib/manifest.mjs';
 import { writeEntry, TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { resolveVault, reportFallback } from '../lib/resolve.mjs';
@@ -11,7 +11,6 @@ import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const verKey = v => (v == null || v === '') ? null : String(v);
 
 function loadSkeleton(repoRoot, type) {
   try { return readFileSync(join(repoRoot, 'vault-template', 'meta', 'entry-skeletons', `${type}.md`), 'utf8').trimEnd(); }

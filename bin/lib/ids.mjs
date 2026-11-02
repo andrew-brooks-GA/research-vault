@@ -30,4 +30,7 @@ export function normalizeUrlSafe(url) {
   try { return normalizeUrl(url); } catch { return url; }
 }
 
+// A subject version for comparison: absent and empty are the same, anything else is its string.
+export const verKey = v => (v == null || v === '') ? null : String(v);
+
 export function sha256(text) { return 'sha256:' + createHash('sha256').update(text).digest('hex'); }

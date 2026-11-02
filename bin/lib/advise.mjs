@@ -5,6 +5,7 @@ import { listStale, staleness } from './stale.mjs';
 import { traverse, DEPENDENCY_RELS } from './graph.mjs';
 import { loadSchema } from './schema.mjs';
 import { walkEntries, readEntry } from './fsutil.mjs';
+import { verKey } from './ids.mjs';
 
 const isStubBody = body => !(body || '').split('\n').some(l => {
   const t = l.trim();
@@ -89,6 +90,23 @@ function listOpenQuestions(m, now) {
     .filter(q => q.ageDays > OPEN_QUESTION_DAYS);
 }
 
+// Pairs of non-superseded rows of one type at one subject version (absent and empty equal) that
+// claim the same thing twice: the same source_url (capture's own dedup key) or the same subject
+// name. Siblings at different versions are the succession the verify skill prescribes.
+// ponytail: O(n²) pair scan; index rows by url and subject name if a vault grows past tens of thousands.
+function listSupersedeSuspects(m) {
+  const live = m.entries.filter(e => e.status !== 'superseded');
+  const out = [];
+  for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) {
+    const a = live[i], b = live[j];
+    if (a.type !== b.type || verKey(a.subject?.version) !== verKey(b.subject?.version)) continue;
+    const by = a.source_url && a.source_url === b.source_url ? 'source_url'
+      : a.subject?.name && a.subject.name === b.subject?.name ? 'subject' : null;
+    if (by) out.push({ older: a.id, newer: b.id, by });
+  }
+  return out;
+}
+
 export function advise(vaultPath, repoRoot, { now } = {}) {
   const m = buildManifest(vaultPath);
   const schema = loadSchema(repoRoot, { vaultPath });
@@ -108,5 +126,6 @@ export function advise(vaultPath, repoRoot, { now } = {}) {
     aliasable: m.entries.filter(e => e.topics.some(t => aliases[t])).map(e => e.id),
     quoteResidue: listQuoteResidue(vaultPath),
     openQuestions: listOpenQuestions(m, date),
+    supersedeSuspects: listSupersedeSuspects(m),
   };
 }

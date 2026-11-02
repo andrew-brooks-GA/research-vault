@@ -22,5 +22,6 @@ export async function run(args) {
   section('aliasable topics', r.aliasable);
   section('quote residue (baked-in \\" — see upgrade notes)', r.quoteResidue);
   process.stdout.write(`open questions over ${OPEN_QUESTION_DAYS} days (${r.openQuestions.length}): ${r.openQuestions.length ? r.openQuestions.map(q => `${q.id} (${q.state}, ${q.ageDays}d)`).join(', ') : '—'}\n`);
+  process.stdout.write(`supersede suspects (${r.supersedeSuspects.length}): ${r.supersedeSuspects.length ? r.supersedeSuspects.map(p => `${p.older} -> ${p.newer} (${p.by})`).join(', ') : '—'}\n`);
   return 0;
 }

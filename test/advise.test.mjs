@@ -11,6 +11,7 @@ import { lintAndReport } from '../bin/commands/lint.mjs';
 import { tmpVault, put } from './helpers.mjs';
 import { run as adviseRun } from '../bin/commands/advise.mjs';
 import { listStale } from '../bin/lib/stale.mjs';
+import { applyVerification } from '../bin/commands/verify.mjs';
 
 function freshVault() {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');
@@ -219,4 +220,29 @@ test('advise lists active questions not yet answered and older than 60 days by t
   assert.equal(advise(dir, process.cwd(), { now: '2026-03-03' }).openQuestions.length, 2);
   const out = execFileSync('node', ['bin/research-vault.mjs', 'advise', '--vault', dir], { encoding: 'utf8' });
   assert.match(out, /^open questions over 60 days \(2\): 2026-01-01-i \(investigating, \d+d\), 2026-01-01-q \(open, \d+d\)$/m);
+});
+
+test('advise pairs supersede suspects by source_url or subject at one version, older first; a superseded side drops the pair (spec 26 D1)', () => {
+  const dir = tmpVault();
+  const src = (id, url, extra = {}) => put(dir, 'source', id, { source_type: 'article', source_url: url, ...extra });
+  src('2026-01-01-a', 'https://example.com/x');
+  src('2026-02-01-b', 'https://example.com/x/');
+  src('2026-03-01-c', 'https://example.com/c', { subject: { name: 'tool', version: '1' } });
+  src('2026-04-01-d', 'https://example.com/d', { subject: { name: 'tool', version: '1' } });
+  src('2026-05-01-e', 'https://example.com/e', { subject: { name: 'tool', version: '2' } });
+  src('2026-06-01-f', 'https://example.com/f', { subject: { name: 'tool', version: '' } });
+  src('2026-07-01-g', 'https://example.com/g', { subject: { name: 'tool' } });
+  src('2026-08-01-h', 'https://example.com/x', { status: 'superseded', superseded_by: '2026-02-01-b' });
+  src('2026-10-01-v1', 'https://example.com/v', { subject: { name: 'v', version: '1' } });
+  src('2026-11-01-v2', 'https://example.com/v', { subject: { name: 'v', version: '2' } });
+  put(dir, 'note', '2026-09-01-n', { subject: { name: 'tool', version: '1' }, sources: ['2026-03-01-c'], confidence: 'medium' });
+  assert.deepEqual(advise(dir, process.cwd()).supersedeSuspects, [
+    { older: '2026-01-01-a', newer: '2026-02-01-b', by: 'source_url' },
+    { older: '2026-03-01-c', newer: '2026-04-01-d', by: 'subject' },
+    { older: '2026-06-01-f', newer: '2026-07-01-g', by: 'subject' },
+  ]);
+  applyVerification(dir, { id: '2026-01-01-a', method: 'cross-referenced', result: 'outdated', supersededBy: '2026-02-01-b', repoRoot: process.cwd() });
+  assert.equal(advise(dir, process.cwd()).supersedeSuspects.length, 2);
+  const out = execFileSync('node', ['bin/research-vault.mjs', 'advise', '--vault', dir], { encoding: 'utf8' });
+  assert.match(out, /^supersede suspects \(2\): 2026-03-01-c -> 2026-04-01-d \(subject\), 2026-06-01-f -> 2026-07-01-g \(subject\)$/m);
 });
