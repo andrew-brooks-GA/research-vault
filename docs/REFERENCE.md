@@ -87,13 +87,15 @@ The schema enums are small on purpose. A vault that needs its own terms (a lab r
   "vault": "research",
   "taxonomy_extensions": {
     "verification_method": ["experiment", "lab-run"],
-    "verification_result": ["partial"]
+    "verification_result": ["partial"],
+    "topic_aliases": { "k8s": "kubernetes" }
   }
 }
 ```
 
 - **Additive only.** You can add values, never remove or redefine a built-in, so entries stay portable between vaults.
-- **Extensible fields:** `domain`, `confidence`, `outcome`, `question_state`, `verification_method`, `verification_result`. The map-valued taxonomy (`volatility`, `stage_by_folder`, `topic_aliases`) is not extensible, and `topics:` already accepts any tag.
+- **Extensible fields:** `domain`, `confidence`, `outcome`, `question_state`, `verification_method`, `verification_result`. `volatility` and `stage_by_folder` are not extensible, and `topics:` already accepts any tag.
+- **`topic_aliases`** is a map of vault pairs, alias to canonical topic, merged after the built-in pairs; a pair whose key is a built-in alias is refused. `capture`, `lint`, `advise`, `search` and `teach path candidates` all read the merged map, and `lint --fix --topics` rewrites existing entries.
 - **Keyed on the vault**, not your shell's working directory, so the vocabulary is the same wherever a command runs.
 
 To change the built-in vocabulary itself, edit `schema/taxonomy.json`. The linter, `capture`, the generated `AGENTS.md` and each vault's copied `taxonomy.json` all derive from it.
@@ -175,7 +177,7 @@ Ids are `<date>-<slug>`; use the one `capture` or `search` prints rather than gu
 |---|---|
 | `init` | Scaffold a vault and generate its `AGENTS.md`. `--project` binds the current repo; with `--code-links '<glob>[,<glob>]'` it also writes the `code` block, which needs a relative `--vault` inside the repo. `--refresh-docs` regenerates `AGENTS.md` and `taxonomy.json` in an existing vault and touches nothing else (entries and `meta/` are preserved). |
 | `capture` | Add an entry. Required: `--type`, `--title`; sources also `--url`. Common: `--domain`, `--topics a,b`, `--subject-name`/`--subject-version`/`--series`, `--summary`, `--sources` (notes), `--contributing-ids` (syntheses), `--confidence`. Dedupes by URL and version. `--scaffold` writes a per-type body skeleton; `--body-file` supplies prose for non-source types; `--content-file` and `--captured-via` record local provenance; `--store-body` keeps the text you pass with `--content` or `--content-file` in a source entry and needs `--ack-data-egress`; capture never fetches the URL itself. `--batch <plan.json>` validates every entry before writing any, reports duplicates as skipped, and writes sequentially (a validation failure writes nothing; a filesystem failure can leave partial output). |
-| `lint` | Validate the vault and rebuild the manifest. `--check` for CI (exits non-zero on violations or a stale manifest); `--fix` applies safe normalizations. |
+| `lint` | Validate the vault and rebuild the manifest. `--check` for CI (exits non-zero on violations or a stale manifest); `--fix` applies safe normalizations; `--fix --topics` also rewrites each aliased topic to its canonical value (built-in and vault pairs) and deduplicates the list. |
 | `verify` | `--stale` lists entries past their interval. `--id <id> --method <m> --result <r> [--notes]` records a check. `--result outdated --superseded-by <id>` replaces; `--succession` records a version sibling. |
 | `search` | `--type`, `--domain`, `--topic`, `--series`, `--text` (title, topics, summary), `--body`, `--json`. Superseded entries are hidden unless `--include-superseded`. |
 | `related` | Typed links for an entry. `--depth N`, `--direction` (`out`, `in` or `both`), `--rel a,b`, `--format mermaid`. |

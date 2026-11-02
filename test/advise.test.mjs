@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, cpSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { advise } from '../bin/lib/advise.mjs';
@@ -191,4 +191,17 @@ test('advise with a pinned now agrees with listStale on the same clock', () => {
   src(dir, '2026-01-01-s', STALE);
   src(dir, '2026-01-01-f', FRESH);
   assert.deepEqual(advise(dir, process.cwd(), { now: NOW }).stale, listStale(dir, { now: NOW, repoRoot: process.cwd() }));
+});
+
+test('a vault alias pair reaches advise: aliasable before lint --fix --topics, empty after (spec 24 D2, D3)', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-alias-'));
+  writeFileSync(join(root, '.research-vault.json'), '{"vault":"v","taxonomy_extensions":{"topic_aliases":{"k8s":"kubernetes"}}}');
+  const dir = join(root, 'v');
+  captureEntry(dir, { type: 'source', title: 'K', url: 'https://example.com/k', topics: 'k8s', now: '2026-01-01', repoRoot: process.cwd() });
+  const f = join(dir, 'sources', '2026-01-01-k.md');
+  writeFileSync(f, readFileSync(f, 'utf8').replace(/^topics:.*$/m, 'topics: [k8s]'), 'utf8'); // capture already normalised it; put the alias back
+  assert.deepEqual(advise(dir, process.cwd()).aliasable, ['2026-01-01-k']);
+  const { fixVault } = await import('../bin/lib/lintrules.mjs');
+  fixVault(dir, process.cwd(), { topics: true });
+  assert.deepEqual(advise(dir, process.cwd()).aliasable, []);
 });

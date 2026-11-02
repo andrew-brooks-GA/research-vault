@@ -63,7 +63,7 @@ export const COUPLINGS = [
   ['bin/lib/resolve.mjs', 'skills/research-orchestrate/SKILL.md', 'the vault resolution order is written out', 'RESEARCH_VAULT_PATH'],
   ['bin/lib/resolve.mjs', 'skills/research-claims-gate/SKILL.md', 'the vault resolution order is written out', 'RESEARCH_VAULT_PATH'],
   ['bin/lib/resolve.mjs', 'hooks/session-start.mjs', "the source label 'project' gates the workspace briefs"],
-  ['bin/lib/projectconfig.mjs', 'docs/REFERENCE.md', 'EXTENSIBLE_TAXONOMY_FIELDS and the non-extensible list'],
+  ['bin/lib/projectconfig.mjs', 'docs/REFERENCE.md', 'EXTENSIBLE_TAXONOMY_FIELDS, topic_aliases and the non-extensible list'],
   ['bin/lib/projectconfig.mjs', 'commands/research-init.md', "the config keys and 'volatility defaults to fast'"],
   ['bin/commands/obsidian.mjs', 'commands/research-obsidian.md', "the '_obsidian' default", '_obsidian'],
   ['bin/lib/files.mjs', 'vault-template/.gitignore', 'SKIP_DIRS and the ignore list both name _index and _obsidian', '_obsidian'],

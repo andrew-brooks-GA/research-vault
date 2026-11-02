@@ -82,3 +82,22 @@ test('every edge field has an intended_targets entry, and vice versa (doc-only m
   const ef = loadSchema(process.cwd()).fields.edge_fields;
   assert.deepEqual(Object.keys(ef.intended_targets).sort(), [...ef.backlink, ...ef.reference_only].sort());
 });
+
+test('applyTaxonomyExtensions merges vault alias pairs after the built-ins and refuses a redefinition (spec 24 D1)', () => {
+  const base = { topic_aliases: { tdd: 'test-driven-development' } };
+  const merged = applyTaxonomyExtensions(base, { topic_aliases: { k8s: 'kubernetes' } });
+  assert.deepEqual(merged.topic_aliases, { tdd: 'test-driven-development', k8s: 'kubernetes' });
+  assert.deepEqual(base.topic_aliases, { tdd: 'test-driven-development' }, 'input not mutated');
+  assert.throws(() => applyTaxonomyExtensions(base, { topic_aliases: { tdd: 'anything' } }), /topic_aliases\.tdd redefines a built-in alias/);
+});
+
+test('loadSchema discovers a vault alias pair from the bound config (spec 24 D1)', () => {
+  const vault = resolve('/vlt');
+  const fs = {
+    existsSync: (p) => p === join(vault, PROJECT_CONFIG_FILENAME),
+    readFileSync: () => '{"vault":"/vlt","taxonomy_extensions":{"topic_aliases":{"k8s":"kubernetes"}}}',
+  };
+  const s = loadSchema(process.cwd(), { vaultPath: vault, hooks: fs });
+  assert.equal(s.taxonomy.topic_aliases.k8s, 'kubernetes');
+  assert.equal(s.taxonomy.topic_aliases.tdd, 'test-driven-development');
+});

@@ -12,6 +12,6 @@ description: Use when you want read-only curation guidance for the research vaul
   - **notes/synthesis without a summary** — missing the load-bearing `summary` field.
   - **stub bodies** — scaffold or empty bodies with no real prose.
   - **quote residue** — frontmatter scalars carrying a literal `\"` baked in by the pre-0.3.0 serializer; flag for human review before re-serialization makes it permanent.
-  - **aliasable topics** — entries carrying a topic that has a canonical alias.
+  - **aliasable topics** — entries carrying a topic that has a canonical alias; `lint --fix --topics` rewrites them.
 - READ-ONLY: `advise` never writes, never adds lint rules, and leaves the vault unchanged. It is convenience, not part of the correctness floor.
 - The librarian only suggests curation; the human or agent decides whether to act (capture a note, add an edge, re-verify, normalize a topic).

@@ -80,7 +80,7 @@ function listStaleEvidence(m, schema, now) {
 
 export function advise(vaultPath, repoRoot, { now } = {}) {
   const m = buildManifest(vaultPath);
-  const schema = loadSchema(repoRoot);
+  const schema = loadSchema(repoRoot, { vaultPath });
   const date = new Date(now || new Date().toISOString().slice(0, 10));
   const aliases = schema.taxonomy.topic_aliases;
   const noteSources = new Set(m.entries.filter(e => e.type === 'note').flatMap(e => e.sources));

@@ -142,3 +142,9 @@ test('parseProjectConfig keeps gates.globs', () => {
   assert.deepEqual(cfg.gates.globs, ['docs/drafts/*.md']);
   assert.throws(() => parseProjectConfig('{"gates":{"globs":"x"}}', SCHEMA), /gates\.globs must be an array/);
 });
+
+test('validateTaxonomyExtensions accepts a topic_aliases map and rejects a malformed one (spec 24 D1)', () => {
+  assert.deepEqual(validateTaxonomyExtensions({ topic_aliases: { k8s: 'kubernetes' } }), { topic_aliases: { k8s: 'kubernetes' } });
+  for (const bad of [['k8s'], { k8s: 1 }, { k8s: '' }, { '': 'kubernetes' }, null])
+    assert.throws(() => validateTaxonomyExtensions({ topic_aliases: bad }), /topic_aliases must be an object of non-empty strings/);
+});
