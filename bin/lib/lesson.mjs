@@ -37,6 +37,8 @@ const UNSHAPED = {
 const WITHHELD = /<mark\b[^>]*\baria-label\s*=\s*(["'])withheld\1[^>]*>[\s\S]*?<\/mark>/i;
 
 const textOf = (s) => s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+// Spec 37: the time-relative phrases teach lint warns on (LESSON-FORMAT.md, Prose).
+export const TIME_WORDS = ['currently', 'recently', 'nowadays', 'at the moment', 'as of now', 'as of today'];
 const listDir = (dir, ext) => (existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(ext)).sort() : []);
 
 export function lessonClass(filePath) {
@@ -373,6 +375,16 @@ export function lintLesson(filePath, ctx) {
   }
   const note = blocks.get('note');
   if (cls === 'reference' && note && !/\bdata-cite\s*=/i.test(note.attrs)) add('LESSON_CLAIM_UNCITED', 'note block has no data-cite');
+  // Spec 37: a time-relative word asserts currency the vault already carries as last_verified. Advisory;
+  // a quoted source sentence may hold one. <pre> and <code> are excluded; one warning per paragraph.
+  for (const [name, b] of blocks) {
+    if (name === 'sources') continue;
+    [...b.html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].forEach((m, i) => {
+      const text = textOf(m[1].replace(/<pre\b[\s\S]*?<\/pre>/gi, ' ').replace(/<code\b[\s\S]*?<\/code>/gi, ' '));
+      const hit = TIME_WORDS.find((w) => new RegExp(`(^|[^\\p{L}\\p{N}])${w}(?![\\p{L}\\p{N}])`, 'iu').test(text));
+      if (hit) add('WARN_LESSON_TIME_WORD', `${name} paragraph ${i} says "${hit}": ${text.slice(0, 60)}; take a version or date from the cited entry instead`);
+    });
+  }
 
   // Stale and superseded entries resolve; freshness is the claims gate's job.
   for (const r of checkCitations(cites.map((value) => ({ type: 'id', value })), ctx.entries, ctx.schema, ctx.now)) {

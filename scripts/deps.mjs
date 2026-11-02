@@ -107,6 +107,7 @@ export const COUPLINGS = [
   ['skills/research-teach/LESSON-FORMAT.md', 'skills/research-teach/assets/lesson.css', "the block label list: the Blocks table's Label column is each block's ::before content"],
   ['skills/research-teach/LESSON-FORMAT.md', 'bin/lib/lesson.mjs', 'the figure constants: a 440-unit viewBox, 14-unit labels and 40-character labels are FIGURE_VIEWBOX_MAX, FIGURE_LABEL_MIN and FIGURE_LABEL_MAX', /\b440\b/],
   ['bin/lib/lesson.mjs', 'skills/research-teach/assets/lesson.css', 'the figure constants: FIGURE_VIEWBOX_MAX 440 units draws at scale 1 at the figure svg min-width 27.5rem (440px)', /\b440\b/],
+  ['bin/lib/lesson.mjs', 'skills/research-teach/LESSON-FORMAT.md', 'TIME_WORDS is written out in the Prose section', 'nowadays'],
   ['bin/lib/lesson.mjs', 'skills/research-teach/MISSION-FORMAT.md', 'the Floor, Known tools, Known terms and New to me headings are parsed', 'New to me'],
   ['bin/lib/lesson.mjs', 'skills/research-teach/PATH-FORMAT.md', 'the PATH.md line grammar is parsed; PATH_AFTER_FORWARD, PATH_AFTER_CYCLE, PATH_PROJECT_AFTER and WARN_PATH_TERM_UNPLANNED are named; the after: proposal rule of teach path edges, which skips Project: lines, and the inner fringe that counts a Project: line as a review are stated', 'PATH_PROJECT_AFTER'],
   ['bin/commands/teach.mjs', 'skills/research-teach/PATH-FORMAT.md', 'the PATH.md line grammar is parsed by next, which prints the fringe: and inner: lines (a built Project: line keeps the lines it names inner)'],

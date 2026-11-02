@@ -568,3 +568,21 @@ test('pathEdges proposes after: for a term, tool or title use across a missing e
   const good = readFileSync(join(FIX, 'lessons', '0001-good.html'), 'utf8');
   assert.deepEqual(lessonUses(good, ['fx', 'sextuple', 'fx']), ['fx']);
 });
+
+test('WARN_LESSON_TIME_WORD: a time-relative word in a paragraph outside pre and code warns once, naming the block and paragraph; sources and code are skipped (spec 37 D1)', () => {
+  const dir = copyFixture();
+  const good = readFileSync(join(dir, 'lessons', '0001-good.html'), 'utf8');
+  const run = (edit) => { writeFileSync(join(dir, 'lessons', '0001-good.html'), edit(good)); return lintFile(dir, 'lessons/0001-good.html').filter((f) => f.code === 'WARN_LESSON_TIME_WORD'); };
+  const w = run((h) => h.replace('<p>A function takes an input and gives back an output.', '<p>This is currently true. A function takes an input and gives back an output.'));
+  assert.equal(w.length, 1);
+  assert.equal(w[0].warning, true);
+  assert.match(w[0].message, /^model paragraph 0 says "currently": This is currently true/);
+  assert.deepEqual(run((h) => h.replace('<p>A function takes an input and gives back an output.', '<p><code>currently</code> A function takes an input and gives back an output.')), []);
+  assert.equal(run((h) => h.replace('<p>A function takes an input and gives back an output.', '<p>As of today a function takes an input and gives back an output.'))[0].message.slice(0, 40), 'model paragraph 0 says "as of today": As');
+  assert.deepEqual(run((h) => h.replace('<section data-block="sources"', '<section data-block="sources"><p>recently</p').replace('><p>recently</p', '><p>recently</p>')), []);
+  const ref = readFileSync(join(dir, 'reference', 'good.html'), 'utf8');
+  writeFileSync(join(dir, 'reference', 'good.html'), ref.replace('<p>The fixture function reads', '<p>Nowadays the fixture function reads'));
+  const r = lintFile(dir, 'reference/good.html').filter((f) => f.code === 'WARN_LESSON_TIME_WORD');
+  assert.equal(r.length, 1);
+  assert.match(r[0].message, /^note paragraph 0 says "nowadays"/);
+});

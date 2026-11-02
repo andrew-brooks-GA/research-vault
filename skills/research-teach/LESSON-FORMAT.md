@@ -79,6 +79,10 @@ Draw every figure to these rules. `teach lint` warns on each one it can see; the
 - Every `fill` and `stroke` is `currentColor`, `none` or `var(--muted)` (`WARN_FIGURE_COLOR`), so the figure follows the theme and keeps its contrast.
 - The `<svg>` carries `role="img"` and its own `aria-label` describing what it shows (`WARN_FIGURE_NO_ALT`).
 
+## Prose
+
+`teach lint` warns `WARN_LESSON_TIME_WORD` on a paragraph, in any block but `sources` and in a reference doc's `note`, that says `currently`, `recently`, `nowadays`, `at the moment`, `as of now` or `as of today` outside `<pre>` and `<code>`: the page's currency is the vault's `last_verified`, not a word in the prose. The fix is a version or date taken from the cited entry; for a reference doc it lands in the vault note, which is then re-rendered. Advisory, since a quoted source sentence may hold the word.
+
 ## The path
 
 `PATH.md` (see `PATH-FORMAT.md`) plans the lessons. A built lesson's line carries `lesson: <id>`; `teach lint` reports `LESSON_PATH_MISMATCH` when that lesson's `data-introduces` or `data-teaches` differs from the line's `terms:` and `tool:`.
