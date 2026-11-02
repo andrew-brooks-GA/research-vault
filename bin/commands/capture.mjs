@@ -1,6 +1,6 @@
-import { join, dirname } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { loadSchema, fieldOrder } from '../lib/schema.mjs';
 import { makeId, normalizeUrl, normalizeUrlSafe, sha256, verKey } from '../lib/ids.mjs';
 import { buildManifest, writeManifest } from '../lib/manifest.mjs';
@@ -9,6 +9,8 @@ import { resolveVault, reportFallback } from '../lib/resolve.mjs';
 import { assertControlledValues } from '../lib/validate.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
+import { fetchSource } from '../lib/fetchsource.mjs';
+import { parseFrontmatter } from '../lib/frontmatter.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -25,6 +27,7 @@ function prepareEntry(vaultPath, opts, ctx = {}) {
   if (!folder) throw new Error(`invalid type: ${opts.type}`);
   if (opts.storeBody && !opts.ackDataEgress)
     throw new Error('--store-body requires --ack-data-egress (storing source text is a data-egress / copyright surface)');
+  if (!opts.title) throw new Error('title required');
   if (opts.type === 'source' && !opts.url) throw new Error('source requires url');
   if (opts.type === 'note' && !(opts.sources && String(opts.sources).length)) throw new Error('note requires sources');
   if (opts.type === 'synthesis' && !(opts.contributingIds && String(opts.contributingIds).length)) throw new Error('synthesis requires contributingIds');
@@ -72,6 +75,7 @@ function prepareEntry(vaultPath, opts, ctx = {}) {
     if (opts.authorityTier) data.authority_tier = opts.authorityTier;
     if (opts.authorityBasis) data.authority_basis = opts.authorityBasis;
     if (opts.capturedVia) data.captured_via = opts.capturedVia;
+    if (opts.sourceAuthor) data.source_author = opts.sourceAuthor;
     if (opts.summary) data.summary = opts.summary;
   } else if (opts.type === 'note') {
     data.sources = csvList(opts.sources);
@@ -128,9 +132,49 @@ function specToOpts(spec, cliOpts) {
     ...spec,
     domain: csv(spec.domain), topics: csv(spec.topics), related: csv(spec.related),
     sources: csv(spec.sources), contributingIds: csv(spec.contributingIds),
-    content: cfBuf ? cfBuf.toString('utf8') : spec.content, contentBytes: cfBuf,
+    content: cfBuf ? cfBuf.toString('utf8') : spec.content, contentBytes: cfBuf ?? spec.contentBytes,
     ackDataEgress: !!cliOpts.ackDataEgress, now: cliOpts.now, repoRoot: cliOpts.repoRoot,
   };
+}
+
+
+// Bulk ingest (spec 31): a URL list (one per line, `#` comments) fetched through the refresh fetcher,
+// or a directory of Markdown files, each turned into a source spec for the same validate-then-write
+// loop as a JSON plan. A failed item leaves a hole in `specs` so indexes stay those of the input.
+const NETWORK_OFF = 'network access is off: set RESEARCH_VAULT_ALLOW_NETWORK=1 to ingest a URL list';
+const titleOf = (html, fallback) => (/<title[^>]*>([^<]*)<\/title>/i.exec(html)?.[1] || '').replace(/\s+/g, ' ').trim() || fallback;
+
+function mdSpec(dir, name, storeBody) {
+  const bytes = readFileSync(join(dir, name));
+  const text = bytes.toString('utf8');
+  let fm = {};
+  if (text.startsWith('---')) { try { fm = parseFrontmatter(text).data; } catch { /* no frontmatter: the first link and heading */ } }
+  const url = fm.source_url || fm.url || /\]\((https?:\/\/[^)\s]+)\)/.exec(text)?.[1];
+  if (!url) throw new Error(`no source URL: ${name}`);
+  const title = fm.title || /^# (.+)$/m.exec(text)?.[1].trim() || basename(name, '.md');
+  return { type: 'source', title, url, contentBytes: bytes, content: text, storeBody, sourceAuthor: fm.author || fm.source_author };
+}
+
+export async function ingest(vaultPath, path, cliOpts = {}) {
+  const specs = [], errors = [];
+  if (statSync(path).isDirectory()) {
+    readdirSync(path).filter(n => n.endsWith('.md')).sort().forEach((name, index) => {
+      try { specs[index] = mdSpec(path, name, cliOpts.storeBody); } catch (e) { errors.push({ index, error: e.message }); }
+    });
+  } else {
+    const fetch = cliOpts.fetch || (cliOpts.allowNetwork ? fetchSource : null);
+    if (!fetch) return { errors: [{ index: -1, error: NETWORK_OFF }], created: [], skipped: [] };
+    const urls = readFileSync(path, 'utf8').split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+    for (const [index, url] of urls.entries()) {
+      try {
+        const { status, body } = await fetch(url, {});
+        if (status >= 400) throw new Error(`http ${status}`);
+        const text = body.toString('utf8');
+        specs[index] = { type: 'source', title: titleOf(text, url), url, contentBytes: body, content: text, storeBody: cliOpts.storeBody };
+      } catch (e) { errors.push({ index, error: `fetch failed: ${e.message}` }); }
+    }
+  }
+  return runSpecs(vaultPath, specs, cliOpts, errors);
 }
 
 export function runBatch(vaultPath, planPath, cliOpts = {}) {
@@ -139,11 +183,16 @@ export function runBatch(vaultPath, planPath, cliOpts = {}) {
   catch (e) { return { errors: [{ index: -1, error: `cannot read plan: ${e.message}` }], created: [], skipped: [] }; }
   if (!Array.isArray(plan) || plan.length === 0)
     return { errors: [{ index: -1, error: 'plan must be a non-empty JSON array' }], created: [], skipped: [] };
+  return runSpecs(vaultPath, plan, cliOpts);
+}
 
+// Validate every spec, then write; `cliOpts.continue` writes the specs that validated when others failed.
+function runSpecs(vaultPath, plan, cliOpts, errors = []) {
   const manifestEntries = buildManifest(vaultPath).entries;
   const knownIds = new Set(manifestEntries.map(e => e.id));
-  const errors = [], skipped = [], pending = [];
+  const skipped = [], pending = [];
   plan.forEach((spec, index) => {
+    const before = errors.length;
     try {
       const prep = prepareEntry(vaultPath, specToOpts(spec, cliOpts), { manifestEntries, pending });
       if (prep.dedup) {
@@ -156,10 +205,10 @@ export function runBatch(vaultPath, planPath, cliOpts = {}) {
         if (!knownIds.has(ref) && !pending.some(p => p.id === ref))
           errors.push({ index, error: `unresolved reference: ${ref}` });
       }
-      pending.push(prep);
+      if (errors.length === before) pending.push(prep);
     } catch (e) { errors.push({ index, error: e.message }); }
   });
-  if (errors.length) return { errors, created: [], skipped };
+  if (errors.length && !cliOpts.continue) return { errors, created: [], skipped };
 
   const created = [];
   let failing = null;
@@ -175,7 +224,7 @@ export function runBatch(vaultPath, planPath, cliOpts = {}) {
   } finally {
     if (created.length) writeManifest(vaultPath);
   }
-  return { errors: [], created, skipped };
+  return { errors, created, skipped };
 }
 
 function captureDefaults(cwd) {
@@ -194,7 +243,8 @@ export async function run(args) {
   const vaultPath = resolved.path;
   reportFallback(resolved);
   if (args.batch) {
-    const r = runBatch(vaultPath, args.batch, { ackDataEgress: !!args['ack-data-egress'] });
+    const o = { ackDataEgress: !!args['ack-data-egress'], storeBody: !!args['store-body'], continue: !!args.continue, allowNetwork: process.env.RESEARCH_VAULT_ALLOW_NETWORK === '1', fetch: typeof args.fetch === 'function' ? args.fetch : undefined };
+    const r = (existsSync(args.batch) && statSync(args.batch).isDirectory()) || !args.batch.endsWith('.json') ? await ingest(vaultPath, args.batch, o) : runBatch(vaultPath, args.batch, o);
     process.stdout.write(JSON.stringify(r, null, 2) + '\n');
     return r.errors.length ? 1 : 0;
   }

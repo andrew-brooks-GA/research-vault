@@ -1,6 +1,6 @@
 # Security model
 
-`research-vault` is a local Markdown toolkit. Three features reach outside the vault (`refresh`, `export` and `teach serve`), and this document is the exhaustive contract for all three. The README explains *when* to use them; this explains *what they guarantee*.
+`research-vault` is a local Markdown toolkit. Four features reach outside the vault (`refresh`, `capture --batch` over a URL list, `export` and `teach serve`), and this document is the exhaustive contract for all four. The README explains *when* to use them; this explains *what they guarantee*.
 
 ## Reporting a vulnerability
 
@@ -32,7 +32,7 @@ A third local write is the usage log, `_index/usage.jsonl` in the vault, appende
 
 ## Network refresh (`refresh`)
 
-`refresh` is the only feature that opens an outbound network connection, and it is off by default.
+`refresh` and `capture --batch` over a URL list are the only features that open an outbound network connection, and both are off by default.
 
 - **Double-gated.** It refuses — non-zero exit, including under `--dry-run` — unless you both invoke the `refresh` subcommand *and* set `RESEARCH_VAULT_ALLOW_NETWORK=1`. Either alone does nothing.
 - **Hash-only.** It fetches the source URL and buffers the response solely to hash it: it computes the SHA-256 of the raw bytes and compares that to the entry's stored `content_hash`. It never parses, stores, or writes back the fetched bytes, and does no HTML-to-text conversion.
@@ -43,6 +43,14 @@ A third local write is the usage log, `_index/usage.jsonl` in the vault, appende
   - The socket is pinned to the pre-validated IP. No re-resolution, no connection pooling.
   - Redirects are re-validated per hop against every rule above.
   - A body-size cap and a timeout bound each request. No cookies or auth headers are ever sent.
+
+## Network ingest (`capture --batch <url list>`)
+
+`capture --batch` over a URL list (a file that is not `.json`, one URL per line, `#` comments) fetches each URL to create a source entry. It is the second outbound feature, and it is off by default.
+
+- **Double-gated, like `refresh`.** It refuses unless you both pass a URL list to `capture --batch` *and* set `RESEARCH_VAULT_ALLOW_NETWORK=1`; a JSON plan and a Markdown directory never open a connection.
+- **The same fetcher.** Every request goes through the `refresh` fetcher, so every rule in the previous section applies: HTTPS only, public addresses only, the socket pinned, redirects re-validated, a body-size cap and a timeout, no cookies or auth headers. One request per line, in order; there is no rate limit.
+- **Writes entries.** Unlike `refresh`, it creates a source per URL with `content_hash` over the raw bytes, which is what `refresh` later compares against. The fetched text lands in the entry only under `--store-body --ack-data-egress`, the gate a single capture has, and it lands raw: no HTML-to-text conversion.
 
 ## Data export (`export`)
 

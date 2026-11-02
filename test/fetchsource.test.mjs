@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { fetchSource } from '../bin/lib/fetchsource.mjs';
+import { sha256 } from '../bin/lib/ids.mjs';
 
 // A fake `res` that plays a scripted status/headers, then optionally emits data.
 function fakeRes({ status, headers = {}, data = [] }) {
@@ -25,12 +26,14 @@ test('the request is given a lookup pinned to the pre-validated address', async 
     const req = new EventEmitter();
     req.end = () => {};
     req.destroy = () => {};
-    const res = fakeRes({ status: 200 });
+    const res = fakeRes({ status: 200, data: [Buffer.from('x')] });
     process.nextTick(() => { cb(res); res._play(); });
     return req;
   };
 
-  await fetchSource('https://example.com/a', { request, lookup });
+  const r = await fetchSource('https://example.com/a', { request, lookup });
+  assert.deepEqual(r.body, Buffer.from('x'), 'the body is returned for ingest (spec 31)');
+  assert.equal(r.hash, sha256(Buffer.from('x')));
 
   assert.equal(typeof captured.lookup, 'function', 'request must receive a lookup function');
 

@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, cpSync, existsSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runBatch, run } from '../bin/commands/capture.mjs';
-import { makeId } from '../bin/lib/ids.mjs';
+import { runBatch, run, ingest } from '../bin/commands/capture.mjs';
+import { makeId, sha256 } from '../bin/lib/ids.mjs';
 import { lintVault } from '../bin/lib/lintrules.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 
@@ -193,4 +193,88 @@ test('capture --batch via run(): JSON to stdout, exit 0 clean / 1 on errors', as
   try { code = await run({ batch: bad, vault: dir }); }
   finally { process.stdout.write = orig; }
   assert.equal(code, 1);
+});
+
+const URLS = ['https://a.example.com/one', '', '# comment', 'https://b.example.com/two', 'https://c.example.com/bad'];
+const BODY_A = Buffer.from('<html><head><title> One \n Page </title></head></html>');
+const fakeFetch = async (url) => {
+  if (url.endsWith('/one')) return { status: 200, hash: sha256(BODY_A), body: BODY_A };
+  if (url.endsWith('/two')) return { status: 200, hash: sha256('plain'), body: Buffer.from('plain') };
+  throw new Error('boom');
+};
+function writeUrls() {
+  const p = join(mkdtempSync(join(tmpdir(), 'rv-urls-')), 'urls.txt');
+  writeFileSync(p, URLS.join('\n') + '\n', 'utf8');
+  return p;
+}
+
+test('ingest: a URL list fetches each line, fails the item on a thrown fetch, writes nothing without --continue and the rest with it (spec 31 D1)', async () => {
+  const dir = freshVault();
+  const file = writeUrls();
+  const r = await ingest(dir, file, { ...NOW, fetch: fakeFetch });
+  assert.deepEqual(r.errors, [{ index: 2, error: 'fetch failed: boom' }]);
+  assert.deepEqual(r.created, []);
+  assert.ok(!existsSync(join(dir, 'sources', '2026-06-12-one-page.md')));
+  const c = await ingest(dir, file, { ...NOW, fetch: fakeFetch, continue: true });
+  assert.deepEqual(c.created.map(x => x.id), ['2026-06-12-one-page', makeId('2026-06-12', 'https://b.example.com/two')]);
+  assert.deepEqual(c.errors, [{ index: 2, error: 'fetch failed: boom' }]);
+  const one = readFileSync(join(dir, 'sources', '2026-06-12-one-page.md'), 'utf8');
+  assert.ok(one.includes(`content_hash: "${sha256(BODY_A)}"`));
+  assert.ok(!one.includes('<html'), 'no body stored without --store-body');
+  const dir2 = freshVault();
+  const s = await ingest(dir2, file, { ...NOW, fetch: fakeFetch, continue: true, storeBody: true, ackDataEgress: true });
+  assert.equal(s.created.length, 2);
+  assert.ok(readFileSync(join(dir2, 'sources', '2026-06-12-one-page.md'), 'utf8').includes('<title>'));
+  const noAck = await ingest(freshVault(), file, { ...NOW, fetch: fakeFetch, continue: true, storeBody: true });
+  assert.equal(noAck.errors.length, 3, 'every kept line is an error');
+  assert.equal(noAck.created.length, 0);
+  const off = await ingest(freshVault(), file, NOW);
+  assert.equal(off.errors[0].index, -1);
+  assert.match(off.errors[0].error, /RESEARCH_VAULT_ALLOW_NETWORK/);
+  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+});
+
+test('ingest: a Markdown directory takes the URL, title and author from frontmatter, else the first link and heading; a file with no URL fails (spec 31 D1)', async () => {
+  const dir = freshVault();
+  const md = mkdtempSync(join(tmpdir(), 'rv-md-'));
+  writeFileSync(join(md, 'a.md'), '---\ntitle: Alpha doc\nauthor: Ada\nsource_url: https://d.example.com/a\n---\n# Alpha\n\nbody\n', 'utf8');
+  writeFileSync(join(md, 'b.md'), '# Beta\n\nsee [it](https://d.example.com/b)\n', 'utf8');
+  writeFileSync(join(md, 'c.md'), '# Gamma\n\nno link\n', 'utf8');
+  const r = await ingest(dir, md, NOW);
+  assert.equal(r.errors.length, 1);
+  assert.equal(r.errors[0].index, 2);
+  assert.match(r.errors[0].error, /^no source URL/);
+  assert.deepEqual(r.created, []);
+  const c = await ingest(dir, md, { ...NOW, continue: true });
+  assert.deepEqual(c.created.map(x => x.id), ['2026-06-12-alpha-doc', '2026-06-12-beta']);
+  assert.equal(c.errors.length, 1);
+  const a = readFileSync(join(dir, 'sources', '2026-06-12-alpha-doc.md'), 'utf8');
+  assert.ok(a.includes(`content_hash: "${sha256(readFileSync(join(md, 'a.md')))}"`));
+  assert.match(a, /^source_author: Ada$/m);
+  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+});
+
+test('capture --batch via run(): a URL list goes to ingest, exits 1 with the failed item under --continue, and refuses without the network variable (spec 31 D1)', async () => {
+  const dir = freshVault();
+  const file = writeUrls();
+  const saved = process.env.RESEARCH_VAULT_ALLOW_NETWORK;
+  delete process.env.RESEARCH_VAULT_ALLOW_NETWORK;
+  const out = [];
+  const orig = process.stdout.write.bind(process.stdout);
+  process.stdout.write = s => { out.push(s); return true; };
+  let code, parsed;
+  try {
+    code = await run({ batch: file, vault: dir, fetch: fakeFetch, continue: true });
+    parsed = JSON.parse(out.join(''));
+    out.length = 0;
+    const off = await run({ batch: file, vault: freshVault() });
+    assert.equal(off, 1);
+    assert.equal(JSON.parse(out.join('')).errors[0].index, -1);
+  } finally {
+    process.stdout.write = orig;
+    if (saved !== undefined) process.env.RESEARCH_VAULT_ALLOW_NETWORK = saved;
+  }
+  assert.equal(code, 1);
+  assert.equal(parsed.created.length, 2);
+  assert.equal(parsed.errors[0].error, 'fetch failed: boom');
 });

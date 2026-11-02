@@ -63,7 +63,8 @@ function once(url, { request, lookup }) {
           if (len > MAX_BODY) { req.destroy(new Error('body exceeds max size')); return; }
           chunks.push(c);
         });
-        res.on('end', () => ok({ status, hash: sha256(Buffer.concat(chunks)) }));
+        // `body` is for capture's ingest (spec 31); refresh reads only status and hash.
+        res.on('end', () => { const body = Buffer.concat(chunks); ok({ status, hash: sha256(body), body }); });
         res.on('error', fail);
       });
       req.on('timeout', () => req.destroy(new Error('request timeout')));

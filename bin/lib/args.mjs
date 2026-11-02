@@ -1,4 +1,4 @@
-const BOOL = new Set(['json', 'check', 'fix', 'force', 'stale', 'rebuild', 'succession', 'tested', 'set-default', 'scaffold', 'stdout', 'store-body', 'ack-data-egress', 'dry-run', 'include-bodies', 'report', 'project', 'refresh-docs', 'include-superseded', 'changed']);
+const BOOL = new Set(['json', 'check', 'fix', 'force', 'stale', 'rebuild', 'succession', 'tested', 'set-default', 'scaffold', 'stdout', 'store-body', 'ack-data-egress', 'dry-run', 'include-bodies', 'report', 'project', 'refresh-docs', 'include-superseded', 'changed', 'continue']);
 export const csvList = s => String(s ?? '').split(',').map(t => t.trim()).filter(Boolean);
 
 export function parseArgs(argv) {

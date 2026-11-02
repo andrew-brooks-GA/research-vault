@@ -348,6 +348,12 @@ test('capture --answer-summary writes an answered question the default export em
   assert.ok(!('answer_summary' in readEntry(bare.path).data));
 });
 
+test('capture without a title is refused and writes nothing (spec 31, found by its REFERENCE gate)', () => {
+  const dir = freshVault();
+  assert.throws(() => captureEntry(dir, { type: 'source', url: 'https://notitle.example.com/a' }), /title required/);
+  assert.ok(!existsSync(join(dir, 'sources', '2026-06-12-undefined.md')));
+});
+
 test('single capture enforces the batch requirements: note/synthesis/source', () => {
   const dir = freshVault();
   assert.throws(
