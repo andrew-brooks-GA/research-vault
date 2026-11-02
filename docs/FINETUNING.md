@@ -1,14 +1,14 @@
 # Finetuning / evaluation data export
 
 The `export` command turns the governed vault into JSONL for an **external** finetuning
-or evaluation pipeline. It is a strictly read-only path: the vault is never modified, no
-network is touched, and there is no trainer in this repo. Training runs OUTSIDE this
+or evaluation pipeline. It is a strictly read-only path: the vault is never modified, the
+export code imports no network module, and there is no trainer in this repo. Training runs OUTSIDE this
 repository on the exported file.
 
 ## Privacy / copyright posture
 
 By default the export emits **metadata and answered-question summaries only** — never
-entry bodies and never any `source` body. Entry bodies frequently contain verbatim
+entry bodies and never any `source` body. Entry bodies can contain verbatim
 third-party text (a data-egress and copyright surface), so emitting them is gated behind
 two explicit flags that must BOTH be present:
 
@@ -25,8 +25,8 @@ Without `--ack-data-egress`, `--include-bodies` refuses (exit 1, nothing written
   `{ input: question, output: answer_summary }`. Set `answer_summary` with
   `capture --answer-summary` (or by editing frontmatter) to produce these pairs.
 - With a broader `--scope`, other types export as `{ input: title, output: summary }`,
-  where `output` is the entry's `summary` frontmatter field (a `note`/`synthesis`
-  load-bearing claim) when present, else an empty string. This carries no body and
+  where `output` is the entry's `summary` frontmatter field when present, else an
+  empty string. This carries no body and
   passes no egress gate.
 - Entry **bodies** — for any type, including `source` bodies — appear only under
   `--include-bodies --ack-data-egress`, and are never emitted by default.
@@ -36,19 +36,40 @@ Without `--ack-data-egress`, `--include-bodies` refuses (exit 1, nothing written
 Deterministic, id-sorted JSONL. One record per line:
 
 ```json
-{"input": "...", "output": "...", "meta": {"id": "...", "type": "...", "last_verified": "2026-01-01"}}
+{"input": "...", "output": "...", "meta": {"id": "...", "type": "...", "last_verified": "2026-01-01", "topics": ["..."], "authority_tier": null, "volatility": "slow", "source_url": null}}
 ```
 
 `last_verified` is computed from the entry's verification history (not stored on disk).
+`topics` is the entry's list (`[]` when absent); `authority_tier`, `volatility` and
+`source_url` are the frontmatter values or `null`.
 The command reports total byte size and per-type counts. Output is byte-identical across
-runs over an unchanged vault.
+runs over an unchanged vault with the same flags; with `--fresh-only`, pin the date with
+`--now`, since it defaults to the day of the run.
+
+## Chunking and filters
+
+`--chunk <chars> [--overlap <chars>]` (overlap defaults to 0 and must be below the chunk)
+emits one record per window of each record's `output`, counted in UTF-16 code units (the
+JavaScript string length; a window can split a surrogate pair): window `i` starts at
+`i * (chunk - overlap)` and holds up to `chunk` code units, and `meta.chunk` is
+`{ index, start, end, total }`. A reader reassembles the entry by taking window 0 whole
+and appending each later window from offset `overlap`. The body gate is unchanged: the
+windows are over whatever `output` the gate allows, so a body still needs
+`--include-bodies --ack-data-egress`.
+
+`--fresh-only` drops entries with `status: superseded` and entries whose volatility window
+has passed (the `staleness` rule in `bin/lib/stale.mjs`; a volatility with no window in the
+taxonomy is not assessable and is kept). `--min-authority <tier>` drops sources whose `authority_tier` sits below the tier in
+the taxonomy's order (`primary`, `secondary`, `tertiary`); rows with no tier, and entries of other
+types such as questions and notes, pass.
 
 ## Usage
 
 ```
 research-vault export --format jsonl --vault ./vault                # answered questions only
 research-vault export --scope question,note --out train.jsonl       # write to a file
-research-vault export --include-bodies --ack-data-egress --out x.jsonl
+research-vault export --scope note --include-bodies --ack-data-egress --out x.jsonl
+research-vault export --scope source,note --chunk 800 --overlap 100 --fresh-only --min-authority secondary --out rag.jsonl
 ```
 
 `--format` accepts only `jsonl`. `--out` writes to the user-chosen path (outside the

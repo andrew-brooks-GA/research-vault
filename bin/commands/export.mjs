@@ -13,6 +13,7 @@ export async function run(args) {
       scope: args.scope ? csvList(args.scope) : null,
       includeBodies: !!args['include-bodies'],
       ackDataEgress: !!args['ack-data-egress'],
+      chunk: args.chunk, overlap: args.overlap, freshOnly: !!args['fresh-only'], minAuthority: args['min-authority'], now: args.now,
     });
   } catch (e) { process.stderr.write(`export refused: ${e.message}\n`); return 1; }
   const out = toJsonl(records);

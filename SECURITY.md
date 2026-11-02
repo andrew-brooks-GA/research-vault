@@ -57,7 +57,7 @@ A third local write is the usage log, `_index/usage.jsonl` in the vault, appende
 `export` is the only path that writes vault content to an external file, and it is conservative by default.
 
 - **Metadata-first.** By default it emits only **answered questions** as `{input, output}` pairs, each with per-record metadata — no other entry types, never any entry body, never a `source` body. `--scope <types>` widens it to other types as `{input: title, output: summary}` records — the entry's `summary` field when present, empty otherwise; still no entry body.
-- **Body egress is double-gated.** Including any entry body requires both `--include-bodies` *and* `--ack-data-egress`. `--include-bodies` without the ack refuses and writes nothing; `--ack-data-egress` alone is inert — the export proceeds but emits only the default metadata and `summary` records, no bodies.
+- **Body egress is double-gated.** Including any entry body requires both `--include-bodies` *and* `--ack-data-egress`. `--include-bodies` without the ack refuses and writes nothing; `--ack-data-egress` alone is inert — the export proceeds but emits only the default metadata and `summary` records, no bodies. `--chunk` windows the same `output` the gate allows, so a body still needs both flags.
 - **Deterministic and offline.** Output is stable, id-sorted JSONL for an external pipeline. Nothing is sent over the network and the vault is never modified.
 
 See [`docs/FINETUNING.md`](docs/FINETUNING.md) for the export format and intended pipeline.
