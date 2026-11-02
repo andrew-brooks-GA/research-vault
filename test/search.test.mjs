@@ -9,6 +9,13 @@ import { loadSchema } from '../bin/lib/schema.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { relatedTo } from '../bin/commands/related.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
+import { run as searchRun, STALE_WEIGHT } from '../bin/commands/search.mjs';
+import { run as embedRun } from '../bin/commands/embed.mjs';
+import { applyVerification } from '../bin/commands/verify.mjs';
+import { writeEntry } from '../bin/lib/fsutil.mjs';
+import { fieldOrder } from '../bin/lib/schema.mjs';
+import { mkdirSync } from 'node:fs';
+import { boundRepo, fakeFetch } from './embed.test.mjs';
 
 const VAULT = fileURLToPath(new URL('./fixtures/vault', import.meta.url));
 
@@ -169,4 +176,55 @@ test('search logs a queried event with its facets and the ids returned, no text 
   try { await run({ _: ['search'], vault: dir, type: 'source', text: 'first' }); } finally { process.stdout.write = so; }
   const e = readUsage(dir).at(-1);
   assert.deepEqual([e.kind, e.via, e.type, e.outcome, e.ids, 'text' in e], ['queried', 'search', 'source', 'hits', ['2026-01-01-first'], false]);
+});
+
+test('search --semantic ranks by cosine over the index, weights stale rows down, drops superseded rows, honours --limit and refuses as the plan says (spec 34 D3)', async () => {
+  const dir = freshVault();
+  const schema = loadSchema(process.cwd());
+  const src = (id, body, extra = {}) => {
+    const data = { title: id, type: 'note', created: '2026-01-01', domain: ['software-engineering'], stage: 'distilled', topics: [], status: 'active', related: [], volatility: 'slow', sources: ['2026-01-01-a'], confidence: 'medium', summary: body,
+      verifications: [{ date: '2026-11-02', by_type: 'human', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }], ...extra };
+    mkdirSync(join(dir, 'notes'), { recursive: true });
+    writeEntry(join(dir, 'notes', `${id}.md`), data, `# ${id}\n\n${body}\n`, fieldOrder(schema, 'note'));
+  };
+  src('2026-01-01-zig-note', 'zig zig zig');
+  src('2026-01-01-k8s-note', 'kubernetes kubernetes');
+  src('2026-01-01-k8s-stale', 'kubernetes kubernetes', { volatility: 'fast', verifications: [{ date: '2026-01-01', by_type: 'human', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }] });
+  src('2026-01-01-zig-old', 'zig zig');
+  const repo = boundRepo(dir);
+  const saved = process.env.RESEARCH_VAULT_ALLOW_NETWORK;
+  process.env.RESEARCH_VAULT_ALLOW_NETWORK = '1';
+  const out = [], errs = [];
+  const so = process.stdout.write.bind(process.stdout), se = process.stderr.write.bind(process.stderr);
+  process.stdout.write = (s) => { out.push(s); return true; }; process.stderr.write = (s) => { errs.push(s); return true; };
+  try {
+    assert.equal(await searchRun({ _: ['search'], vault: dir, cwd: repo, semantic: 'zig writer', 'ack-data-egress': true, fetch: fakeFetch() }), 1);
+    assert.match(errs.at(-1), /run embed first/);
+    assert.equal(await embedRun({ vault: dir, cwd: repo, 'ack-data-egress': true, fetch: fakeFetch() }), 0);
+    applyVerification(dir, { id: '2026-01-01-zig-old', method: 'cross-referenced', result: 'outdated', supersededBy: '2026-01-01-zig-note', repoRoot: process.cwd() });
+    out.length = 0;
+    assert.equal(await searchRun({ _: ['search'], vault: dir, cwd: repo, semantic: 'zig writer', 'ack-data-egress': true, fetch: fakeFetch(), json: true, now: '2026-11-02' }), 0);
+    const rows = JSON.parse(out.join(''));
+    assert.equal(rows[0].id, '2026-01-01-zig-note');
+    assert.equal(rows[0].score.toFixed(2), '1.00');
+    assert.ok(!rows.some(r => r.id === '2026-01-01-zig-old'), 'the superseded row is dropped');
+    out.length = 0;
+    assert.equal(await searchRun({ _: ['search'], vault: dir, cwd: repo, semantic: 'kubernetes scheduler', 'ack-data-egress': true, fetch: fakeFetch(), json: true, now: '2026-11-02' }), 0);
+    const k = JSON.parse(out.join(''));
+    assert.equal(k[0].id, '2026-01-01-k8s-note');
+    assert.equal(k[1].id, '2026-01-01-k8s-stale');
+    assert.ok(Math.abs(k[1].score - k[0].score * STALE_WEIGHT) < 1e-9, 'the stale row is weighted down');
+    out.length = 0;
+    assert.equal(await searchRun({ _: ['search'], vault: dir, cwd: repo, semantic: 'zig writer', 'ack-data-egress': true, fetch: fakeFetch(), limit: '1', now: '2026-11-02' }), 0);
+    const lines = out.join('').trim().split('\n');
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /^2026-01-01-zig-note  \[note\]  2026-01-01-zig-note  \(no tier, fresh\)  score 1\.00 #0$/);
+    assert.equal(await searchRun({ _: ['search'], vault: dir, cwd: repo, semantic: 'zig', 'ack-data-egress': true, fetch: fakeFetch(), sort: 'fresh' }), 1);
+    assert.match(errs.at(-1), /cannot be combined with --sort/);
+    assert.equal(await searchRun({ _: ['search'], vault: dir, cwd: repo, semantic: 'zig', fetch: fakeFetch() }), 1);
+    assert.match(errs.at(-1), /--ack-data-egress/);
+  } finally {
+    process.stdout.write = so; process.stderr.write = se;
+    if (saved === undefined) delete process.env.RESEARCH_VAULT_ALLOW_NETWORK; else process.env.RESEARCH_VAULT_ALLOW_NETWORK = saved;
+  }
 });

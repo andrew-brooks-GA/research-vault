@@ -1,6 +1,6 @@
 # Security model
 
-`research-vault` is a local Markdown toolkit. Four features reach outside the vault (`refresh`, `capture --batch` over a URL list, `export` and `teach serve`), and this document is the exhaustive contract for all four. The README explains *when* to use them; this explains *what they guarantee*.
+`research-vault` is a local Markdown toolkit. Five features reach outside the vault (`refresh`, `capture --batch` over a URL list, the embedding endpoint behind `embed` and `search --semantic`, `export` and `teach serve`), and this document is the exhaustive contract for all five. The README explains *when* to use them; this explains *what they guarantee*.
 
 ## Reporting a vulnerability
 
@@ -32,7 +32,7 @@ A third local write is the usage log, `_index/usage.jsonl` in the vault, appende
 
 ## Network refresh (`refresh`)
 
-`refresh` and `capture --batch` over a URL list are the only features that open an outbound network connection, and both are off by default.
+`refresh`, `capture --batch` over a URL list and the embedding endpoint (`embed`, `search --semantic`) are the only features that open an outbound network connection, and all are off by default.
 
 - **Double-gated.** It refuses — non-zero exit, including under `--dry-run` — unless you both invoke the `refresh` subcommand *and* set `RESEARCH_VAULT_ALLOW_NETWORK=1`. Either alone does nothing.
 - **Hash-only.** It fetches the source URL and buffers the response solely to hash it: it computes the SHA-256 of the raw bytes and compares that to the entry's stored `content_hash`. It never parses, stores, or writes back the fetched bytes, and does no HTML-to-text conversion.
@@ -51,6 +51,15 @@ A third local write is the usage log, `_index/usage.jsonl` in the vault, appende
 - **Double-gated, like `refresh`.** It refuses unless you both pass a URL list to `capture --batch` *and* set `RESEARCH_VAULT_ALLOW_NETWORK=1`; a JSON plan and a Markdown directory never open a connection.
 - **The same fetcher.** Every request goes through the `refresh` fetcher, so every rule in the previous section applies: HTTPS only, public addresses only, the socket pinned, redirects re-validated, a body-size cap and a timeout, no cookies or auth headers. One request per line, in order; there is no rate limit.
 - **Writes entries.** Unlike `refresh`, it creates a source per URL with `content_hash` over the raw bytes, which is what `refresh` later compares against. The fetched text lands in the entry only under `--store-body --ack-data-egress`, the gate a single capture has, and it lands raw: no HTML-to-text conversion.
+
+## Embedding endpoint (`embed`, `search --semantic`)
+
+Optional, for a vault whose repo binding sets `"embedding": { "url": "...", "model": "...", "chunk": 800, "overlap": 100 }`. Without the block both commands refuse and nothing is written. With it:
+
+- **Double-gated, plus the egress acknowledgement.** Each command refuses unless `RESEARCH_VAULT_ALLOW_NETWORK=1` is set *and* `--ack-data-egress` is given, before any request.
+- **What leaves the machine.** `embed` sends the window texts of every non-superseded entry (bodies included) to the endpoint, in batches of 64, one `POST` per batch; `search --semantic` sends the query, one `POST`. The request is `{ input, model }` as JSON, with `Authorization: Bearer <RESEARCH_VAULT_EMBED_KEY>` only when that variable is set. Nothing else is sent.
+- **Where.** To the binding's `url`, which the operator chose and which may be local, so the `refresh` fetcher's SSRF guard is not applied; the request goes through Node's global `fetch`.
+- **One file written.** `_index/embeddings.jsonl` in the vault (a header line, then one line per window with its text and vector), ignored by the template's `.gitignore` and safe to delete; `search --semantic` also appends its usage-log line as `search` does. No entry is modified.
 
 ## Data export (`export`)
 

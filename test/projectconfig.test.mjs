@@ -156,3 +156,13 @@ test('parseProjectConfig accepts usage.text as a boolean and rejects anything el
   assert.deepEqual(parseProjectConfig('{"vault":"v"}', schema).usage, {});
   assert.throws(() => parseProjectConfig('{"vault":"v","usage":{"text":"yes"}}', schema), /usage\.text must be a boolean/);
 });
+
+test('parseProjectConfig validates the embedding block: an http(s) url, an optional model, integer chunk and overlap (spec 34 D1)', async () => {
+  const { loadSchema } = await import('../bin/lib/schema.mjs');
+  const schema = loadSchema(process.cwd());
+  const ok = parseProjectConfig('{"vault":"v","embedding":{"url":"http://127.0.0.1:11434/v1/embeddings","model":"nomic-embed-text"}}', schema).embedding;
+  assert.deepEqual(ok, { url: 'http://127.0.0.1:11434/v1/embeddings', model: 'nomic-embed-text', chunk: 800, overlap: 100 });
+  assert.equal(parseProjectConfig('{"vault":"v"}', schema).embedding, undefined);
+  for (const block of ['{"url":"ftp://x"}', '{"url":42}', '{"url":"http://h/e","chunk":0}', '{"url":"http://h/e","chunk":800,"overlap":800}', '{"url":"http://h/e","model":1}'])
+    assert.throws(() => parseProjectConfig(`{"vault":"v","embedding":${block}}`, schema), /embedding\./, block);
+});

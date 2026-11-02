@@ -126,6 +126,19 @@ function validateCode(code, vault) {
 
 // Parse + validate raw JSON against the taxonomy. Throws on malformed JSON or bad values.
 // The returned object carries `code` only when the block is present; every consumer tests it.
+// Spec 34: the embedding endpoint block `{ url, model?, chunk?, overlap? }`.
+function validateEmbedding(e) {
+  const bad = (m) => new Error(`invalid ${PROJECT_CONFIG_FILENAME}: embedding.${m}`);
+  if (e === null || typeof e !== 'object' || Array.isArray(e)) throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: embedding must be an object`);
+  let u; try { u = new URL(e.url); } catch { /* reported below */ }
+  if (typeof e.url !== 'string' || !u || !['http:', 'https:'].includes(u.protocol)) throw bad('url must be an http or https URL');
+  if (e.model !== undefined && typeof e.model !== 'string') throw bad('model must be a string');
+  for (const k of ['chunk', 'overlap']) if (e[k] !== undefined && !Number.isInteger(e[k])) throw bad(`${k} must be an integer`);
+  const chunk = e.chunk ?? 800, overlap = e.overlap ?? 100;
+  if (chunk < 1 || overlap < 0 || overlap >= chunk) throw bad('chunk must be at least 1 and overlap at least 0 and below chunk');
+  return { url: e.url, model: e.model, chunk, overlap };
+}
+
 export function parseProjectConfig(raw, schema) {
   let data;
   try {
@@ -164,6 +177,7 @@ export function parseProjectConfig(raw, schema) {
   }
   const taxonomyExtensions = validateTaxonomyExtensions(data.taxonomy_extensions);
   const out = { vault: data.vault, defaults, references, gates, capture, usage, taxonomyExtensions };
+  if (data.embedding !== undefined) out.embedding = validateEmbedding(data.embedding);
   if (data.code !== undefined) out.code = validateCode(data.code, data.vault);
   return out;
 }

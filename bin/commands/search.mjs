@@ -7,6 +7,8 @@ import { resolveVault } from '../lib/resolve.mjs';
 import { staleness } from '../lib/stale.mjs';
 import { appendUsage } from '../lib/usagelog.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
+import { cosine, embedTexts, readIndex } from '../lib/embed.mjs';
+import { embeddingGate } from './embed.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -57,9 +59,32 @@ export function searchVault(vaultPath, q, repoRoot = REPO_ROOT) {
   return rows;
 }
 
+// Spec 34: the stale multiplier on a semantic score. ponytail: one constant; make it a binding key if vaults disagree.
+export const STALE_WEIGHT = 0.8;
+
+// Spec 34: rank the facet-filtered, non-superseded rows by the best cosine over their windows.
+export async function semanticSearch(vaultPath, cfg, query, q, { fetch, repoRoot = REPO_ROOT } = {}) {
+  const index = readIndex(vaultPath);
+  if (!index) throw new Error('no embedding index; run embed first');
+  const schema = loadSchema(repoRoot, { vaultPath });
+  const rows = matchRows(buildManifest(vaultPath).entries.filter(e => e.status !== 'superseded'), q, schema.taxonomy.topic_aliases);
+  const [qv] = await embedTexts(cfg, [query], { fetch });
+  const best = new Map();
+  for (const r of index.rows) {
+    const s = cosine(qv, r.vector);
+    if (!best.has(r.id) || s > best.get(r.id).score) best.set(r.id, { score: s, chunk: r.chunk });
+  }
+  const now = new Date(q.now || new Date().toISOString().slice(0, 10));
+  return rows.filter(e => best.has(e.id)).map(e => {
+    const { score, chunk } = best.get(e.id);
+    return { ...e, score: staleness(e, schema, now) ? score * STALE_WEIGHT : score, chunk };
+  }).sort((a, b) => b.score - a.score).slice(0, Number(q.limit) || 10);
+}
+
 export async function run(args) {
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
   const now = args.now || new Date().toISOString().slice(0, 10);
+  if (args.semantic !== undefined) return runSemantic(vaultPath, args, now);
   const rows = searchVault(vaultPath, { type: args.type, domain: args.domain, topic: args.topic, series: args.series, text: args.text, body: args.body, includeSuperseded: !!args['include-superseded'], sort: args.sort, now });
   // The usage log (spec 29): the facets and the ids returned; --text only behind usage.text.
   try {
@@ -70,6 +95,27 @@ export async function run(args) {
   else {
     const schema = loadSchema(REPO_ROOT);
     rows.forEach(e => process.stdout.write(`${e.id}  [${e.type}]  ${e.title}  ${annotate(e, schema, new Date(now))}${e.status === 'superseded' ? ` (superseded by ${e.superseded_by})` : ''}\n`));
+  }
+  return 0;
+}
+
+async function runSemantic(vaultPath, args, now) {
+  for (const f of ['sort', 'text', 'body']) if (args[f] !== undefined) { process.stderr.write(`search refused: --semantic cannot be combined with --${f}\n`); return 1; }
+  if (!args.semantic) { process.stderr.write('search refused: --semantic needs a query\n'); return 1; }
+  const cfg = embeddingGate('search', { cwd: args.cwd, 'ack-data-egress': !!args['ack-data-egress'] });
+  if (!cfg) return 1;
+  let rows;
+  try {
+    rows = await semanticSearch(vaultPath, cfg, args.semantic, { type: args.type, domain: args.domain, topic: args.topic, series: args.series, limit: args.limit, now }, { fetch: typeof args.fetch === 'function' ? args.fetch : undefined });
+  } catch (e) { process.stderr.write(`search refused: ${e.message}\n`); return 1; }
+  try {
+    const usage = loadProjectConfig(args.cwd ?? process.cwd(), { schema: loadSchema(REPO_ROOT) })?.config?.usage;
+    appendUsage(vaultPath, { kind: 'queried', via: 'search', semantic: true, type: args.type, topic: args.topic, outcome: rows.length ? 'hits' : 'no-match', ids: rows.map(e => e.id), text: usage?.text === true ? args.semantic : undefined });
+  } catch { /* the log never changes the answer */ }
+  if (args.json) process.stdout.write(JSON.stringify(rows, null, 2) + '\n');
+  else {
+    const schema = loadSchema(REPO_ROOT);
+    rows.forEach(e => process.stdout.write(`${e.id}  [${e.type}]  ${e.title}  ${annotate(e, schema, new Date(now))}  score ${e.score.toFixed(2)} #${e.chunk.index}\n`));
   }
   return 0;
 }
