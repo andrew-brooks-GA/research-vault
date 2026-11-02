@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Issues #10, #12 and #13 rescoped (`docs/specs/issues-2026-11-02.md`): each body now says what the plugin already does at 568d61b (`capture --batch` and its validate-then-write pass, `--answer-summary` and `WARN_ANSWERED_NO_SUMMARY`, the five `topic_aliases` consumers including capture-time normalisation) and narrows the ask to what remains (a fetching URL-list and markdown input with continue-on-error under the `refresh` network contract; an `advise` open-question age and a command to close a question; a per-vault alias map that `advise` and `search` also load, and `lint --fix --topics`). Reviewed adversarially and claims-gated before posting; #27 closed as fixed by 8e8ec84.
+
 ## [0.9.0] - 2026-11-01
 
 ### Changed
