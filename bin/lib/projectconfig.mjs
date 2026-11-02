@@ -8,8 +8,9 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 export const PROJECT_CONFIG_FILENAME = '.research-vault.json';
 
 // Controlled vocabularies a vault may extend additively via `taxonomy_extensions`.
-// These are the flat list-valued enums; map-valued taxonomy (volatility, stage_by_folder,
-// topic_aliases) and the open `topics:` tag space are deliberately excluded. Extension is
+// These are the flat list-valued enums; map-valued taxonomy (volatility, stage_by_folder) and
+// the open `topics:` tag space are deliberately excluded. `topic_aliases` is the one map-valued
+// extension (spec 24): a vault adds pairs, validated below and merged in schema.mjs. Extension is
 // additive only: a vault can add values, never remove or redefine the built-ins, so a
 // built-in value means the same thing in every vault and entries stay portable.
 export const EXTENSIBLE_TAXONOMY_FIELDS = [
@@ -52,6 +53,13 @@ export function validateTaxonomyExtensions(ext) {
   }
   const out = {};
   for (const [field, values] of Object.entries(ext)) {
+    if (field === 'topic_aliases') {
+      const ok = values !== null && typeof values === 'object' && !Array.isArray(values)
+        && Object.entries(values).every(([k, v]) => k.length > 0 && typeof v === 'string' && v.length > 0);
+      if (!ok) throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: taxonomy_extensions.topic_aliases must be an object of non-empty strings`);
+      out[field] = { ...values };
+      continue;
+    }
     if (!EXTENSIBLE_TAXONOMY_FIELDS.includes(field)) {
       throw new Error(
         `invalid ${PROJECT_CONFIG_FILENAME}: taxonomy_extensions.${field} is not extensible (allowed: ${EXTENSIBLE_TAXONOMY_FIELDS.join(', ')})`,

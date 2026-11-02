@@ -26,7 +26,8 @@ export async function run(args) {
   const vaultPath = resolved.path;
   if (args.fix) {
     reportFallback(resolved);
-    const { fixed } = fixVault(vaultPath, REPO_ROOT);
+    // `--topics` takes no value (as in manifest, `topics` cannot be a BOOL flag): present means rewrite aliased topics (spec 24).
+    const { fixed } = fixVault(vaultPath, REPO_ROOT, { topics: 'topics' in args && args.topics === undefined });
     if (!args.json) process.stdout.write(`fixed ${fixed} file(s)\n`);
   }
   const { violations, warnings } = lintAndReport(vaultPath, { check: !!args.check });

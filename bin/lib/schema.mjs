@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { EXTENSIBLE_TAXONOMY_FIELDS, readTaxonomyExtensions } from './projectconfig.mjs';
+import { EXTENSIBLE_TAXONOMY_FIELDS, PROJECT_CONFIG_FILENAME, readTaxonomyExtensions } from './projectconfig.mjs';
 
 // Additively merge a vault's `taxonomy_extensions` onto the bundled taxonomy. Only the
 // extensible list fields are touched, values are appended (deduped, built-ins first), and
@@ -13,6 +13,12 @@ export function applyTaxonomyExtensions(taxonomy, extensions) {
     const extra = extensions[field];
     if (!extra || extra.length === 0) continue;
     merged[field] = [...new Set([...(taxonomy[field] || []), ...extra])];
+  }
+  // Spec 24: vault alias pairs after the built-ins; a built-in key cannot be redefined. One hop only.
+  if (extensions.topic_aliases) {
+    for (const k of Object.keys(extensions.topic_aliases)) if (k in (taxonomy.topic_aliases || {}))
+      throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: taxonomy_extensions.topic_aliases.${k} redefines a built-in alias`);
+    merged.topic_aliases = { ...taxonomy.topic_aliases, ...extensions.topic_aliases };
   }
   return merged;
 }

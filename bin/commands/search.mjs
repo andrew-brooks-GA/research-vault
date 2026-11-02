@@ -40,7 +40,7 @@ export function annotate(e, schema, now) {
 }
 
 export function searchVault(vaultPath, q, repoRoot = REPO_ROOT) {
-  const schema = loadSchema(repoRoot);
+  const schema = loadSchema(repoRoot, { vaultPath });
   let rows = buildManifest(vaultPath).entries;
   // Validity gate: superseded entries are retired from search; traversal (`related`) still sees them.
   if (!q.includeSuperseded) rows = rows.filter(e => e.status !== 'superseded');

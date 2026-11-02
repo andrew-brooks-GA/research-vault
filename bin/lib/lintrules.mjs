@@ -190,8 +190,9 @@ export function lintVault(vaultPath, repoRoot) {
   return { violations, warnings, ids: [...ids] };
 }
 
-export function fixVault(vaultPath, repoRoot) {
+export function fixVault(vaultPath, repoRoot, { topics = false } = {}) {
   const schema = loadSchema(repoRoot, { vaultPath });
+  const aliases = schema.taxonomy.topic_aliases;
   let fixed = 0;
   for (const abs of walkEntries(vaultPath)) {
     const raw = readFileSync(abs, 'utf8');
@@ -204,6 +205,8 @@ export function fixVault(vaultPath, repoRoot) {
         const u = unwrapQuoteArtifact(slot.get());
         if (u !== null) slot.set(u);
       }
+      // Opt-in: a topic rewrite changes meaning where the quote unwrap changes form (spec 24 D3).
+      if (topics && Array.isArray(entry.data.topics)) entry.data.topics = [...new Set(entry.data.topics.map(t => aliases[t] || t))];
       const order = fieldOrder(schema, entry.data.type);
       out = serializeFrontmatter(entry.data, entry.body, order, { preserve: false });
     }

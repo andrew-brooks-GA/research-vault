@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, appendFileSync } from 'node:fs';
+import { mkdtempSync, cpSync, appendFileSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { searchVault, matchRows, sortRows } from '../bin/commands/search.mjs';
@@ -147,4 +147,14 @@ test('search --sort authority through a vault, default order unchanged, text ann
   assert.match(text, /^2026-01-03-p {2}\[source\] {2}P {2}\(primary, fresh\)$/m);
   assert.match(text, /^2026-01-02-n {2}\[source\] {2}N {2}\(no tier, fresh\)$/m);
   assert.match(text, /^2026-01-04-note {2}\[note\] {2}Note {2}\(no tier, fresh\)$/m);
+});
+
+test('a vault alias pair reaches search: --topic kubernetes finds an entry carrying only k8s (spec 24 D2)', () => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-alias-'));
+  writeFileSync(join(root, '.research-vault.json'), '{"vault":"v","taxonomy_extensions":{"topic_aliases":{"k8s":"kubernetes"}}}');
+  const dir = join(root, 'v');
+  captureEntry(dir, { type: 'source', title: 'K', url: 'https://example.com/k', topics: 'k8s', now: '2026-01-01', repoRoot: process.cwd() });
+  const f = join(dir, 'sources', '2026-01-01-k.md');
+  writeFileSync(f, readFileSync(f, 'utf8').replace(/^topics:.*$/m, 'topics: [k8s]'), 'utf8');
+  assert.deepEqual(searchVault(dir, { topic: 'kubernetes' }).map(e => e.id), ['2026-01-01-k']);
 });
