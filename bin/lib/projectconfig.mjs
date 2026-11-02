@@ -158,8 +158,12 @@ export function parseProjectConfig(raw, schema) {
   if (capture.enabled !== undefined && typeof capture.enabled !== 'boolean') {
     throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: capture.enabled must be a boolean`);
   }
+  const usage = data.usage ?? {};
+  if (usage.text !== undefined && typeof usage.text !== 'boolean') {
+    throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: usage.text must be a boolean`);
+  }
   const taxonomyExtensions = validateTaxonomyExtensions(data.taxonomy_extensions);
-  const out = { vault: data.vault, defaults, references, gates, capture, taxonomyExtensions };
+  const out = { vault: data.vault, defaults, references, gates, capture, usage, taxonomyExtensions };
   if (data.code !== undefined) out.code = validateCode(data.code, data.vault);
   return out;
 }

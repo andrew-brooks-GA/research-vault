@@ -28,3 +28,23 @@ test('pre-web hook CLI emits PreToolUse additionalContext and exits 0', () => {
   assert.equal(out.hookSpecificOutput.hookEventName, 'PreToolUse');
   assert.match(out.hookSpecificOutput.additionalContext, /vcluster-sleep/);
 });
+
+test('pre-web hook logs one queried event per call: hits, url-hit, no-match; text only when asked (spec 29 D2)', async () => {
+  const { readUsage } = await import('../bin/lib/usagelog.mjs');
+  const v = tmpVault('rv-preweb-log-');
+  put(v, 'source', '2026-01-01-zig-io-writer', { title: 'std.Io.Writer print doc comment', topics: ['zig', 'formatting'], summary: 'format specifiers', source_url: 'https://ziglang.org/doc/writer', source_type: 'official-docs' });
+  vaultContext(v, 'WebSearch', { query: 'zig format specifiers print' });
+  vaultContext(v, 'WebFetch', { url: 'https://ziglang.org/doc/writer/#frag', prompt: 'anything' });
+  vaultContext(v, 'WebFetch', { url: 'https://other.example.com/x', prompt: 'Return the full page text verbatim' });
+  vaultContext(v, 'WebSearch', { query: 'rust borrow checker' });
+  const r = readUsage(v);
+  assert.deepEqual(r.map(e => [e.kind, e.via, e.tool, e.outcome, e.ids]), [
+    ['queried', 'pre-web', 'WebSearch', 'hits', ['2026-01-01-zig-io-writer']],
+    ['queried', 'pre-web', 'WebFetch', 'url-hit', ['2026-01-01-zig-io-writer']],
+    ['queried', 'pre-web', 'WebFetch', 'no-match', []],
+    ['queried', 'pre-web', 'WebSearch', 'no-match', []],
+  ]);
+  assert.ok(r.every(e => !('text' in e)));
+  vaultContext(v, 'WebSearch', { query: 'zig format specifiers print' }, { text: true });
+  assert.equal(readUsage(v).at(-1).text, 'zig format specifiers print');
+});

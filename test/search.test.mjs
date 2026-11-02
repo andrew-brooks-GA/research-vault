@@ -158,3 +158,15 @@ test('a vault alias pair reaches search: --topic kubernetes finds an entry carry
   writeFileSync(f, readFileSync(f, 'utf8').replace(/^topics:.*$/m, 'topics: [k8s]'), 'utf8');
   assert.deepEqual(searchVault(dir, { topic: 'kubernetes' }).map(e => e.id), ['2026-01-01-k']);
 });
+
+test('search logs a queried event with its facets and the ids returned, no text by default (spec 29 D2)', async () => {
+  const { readUsage } = await import('../bin/lib/usagelog.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'rv-search-log-'));
+  captureEntry(dir, { type: 'source', title: 'A first', url: 'https://example.com/a', now: '2026-01-01' });
+  captureEntry(dir, { type: 'source', title: 'Z last', url: 'https://example.com/z', now: '2026-01-04' });
+  const { run } = await import('../bin/commands/search.mjs');
+  const so = process.stdout.write; process.stdout.write = () => true;
+  try { await run({ _: ['search'], vault: dir, type: 'source', text: 'first' }); } finally { process.stdout.write = so; }
+  const e = readUsage(dir).at(-1);
+  assert.deepEqual([e.kind, e.via, e.type, e.outcome, e.ids, 'text' in e], ['queried', 'search', 'source', 'hits', ['2026-01-01-first'], false]);
+});

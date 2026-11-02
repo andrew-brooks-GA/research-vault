@@ -17,6 +17,8 @@ import { extractCitations } from '../bin/lib/citations.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
 import { loadProjectConfig } from '../bin/lib/projectconfig.mjs';
+import { appendUsage, readUsage } from '../bin/lib/usagelog.mjs';
+import { normalizeUrl } from '../bin/lib/ids.mjs';
 import { gatedFiles, ledgerKey } from '../bin/lib/gate.mjs';
 import { langFor, codeFiles, extractCodeLinks, readVersions, checkCodeLinks } from '../bin/lib/codelinks.mjs';
 
@@ -44,8 +46,18 @@ export function citationWarnings(editedPath, repoRoot, vaultPath, cfg, now) {
     lines = rows.filter((r) => r.status !== 'ok')
       .map((r) => `research-vault: ${r.status.toUpperCase()} ${r.value} in ${key}:${r.line}${r.symbol ? ` ${r.symbol}` : ''}${r.reason ? `  (${r.reason})` : ''}`);
   } else {
-    const rows = checkCitations(extractCitations(readFileSync(file, 'utf8')), buildManifest(vaultPath).entries, loadSchema(REPO_ROOT), now);
+    const entries = buildManifest(vaultPath).entries;
+    const citations = extractCitations(readFileSync(file, 'utf8'));
+    const rows = checkCitations(citations, entries, loadSchema(REPO_ROOT), now);
     lines = rows.filter((r) => r.status !== 'ok').map((r) => `research-vault: ${r.status.toUpperCase()} ${r.value} in ${key}`);
+    // The usage log (spec 29): one cited event per id this file newly cites; the log is the only state.
+    try {
+      const byUrl = new Map(entries.filter((e) => e.source_url).map((e) => [e.source_url, e.id]));
+      const norm = (u) => { try { return normalizeUrl(u); } catch { return null; } };
+      const ids = [...new Set(citations.map((c) => c.type === 'id' ? c.value : byUrl.get(norm(c.value))).filter(Boolean))];
+      const seen = new Set(readUsage(vaultPath).filter((e) => e.kind === 'cited' && e.file === key).map((e) => e.id));
+      for (const id of ids) if (!seen.has(id)) appendUsage(vaultPath, { kind: 'cited', via: 'post-tool-use', file: key, id });
+    } catch { /* never change the hook's answer */ }
   }
   return lines.length ? [...lines, 'capture it (or verify the entry) before the claims gate.'].join('\n') : '';
 }

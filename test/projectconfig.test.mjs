@@ -148,3 +148,11 @@ test('validateTaxonomyExtensions accepts a topic_aliases map and rejects a malfo
   for (const bad of [['k8s'], { k8s: 1 }, { k8s: '' }, { '': 'kubernetes' }, null])
     assert.throws(() => validateTaxonomyExtensions({ topic_aliases: bad }), /topic_aliases must be an object of non-empty strings/);
 });
+
+test('parseProjectConfig accepts usage.text as a boolean and rejects anything else (spec 29 D1)', async () => {
+  const { loadSchema } = await import('../bin/lib/schema.mjs');
+  const schema = loadSchema(process.cwd());
+  assert.deepEqual(parseProjectConfig('{"vault":"v","usage":{"text":true}}', schema).usage, { text: true });
+  assert.deepEqual(parseProjectConfig('{"vault":"v"}', schema).usage, {});
+  assert.throws(() => parseProjectConfig('{"vault":"v","usage":{"text":"yes"}}', schema), /usage\.text must be a boolean/);
+});

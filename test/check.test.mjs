@@ -275,5 +275,5 @@ test('check without a code block runs today\'s path on the same fixture', () => 
     skipped: [],
   });
   assert.deepEqual(Object.keys(parseProjectConfig(readFileSync(join(root, '.research-vault.json'), 'utf8'), loadSchema(process.cwd()))),
-    ['vault', 'defaults', 'references', 'gates', 'capture', 'taxonomyExtensions']);
+    ['vault', 'defaults', 'references', 'gates', 'capture', 'usage', 'taxonomyExtensions']);
 });

@@ -111,3 +111,16 @@ test('citationWarnings and the CLI are silent for a .lua edit in a repo without 
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout, '');
 });
+
+test('post-tool-use logs one cited event per newly cited id of a watched file, none twice, none for an unwatched file (spec 29 D2)', async () => {
+  const { readUsage } = await import('../bin/lib/usagelog.mjs');
+  const { root, vault, cfg } = repo();
+  citationWarnings(join(root, 'docs', 'a.md'), root, vault, cfg, NOW);
+  assert.deepEqual(readUsage(vault).map(e => [e.kind, e.via, e.file, e.id]), [
+    ['cited', 'post-tool-use', 'docs/a.md', '2026-07-10-fresh'],
+    ['cited', 'post-tool-use', 'docs/a.md', '2026-01-01-old'],
+  ]);
+  citationWarnings(join(root, 'docs', 'a.md'), root, vault, cfg, NOW);
+  citationWarnings(join(root, 'other', 'b.md'), root, vault, cfg, NOW);
+  assert.equal(readUsage(vault).length, 2);
+});

@@ -16,6 +16,8 @@ One local process writes your entries without a per-run prompt: the advisory `Po
 
 A second local process, `teach serve`, writes learner data, not entries: one attempt file in the workspace's `attempts/` per accepted `POST /attempt`, and `.teach-serve.json`. Its limits are in the next section.
 
+A third local write is the usage log, `_index/usage.jsonl` in the vault, appended by the pre-web hook, the post-edit hook and `search`: ids, facets and an outcome per event, never the fetched page, and free query text only when the repo's binding sets `usage.text` to `true`. It stays under `_index/`, which the vault's `.gitignore` ignores, and nothing reads it but the vault's own reports.
+
 ## Lesson server (`teach serve`)
 
 `teach serve [workspace]` serves one teaching workspace to a browser so a lesson's quiz can record an attempt. It runs until it is stopped.

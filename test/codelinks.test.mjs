@@ -133,7 +133,7 @@ test('parseProjectConfig accepts the code block on a relative vault and compiles
   assert.equal(c.code.versions.dep.file, 'deps.txt');
   assert.equal(c.code.versions.dep.pattern.flags, 'm');
   assert.deepEqual(cfg({}).code, { globs: [], languages: {}, versions: {} });
-  assert.deepEqual(Object.keys(cfg({})), ['vault', 'defaults', 'references', 'gates', 'capture', 'taxonomyExtensions', 'code']);
+  assert.deepEqual(Object.keys(cfg({})), ['vault', 'defaults', 'references', 'gates', 'capture', 'usage', 'taxonomyExtensions', 'code']);
 });
 
 test('parseProjectConfig rejects the code block on an absolute, empty, .. or absent vault', () => {
