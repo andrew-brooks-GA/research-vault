@@ -40,6 +40,7 @@ export const COUPLINGS = [
   ['bin/lib/stale.mjs', 'vault-template/meta/freshness-policy.md', 'the last_verified rule and the volatility windows are restated in §2-3', 'last_verified'],
   ['bin/lib/stale.mjs', 'vault-template/meta/prompt-templates/verify-entry.md', 'steps 1-2 restate the last_verified rule and the windows', 'last_verified'],
   ['bin/lib/stale.mjs', 'skills/research-vault-usage/SKILL.md', 'the 90-day window and the last_verified rule are written out', 'last_verified'],
+  ['bin/commands/search.mjs', 'docs/REFERENCE.md', 'the --sort values and the no tier / fresh / stale annotation words', 'no tier'],
   ['schema/taxonomy.json', 'vault-template/meta/freshness-policy.md', 'refresh_after_days are hand-copied into the §2 table; method and result lists into §5', 'tool-probe'],
   ['schema/taxonomy.json', 'vault-template/meta/prompt-templates/verify-entry.md', 'windows in step 2, method and result lists in steps 3-4', 'tool-probe'],
   ['schema/taxonomy.json', 'vault-template/meta/prompt-templates/probe-tool.md', 'verification method names', 'tool-probe'],

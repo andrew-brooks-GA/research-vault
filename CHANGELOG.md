@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `search --sort authority|fresh` (spec 23; issue #9). `authority` orders rows by the taxonomy's `authority_tier` array with untiered rows last; `fresh` orders fresh, then stale, then not assessable by `staleness()`; ties keep manifest order, which stays the default. Every text line now carries `(<tier or no tier>, fresh|stale)` after the title and before any `(superseded by <id>)` suffix, the freshness part absent when `staleness()` returns null; `--json` rows are unchanged. Another `--sort` value is `error: --sort must be authority or fresh`, exit 2. `run` takes `--now` for tests.
+
 ### Changed
 - Issues #10, #12 and #13 rescoped (`docs/specs/issues-2026-11-02.md`): each body now says what the plugin already does at 568d61b (`capture --batch` and its validate-then-write pass, `--answer-summary` and `WARN_ANSWERED_NO_SUMMARY`, the five `topic_aliases` consumers including capture-time normalisation) and narrows the ask to what remains (a fetching URL-list and markdown input with continue-on-error under the `refresh` network contract; an `advise` open-question age and a command to close a question; a per-vault alias map that `advise` and `search` also load, and `lint --fix --topics`). Reviewed adversarially and claims-gated before posting; #27 closed as fixed by 8e8ec84.
 - The nine other open issues rescoped and all twelve ordered (`docs/specs/issues-2026-11-02-remaining.md`): #5, #6, #7, #8, #9, #11, #14, #15 and #16 each say what exists at a0f6c91 (grep counts, the hooks manifest, `refresh`, `search`, `export`, the manifest row, `--store-body`) and what remains; the twelve are ranked by benefit against size and their titles carry the rank as a prefix. Same process: adversarial review, then the claims gate.

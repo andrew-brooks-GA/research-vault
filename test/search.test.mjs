@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, cpSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { searchVault, matchRows } from '../bin/commands/search.mjs';
+import { searchVault, matchRows, sortRows } from '../bin/commands/search.mjs';
+import { loadSchema } from '../bin/lib/schema.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { relatedTo } from '../bin/commands/related.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
@@ -95,7 +96,7 @@ test('search hides superseded entries unless --include-superseded (spec 09)', as
   assert.ok(!text.includes('2026-01-02-old'), 'text default hides superseded');
   assert.ok(!text.includes('superseded by'), 'no suffix without the flag');
   const textAll = await cli({ 'include-superseded': true });
-  assert.match(textAll, /2026-01-02-old  \[source\]  Old \(superseded by 2026-01-03-new\)/);
+  assert.match(textAll, /2026-01-02-old  \[source\]  Old  \(no tier, fresh\) \(superseded by 2026-01-03-new\)/, 'annotation precedes the superseded suffix');
   assert.ok(!/A first \(superseded/.test(textAll), 'active rows get no suffix');
   assert.deepEqual(JSON.parse(await cli({ json: true })).map(e => e.id), ACTIVE, 'json default hides superseded');
   assert.deepEqual(JSON.parse(await cli({ json: true, 'include-superseded': true })).map(e => e.id), ALL);
@@ -106,4 +107,44 @@ test('matchRows is searchVault without the body walk and the superseded gate (sp
   for (const q of [{ type: 'source', topic: 'x' }, { text: 'a' }, { topic: 'tdd' }]) {
     assert.deepEqual(matchRows(rows, q, { tdd: 'test-driven-development' }).map(e => e.id), searchVault(VAULT, q).map(e => e.id));
   }
+});
+
+test('sortRows authority: taxonomy order, untiered last, ties keep incoming order (spec 23 D2)', () => {
+  const schema = loadSchema(process.cwd());
+  const rows = ['tertiary', null, 'primary', 'secondary', null].map((authority_tier, i) => ({ id: `r${i}`, authority_tier }));
+  assert.deepEqual(sortRows(rows, 'authority', schema).map(e => e.id), ['r2', 'r3', 'r0', 'r1', 'r4']);
+  assert.throws(() => sortRows(rows, 'nope', schema), /--sort must be authority or fresh/);
+});
+
+test('sortRows fresh: fresh, stale, not assessable, ties keep incoming order (spec 23 D3)', () => {
+  const schema = loadSchema(process.cwd());
+  const now = new Date('2026-06-01');
+  const rows = [
+    { id: 'stable-fresh', volatility: 'stable', last_verified: '2026-05-31' },
+    { id: 'fast-stale', volatility: 'fast', last_verified: '2026-02-21' },
+    { id: 'volatile-reason', volatility: 'volatile', last_verified: '2026-05-31' },
+    { id: 'none', volatility: null, last_verified: null },
+    { id: 'slow-fresh', volatility: 'slow', last_verified: '2026-05-31' },
+  ];
+  assert.deepEqual(sortRows(rows, 'fresh', schema, now).map(e => e.id), ['stable-fresh', 'slow-fresh', 'fast-stale', 'volatile-reason', 'none']);
+});
+
+test('search --sort authority through a vault, default order unchanged, text annotation (spec 23 D1, D4)', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-sort-'));
+  const repoRoot = process.cwd();
+  captureEntry(dir, { type: 'source', title: 'T', url: 'https://example.com/t', authorityTier: 'tertiary', now: '2026-01-01', repoRoot });
+  captureEntry(dir, { type: 'source', title: 'N', url: 'https://example.com/n', now: '2026-01-02', repoRoot });
+  captureEntry(dir, { type: 'source', title: 'P', url: 'https://example.com/p', authorityTier: 'primary', now: '2026-01-03', repoRoot });
+  captureEntry(dir, { type: 'note', title: 'Note', sources: '2026-01-03-p', now: '2026-01-04', repoRoot });
+  const ids = q => searchVault(dir, q).map(e => e.id);
+  assert.deepEqual(ids({}), ['2026-01-01-t', '2026-01-02-n', '2026-01-03-p', '2026-01-04-note'], 'default is manifest order');
+  assert.deepEqual(ids({ sort: 'authority' }), ['2026-01-03-p', '2026-01-01-t', '2026-01-02-n', '2026-01-04-note']);
+  const { run } = await import('../bin/commands/search.mjs');
+  const out = [];
+  const so = process.stdout.write; process.stdout.write = c => { out.push(String(c)); return true; };
+  try { await run({ _: ['search'], vault: dir, now: '2026-01-05' }); } finally { process.stdout.write = so; }
+  const text = out.join('');
+  assert.match(text, /^2026-01-03-p {2}\[source\] {2}P {2}\(primary, fresh\)$/m);
+  assert.match(text, /^2026-01-02-n {2}\[source\] {2}N {2}\(no tier, fresh\)$/m);
+  assert.match(text, /^2026-01-04-note {2}\[note\] {2}Note {2}\(no tier, fresh\)$/m);
 });
