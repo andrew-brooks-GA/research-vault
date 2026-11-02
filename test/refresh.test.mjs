@@ -157,3 +157,32 @@ test('dry-run excludes cli:// probe sources (tool-probe, re-derived locally) but
   assert.ok(output.includes('would-fetch  2020-01-02-web  https://example.com/stale-web'),
     'stale https source must still be a would-fetch candidate:\n' + output);
 });
+
+test('refresh reports storedBody on changed results only, and --json prints the objects (spec 27 D1)', async () => {
+  const dir = freshVault();
+  const row = () => buildManifest(dir).entries.find(e => e.id === '2026-01-01-a');
+  const changed = async () => ({ status: 200, hash: 'sha256:deadbeef' });
+  let [r] = await refreshVault(dir, { targets: [row()], fetch: changed });
+  assert.deepEqual(r, { id: '2026-01-01-a', result: 'changed', detail: 'run verify', storedBody: false });
+  const schema = loadSchema(process.cwd());
+  const { readEntry } = await import('../bin/lib/fsutil.mjs');
+  const srcPath = join(dir, 'sources', '2026-01-01-a.md');
+  const e = readEntry(srcPath);
+  writeEntry(srcPath, e.data, '# A\n\nA paragraph of stored prose.\n', fieldOrder(schema, 'source'));
+  [r] = await refreshVault(dir, { targets: [row()], fetch: changed });
+  assert.equal(r.storedBody, true);
+  [r] = await refreshVault(dir, { targets: [row()], fetch: async () => ({ status: 200, hash: row().content_hash }) });
+  assert.deepEqual(r, { id: '2026-01-01-a', result: 'confirmed' });
+  const prev = process.env.RESEARCH_VAULT_ALLOW_NETWORK;
+  process.env.RESEARCH_VAULT_ALLOW_NETWORK = '1';
+  const out = [];
+  const so = process.stdout.write; process.stdout.write = c => { out.push(String(c)); return true; };
+  try {
+    assert.equal(await run({ vault: dir, id: '2026-01-01-a', json: true, fetch: changed }), 0);
+  } finally {
+    process.stdout.write = so;
+    if (prev === undefined) delete process.env.RESEARCH_VAULT_ALLOW_NETWORK; else process.env.RESEARCH_VAULT_ALLOW_NETWORK = prev;
+  }
+  const parsed = JSON.parse(out.join(''));
+  assert.deepEqual(parsed, [{ id: '2026-01-01-a', result: 'changed', detail: 'run verify', storedBody: true }]);
+});

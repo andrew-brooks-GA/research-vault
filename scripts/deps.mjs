@@ -109,6 +109,8 @@ export const COUPLINGS = [
   ['bin/lib/teach.mjs', 'skills/research-teach/SKILL.md', "SPACING_DAYS as '21 days' and the lesson URL's /lessons/<id>.html path", '/lessons/'],
   ['bin/lib/teach.mjs', 'SECURITY.md', 'ATTEMPT_BODY_MAX, the allowlisted dirs, the exact Host 127.0.0.1:<port> check, and what GET / and /lessons.json read and return', 'ATTEMPT_BODY_MAX'],
   ['bin/commands/refresh.mjs', 'SECURITY.md', 'RESEARCH_VAULT_ALLOW_NETWORK and --dry-run', 'RESEARCH_VAULT_ALLOW_NETWORK'],
+  ['bin/commands/refresh.mjs', 'skills/research-verify/SKILL.md', 'the --json result keys, storedBody among them', 'storedBody'],
+  ['bin/commands/refresh.mjs', 'docs/REFERENCE.md', 'the --json result keys, storedBody among them', 'storedBody'],
   ['bin/commands/export.mjs', 'SECURITY.md', 'the export flag semantics'],
   ['skills/research-teach/LESSON-FORMAT.md', 'test/fixtures/teach/lessons/0001-good.html', 'the single ```html example is byte-identical to the fixture'],
   ['bin/lib/lintrules.mjs', 'scripts/check-encoding.mjs', 'the mojibake regex and the BOM/CR checks are duplicated', '\\u00C3\\u00A2\\u00E2\\u201A\\u00AC'],

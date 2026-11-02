@@ -2,6 +2,9 @@ import { resolveVault } from '../lib/resolve.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { listStale } from '../lib/stale.mjs';
 import { fetchSource } from '../lib/fetchsource.mjs';
+import { join } from 'node:path';
+import { readEntry, TYPE_FOLDER } from '../lib/fsutil.mjs';
+import { isStubBody } from '../lib/advise.mjs';
 
 // Only http(s) source_urls are fetchable. Probe sources (authority_basis: tool-output,
 // e.g. source_url: cli://...) are re-derived locally via the tool-probe verification
@@ -38,7 +41,8 @@ export async function refreshVault(vaultPath, opts = {}) {
       const { status, hash } = await fetch(e.source_url, {});
       if (status >= 400) outcome = { id: e.id, result: 'unreachable', detail: `http ${status}` };
       else if (hash === e.content_hash) outcome = { id: e.id, result: 'confirmed' };
-      else outcome = { id: e.id, result: 'changed', detail: 'run verify' };
+      // storedBody: whether the entry holds text to diff against (spec 27); read for changed results only.
+      else outcome = { id: e.id, result: 'changed', detail: 'run verify', storedBody: !isStubBody(readEntry(join(vaultPath, TYPE_FOLDER.source, `${e.id}.md`)).body) };
     } catch (err) {
       outcome = { id: e.id, result: 'unreachable', detail: err.message };
     }
@@ -60,7 +64,8 @@ export async function run(args) {
     for (const e of targets) process.stdout.write(`would-fetch  ${e.id}  ${e.source_url}\n`);
     return 0;
   }
-  const results = await refreshVault(vaultPath, { targets });
+  const results = await refreshVault(vaultPath, { targets, fetch: typeof args.fetch === 'function' ? args.fetch : undefined });
+  if (args.json) { process.stdout.write(JSON.stringify(results, null, 2) + '\n'); return 0; }
   for (const r of results) process.stdout.write(`${r.result}  ${r.id}${r.detail ? '  (' + r.detail + ')' : ''}\n`);
   return 0;
 }

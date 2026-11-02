@@ -7,7 +7,7 @@ import { loadSchema } from './schema.mjs';
 import { walkEntries, readEntry } from './fsutil.mjs';
 import { verKey } from './ids.mjs';
 
-const isStubBody = body => !(body || '').split('\n').some(l => {
+export const isStubBody = body => !(body || '').split('\n').some(l => {
   const t = l.trim();
   return t && t !== '-' && !t.startsWith('#') && t !== '```';
 });
