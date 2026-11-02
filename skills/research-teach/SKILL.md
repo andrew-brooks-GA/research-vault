@@ -11,7 +11,7 @@ The pedagogy here is adapted from Matt Pocock's `teach` skill (mattpocock/skills
 
 - CLI: `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs"`. Resolve `${CLAUDE_PLUGIN_ROOT}` to an absolute path now; subagents do not inherit it.
 - The repo must be vault-bound (`.research-vault.json`). If it is not, run `init --project` first and set `defaults.topics` to the topic.
-- Format files for the workspace documents live next to this file: `MISSION-FORMAT.md`, `LEARNING-RECORD-FORMAT.md`, `GLOSSARY-FORMAT.md`, `LESSON-FORMAT.md`. The shared lesson components are in `assets/` next to this file.
+- Format files for the workspace documents live next to this file: [MISSION-FORMAT.md](MISSION-FORMAT.md), [PATH-FORMAT.md](PATH-FORMAT.md), [LEARNING-RECORD-FORMAT.md](LEARNING-RECORD-FORMAT.md), [GLOSSARY-FORMAT.md](GLOSSARY-FORMAT.md), [LESSON-FORMAT.md](LESSON-FORMAT.md). The shared lesson components are in `assets/` next to this file.
 
 ## 1. The workspace
 

@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { posix } from 'node:path';
-import { build, context, extract, EXTRACTED, IGNORED } from '../scripts/deps.mjs';
+import { build, context, COUPLINGS, extract, EXTRACTED, IGNORED } from '../scripts/deps.mjs';
 
 const ctx = context();
 
@@ -9,6 +10,16 @@ test('no reference points at something that no longer exists (spec 14)', () => {
   const { broken } = build(ctx);
   const list = broken.map((e) => `  ${e.kind} ${e.from} -> ${e.to}`).join('\n');
   assert.equal(broken.length, 0, `broken edges; update every dependent listed or add the file back:\n${list}`);
+});
+
+test('every COUPLINGS literal is still in both files (spec 14)', () => {
+  for (const [a, b, why, literal] of COUPLINGS) {
+    if (literal === undefined) continue;
+    for (const f of [a, b]) {
+      const text = readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
+      assert.ok(typeof literal === 'string' ? text.includes(literal) : literal.test(text), `${f} no longer contains ${literal} (${a} <-> ${b}: ${why}); move the row to where the literal now is, or update it`);
+    }
+  }
 });
 
 // One input per supported syntax and the edge it must yield. A regex that stops matching one form
@@ -20,6 +31,8 @@ const SAMPLES = [
   ['test/x.test.mjs', "import { build } from '../scripts/deps.mjs';", 'tests', 'scripts/deps.mjs'],
   ['bin/lib/x.mjs', "JSON.parse(readFileSync(join(repoRoot, 'schema', 'taxonomy.json'), 'utf8'))", 'reads', 'schema/taxonomy.json'],
   ['test/x.test.mjs', "read('skills/research-teach/LESSON-FORMAT.md')", 'reads', 'skills/research-teach/LESSON-FORMAT.md'],
+  ['test/x.test.mjs', "readFileSync(join(ROOT, 'hooks', 'hooks.json'), 'utf8')", 'reads', 'hooks/hooks.json'],
+  ['bin/commands/x.mjs', "readFileSync(join(repoRoot, 'vault-template', 'meta', 'entry-skeletons', `${type}.md`))", 'reads', 'vault-template/meta/entry-skeletons/note.md'],
   ['hooks/hooks.json', '"${CLAUDE_PLUGIN_ROOT}/hooks/pre-web.mjs"', 'registers', 'hooks/pre-web.mjs'],
   ['docs/X.md', 'edit `bin/lib/stale.mjs` first', 'documents', 'bin/lib/stale.mjs'],
   ['.github/workflows/ci.yml', '      - run: node scripts/check-encoding.mjs', 'documents', 'scripts/check-encoding.mjs'],
@@ -39,6 +52,7 @@ const SAMPLES = [
   ['commands/x.md', '`research-vault init --refresh-doc`', 'invokes-cli', 'cli:init --refresh-doc'],
   ['docs/X.md', '`research-vault lnt`', 'invokes-cli', 'cli:lnt'],
   ['AGENTS.md', '- `npm run lint:self`: the template lints clean.', 'npm', 'npm:lint:self'],
+  ['AGENTS.md', '- `npm test` (`node --test`): every test passes.', 'npm', 'npm:test'],
 ];
 
 test('every supported reference syntax still yields its edge', () => {
