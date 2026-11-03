@@ -363,6 +363,33 @@ function figureFindings(html, add) {
   });
 }
 
+// Issue 4 (spec 46 D3 rule 2): the Checked task section's read-only verbs per tool (a two-word entry is the
+// verb and the next word), its deny list of first words, and the flags whose value precedes the verb.
+const TASK_READ_ONLY = {
+  kubectl: ['get', 'describe', 'wait', 'logs', 'top', 'events', 'explain', 'diff', 'version', 'api-resources', 'api-versions', 'cluster-info',
+    'auth can-i', 'config view', 'config current-context', 'config get-contexts', 'rollout status', 'rollout history', 'kustomize'],
+  docker: ['ps', 'inspect', 'logs', 'images', 'version', 'info', 'port', 'top', 'diff', 'stats', 'network ls', 'network inspect', 'volume ls', 'volume inspect'],
+  kind: ['get', 'version'],
+};
+const TASK_DENY = ['rm', 'mv', 'cp', 'tee', 'sed', 'mkdir', 'touch', 'chmod', 'chown'];
+const TASK_VALUE_FLAGS = ['-n', '--namespace', '--context', '--kubeconfig', '--host'];
+
+// The offending word of a checker line, or undefined: a disallowed tool verb names the tool, a denied first
+// word names itself, a redirect to a file names `>`. Blind to $(...), [[ a > b ]], heredocs and called scripts.
+function checkMutates(line) {
+  for (const seg of line.split(/\s\|\s|\s\|\|\s|\s&&\s|\s;\s/)) {
+    const words = seg.trim().split(/\s+/).filter((w) => w && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w));
+    while (['sudo', 'timeout', 'time', 'if', '!', 'then', 'do', 'else'].includes(words[0])) words.splice(0, words[0] === 'timeout' ? 2 : 1);
+    const [word, ...rest] = words;
+    if (Object.hasOwn(TASK_READ_ONLY, word)) {
+      const i = rest.findIndex((w, j) => !w.startsWith('-') && !TASK_VALUE_FLAGS.includes(rest[j - 1]));
+      if (i < 0 || !TASK_READ_ONLY[word].some((v) => v === rest.slice(i, i + v.split(' ').length).join(' '))) return word;
+    }
+    if (TASK_DENY.includes(word)) return word;
+    if (/>>?(?!&|>|\s*\/dev\/null\b)/.test(seg.replace(/"[^"]*"|'[^']*'/g, ''))) return '>';
+  }
+}
+
 export function lintLesson(filePath, ctx) {
   const cls = lessonClass(filePath);
   if (!cls) return [];
@@ -488,6 +515,11 @@ export function lintLesson(filePath, ctx) {
       if (!lines.some((l) => l.split(/\s+/).at(-1) === `evidence/${nnnn}/check.sh`)) add('LESSON_TASK_INCOMPLETE', `step has no line ending evidence/${nnnn}/check.sh`);
       if (!order.some((c) => ctx.entries.find((e) => e.id === c)?.type === 'experiment')) add('LESSON_TASK_INCOMPLETE', 'sources cites no experiment');
     }
+    const check = join(ws, 'evidence', nnnn, 'check.sh');
+    if (existsSync(check)) readFileSync(check, 'utf8').split(/\r?\n/).forEach((l, i) => {
+      const word = l.trim() && !l.trim().startsWith('#') && checkMutates(l);
+      if (word) add('WARN_TASK_CHECK_MUTATES', `check.sh line ${i + 1}: ${word}`);
+    });
   }
   return findings;
 }

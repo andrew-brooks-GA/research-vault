@@ -673,3 +673,15 @@ test('a checked task missing a part reports one LESSON_TASK_INCOMPLETE naming it
 test('a project lesson with no script and no check.sh step line has no LESSON_TASK_INCOMPLETE', () => {
   assert.ok(!codes(lintFile(FIX, 'lessons/0006-project-fx.html')).includes('LESSON_TASK_INCOMPLETE'));
 });
+
+// Issue 4 (spec 46 D3 rule 2): WARN_TASK_CHECK_MUTATES is an advisory, one per check.sh line that looks like a write.
+test('a checked task whose check.sh writes reports one WARN_TASK_CHECK_MUTATES per offending line', () => {
+  const dir = checkedTask();
+  writeFileSync(join(dir, 'evidence', '0006', 'check.sh'),
+    '#!/usr/bin/env bash\nkubectl -n teach-0006 delete pod x\necho "FAIL: x, y" >&2\nkubectl get pods | tee out\n');
+  const f = lintFile(dir, 'lessons/0006-project-fx.html');
+  assert.deepEqual(codes(f), ['WARN_TASK_CHECK_MUTATES', 'WARN_TASK_CHECK_MUTATES']);
+  assert.ok(f.every((x) => x.warning));
+  assert.ok(f[0].message.startsWith('check.sh line 2:'), f[0].message);
+  assert.ok(f[1].message.startsWith('check.sh line 4:'), f[1].message);
+});
