@@ -375,3 +375,18 @@ test('lesson.css stacks fact above example from 1100px and gives the fact block 
   assert.match(wide, /\[data-block="fact"\], \[data-block="example"\][^}]*grid-column: 1 \/ -1;/);
   assert.doesNotMatch(css, /\[data-block="fact"\] \{ border-left-color: var\(--c-example\)/);
 });
+
+// Spec 44 D3 and D4: the stylesheet's ::before labels match the format's Blocks table (the coupling row
+// LESSON-FORMAT.md <-> lesson.css had no check), and the reading page links back to the lesson index.
+test('lesson.css labels every block as the format\'s Blocks table says, and the reading page links back to / (spec 44)', () => {
+  const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const css = readFileSync(join(ROOT, 'skills', 'research-teach', 'assets', 'lesson.css'), 'utf8');
+  const format = readFileSync(join(ROOT, 'skills', 'research-teach', 'LESSON-FORMAT.md'), 'utf8');
+  const table = format.split('| Block | Label |')[1].split('\n\n')[0].split('\n').slice(2);
+  const labels = table.map((row) => row.split('|')[2].trim()).filter(Boolean);
+  assert.ok(labels.length >= 14, `labels parsed: ${labels.length}`);
+  for (const label of labels) assert.ok(css.includes(`content: "${label}"`), label);
+  const page = readFileSync(join(ROOT, 'skills', 'research-teach', 'assets', 'reading.html'), 'utf8');
+  assert.match(page, /<a href="\/">Back to the lessons<\/a>/);
+});
+

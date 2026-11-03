@@ -70,7 +70,7 @@ table.progress th { color: var(--muted); font-size: 0.78rem; text-transform: upp
 [data-block="mission"] { border-left-color: var(--c-mission); font-size: 1.08em; }
 [data-block="mission"]::before { content: "why this lesson"; }
 [data-block="fact"] { border-left-color: var(--c-fact); }
-[data-block="fact"]::before { content: "what the lab showed"; }
+[data-block="fact"]::before { content: "what the evidence shows"; }
 [data-block="example"] { border-left-color: var(--c-example); }
 [data-block="example"]::before { content: "the output, read with me"; }
 [data-block="quiz"] { border-left-color: var(--c-quiz); }

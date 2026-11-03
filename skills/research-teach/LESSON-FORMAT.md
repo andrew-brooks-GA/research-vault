@@ -23,7 +23,7 @@ Each block is an element with `data-block="<name>"`, normally a `<section>`. Ord
 | `mission` | why this lesson | lesson, review | One sentence tying the win to `MISSION.md`; in a `concept`, `tool` or `diagnose` lesson one stating the idea, what is true about the subject, in terms allowed before this lesson's `data-introduces` and without naming the new term; then in a shaped lesson one naming the activity ("you will complete the command yourself"). Review and `project` lessons carry no idea sentence. |
 | `predict` | first look | diagnose | One `<pre>` output and a `data-quiz` with one item, asked before the explanation |
 | `model` | the model | concept, tool, diagnose | The mental model: a bridge from a Floor term, at least one `<figure>` diagram, and how the parts relate, with at least one citation anchor in the block (a `source` or `note`, since a model is what the docs say) |
-| `fact` | what the lab showed | concept, diagnose | What the evidence established, by the probe or by the passages the plan lists, one cited claim per `<p>`, two to five `<p>` of one or two sentences each, every `<p>` ending in a citation anchor. Beside an `example` block it is the summary read first; the example is the walkthrough of the same run, so the fact block does not retell it and the model block does not narrate it |
+| `fact` | what the evidence shows | concept, diagnose | What the evidence established, by the probe or by the passages the plan lists, one cited claim per `<p>`, two to five `<p>` of one or two sentences each, every `<p>` ending in a citation anchor. Beside an `example` block it is the summary read first; the example is the walkthrough of the same run, so the fact block does not retell it and the model block does not narrate it |
 | `example` | the output, read with me | tool | The probe's input and verbatim output, cited to its `snippet` and `experiment` |
 | `quiz` | check yourself | concept, diagnose, review | The quiz data block (below) |
 | `complete` | do it yourself | tool | The example's command with one part withheld: one `<pre>` command with `<mark aria-label="withheld">____</mark>` over that part, then one `<pre>` expected output |
@@ -177,7 +177,7 @@ A complete minimal lesson that passes `teach lint`:
 <p>The factor is six, so fx(7) is 42. <a data-cite="2026-01-01-fx-doc">[1]</a></p>
 </section>
 
-<section data-block="fact" aria-label="what the lab showed">
+<section data-block="fact" aria-label="what the evidence shows">
 <p>The body of fx is <code>return n * 6;</code>. <a data-cite="2026-01-01-fx-snippet">[2]</a></p>
 <p>Called with 7, fx returns 42. <a data-cite="2026-01-01-fx-experiment">[3]</a></p>
 </section>
