@@ -1,10 +1,10 @@
 # Reference
 
-The README explains what research-vault is and how to start. This page is for looking things up. It is a command overview with the flags you'll actually reach for. Running `research-vault` with no arguments prints the command list.
+The README explains what research-vault is. This page is for looking things up. It is a command overview with the flags you'll actually reach for. Running `research-vault` with no arguments prints the command list.
 
 ## Scope
 
-research-vault is for *external* facts: documentation, API behaviour, tool-version claims and the decisions you made because of them. It is not a code indexer beyond the comments that cite the vault, and does not replace the agent's view of your repo. Without Node, an agent can still read a vault by globbing and grepping the folders; the CLI is the faster, checked path.
+research-vault is for *external* facts: documentation, API behaviour, tool-version claims and the decisions you made because of them. It is not a code indexer beyond the comments that cite the vault, and does not replace the agent's view of your repo. Without Node, an agent can still read a vault by globbing and grepping the folders; the CLI is the checked path.
 
 ## Where the vault lives
 
@@ -18,12 +18,12 @@ Tooling and vault data are separate by default. The vault is discovered in order
 
 ## Skills and slash commands (Claude Code)
 
-Skills load when a request matches their job; none of them fires for every technical question.
+Each skill's description says when it applies.
 
 | Skill | Job |
 |---|---|
 | `research-vault-usage` | Searching, citing with a freshness check, planning the entries a synthesis needs |
-| `research-capture` | Writing a new entry by hand, with the dedup and conflict-review steps |
+| `research-capture` | Writing a new entry by hand, with the dedup and supersede-not-rename steps |
 | `research-verify` | Walking through re-checking a stale entry |
 | `research-librarian` | Read-only curation guidance |
 | `research-orchestrate` (`/research`) | A fresh research task end to end: vault first, then the web, every finding filed as entries |
@@ -154,12 +154,12 @@ flowchart LR
 
 A project that keeps its own graph (a code dependency map, a Neo4j load, a Graphviz script) does not need the plugin's view of it. Two outputs carry everything, both plain JSON, neither stored in git, so run the command first:
 
-- **The vault graph**: `lint` writes `<vault>/.vault-manifest.json` with `generated`, `entries`, `edges` and `backlinks`. An entry row has `id`, `type`, `title`, `summary`, `domain`, `topics`, `source_url`, `content_hash`, `volatility`, `last_verified`, `status`, `subject`, `series`, `stage`, `state`, `confidence`, `outcome`, `authority_tier`, `authority_basis`, `superseded_by`, `related`, `contributing_ids` and `sources`; an absent field is `null` or `[]`, never missing. An edge is `{ from, rel, to }` with `rel` one of the reference fields above, sorted by `from`, `rel`, `to`. `backlinks` maps an id to the sorted ids that reference it. Bodies are not included: the id is the filename under the type's folder.
+- **The vault graph**: `lint` writes `<vault>/.vault-manifest.json` with `generated`, `entries`, `edges` and `backlinks`. An entry row has `id`, `type`, `title`, `summary`, `domain`, `topics`, `source_url`, `content_hash`, `volatility`, `last_verified`, `status`, `subject`, `series`, `stage`, `state`, `confidence`, `outcome`, `authority_tier`, `authority_basis`, `superseded_by`, `related`, `contributing_ids` and `sources`; an absent field is `null` or `[]`, never missing. An edge is `{ from, rel, to }` with `rel` one of the reference fields above, sorted by `from`, `rel`, `to`. `backlinks` maps an id to the sorted ids that reference it through a backlink-forming field. Bodies are not included: the id is the filename under the type's folder.
 - **The code edges**: `check --json` from the repo root prints `generated`, `summary`, `rows`, `skipped` and, with a `code` block, `versions`. A code row has `file`, `type`, `value`, `symbol`, `line`, `key`, `version`, `status` and, when covered, `id` and `volatility`, plus `reason` when stale; a prose row has `file`, `type`, `value`, `status` and, when covered, `id` and `volatility`. Join a row's `id` to an entry's `id` and the code side of the graph is complete.
 
 These keys are the integration contract: `test/contract.test.mjs` pins them, and a change is a breaking one in the CHANGELOG. `examples/graph-dot.mjs` is the join written out as Graphviz DOT, and `examples/blast-radius.mjs` is the other direction: given the manifest, one entry id and one or more `check --json` outputs, it walks the `sources` and `contributing_ids` edges inward and prints the entries that rest on the id and every row that cites one of them, which is what to re-check when the entry is superseded; [ADOPTING.md](ADOPTING.md) is the ordered walkthrough for a new project.
 
-Two facet tiers keep retrieval clean as a vault grows: **`domain`** is a small controlled set of broad areas (`software-engineering`, `systems-infrastructure`, `data-ml`, `security`, `learning`, `llm-assisted-dev`, `meta`); **`topics`** is freeform and is where specific tech lives.
+Two facet tiers keep retrieval clean as a vault grows: **`domain`** is a small controlled set of broad areas (`software-engineering`, `systems-infrastructure`, `data-ml`, `security`, `learning`, `llm-assisted-dev`, `meta`, `natural-science`, `humanities`, `business-finance`, `health-fitness`, `language-learning`, `arts-crafts`); **`topics`** is freeform and is where specific tech lives.
 
 ## Commands
 
@@ -167,7 +167,7 @@ Run as `node bin/research-vault.mjs <command>` from a clone, or `research-vault 
 
 ```text
 research-vault capture --type source --title "vcluster sleep mode" \
-  --url https://docs.vcluster.com/sleep-mode --domain systems-infrastructure \
+  --url https://example.org/sleep-mode --domain systems-infrastructure \
   --topics kubernetes,vcluster --subject-name vcluster --subject-version 0.20
 research-vault search --topic vcluster
 research-vault verify --id <id> --method refetched-source --result confirmed
