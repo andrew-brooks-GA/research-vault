@@ -23,7 +23,7 @@ Each block is an element with `data-block="<name>"`, normally a `<section>`. Ord
 | `mission` | why this lesson | lesson, review | One sentence tying the win to `MISSION.md`; in a `concept`, `tool` or `diagnose` lesson one stating the idea, what is true about the subject, in terms allowed before this lesson's `data-introduces` and without naming the new term; then in a shaped lesson one naming the activity ("you will complete the command yourself"). Review and `project` lessons carry no idea sentence. |
 | `predict` | first look | diagnose | One `<pre>` output and a `data-quiz` with one item, asked before the explanation |
 | `model` | the model | concept, tool, diagnose | The mental model: a bridge from a Floor term, at least one `<figure>` diagram, and how the parts relate, with at least one citation anchor in the block (a `source` or `note`, since a model is what the docs say) |
-| `fact` | what the lab showed | concept, diagnose | What the probe showed, every `<p>` ending in a citation anchor |
+| `fact` | what the lab showed | concept, diagnose | What the probe established, one cited claim per `<p>`, two to five `<p>` of one or two sentences each, every `<p>` ending in a citation anchor. Beside an `example` block it is the summary read first; the example is the walkthrough of the same run, so the fact block does not retell it and the model block does not narrate it |
 | `example` | the output, read with me | tool | The probe's input and verbatim output, cited to its `snippet` and `experiment` |
 | `quiz` | check yourself | concept, diagnose, review | The quiz data block (below) |
 | `complete` | do it yourself | tool | The example's command with one part withheld: one `<pre>` command with `<mark aria-label="withheld">____</mark>` over that part, then one `<pre>` expected output |
@@ -80,6 +80,8 @@ Draw every figure to these rules. `teach lint` warns on each one it can see; the
 - The `<svg>` carries `role="img"` and its own `aria-label` describing what it shows (`WARN_FIGURE_NO_ALT`).
 
 ## Prose
+
+`fact` comes before `example` in source order and `lesson.css` spans both from 1100px, so the two are stacked at every width and "below" and "above" between them hold.
 
 `teach lint` warns `WARN_LESSON_TIME_WORD` on a paragraph, in any block but `sources` and in a reference doc's `note`, that says `currently`, `recently`, `nowadays`, `at the moment`, `as of now` or `as of today` outside `<pre>` and `<code>`: the page's currency is the vault's `last_verified`, not a word in the prose. The fix is a version or date taken from the cited entry; for a reference doc it lands in the vault note, which is then re-rendered. Advisory, since a quoted source sentence may hold the word.
 

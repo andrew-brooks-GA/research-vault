@@ -25,4 +25,5 @@ test('lesson-reader body reads only the lesson and ends with READS or REVISE', (
   assert.match(fm[2], /VERDICT: READS/);
   assert.match(fm[2], /VERDICT: REVISE/);
   assert.match(fm[2], /Do not comment on whether the facts are true/);
+  assert.match(fm[2], /the model, fact and example blocks tell one story/, 'Thread check reads the three (spec 41)');
 });

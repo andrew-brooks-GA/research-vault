@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- The fact block before the example block (spec 41; issue #50): `lesson.css` spans both from 1100px (only quiz beside step remains in two columns), the fact block takes `--c-fact` again instead of the example's colour (the dead rules at lines 72 to 73 and the override at 108 to 109 folded into one), `LESSON-FORMAT.md` states the fact block's purpose beside an example (the run's short summary, one cited claim per `<p>`, two to five of them, read first; the example is the walkthrough) and that "below" and "above" between the two hold, the reading page says the same, the skill's component note matches, and the lesson-reader's Thread check reads model, fact and example as one story and names a retelling.
 - The mission interview (spec 40; issues #48 and #49): `research-teach` section 2 asks each item as its own turn through the host's question dialog (`AskUserQuestion`, up to four questions per call, never delegated), never a typed list; a term is checked by recognition, one question per term with one correct sentence, plausible wrong ones and `Pass`, under the quiz hygiene rule (position varies, equal length, `Pass` not always last), re-asked when the learner spots a tell; the Floor's `prior-knowledge` record says whether each Known term was recognised or produced; `MISSION-FORMAT.md`'s Floor rule says the same.
 
 ### Added

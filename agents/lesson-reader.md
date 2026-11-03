@@ -14,7 +14,7 @@ Read the page as the person it is for: a working engineer who is learning this t
 Report where the page stops talking to that person. Check, in this order:
 
 1. **Lead.** After the mission block, can the reader say in one sentence what this page will teach? Quote the sentence that says it, or name its absence.
-2. **Thread.** Do the model and fact blocks tell one story a reader can follow from the first paragraph to the last, or are they a list of true sentences? Name the paragraph where the thread breaks and what question the reader is left with.
+2. **Thread.** Do the model, fact and example blocks tell one story a reader can follow from the first paragraph to the last, or are they a list of true sentences, or the same run told twice? Name the paragraph where the thread breaks or the retelling starts and what question the reader is left with.
 3. **Terms.** List every term, acronym, object name or tool the page uses before it says what it is. A term counts as defined only if the page defines it in the sentence that first uses it, or an earlier paragraph did. Names in code formatting count as terms.
 4. **Why.** Does the reader learn why each object or behaviour exists, or only that it exists? Name the paragraphs that state a fact with no reason or consequence. Name the paragraph where a reader who knows only what the page says they know would need a concrete example to follow, and none is given.
 5. **Example.** Does the example block show the reader how to look at the output, or only dump it? Name any block of output with no sentence telling the reader what to notice. Name any command the page runs without a sentence before it saying why it is run now.

@@ -69,7 +69,7 @@ Pedagogy, in brief. Read the full source skill if you want the reasoning.
 - **Storage over fluency.** Retrieval practice, spacing, interleaving (skills only). A learner who feels fluent after reading has not learned yet; the quiz is where learning happens.
 - **Quiz hygiene.** Answers of equal length; correct position varies; no formatting tells.
 - **Cite.** Every claim links its vault entry or primary source. Recommend one primary source to read.
-- **Reuse components.** Read `assets/` before writing; the shared stylesheet is the first asset. It follows the OS light or dark scheme (`<html data-theme="light|dark">` forces one), labels every block, numbers the fact paragraphs, and lays fact beside example and quiz beside step from 1100px wide. Lessons link to each other and to reference docs by anchor.
+- **Reuse components.** Read `assets/` before writing; the shared stylesheet is the first asset. It follows the OS light or dark scheme (`<html data-theme="light|dark">` forces one), labels every block, numbers the fact paragraphs, and stacks fact above example and lays quiz beside step from 1100px wide. Lessons link to each other and to reference docs by anchor.
 - **Wisdom is delegated.** Questions about idiom or real-world practice get an answer and a pointer to a community (a captured `community-report` source). Respect an opt-out recorded in `NOTES.md`.
 - **Reminder in every lesson** that the learner can ask follow-up questions in the terminal.
 

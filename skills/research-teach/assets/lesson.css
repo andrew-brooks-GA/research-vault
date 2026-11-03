@@ -70,7 +70,7 @@ table.progress th { color: var(--muted); font-size: 0.78rem; text-transform: upp
 [data-block="mission"] { border-left-color: var(--c-mission); font-size: 1.08em; }
 [data-block="mission"]::before { content: "why this lesson"; }
 [data-block="fact"] { border-left-color: var(--c-fact); }
-[data-block="fact"]::before { content: "the fact"; }
+[data-block="fact"]::before { content: "what the lab showed"; }
 [data-block="example"] { border-left-color: var(--c-example); }
 [data-block="example"]::before { content: "the output, read with me"; }
 [data-block="quiz"] { border-left-color: var(--c-quiz); }
@@ -105,8 +105,6 @@ figcaption { margin-top: 0.5rem; font-size: 0.85rem; color: var(--muted); }
 .pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 1.25rem; align-items: start; margin: 1rem 0; }
 .pair > figure { margin: 0; }
 dfn { font-style: normal; font-weight: 600; border-bottom: 2px solid var(--c-fact); }
-[data-block="fact"] { border-left-color: var(--c-example); }
-[data-block="fact"]::before { content: "what the lab showed"; }
 [data-block="fact"] > p { padding: 0.6rem 0; margin: 0; border-top: 1px solid var(--rule); }
 [data-block="fact"] > p:first-of-type { border-top: 0; padding-top: 0; }
 
@@ -139,10 +137,10 @@ a[data-cite]:not(.cite):not([href]) { font: 0.75em/1 Inter, system-ui, sans-seri
 .quiz-why:empty { display: none; }
 .quiz-result { font-weight: 600; }
 
-/* Two columns from 1100px: fact beside example, quiz beside step; everything else spans. */
+/* Two columns from 1100px: quiz beside step; everything else spans, fact above example. */
 @media (min-width: 1100px) {
   body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 1.5rem; padding: 2.5rem 2rem 4rem; }
-  h1, .lesson-nav, [data-block="prereq"], [data-block="mission"], [data-block="model"], [data-block="sources"], [data-block="followup"], [data-block="note"], [data-block="complete"], [data-block="predict"], [data-block="connect"], [data-block="scaffold"], [data-block="index"], [data-block="reference-index"], [data-block="progress"], [data-block="timeline"] { grid-column: 1 / -1; }
+  h1, .lesson-nav, [data-block="prereq"], [data-block="mission"], [data-block="model"], [data-block="fact"], [data-block="example"], [data-block="sources"], [data-block="followup"], [data-block="note"], [data-block="complete"], [data-block="predict"], [data-block="connect"], [data-block="scaffold"], [data-block="index"], [data-block="reference-index"], [data-block="progress"], [data-block="timeline"] { grid-column: 1 / -1; }
   /* Command output keeps its columns; a wide table scrolls inside its own block instead of wrapping. */
   pre { white-space: pre; overflow-x: auto; font-size: 0.76rem; }
   .pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }

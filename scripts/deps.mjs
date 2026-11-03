@@ -105,6 +105,7 @@ export const COUPLINGS = [
   ['bin/lib/lesson.mjs', 'test/fixtures/teach/lessons/0005-diagnose-fx.html', 'the shape table: the diagnose fixture (predict with one item) lints clean against SHAPES; its plan has an Elements part', 'data-shape'],
   ['bin/lib/lesson.mjs', 'test/fixtures/teach/lessons/0006-project-fx.html', 'the shape table: the project fixture (an optional scaffold, then step) lints clean against SHAPES; its plan has an Elements part', 'data-shape'],
   ['skills/research-teach/LESSON-FORMAT.md', 'skills/research-teach/assets/lesson.css', "the block label list: the Blocks table's Label column is each block's ::before content"],
+  ['skills/research-teach/LESSON-FORMAT.md', 'skills/research-teach/assets/lesson.css', 'fact and example span from 1100px, so the format may say below and above between them', '1100px'],
   ['skills/research-teach/assets/reading.html', 'skills/research-teach/LESSON-FORMAT.md', 'the reading page explains every label of the Blocks table, one data-block section per label', 'say it back'],
   ['bin/lib/teach.mjs', 'skills/research-teach/assets/reading.html', 'indexHtml links the reading page at /assets/reading.html by its title', 'How to read a lesson'],
   ['skills/research-teach/assets/quiz.js', 'skills/research-teach/assets/reading.html', 'the navigation bar links the reading page at /assets/reading.html as How to read', 'How to read'],

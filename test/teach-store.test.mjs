@@ -367,3 +367,11 @@ test('the reading page exists, links lesson.css, and explains every label of the
   const html = indexHtml('test/fixtures/teach');
   assert.ok(html.indexOf('<a href="/assets/reading.html">How to read a lesson</a>') < html.indexOf('<section data-block="index">'));
 });
+
+test('lesson.css stacks fact above example from 1100px and gives the fact block its own colour (spec 41)', () => {
+  const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const css = readFileSync(join(ROOT, 'skills', 'research-teach', 'assets', 'lesson.css'), 'utf8');
+  const wide = css.split('@media (min-width: 1100px)')[1].split('\n}')[0];
+  assert.match(wide, /\[data-block="fact"\], \[data-block="example"\][^}]*grid-column: 1 \/ -1;/);
+  assert.doesNotMatch(css, /\[data-block="fact"\] \{ border-left-color: var\(--c-example\)/);
+});
