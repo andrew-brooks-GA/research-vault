@@ -600,3 +600,17 @@ test('proseMetrics counts paragraphs, sentences, average and longest per prose b
   const onlyFirst = (() => { const copy = copyFixture(); writeFileSync(join(copy, 'lessons', '0001-good.html'), good.replace(/<section data-block="model" aria-label="the model">[\s\S]*?<\/section>/, '<section data-block="model" aria-label="the model"><p>One two three. Four five! Six <code>skipped words here</code>seven eight nine? Ten<pre>not counted at all</pre></p></section>')); return proseMetrics(copy).find((r) => r.file === 'lessons/0001-good.html' && r.block === 'model'); })();
   assert.deepEqual([onlyFirst.paragraphs, onlyFirst.sentences, onlyFirst.longest, onlyFirst.avg], [1, 3, 4, 3]);
 });
+
+// Spec 42 D4: a document-claims lesson (fact cites a source only, plan says `none: document claims`) lints clean; no rule requires a snippet or an experiment.
+test('a fact block citing only a source, with a plan whose probe part is none, lints clean (spec 42)', () => {
+  const dir = copyFixture();
+  const rel = 'lessons/0005-diagnose-fx.html';
+  const path = join(dir, rel);
+  writeFileSync(path, readFileSync(path, 'utf8')
+    .replace('<p>The body of fx is <code>return n * 6;</code>. <a data-cite="2026-01-01-fx-snippet">[2]</a></p>', '<p>The reference says fx returns six times its input. <a data-cite="2026-01-01-fx-doc">[1]</a></p>')
+    .replace('<p>Called with 7, fx returns 42. <a data-cite="2026-01-01-fx-experiment">[3]</a></p>', '<p>Its worked example gives 42 for 7. <a data-cite="2026-01-01-fx-doc">[1]</a></p>')
+    .replace(/<li><a data-cite="2026-01-01-fx-(snippet|experiment)">[^<]*<\/a><\/li>\n/g, ''));
+  const plan = join(dir, 'evidence', '0005', 'PLAN.md');
+  writeFileSync(plan, readFileSync(plan, 'utf8').replace('Run fx with 7; output 42 supports both claims.', 'none: document claims\n- both claims: 2026-01-01-fx-doc, "fx returns six times its input; fx(7) is 42".'));
+  assert.deepEqual(codes(lintFile(dir, rel)), []);
+});

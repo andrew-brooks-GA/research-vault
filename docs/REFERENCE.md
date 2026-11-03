@@ -29,7 +29,7 @@ Skills load when a request matches their job; none of them fires for every techn
 | `research-orchestrate` (`/research`) | A fresh research task end to end: vault first, then the web, every finding filed as entries |
 | `research-authoring` | Fires when a citation is about to land in prose you're writing in a vault-bound repo |
 | `research-review` | Auditing an existing document or corpus against the vault |
-| `research-teach` | Teaching a topic over sessions: resources and facts in the vault, probed evidence, lessons in one of four shapes (`concept`, `tool`, `diagnose`, `project`) checked by `teach lint`, read by a fresh `lesson-reader` agent, then gated by a fresh `claims-reviewer` agent, quiz attempts recorded by a local quiz server (`teach serve`) |
+| `research-teach` | Teaching a topic over sessions: resources and facts in the vault, evidence probed or read from stored sources, lessons in one of four shapes (`concept`, `tool`, `diagnose`, `project`), plus review lessons, checked by `teach lint`, read by a fresh `lesson-reader` agent, then gated by a fresh `claims-reviewer` agent, quiz attempts recorded by a local quiz server (`teach serve`) |
 | `research-claims-gate` | Gating a draft that cites the vault: derives the evidence list, dispatches one fresh `research-vault:claims-reviewer`, records the verdict in the claims ledger |
 
 Slash commands, all under `/research-vault:`: `research-init`, `research-search`, `research-related`, `research-lint`, `research-compile`, `research-obsidian`, `research`. Every skill is also `/research-vault:<name>` (for example `/research-vault:research-capture`).
