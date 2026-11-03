@@ -87,6 +87,14 @@ In Claude Code you mostly just talk. The plugin's skills load when a request mat
 
 Each of these is also a slash command. All but the research workflow are plain CLI calls too.
 
+## Learning something
+
+This section is for someone learning a topic rather than building software, and it assumes Claude Code. You need Node 22 or newer; the four install lines above are typed into Claude Code, and the last of them prints a `RESEARCH_VAULT_PATH` line to add to your shell profile so later sessions find your vault.
+
+Start Claude Code in a project folder (a repo) you want the lessons kept in and say "teach me X". The agent binds the folder to your vault itself, then asks an interview as multiple-choice questions in its dialog, one per term or tool it needs to know about, in groups of up to four, and writes a mission and a path of lessons from your answers. Each lesson is a web page served on your own machine, with an index of every lesson and a navigation bar. Concept, diagnose and review lessons carry a quiz; answered on the served page, it records your score. Every lesson reminds you that questions about the page go back to the terminal, where the agent answers them.
+
+Claude Code runs in a terminal (our framing of the install steps, not a rule the tool states), so opening one and starting Claude Code is the first step for everyone.
+
 ## How a vault is organized
 
 Captured pages go in `sources/`, your take on them in `notes/`, and conclusions drawn across several notes in `synthesis/`. Code fragments, trial runs and open questions have folders of their own.
