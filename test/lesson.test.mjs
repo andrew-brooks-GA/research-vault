@@ -614,3 +614,14 @@ test('a fact block citing only a source, with a plan whose probe part is none, l
   writeFileSync(plan, readFileSync(plan, 'utf8').replace('Run fx with 7; output 42 supports both claims.', 'none: document claims\n- both claims: 2026-01-01-fx-doc, "fx returns six times its input; fx(7) is 42".'));
   assert.deepEqual(codes(lintFile(dir, rel)), []);
 });
+
+// Spec 43 D5: a project lesson whose check is not a command (its step states the result in prose, no <pre>) lints clean.
+test('a project step with no command, its result in prose, lints clean (spec 43)', () => {
+  const dir = copyFixture();
+  const rel = 'lessons/0006-project-fx.html';
+  const path = join(dir, rel);
+  writeFileSync(path, readFileSync(path, 'utf8').replace(
+    '<p>Run the check. You should see <code>30</code> printed.</p>\n<pre><code>node -e "console.log(fx(5))"</code></pre>',
+    '<p>Write your prediction for fx(5) beside the number fx printed; the check passes when both are 30.</p>'));
+  assert.deepEqual(codes(lintFile(dir, rel)), []);
+});

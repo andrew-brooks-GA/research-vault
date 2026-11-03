@@ -28,7 +28,7 @@ Each block is an element with `data-block="<name>"`, normally a `<section>`. Ord
 | `quiz` | check yourself | concept, diagnose, review | The quiz data block (below) |
 | `complete` | do it yourself | tool | The example's command with one part withheld: one `<pre>` command with `<mark aria-label="withheld">____</mark>` over that part, then one `<pre>` expected output |
 | `scaffold` | do it yourself | project | A completion task in the `complete` form over the reference solution |
-| `step` | do it yourself | tool, project | One real-world action, the command to run, and the observable result |
+| `step` | do it yourself | tool, project | One real-world action and its observable result, with the command to run when the action is one; a step with no command states its expected result, and what a mismatch means, in prose, never in a `<pre>` |
 | `connect` | say it back | concept | The terminal prompt: say how the new term relates to two terms you already hold |
 | `sources` | sources | lesson, review, reference | The vault ids cited, with one marked `(recommended read)`; source anchors carry `href` (Citation anchors) |
 | `followup` | follow up | lesson, review | Exactly the sentence `You can ask follow-up questions in the terminal.`, after one sentence stating the win now held |
@@ -47,7 +47,7 @@ A lesson declares its shape with `data-shape` on the `<body>`. The frame is the 
 | `concept` | a term set and the model behind it | `model`, `fact`, `quiz`, `connect`; `example` and `step` optional | a quiz whose wrong options are nameable misreadings, then `connect` |
 | `tool` | one tool: what it is, one command, how to read its output | `model`, `example`, `complete`, `step`; `quiz` optional | `complete`, the worked command with one part withheld, then the unaided `step` |
 | `diagnose` | reading output and deciding what it means | `predict`, `model`, `fact`, `quiz`; `step` optional | `predict`, one question on the output before the explanation; quiz lures are the misreadings |
-| `project` | a whole task that needs several earlier lessons at once | `scaffold` on the mission's first project, then `step` | the task itself; `step` is the check command and its expected output, and the learner's run is the attempt |
+| `project` | a whole task that needs several earlier lessons at once | `scaffold` on the mission's first project, then `step` | the task itself; `step` is the check that proves the goal, a command and its expected output or the answer or artefact the learner shows, and the learner's run is the attempt |
 
 The idea sentence in `mission` is the page's lead: what the reader can say the page teaches after the mission block, distinct from the win (what they can do afterwards) and the activity (what they do on the page).
 
@@ -58,7 +58,7 @@ Review lessons keep their own list (Review lessons) and ignore `data-shape`.
 - In `complete`, the command with the withheld part filled must be a command the `example` block ran (a `$ ` line there); the lint reads the mark as any text. A `complete` block whose command does not match, or that has no `<pre>` holding the mark, is `LESSON_COMPLETE_NOT_WORKED`.
 - `predict` holds a `<pre>` output and a `<script type="application/json" data-quiz>` with exactly one item; anything else is `LESSON_PREDICT_INVALID`. The item's question, options and whys are prose for the term rule (Terms), so they use only terms allowed before this lesson's `data-introduces`. The widget merges the item into the lesson's one attempt as item 0, before the quiz items: one answers list, one POST, one score on `/progress`.
 - `connect` is a prompt answered in the terminal, not a quiz item: the skill judges the answer in conversation and records an understanding record when it holds.
-- A `project` lesson's `mission` states the goal as the mission criterion it serves and the observable result that proves it; `prereq` names the lessons it assumes and nothing else; `step` is the check command whose output proves the goal, stated exactly as the reference run's Result quotes it; `sources` links the reference solution's snippet instead of printing it. `scaffold` belongs on the mission's first project; a later project carries one only when its plan says why. The learner's run is the attempt, recorded with `teach attempt add --lesson <id> --result pass|fail`.
+- A `project` lesson's `mission` states the goal as the mission criterion it serves and the observable result that proves it; `prereq` names the lessons it assumes and nothing else; `step` is the check that proves the goal: a command and its output, stated exactly as the reference run's Result quotes it, or the answer or artefact the learner shows, stated in prose; `sources` links the reference solution's snippet, when there is one, instead of printing it. `scaffold` belongs on the mission's first project; a later project carries one only when its plan says why. The learner's run is the attempt, recorded with `teach attempt add --lesson <id> --result pass|fail`.
 
 ## Terms
 
@@ -94,7 +94,7 @@ Draw every figure to these rules. `teach lint` warns on each one it can see; the
 A lesson runs only tools the learner already has. `teach lint` reads every command the lesson runs and reports `LESSON_TOOL_NOT_INTRODUCED` for a tool that is neither listed under `## Known tools` in `MISSION.md` nor declared by `data-teaches` on this or an earlier lesson. A tool is the first word of a command, or of each `|`, `&&` or `;` segment, after any `VAR=value` prefixes.
 
 - In `example`, a command is a `<pre>` line starting with `$ `; the lines after it are its output. Put one command and its output in each `<pre>`, with a one-sentence `<p>` before it saying what to look at.
-- In `step`, every non-empty, non-comment `<pre>` line is a command.
+- In `step`, every non-empty, non-comment `<pre>` line is a command, so a step with no command keeps its expected result out of `<pre>`, or its first words are read as tools.
 - A lesson that introduces a tool declares it with `data-teaches` and spends its win on that tool (what it is, one command, how to read the output). The next lesson may use it as evidence.
 - With no `## Known tools` section the rule cannot run and `teach lint` warns `WARN_MISSION_KNOWN_TOOLS_MISSING`.
 

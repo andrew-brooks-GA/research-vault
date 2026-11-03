@@ -19,7 +19,7 @@
 
 ## Floor
 ### Known tools
-- {One tool per bullet the learner runs daily, e.g. kubectl. Lessons may run only these and the tools earlier lessons taught}
+- {One tool per bullet the learner runs daily, e.g. kubectl or a spreadsheet. Lessons may run only these and the tools earlier lessons taught}
 ### Known terms
 - {One term per bullet the learner defined correctly in the interview, e.g. Service and Endpoints}
 ### New to me
