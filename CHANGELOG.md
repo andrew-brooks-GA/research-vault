@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- Spec 46 (`docs/specs/46-task-based-examination.md`): a review and design for task-based examination in `research-teach`, a checked task on the project lesson (`setup.sh`, `check.sh`, `solution.sh` under the evidence folder, validated fresh-fails and solved-passes by the probe run and the claims gate, opted into through the interview's depth item and a `Task environment:` bullet in `MISSION.md`); method grading out of scope for want of evidence; no code in this pass.
 - The `connect` block states the prompt only: LESSON-FORMAT, the research-teach skill and the reading page say the page names the two terms and never the relation or a sentence to check against, and the skill judges the learner's terminal sentence against the plan's Fact (a lesson that printed the answer under the prompt made the say-it-back a read instead of a retrieval).
 
 ## [0.10.0] - 2026-11-03
