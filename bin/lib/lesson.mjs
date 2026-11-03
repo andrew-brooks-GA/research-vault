@@ -477,6 +477,18 @@ export function lintLesson(filePath, ctx) {
     else if (!existsSync(plan)) add('EVIDENCE_PLAN_MISSING', `evidence/${basename(ev)}/ has no PLAN.md`);
     else if (shape && !/^#{1,6}\s+elements\b/im.test(readFileSync(plan, 'utf8'))) add('LESSON_PLAN_NO_ELEMENTS', `evidence/${basename(ev)}/PLAN.md has no Elements part`);
   }
+  // Issue 3 (spec 46 D4): a checked task is three scripts, a step line ending evidence/NNNN/check.sh and an
+  // experiment in sources; a script or a step line naming check.sh makes the lesson one, and each missing part is a finding.
+  if (shape === 'project') {
+    const nnnn = basename(filePath).slice(0, 4);
+    const scripts = ['setup.sh', 'check.sh', 'solution.sh'].filter((s) => !existsSync(join(ws, 'evidence', nnnn, s)));
+    const lines = preLines(blocks.get('step')?.html ?? '').filter((l) => l && !l.startsWith('#'));
+    if (scripts.length < 3 || lines.some((l) => l.includes('check.sh'))) {
+      for (const s of scripts) add('LESSON_TASK_INCOMPLETE', `evidence/${nnnn}/${s} is missing`);
+      if (!lines.some((l) => l.split(/\s+/).at(-1) === `evidence/${nnnn}/check.sh`)) add('LESSON_TASK_INCOMPLETE', `step has no line ending evidence/${nnnn}/check.sh`);
+      if (!order.some((c) => ctx.entries.find((e) => e.id === c)?.type === 'experiment')) add('LESSON_TASK_INCOMPLETE', 'sources cites no experiment');
+    }
+  }
   return findings;
 }
 
