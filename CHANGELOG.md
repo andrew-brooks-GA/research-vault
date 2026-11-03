@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-03
+
 ### Changed
 - Six non-software domains in the vocabulary, `natural-science`, `humanities`, `business-finance`, `health-fitness`, `language-learning` and `arts-crafts` (the all-learners preamble's noted gap): a source on a treaty or a mortgage no longer has to file under `learning` or `meta`; an existing vault takes them with `init --refresh-docs`.
 - Advisory `WARN_FIGURE_TEXT_OVERFLOW` (issue #55): a figure label whose estimated width (characters times font size times 0.5, placed by `text-anchor`) passes the edge of the `<rect>` holding it, or the viewBox with no such rect, is named in one finding per figure; a label already over `FIGURE_LABEL_MAX` is reported by `WARN_FIGURE_LABEL_LONG` alone; the format's figure rules name it.
