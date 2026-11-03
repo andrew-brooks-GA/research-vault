@@ -27,6 +27,7 @@
 
 ## Constraints
 - {Time, budget, prior commitments, learning preferences, anything that bounds the approach}
+- Task environment: {kind on this machine, a cluster I can reset; written only when the depth answer was "do it unaided" and the learner named one}
 
 ## Out of scope
 - {Adjacent topics the user explicitly does not want to chase right now, protecting the zone of proximal development}
