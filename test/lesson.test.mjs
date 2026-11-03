@@ -389,6 +389,8 @@ test('figure warnings: each fires on its own svg, once per figure, and not on th
     WARN_FIGURE_LABEL_LONG: (h) => h.replace('>6n</text>', '>6n<tspan>, which is the input value scaled by a factor of six</tspan></text>'),
     WARN_FIGURE_COLOR: (h) => h.replace('fill="none" stroke="currentColor"', 'fill="none" stroke="#c00"'),
     WARN_FIGURE_NO_ALT: (h) => h.replace(' role="img"', ''),
+    // Spec issue #55: 'the function fx' is 15 characters at 14 units, about 105 wide centred at x=100 in a 60-wide rect.
+    WARN_FIGURE_TEXT_OVERFLOW: (h) => h.replace('>fx</text>', '>the function fx</text>'),
   };
   for (const [code, edit] of Object.entries(cases)) {
     writeFileSync(join(dir, 'lessons', '0001-good.html'), edit(good));
@@ -397,6 +399,11 @@ test('figure warnings: each fires on its own svg, once per figure, and not on th
     assert.deepEqual(codes(f), [code], code);
     assert.ok(f[0].warning && f[0].message.startsWith('figure 1: '), code);
   }
+  // Issue #56: a pair with the paragraph before the figure cannot wrap (the good lesson's figure wrapped in a pair after a <p>); figure first is clean.
+  writeFileSync(join(dir, 'lessons', '0001-good.html'), good.replace(/(<figure>[\s\S]*?<\/figure>)/, '<div class="pair"><p>The figure.</p>$1</div>'));
+  assert.deepEqual(codes(lintFile(dir, 'lessons/0001-good.html')), ['WARN_PAIR_FIGURE_LAST']);
+  writeFileSync(join(dir, 'lessons', '0001-good.html'), good.replace(/(<figure>[\s\S]*?<\/figure>)/, '<div class="pair">$1<p>The figure.</p></div>'));
+  assert.deepEqual(codes(lintFile(dir, 'lessons/0001-good.html')), []);
   // Labels resolve their size through an ancestor's font-size; no font-size anywhere is unknown and warns.
   const grouped = good.replace(svg, (m) => m.replace(/ font-size="14"/g, '').replace('<rect', '<g font-size="16"><rect').replace('</svg>', '</g></svg>'));
   writeFileSync(join(dir, 'lessons', '0001-good.html'), grouped);

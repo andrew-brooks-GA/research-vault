@@ -64,8 +64,7 @@ table.progress th { color: var(--muted); font-size: 0.78rem; text-transform: upp
 
 /* Blocks: one labelled card per data-block. */
 [data-block] { position: relative; margin: 0; padding: 2rem 1.4rem 1.2rem; background: var(--card); border: 1px solid var(--rule); border-left: 5px solid #ccc; border-radius: 10px; min-width: 0; }
-/* Prose keeps a 65ch measure inside any block; a figure is not prose and spans. */
-[data-block] :is(p, ul, ol) { max-width: 65ch; }
+/* Prose fills its block at every width (the learner's call, 2026-11-03, over the measure spec 22 set). */
 [data-block]::before { content: attr(data-block); position: absolute; top: 0.65rem; left: 1.4rem; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 [data-block="mission"] { border-left-color: var(--c-mission); font-size: 1.08em; }
 [data-block="mission"]::before { content: "why this lesson"; }
@@ -101,7 +100,7 @@ figure { margin: 1rem 0; padding: 1rem; background: var(--code-bg); border-radiu
 figure svg { display: block; width: 100%; height: auto; min-width: 27.5rem; color: var(--ink); }
 figure img { max-width: 100%; height: auto; }
 figcaption { margin-top: 0.5rem; font-size: 0.85rem; color: var(--muted); }
-/* Pair: a paragraph and the figure it explains, side by side from 1100px; a figure outside a pair spans. */
+/* Pair: a paragraph and the figure it explains; from 1100px the figure floats right with a buffer and the text wraps around it; a figure outside a pair spans. */
 .pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 1.25rem; align-items: start; margin: 1rem 0; }
 .pair > figure { margin: 0; }
 dfn { font-style: normal; font-weight: 600; border-bottom: 2px solid var(--c-fact); }
@@ -143,7 +142,9 @@ a[data-cite]:not(.cite):not([href]) { font: 0.75em/1 Inter, system-ui, sans-seri
   h1, .lesson-nav, [data-block="prereq"], [data-block="mission"], [data-block="model"], [data-block="fact"], [data-block="example"], [data-block="sources"], [data-block="followup"], [data-block="note"], [data-block="complete"], [data-block="predict"], [data-block="connect"], [data-block="scaffold"], [data-block="index"], [data-block="reference-index"], [data-block="progress"], [data-block="timeline"] { grid-column: 1 / -1; }
   /* Command output keeps its columns; a wide table scrolls inside its own block instead of wrapping. */
   pre { white-space: pre; overflow-x: auto; font-size: 0.76rem; }
-  .pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .pair { display: block; }
+  .pair::after { content: ""; display: table; clear: both; }
+  .pair > figure { float: right; width: 45%; margin: 0 0 1rem 1.5rem; }
 }
 @media (max-width: 600px) {
   body { font-size: 16px; padding: 1.25rem 1rem 3rem; }

@@ -68,14 +68,14 @@ A lesson uses only terms the learner already has. The workspace tracks every ter
 
 `model` comes before `fact`. It opens with a bridge from something in the Floor ("an Ingress split into three objects with three owners"), draws the parts in a `<figure>` (inline SVG, with a `<figcaption>`), and says, in a paragraph or two you would say aloud at a whiteboard, how they relate and why each exists. Citations go at the end of the block, not on every paragraph; at least one must be a `source` or `note`, or `teach lint` warns `WARN_MODEL_LAB_ONLY`. A model with no figure is `LESSON_MODEL_NO_FIGURE` unless the block carries `data-no-figure` and `PLAN.md` says why.
 
-One figure per idea. Parts the prose uses separately get their own small figure; parts the learner must compare stay in one figure. Put each figure beside the paragraph it illustrates in a pair, `<div class="pair"><p>…</p><figure>…</figure></div>`, which the stylesheet lays out as two columns on a wide screen and stacks on a narrow one. A figure outside a pair spans the block.
+One figure per idea. Parts the prose uses separately get their own small figure; parts the learner must compare stay in one figure. Put each figure with the paragraph it illustrates in a pair, the figure first, `<div class="pair"><figure>…</figure><p>…</p></div>`, which the stylesheet floats right on a wide screen so the paragraph wraps around it, and stacks above the paragraph on a narrow one (a pair with the paragraph first is `WARN_PAIR_FIGURE_LAST`: the float wraps only what follows it). A figure outside a pair spans the block.
 
 Draw every figure to these rules. `teach lint` warns on each one it can see; the warnings are advisory.
 
 - The `<svg>` carries `viewBox` and no `width` or `height` attribute (`WARN_FIGURE_FIXED_SIZE`): the stylesheet sizes the figure to its column, and a figure narrower than its minimum width scrolls sideways instead of shrinking.
 - The viewBox is at most 440 units wide (`WARN_FIGURE_VIEWBOX_WIDE`), so one unit draws at about one pixel at the figure's minimum width.
 - Every label is at least 14 units (`WARN_FIGURE_LABEL_SMALL`). The lint reads the nearest `font-size` attribute on the `<text>` or an ancestor; a size set only by `style` or a class is unknown and warns.
-- A label names a part; the paragraph beside the figure explains it. A label is at most 40 characters, counting its `<tspan>`s (`WARN_FIGURE_LABEL_LONG`).
+- A label names a part; the paragraph beside the figure explains it. A label is at most 40 characters, counting its `<tspan>`s (`WARN_FIGURE_LABEL_LONG`), and fits the shape it sits in: a label whose estimated width (characters times font size times 0.5, placed by `text-anchor`) passes the edge of the `<rect>` holding it, or the viewBox with no such rect, is `WARN_FIGURE_TEXT_OVERFLOW`; widen the box, shorten the label or break the line.
 - Every `fill` and `stroke` is `currentColor`, `none` or `var(--muted)` (`WARN_FIGURE_COLOR`), so the figure follows the theme and keeps its contrast.
 - The `<svg>` carries `role="img"` and its own `aria-label` describing what it shows (`WARN_FIGURE_NO_ALT`).
 

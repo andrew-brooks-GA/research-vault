@@ -390,3 +390,12 @@ test('lesson.css labels every block as the format\'s Blocks table says, and the 
   assert.match(page, /<a href="\/">Back to the lessons<\/a>/);
 });
 
+// Issue #56: prose fills its block (no 65ch measure) and a paired figure floats right from 1100px.
+test('lesson.css has no prose measure and floats a paired figure from 1100px (issue #56)', () => {
+  const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const css = readFileSync(join(ROOT, 'skills', 'research-teach', 'assets', 'lesson.css'), 'utf8');
+  assert.ok(!css.includes('65ch'), 'no 65ch measure');
+  const wide = css.split('@media (min-width: 1100px)')[1].split('@media')[0];
+  assert.match(wide, /\.pair > figure \{ float: right; width: 45%; margin: 0 0 1rem 1\.5rem; \}/);
+  assert.match(wide, /\.pair::after \{ content: ""; display: table; clear: both; \}/);
+});

@@ -308,6 +308,12 @@ function completeFindings(blocks, add) {
 
 // Spec 22 D4: advisory checks on each inline <svg> in a <figure>, one finding per code per figure.
 // A label's size is the nearest font-size attribute on the <text> or an ancestor; none is unknown and warns.
+// Issue #56: a float wraps only the content after it, so a pair puts its figure first; a paragraph-first pair is advisory.
+function pairFindings(html, add) {
+  const late = [...html.matchAll(/<div\b[^>]*\bclass\s*=\s*(["'])pair\1[^>]*>([\s\S]*?)<\/div>/gi)].filter((m) => { const p = m[2].search(/<p\b/i); const f = m[2].search(/<figure\b/i); return p !== -1 && f !== -1 && p < f; }).length;
+  if (late) add('WARN_PAIR_FIGURE_LAST', `${late} pair(s) put the paragraph before the figure; put the figure first so the text wraps around it on a wide screen`);
+}
+
 function figureFindings(html, add) {
   [...html.matchAll(/<figure\b[\s\S]*?<\/figure>/gi)].flatMap((f) => [...f[0].matchAll(/<svg\b([^>]*)>([\s\S]*?)<\/svg>/gi)]).forEach((svg, i) => {
     const [, attrs, inner] = svg;
@@ -320,6 +326,9 @@ function figureFindings(html, add) {
     const colors = new Set();
     const small = [];
     const long = [];
+    const overflow = [];
+    // ponytail: text width is estimated as characters x font size x 0.5 (an average sans-serif advance; 0.55 flagged a label that fits), no font metrics; a real measure needs a renderer.
+    const rects = [...inner.matchAll(/<rect\b([^>]*)>/gi)].map((r) => ({ x: parseFloat(at(r[1], 'x')) || 0, y: parseFloat(at(r[1], 'y')) || 0, w: parseFloat(at(r[1], 'width')), h: parseFloat(at(r[1], 'height')) })).filter((r) => r.w > 0 && r.h > 0);
     const stack = [attrs];
     for (const t of inner.matchAll(/<(\/?)([a-z][\w:-]*)\b([^>]*?)(\/?)>/gi)) {
       const [, close, tag, a, self] = t;
@@ -331,6 +340,17 @@ function figureFindings(html, add) {
         const end = inner.indexOf('</text>', t.index);
         const label = unescapeHtml(textOf(inner.slice(t.index, end === -1 ? undefined : end)));
         if (label.length > FIGURE_LABEL_MAX) long.push(label.length);
+        else {
+          const tx = parseFloat(at(a, 'x')); const ty = parseFloat(at(a, 'y')); const fs = parseFloat(size);
+          if (Number.isFinite(tx) && Number.isFinite(ty) && Number.isFinite(fs)) {
+            const w = label.length * fs * 0.5;
+            const anchor = [a, ...stack.slice().reverse()].map((x) => at(x, 'text-anchor')).find((x) => x !== undefined);
+            const left = anchor === 'middle' ? tx - w / 2 : anchor === 'end' ? tx - w : tx;
+            const box = rects.find((r) => tx >= r.x && tx <= r.x + r.w && ty >= r.y && ty <= r.y + r.h);
+            const [lo, hi] = box ? [box.x + 4, box.x + box.w - 4] : [0, vbw];
+            if (left < lo || left + w > hi) overflow.push(label);
+          }
+        }
       }
       if (!self) stack.push(a);
     }
@@ -338,6 +358,7 @@ function figureFindings(html, add) {
     const bad = [...colors].filter((c) => !/^\s*(currentColor|none|var\(--muted\))\s*$/i.test(c));
     if (bad.length) add('WARN_FIGURE_COLOR', `${n}: fill or stroke ${bad.join(', ')}; use currentColor, none or var(--muted)`);
     if (small.length) add('WARN_FIGURE_LABEL_SMALL', `${n}: ${small.length} label(s) under ${FIGURE_LABEL_MIN} units or of unknown size (${[...new Set(small)].join(', ')})`);
+    if (overflow.length) add('WARN_FIGURE_TEXT_OVERFLOW', `${n}: ${overflow.length} label(s) estimated wider than the shape holding them (${overflow.map((l) => `"${l}"`).join(', ')}); widen the box, shorten the label or break the line`);
     if (long.length) add('WARN_FIGURE_LABEL_LONG', `${n}: ${long.length} label(s) over ${FIGURE_LABEL_MAX} characters (longest ${Math.max(...long)}); a label names, the paragraph explains`);
   });
 }
@@ -400,6 +421,7 @@ export function lintLesson(filePath, ctx) {
     }
   }
   figureFindings(raw, add);
+  pairFindings(raw, add);
   for (const href of new Set(links)) {
     if (!linkResolves(ws, dirname(filePath), href)) add('LESSON_LINK_DANGLING', `href ${href} does not resolve`);
   }
