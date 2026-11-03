@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The mission interview (spec 40; issues #48 and #49): `research-teach` section 2 asks each item as its own turn through the host's question dialog (`AskUserQuestion`, up to four questions per call, never delegated), never a typed list; a term is checked by recognition, one question per term with one correct sentence, plausible wrong ones and `Pass`, under the quiz hygiene rule (position varies, equal length, `Pass` not always last), re-asked when the learner spots a tell; the Floor's `prior-knowledge` record says whether each Known term was recognised or produced; `MISSION-FORMAT.md`'s Floor rule says the same.
+
 ### Added
 - `teach lint --prose` (spec 39; issue #46): after the usual lines, one line per prose block (`mission`, `model`, `fact`, `example`, a reference doc's `note`) of every page, `prose <file> <block>: <p> paragraphs, <s> sentences, avg <n> words, longest <m>`, over the paragraph text spec 37 scans; a sentence ends at `.`, `!` or `?` before a space or the paragraph's end, a word is a whitespace-separated token holding a letter or a digit. No threshold; without the flag stdout and the exit code are unchanged. `proseMetrics` in `bin/lib/lesson.mjs` returns the rows.
 - The reading page (spec 38; issue #44): `skills/research-teach/assets/reading.html` explains every block label, the `$` prompt, the withheld mark, the `[n]` numbering and the follow-up reminder once, in the lesson stylesheet; the teach skill's step 4 copies it with `cp -n` on every lesson build (no longer the first only), the served index links it and the navigation bar links it as "How to read". Served at `/assets/reading.html` by the existing static rule, no new route; the lesson-reader is not told about it.

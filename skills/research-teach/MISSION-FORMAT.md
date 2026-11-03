@@ -39,5 +39,5 @@
 - **Push back on vagueness.** If the user cannot articulate why, interview them before writing anything. A bad mission is worse than no mission.
 - **Revise when reality shifts.** Missions change. When the user's goal moves, update this file: don't leave a stale mission steering future sessions.
 - **Scope first, then the floor.** Ask what the sessions should include and leave out before asking about any tool or term; then check only the tools and terms that scope needs. A tool the learner uses daily but no lesson needs stays out of the Floor.
-- **The Floor is what the learner showed, not rated.** Ask for a one-sentence definition of each term the scope needs; a correct sentence goes to Known terms, anything else to New to me. Ask "daily, have run it, or never" for each tool a lesson will run. `teach lint` enforces both lists.
+- **The Floor is what the learner showed, not rated.** Check each term the scope needs with one dialog question (`SKILL.md` section 2, item 4); a correct pick or sentence goes to Known terms, anything else to New to me, and the `prior-knowledge` record says whether a Known term was recognised or produced. Ask "daily, have run it, or never" for each tool a lesson will run. `teach lint` enforces both lists.
 - **Keep it short.** If `MISSION.md` runs past a screen, it has stopped being a compass and started being a plan.

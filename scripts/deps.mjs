@@ -118,6 +118,7 @@ export const COUPLINGS = [
   ['bin/lib/lesson.mjs', 'bin/commands/related.mjs', 'path candidates prints `related <id> --depth 2` as the query behind a linked candidate'],
   ['bin/lib/lesson.mjs', 'docs/REFERENCE.md', 'the prose line shape: paragraphs, sentences, avg words, longest', 'longest'],
   ['bin/commands/teach.mjs', 'skills/research-teach/SKILL.md', 'the --prose flag of teach lint', 'prose'],
+  ['skills/research-teach/SKILL.md', 'skills/research-teach/MISSION-FORMAT.md', 'the term check and the tool question of the interview are restated in both', 'have run it'],
   ['bin/commands/teach.mjs', 'SECURITY.md', ".teach-serve.json and its { port, pid }, the listen(0, '127.0.0.1') binding and the serving line", '127.0.0.1'],
   ['bin/lib/teach.mjs', 'skills/research-teach/SKILL.md', "SPACING_DAYS as '21 days' and the lesson URL's /lessons/<id>.html path", '/lessons/'],
   ['bin/lib/teach.mjs', 'SECURITY.md', 'ATTEMPT_BODY_MAX, the allowlisted dirs, the exact Host 127.0.0.1:<port> check, and what GET / and /lessons.json read and return', 'ATTEMPT_BODY_MAX'],

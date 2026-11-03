@@ -73,8 +73,9 @@ test('LEARNING-RECORD-FORMAT.md carries the frontmatter template and kind values
 
 test('teach skill names teach next, PLAN.md, teach lint, the assets copy, teach serve and the open command', () => {
   const s = read('skills/research-teach/SKILL.md');
+  assert.match(s.split('## 2.')[1].split('## 3.')[0], /position varies/, 'section 2 names the hygiene rule (spec 40)');
   for (const x of [
-    'LESSON-FORMAT.md', 'teach next', 'evidence/NNNN/PLAN.md', '## Revisions', 'teach lint', 'cp -n', '.gitignore',
+    'LESSON-FORMAT.md', 'teach next', 'evidence/NNNN/PLAN.md', '## Revisions', 'teach lint', 'cp -n', 'AskUserQuestion', 'up to four terms per call', '`Pass` is not always last', 'have run it', '.gitignore',
     '.teach-serve.json', 'kill -0', 'teach serve', 'http://127.0.0.1:<port>/lessons/<id>.html', 'xdg-open', '`open`',
     'attempts/', 'teach record add', 'teach record supersede', 'lessons/NNNN-review-slug.html', 'review-due', 'review-failed', 'fringe:', 'inner:', 'teach path candidates', 'teach path edges',
   ]) {
