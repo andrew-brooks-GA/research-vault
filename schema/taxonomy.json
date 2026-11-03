@@ -1,5 +1,5 @@
 {
-  "domain": ["software-engineering", "systems-infrastructure", "data-ml", "security", "learning", "llm-assisted-dev", "meta"],
+  "domain": ["software-engineering", "systems-infrastructure", "data-ml", "security", "learning", "llm-assisted-dev", "meta", "natural-science", "humanities", "business-finance", "health-fitness", "language-learning", "arts-crafts"],
   "artifact_type": ["source","note","synthesis","snippet","experiment","question"],
   "artifact_purpose": {
     "sources": "Raw capture of external material (article, paper, docs, talk) — what it says, as-is.",

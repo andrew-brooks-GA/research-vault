@@ -52,6 +52,12 @@ Broad research areas (controlled). Specific tech (e.g. kubernetes, vcluster, ist
 - learning
 - llm-assisted-dev
 - meta
+- natural-science
+- humanities
+- business-finance
+- health-fitness
+- language-learning
+- arts-crafts
 
 ## 4. Derived fields (NEVER stored)
 - `id` ← filename without `.md`
