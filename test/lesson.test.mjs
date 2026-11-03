@@ -685,3 +685,12 @@ test('a checked task whose check.sh writes reports one WARN_TASK_CHECK_MUTATES p
   assert.ok(f[0].message.startsWith('check.sh line 2:'), f[0].message);
   assert.ok(f[1].message.startsWith('check.sh line 4:'), f[1].message);
 });
+
+test('WARN_TASK_CHECK_MUTATES reads every segment, the command after timeout, and skips the value of -o', () => {
+  const dir = checkedTask();
+  writeFileSync(join(dir, 'evidence', '0006', 'check.sh'), '#!/usr/bin/env bash\n' + [
+    'kubectl get pods; rm x', 'if kubectl get x; then rm y; fi', 'timeout -s KILL 30 kubectl delete x', 'timeout --signal=KILL 30 kubectl delete x',
+    'timeout 30 kubectl get x', 'kubectl -o json get pods', 'kubectl get pods|tee out', 'kubectl get x && kubectl delete y'].join('\n') + '\n');
+  assert.deepEqual(lintFile(dir, 'lessons/0006-project-fx.html').map((x) => x.message),
+    ['check.sh line 2: rm', 'check.sh line 3: rm', 'check.sh line 4: kubectl', 'check.sh line 5: kubectl', 'check.sh line 8: tee', 'check.sh line 9: kubectl']);
+});

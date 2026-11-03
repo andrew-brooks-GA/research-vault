@@ -372,21 +372,26 @@ const TASK_READ_ONLY = {
   kind: ['get', 'version'],
 };
 const TASK_DENY = ['rm', 'mv', 'cp', 'tee', 'sed', 'mkdir', 'touch', 'chmod', 'chown'];
-const TASK_VALUE_FLAGS = ['-n', '--namespace', '--context', '--kubeconfig', '--host'];
+const TASK_VALUE_FLAGS = ['-n', '--namespace', '--context', '--kubeconfig', '--host', '-o', '--output'];
 
 // The offending word of a checker line, or undefined: a disallowed tool verb names the tool, a denied first
-// word names itself, a redirect to a file names `>`. Blind to $(...), [[ a > b ]], heredocs and called scripts.
+// word names itself, a redirect to a file names `>`. Quoted strings read as `""`, so a `|`, `;` or `>` inside one
+// splits or redirects nothing. Blind to $(...), [[ a > b ]], heredocs and called scripts.
 function checkMutates(line) {
-  for (const seg of line.split(/\s\|\s|\s\|\|\s|\s&&\s|\s;\s/)) {
+  for (const seg of line.replace(/"[^"]*"|'[^']*'/g, '""').split(/\|\|?|&&|;/)) {
     const words = seg.trim().split(/\s+/).filter((w) => w && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w));
-    while (['sudo', 'timeout', 'time', 'if', '!', 'then', 'do', 'else'].includes(words[0])) words.splice(0, words[0] === 'timeout' ? 2 : 1);
+    while (['sudo', 'timeout', 'time', 'if', '!', 'then', 'do', 'else'].includes(words[0])) {
+      if (words.shift() !== 'timeout') continue;
+      while (words[0]?.startsWith('-')) if (['-s', '-k', '--signal', '--kill-after'].includes(words.shift())) words.shift();
+      words.shift(); // the duration
+    }
     const [word, ...rest] = words;
     if (Object.hasOwn(TASK_READ_ONLY, word)) {
       const i = rest.findIndex((w, j) => !w.startsWith('-') && !TASK_VALUE_FLAGS.includes(rest[j - 1]));
       if (i < 0 || !TASK_READ_ONLY[word].some((v) => v === rest.slice(i, i + v.split(' ').length).join(' '))) return word;
     }
     if (TASK_DENY.includes(word)) return word;
-    if (/>>?(?!&|>|\s*\/dev\/null\b)/.test(seg.replace(/"[^"]*"|'[^']*'/g, ''))) return '>';
+    if (/>>?(?!&|>|\s*\/dev\/null\b)/.test(seg)) return '>';
   }
 }
 
