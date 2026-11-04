@@ -632,3 +632,65 @@ test('a project step with no command, its result in prose, lints clean (spec 43)
     '<p>Write your prediction for fx(5) beside the number fx printed; the check passes when both are 30.</p>'));
   assert.deepEqual(codes(lintFile(dir, rel)), []);
 });
+
+// Issue 3 (spec 46 D4): a checked task is three scripts under evidence/NNNN/, a step line ending
+// evidence/NNNN/check.sh and an experiment in sources; LESSON_TASK_INCOMPLETE names each missing part.
+const checkedTask = () => {
+  const dir = copyFixture();
+  const path = join(dir, 'lessons', '0006-project-fx.html');
+  writeFileSync(path, readFileSync(path, 'utf8')
+    .replace('<p>Run the check. You should see <code>30</code> printed.</p>\n<pre><code>node -e "console.log(fx(5))"</code></pre>',
+      '<p>Make fx(5) print 30.</p>\n<pre><code>evidence/0006/setup.sh</code></pre>\n<pre><code>evidence/0006/check.sh</code></pre>\n'
+      + '<p>The second prints <code>PASS</code>. This check fails on a fresh setup and passes after the reference solution. <a data-cite="2026-01-01-fx-experiment">[2]</a></p>')
+    .replace('(the reference solution)</li>\n', '(the reference solution)</li>\n<li><a data-cite="2026-01-01-fx-experiment">2026-01-01-fx-experiment</a></li>\n'));
+  for (const s of ['setup', 'check', 'solution', 'run']) writeFileSync(join(dir, 'evidence', '0006', `${s}.sh`), `#!/usr/bin/env bash\n# ${s} for fx\nexit 0\n`);
+  return dir;
+};
+
+test('a checked task with its three scripts, step line and experiment lints clean', () => {
+  assert.deepEqual(codes(lintFile(checkedTask(), 'lessons/0006-project-fx.html')), []);
+});
+
+test('a checked task missing a part reports one LESSON_TASK_INCOMPLETE naming it', () => {
+  const rel = 'lessons/0006-project-fx.html';
+  const edit = (dir, from, to) => { const p = join(dir, rel); writeFileSync(p, readFileSync(p, 'utf8').replace(from, to)); };
+  const cases = [
+    ...['setup', 'check', 'solution'].map((s) => [(dir) => rmSync(join(dir, 'evidence', '0006', `${s}.sh`)), `evidence/0006/${s}.sh is missing`]),
+    [(dir) => edit(dir, '<pre><code>evidence/0006/check.sh</code></pre>\n', ''), 'step has no line ending evidence/0006/check.sh'],
+    [(dir) => { edit(dir, '<li><a data-cite="2026-01-01-fx-experiment">2026-01-01-fx-experiment</a></li>\n', ''); edit(dir, ' <a data-cite="2026-01-01-fx-experiment">[2]</a>', ''); },
+      'sources cites no experiment'],
+  ];
+  for (const [mutate, message] of cases) {
+    const dir = checkedTask();
+    mutate(dir);
+    const f = lintFile(dir, rel);
+    assert.deepEqual(codes(f), ['LESSON_TASK_INCOMPLETE'], message);
+    assert.equal(f[0].message, message);
+    assert.equal(f[0].warning, false);
+  }
+});
+
+test('a project lesson with no script and no check.sh step line has no LESSON_TASK_INCOMPLETE', () => {
+  assert.ok(!codes(lintFile(FIX, 'lessons/0006-project-fx.html')).includes('LESSON_TASK_INCOMPLETE'));
+});
+
+// Issue 4 (spec 46 D3 rule 2): WARN_TASK_CHECK_MUTATES is an advisory, one per check.sh line that looks like a write.
+test('a checked task whose check.sh writes reports one WARN_TASK_CHECK_MUTATES per offending line', () => {
+  const dir = checkedTask();
+  writeFileSync(join(dir, 'evidence', '0006', 'check.sh'),
+    '#!/usr/bin/env bash\nkubectl -n teach-0006 delete pod x\necho "FAIL: x, y" >&2\nkubectl get pods | tee out\n');
+  const f = lintFile(dir, 'lessons/0006-project-fx.html');
+  assert.deepEqual(codes(f), ['WARN_TASK_CHECK_MUTATES', 'WARN_TASK_CHECK_MUTATES']);
+  assert.ok(f.every((x) => x.warning));
+  assert.ok(f[0].message.startsWith('check.sh line 2:'), f[0].message);
+  assert.ok(f[1].message.startsWith('check.sh line 4:'), f[1].message);
+});
+
+test('WARN_TASK_CHECK_MUTATES reads every segment, the command after timeout, and skips the value of -o', () => {
+  const dir = checkedTask();
+  writeFileSync(join(dir, 'evidence', '0006', 'check.sh'), '#!/usr/bin/env bash\n' + [
+    'kubectl get pods; rm x', 'if kubectl get x; then rm y; fi', 'timeout -s KILL 30 kubectl delete x', 'timeout --signal=KILL 30 kubectl delete x',
+    'timeout 30 kubectl get x', 'kubectl -o json get pods', 'kubectl get pods|tee out', 'kubectl get x && kubectl delete y'].join('\n') + '\n');
+  assert.deepEqual(lintFile(dir, 'lessons/0006-project-fx.html').map((x) => x.message),
+    ['check.sh line 2: rm', 'check.sh line 3: rm', 'check.sh line 4: kubectl', 'check.sh line 5: kubectl', 'check.sh line 8: tee', 'check.sh line 9: kubectl']);
+});

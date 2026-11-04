@@ -19,14 +19,15 @@
 
 ## Floor
 ### Known tools
-- {One tool per bullet the learner runs daily, e.g. kubectl or a spreadsheet. Lessons may run only these and the tools earlier lessons taught}
+- {One tool per bullet the learner runs daily, e.g. kubectl or a spreadsheet. Lessons may run only these and the tools this or an earlier lesson teaches (`data-teaches`)}
 ### Known terms
-- {One term per bullet the learner defined correctly in the interview, e.g. Service and Endpoints}
+- {One term per bullet the learner picked or wrote a correct definition of in the interview, e.g. Service and Endpoints}
 ### New to me
 - {One term per bullet the mission needs and the learner could not define. Every one gets a PATH.md line before any lesson uses it}
 
 ## Constraints
 - {Time, budget, prior commitments, learning preferences, anything that bounds the approach}
+- Task environment: {kind on this machine, a cluster I can reset; written only when the depth answer was "do it unaided" and the learner named one}
 
 ## Out of scope
 - {Adjacent topics the user explicitly does not want to chase right now, protecting the zone of proximal development}

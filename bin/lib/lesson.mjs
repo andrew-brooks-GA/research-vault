@@ -363,6 +363,38 @@ function figureFindings(html, add) {
   });
 }
 
+// Issue 4 (spec 46 D3 rule 2): the Checked task section's read-only verbs per tool (a two-word entry is the
+// verb and the next word), its deny list of first words, and the flags whose value precedes the verb.
+const TASK_READ_ONLY = {
+  kubectl: ['get', 'describe', 'wait', 'logs', 'top', 'events', 'explain', 'diff', 'version', 'api-resources', 'api-versions', 'cluster-info',
+    'auth can-i', 'config view', 'config current-context', 'config get-contexts', 'rollout status', 'rollout history', 'kustomize'],
+  docker: ['ps', 'inspect', 'logs', 'images', 'version', 'info', 'port', 'top', 'diff', 'stats', 'network ls', 'network inspect', 'volume ls', 'volume inspect'],
+  kind: ['get', 'version'],
+};
+const TASK_DENY = ['rm', 'mv', 'cp', 'tee', 'sed', 'mkdir', 'touch', 'chmod', 'chown'];
+const TASK_VALUE_FLAGS = ['-n', '--namespace', '--context', '--kubeconfig', '--host', '-o', '--output'];
+
+// The offending word of a checker line, or undefined: a disallowed tool verb names the tool, a denied first
+// word names itself, a redirect to a file names `>`. Quoted strings read as `""`, so a `|`, `;` or `>` inside one
+// splits or redirects nothing. Blind to $(...), [[ a > b ]], heredocs and called scripts.
+function checkMutates(line) {
+  for (const seg of line.replace(/"[^"]*"|'[^']*'/g, '""').split(/\|\|?|&&|;/)) {
+    const words = seg.trim().split(/\s+/).filter((w) => w && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w));
+    while (['sudo', 'timeout', 'time', 'if', '!', 'then', 'do', 'else'].includes(words[0])) {
+      if (words.shift() !== 'timeout') continue;
+      while (words[0]?.startsWith('-')) if (['-s', '-k', '--signal', '--kill-after'].includes(words.shift())) words.shift();
+      words.shift(); // the duration
+    }
+    const [word, ...rest] = words;
+    if (Object.hasOwn(TASK_READ_ONLY, word)) {
+      const i = rest.findIndex((w, j) => !w.startsWith('-') && !TASK_VALUE_FLAGS.includes(rest[j - 1]));
+      if (i < 0 || !TASK_READ_ONLY[word].some((v) => v === rest.slice(i, i + v.split(' ').length).join(' '))) return word;
+    }
+    if (TASK_DENY.includes(word)) return word;
+    if (/>>?(?!&|>|\s*\/dev\/null\b)/.test(seg)) return '>';
+  }
+}
+
 export function lintLesson(filePath, ctx) {
   const cls = lessonClass(filePath);
   if (!cls) return [];
@@ -476,6 +508,23 @@ export function lintLesson(filePath, ctx) {
     if (!existsSync(ev)) add('WARN_EVIDENCE_FOLDER_MISSING', `no evidence/${basename(ev)}/ folder (lesson predates plan-before-probe)`);
     else if (!existsSync(plan)) add('EVIDENCE_PLAN_MISSING', `evidence/${basename(ev)}/ has no PLAN.md`);
     else if (shape && !/^#{1,6}\s+elements\b/im.test(readFileSync(plan, 'utf8'))) add('LESSON_PLAN_NO_ELEMENTS', `evidence/${basename(ev)}/PLAN.md has no Elements part`);
+  }
+  // Issue 3 (spec 46 D4): a checked task is three scripts, a step line ending evidence/NNNN/check.sh and an
+  // experiment in sources; a script or a step line naming check.sh makes the lesson one, and each missing part is a finding.
+  if (shape === 'project') {
+    const nnnn = basename(filePath).slice(0, 4);
+    const scripts = ['setup.sh', 'check.sh', 'solution.sh'].filter((s) => !existsSync(join(ws, 'evidence', nnnn, s)));
+    const lines = preLines(blocks.get('step')?.html ?? '').filter((l) => l && !l.startsWith('#'));
+    if (scripts.length < 3 || lines.some((l) => l.includes('check.sh'))) {
+      for (const s of scripts) add('LESSON_TASK_INCOMPLETE', `evidence/${nnnn}/${s} is missing`);
+      if (!lines.some((l) => l.split(/\s+/).at(-1) === `evidence/${nnnn}/check.sh`)) add('LESSON_TASK_INCOMPLETE', `step has no line ending evidence/${nnnn}/check.sh`);
+      if (!order.some((c) => ctx.entries.find((e) => e.id === c)?.type === 'experiment')) add('LESSON_TASK_INCOMPLETE', 'sources cites no experiment');
+    }
+    const check = join(ws, 'evidence', nnnn, 'check.sh');
+    if (existsSync(check)) readFileSync(check, 'utf8').split(/\r?\n/).forEach((l, i) => {
+      const word = l.trim() && !l.trim().startsWith('#') && checkMutates(l);
+      if (word) add('WARN_TASK_CHECK_MUTATES', `check.sh line ${i + 1}: ${word}`);
+    });
   }
   return findings;
 }
