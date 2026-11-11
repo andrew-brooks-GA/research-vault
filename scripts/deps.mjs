@@ -95,6 +95,7 @@ export const COUPLINGS = [
   ['.claude-plugin/plugin.json', 'package.json', 'the version (test/manifests.test.mjs)'],
   ['.claude-plugin/plugin.json', 'skills/research-claims-gate/SKILL.md', 'the research-vault: dispatch prefix is the plugin name'],
   ['.claude-plugin/plugin.json', 'skills/research-teach/SKILL.md', 'the research-vault: dispatch prefix is the plugin name'],
+  ['skills/research-teach/assets/quiz.js', 'bin/lib/teach.mjs', 'the navigation bar: navHtml builds the same nav.lesson-nav and its three links for pages that do not load quiz.js, and renderNav builds it on a lesson page', 'lesson-nav'],
   ['skills/research-teach/assets/quiz.js', 'bin/lib/teach.mjs', 'the /lessons.json and POST /attempt routes, the {id,score,total} shape and the lines, line fields read by pathPosition', '/lessons.json'],
   ['skills/research-teach/assets/quiz.js', 'bin/lib/lesson.mjs', 'one attempt order: mergeQuizzes and lessonItems both put the predict item first (item 0), then the quiz items', 'lessonItems'],
   ['skills/research-teach/assets/quiz.js', 'skills/research-teach/LESSON-FORMAT.md', "the 'recorded <id>: <score>/<total>' and terminal strings, the Correct and Not this one marks, the role and aria-disabled attributes and the predict item 0 merge are quoted", 'Not this one'],

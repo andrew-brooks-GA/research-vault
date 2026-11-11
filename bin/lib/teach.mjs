@@ -298,6 +298,12 @@ export function progressText(p) {
   return lines.join('\n') + '\n';
 }
 
+// The navigation bar of a page that does not load quiz.js; renderNav in quiz.js builds the same links
+// (plus previous, next and the path position) on a lesson page.
+export function navHtml() {
+  return '<nav class="lesson-nav"><a class="lesson-nav-index" href="/">All lessons</a><a class="lesson-nav-progress" href="/progress">Progress</a><a class="lesson-nav-reading" href="/assets/reading.html">How to read</a></nav>';
+}
+
 export function progressHtml(p) {
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const cell = (a) => (a ? `<td><b>${esc(scoreOf(a))}</b> <small>${esc(a.date)}</small></td>` : '<td>none</td>');
@@ -307,7 +313,7 @@ export function progressHtml(p) {
     .map((a) => `<li><small>${esc(a.date)}</small> <a href="/lessons/${esc(a.lid)}.html">${esc(a.lesson)}</a>: <b>${esc(scoreOf(a))}</b>${a.wrong.length && !a.result ? ` <small>(missed item${a.wrong.length > 1 ? 's' : ''} ${a.wrong.map((i) => i + 1).join(', ')})</small>` : ''}</li>`).join('');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Progress</title><link rel="stylesheet" href="/assets/lesson.css"></head>
-<body><h1>Progress</h1>
+<body>${navHtml()}<h1>Progress</h1>
 <section data-block="progress"><table class="progress"><thead><tr><th>lesson</th><th>attempts</th><th>first</th><th>latest</th><th>best</th></tr></thead><tbody>${rows}</tbody></table>
 <p>${p.attempts} attempt${p.attempts === 1 ? '' : 's'}; ${p.records.active} active learning record${p.records.active === 1 ? '' : 's'}${Object.keys(p.records.byKind).length ? ` (${esc(Object.entries(p.records.byKind).map(([k, n]) => `${k} ${n}`).join(', '))})` : ''}. Review due: ${esc(p.reviewDue.join(', ') || 'none')}. Review failed: ${esc(p.reviewFailed.join(', ') || 'none')}.</p></section>
 <section data-block="timeline"><ol class="timeline">${timeline || '<li>No attempts yet.</li>'}</ol></section>
@@ -376,7 +382,12 @@ export function serveFile(workspaceDir, urlPath, { titles } = {}) {
     if (!statSync(target).isFile()) return { status: 404 };
     const body = readFileSync(target);
     const isPage = /\.html$/i.test(target) && (decoded.startsWith('/lessons/') || decoded.startsWith('/reference/'));
-    return { status: 200, body: isPage ? footnoteCitations(body.toString('utf8'), titles ?? {}) : body, type: CONTENT_TYPES[extname(target).toLowerCase()] ?? 'application/octet-stream' };
+    let out = isPage ? footnoteCitations(body.toString('utf8'), titles ?? {}) : body;
+    if (/\.html$/i.test(target)) {
+      const html = out.toString('utf8');
+      if (!/<script[^>]*quiz\.js/i.test(html)) out = html.replace(/<body\b[^>]*>/i, (m) => m + navHtml());
+    }
+    return { status: 200, body: out, type: CONTENT_TYPES[extname(target).toLowerCase()] ?? 'application/octet-stream' };
   } catch {
     return { status: 404 };
   }
@@ -422,7 +433,7 @@ export function indexHtml(ws) {
   const lessonHtml = runs.map((r) => `${r.project ? `<h2>${escapeHtml(r.project)}</h2>` : ''}<ol class="lesson-index">${r.lessons.map(li).join('')}</ol>`).join('');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Lessons</title><link rel="stylesheet" href="/assets/lesson.css"></head>
-<body><h1>Lessons</h1>
+<body>${navHtml()}<h1>Lessons</h1>
 <p class="reading-link"><a href="/assets/reading.html">How to read a lesson</a></p>
 <section data-block="index">${lessonHtml || '<ol class="lesson-index"></ol>'}</section>
 ${reference.length ? `<section data-block="reference-index"><ul class="lesson-index">${reference.map(li).join('')}</ul></section>` : ''}

@@ -270,6 +270,23 @@ test('GET /assets/reading.html serves the copied reading page as html without fo
     const r = await req(port, { path: '/assets/reading.html' });
     assert.equal(r.status, 200);
     assert.equal(r.headers['content-type'], 'text/html; charset=utf-8');
-    assert.equal(r.text, readFileSync(join(ws, 'assets', 'reading.html'), 'utf8'), 'served as it is, not footnoted');
+    assert.equal(r.text.replace(/<nav class="lesson-nav">.*?<\/nav>/, ''), readFileSync(join(ws, 'assets', 'reading.html'), 'utf8'), 'served as it is, not footnoted, apart from the navigation bar');
+  } finally { server.close(); }
+});
+
+test('every html page teach serve returns carries the navigation bar or loads quiz.js (issue 61)', async () => {
+  const ws = copyFixture();
+  mkdirSync(join(ws, 'assets'), { recursive: true });
+  cpSync(join(ROOT, 'skills', 'research-teach', 'assets', 'reading.html'), join(ws, 'assets', 'reading.html'));
+  const { server, port } = await start(ws);
+  try {
+    const { lessons, reference } = JSON.parse((await req(port, { path: '/lessons.json' })).text);
+    const paths = ['/', '/progress', '/assets/reading.html', ...[...lessons, ...reference].map((e) => e.path)];
+    for (const path of paths) {
+      const r = await req(port, { path });
+      assert.equal(r.status, 200, path);
+      const bars = (r.text.match(/class="lesson-nav"/g) ?? []).length;
+      assert.equal(bars, /<script[^>]*quiz\.js/.test(r.text) ? 0 : 1, path);
+    }
   } finally { server.close(); }
 });
