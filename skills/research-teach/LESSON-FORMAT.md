@@ -89,7 +89,12 @@ Draw every figure to these rules. `teach lint` warns on each one it can see; the
 - Every label is at least 14 units (`WARN_FIGURE_LABEL_SMALL`). The lint reads the nearest `font-size` attribute on the `<text>` or an ancestor; a size set only by `style` or a class is unknown and warns.
 - A label names a part; the paragraph beside the figure explains it. A label is at most 40 characters, counting its `<tspan>`s (`WARN_FIGURE_LABEL_LONG`), and fits the shape it sits in: a label whose estimated width (characters times font size times 0.5, placed by `text-anchor`) passes the edge of the `<rect>` holding it, or the viewBox with no such rect, is `WARN_FIGURE_TEXT_OVERFLOW`; widen the box, shorten the label or break the line.
 - Every `fill` and `stroke` is `currentColor`, `none` or `var(--muted)` (`WARN_FIGURE_COLOR`), so the figure follows the theme and keeps its contrast.
+- Every `<text>` has a `fill`, on itself or on an ancestor inside its `<svg>` (`WARN_FIGURE_TEXT_NO_FILL`, one warning per figure); use `currentColor`.
 - The `<svg>` carries `role="img"` and its own `aria-label` describing what it shows (`WARN_FIGURE_NO_ALT`).
+
+## Screenshots
+
+A screenshot is evidence: it goes in a `fact` or `example` block, never `model`, with one image to a `<figure>` and a `<figcaption>`. The `alt` describes what is visible, and the captured page text that supports the caption goes in the cited experiment. `teach lint` reports `LESSON_IMG_NO_ALT` for an `<img>` with an empty or missing `alt`, `LESSON_IMG_NO_CAPTION` for one with no `<figcaption>` in its `<figure>` (or in no `<figure>`), and `LESSON_IMG_MISSING` for a `src` that `teach serve` would not return as a file under `lessons/`, `reference/` or `assets/`: a relative `src` resolves from the lesson file's directory, a leading `/` from the workspace root, the path is percent-decoded, and a path segment starting with `.` or an undecodable path is missing. It warns `WARN_IMG_UNCITED` for an `<img>` in a block with no `data-cite`, and for one in no block.
 
 ## Prose
 
@@ -185,7 +190,7 @@ A complete minimal lesson. It is `test/fixtures/teach/lessons/0001-good.html`, w
 
 <section data-block="model" aria-label="the model">
 <p>A function takes an input and gives back an output. <dfn>fx</dfn> is the fixture function: it takes one number and returns that number scaled by a fixed factor, so every call is a straight line through the origin.</p>
-<figure><svg viewBox="0 0 200 60" role="img" aria-label="n goes into fx and 6n comes out"><rect x="70" y="15" width="60" height="30" fill="none" stroke="currentColor"/><text x="100" y="35" text-anchor="middle" font-size="14">fx</text><text x="30" y="35" text-anchor="middle" font-size="14">n</text><text x="170" y="35" text-anchor="middle" font-size="14">6n</text><line x1="45" y1="30" x2="70" y2="30" stroke="currentColor"/><line x1="130" y1="30" x2="155" y2="30" stroke="currentColor"/></svg><figcaption>fx maps n to 6n.</figcaption></figure>
+<figure><svg viewBox="0 0 200 60" role="img" aria-label="n goes into fx and 6n comes out"><rect x="70" y="15" width="60" height="30" fill="none" stroke="currentColor"/><text fill="currentColor" x="100" y="35" text-anchor="middle" font-size="14">fx</text><text fill="currentColor" x="30" y="35" text-anchor="middle" font-size="14">n</text><text fill="currentColor" x="170" y="35" text-anchor="middle" font-size="14">6n</text><line x1="45" y1="30" x2="70" y2="30" stroke="currentColor"/><line x1="130" y1="30" x2="155" y2="30" stroke="currentColor"/></svg><figcaption>fx maps n to 6n.</figcaption></figure>
 <p>The factor is six, so fx(7) is 42. <a data-cite="2026-01-01-fx-doc">[1]</a></p>
 </section>
 

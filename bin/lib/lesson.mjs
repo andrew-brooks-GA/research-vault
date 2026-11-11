@@ -7,7 +7,7 @@ import { checkCitations } from '../commands/check.mjs';
 import { matchRows } from '../commands/search.mjs';
 import { traverse } from './graph.mjs';
 import {
-  extractQuizJson, extractCites, validateEntry, ENUM_CODES, LESSON_ID_RE, RECORD_ID_RE,
+  extractQuizJson, extractCites, serveFile, validateEntry, ENUM_CODES, LESSON_ID_RE, RECORD_ID_RE,
 } from './teach.mjs';
 import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
 
@@ -327,6 +327,7 @@ function figureFindings(html, add) {
     const small = [];
     const long = [];
     const overflow = [];
+    let nofill = 0;
     // ponytail: text width is estimated as characters x font size x 0.5 (an average sans-serif advance; 0.55 flagged a label that fits), no font metrics; a real measure needs a renderer.
     const rects = [...inner.matchAll(/<rect\b([^>]*)>/gi)].map((r) => ({ x: parseFloat(at(r[1], 'x')) || 0, y: parseFloat(at(r[1], 'y')) || 0, w: parseFloat(at(r[1], 'width')), h: parseFloat(at(r[1], 'height')) })).filter((r) => r.w > 0 && r.h > 0);
     const stack = [attrs];
@@ -335,6 +336,7 @@ function figureFindings(html, add) {
       if (close) { stack.pop(); continue; }
       for (const c of a.matchAll(/\s(?:fill|stroke)\s*=\s*(["'])(.*?)\1/gi)) colors.add(c[2]);
       if (tag.toLowerCase() === 'text') {
+        if (![a, ...stack].some((x) => at(x, 'fill') !== undefined)) nofill++;
         const size = [a, ...stack.slice().reverse()].map((x) => at(x, 'font-size')).find((x) => x !== undefined);
         if (size === undefined || !(parseFloat(size) >= FIGURE_LABEL_MIN)) small.push(size ?? 'unknown');
         const end = inner.indexOf('</text>', t.index);
@@ -357,9 +359,31 @@ function figureFindings(html, add) {
     for (const c of [at(attrs, 'fill'), at(attrs, 'stroke')]) if (c !== undefined) colors.add(c);
     const bad = [...colors].filter((c) => !/^\s*(currentColor|none|var\(--muted\))\s*$/i.test(c));
     if (bad.length) add('WARN_FIGURE_COLOR', `${n}: fill or stroke ${bad.join(', ')}; use currentColor, none or var(--muted)`);
+    if (nofill) add('WARN_FIGURE_TEXT_NO_FILL', `${n}: ${nofill} label(s) with no fill on the <text> or an ancestor in the <svg>; set fill="currentColor" so the label follows the theme`);
     if (small.length) add('WARN_FIGURE_LABEL_SMALL', `${n}: ${small.length} label(s) under ${FIGURE_LABEL_MIN} units or of unknown size (${[...new Set(small)].join(', ')})`);
     if (overflow.length) add('WARN_FIGURE_TEXT_OVERFLOW', `${n}: ${overflow.length} label(s) estimated wider than the shape holding them (${overflow.map((l) => `"${l}"`).join(', ')}); widen the box, shorten the label or break the line`);
     if (long.length) add('WARN_FIGURE_LABEL_LONG', `${n}: ${long.length} label(s) over ${FIGURE_LABEL_MAX} characters (longest ${Math.max(...long)}); a label names, the paragraph explains`);
+  });
+}
+
+// Issue #58: each <img>, in page order. An error when alt is empty or missing, when no <figcaption> sits in its
+// enclosing <figure> (none at all counts), or when src (resolved as `teach serve` does) is no file under lessons/, reference/ or assets/;
+// advisory when the data-block holding it has no data-cite (an image in no block warns).
+// ponytail: the block is found by its html containing the tag text, so an identical <img> tag in a cited and an uncited block is silent;
+// a commented-out <figcaption> counts as a caption. Upgrade to offsets from parseBlocks and a comment strip if either bites.
+function imageFindings(html, blocks, ws, fromDir, add) {
+  const figures = [...html.matchAll(/<figure\b[\s\S]*?<\/figure>/gi)].map((f) => ({ at: f.index, end: f.index + f[0].length, cap: /<figcaption\b/i.test(f[0]) }));
+  [...html.matchAll(/<img\b([^>]*)>/gi)].forEach((m, i) => {
+    const at = (name) => new RegExp(`\\s${name}\\s*=\\s*(["'])(.*?)\\1`, 'i').exec(m[1])?.[2];
+    const n = `image ${i + 1}`;
+    if (!at('alt')?.trim()) add('LESSON_IMG_NO_ALT', `${n}: <img> has an empty or missing alt; describe what is visible`);
+    if (!figures.some((f) => f.at < m.index && m.index < f.end && f.cap)) add('LESSON_IMG_NO_CAPTION', `${n}: no <figcaption> in the <figure> holding the <img>`);
+    const src = at('src') ?? '';
+    // The file `teach serve` returns for the page's URL of src, and under lessons/, reference/ or assets/ (serveFile decodes, refuses a dot segment and a non-file).
+    const target = relative(ws, src.startsWith('/') ? join(ws, src.split(/[?#]/)[0]) : resolve(fromDir, src.split(/[?#]/)[0])).replace(/\\/g, '/');
+    const served = !target.startsWith('..') && ['lessons', 'reference', 'assets'].includes(target.split('/')[0]) && serveFile(ws, `/${target}`).status === 200;
+    if (!served) add('LESSON_IMG_MISSING', `${n}: src ${src} is no file under lessons/, reference/ or assets/ that teach serve returns`);
+    if (![...blocks.values()].some((b) => b.html.includes(m[0]) && /\bdata-cite\s*=/i.test(b.html))) add('WARN_IMG_UNCITED', `${n}: no data-cite in the block holding the <img>`);
   });
 }
 
@@ -479,6 +503,7 @@ export function lintLesson(filePath, ctx) {
     }
   }
   figureFindings(raw, add);
+  imageFindings(raw, blocks, ws, dirname(filePath), add);
   pairFindings(raw, add);
   for (const href of new Set(links)) {
     if (!linkResolves(ws, dirname(filePath), href)) add('LESSON_LINK_DANGLING', `href ${href} does not resolve`);

@@ -379,7 +379,7 @@ test('unitHashes over the shared parseBlocks keeps the hashes ledger rows were k
   assert.deepEqual(unitHashes(readFileSync(f)), {
     prereq: 'a2f78466c34816b23168b1d3a8d6197e591900357ac054ade858f1f2f137b06e',
     mission: '1e495a726619cc2b3d278a380870119ef5c906d411b8aa374c949af8c4093b9d',
-    model: 'f75cbbf765f4e9563a212d9090f9f7e6b425b0abc59c6ecb6c5e3f9c470a8f23',
+    model: '829e24c9448fe39cb19782cc284912b594e307fef6f83d248dcc0e85eef744fe',
     'fact:0': 'ad47b501da76642ec606c953af1346f5bff9952302b527710a56a33a5d2de653',
     'fact:1': '3b91005be86f18c73d5e3c7a7cee5036afa1cadd975ca56c22f09632a544b6e0',
     example: '593926b55cc55250c2cae84b875476dec4cdfb6f89d8f2d14e8a60808b4f20bd',
