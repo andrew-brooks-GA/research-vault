@@ -1,7 +1,7 @@
 // Lesson parser and lint: lessons, reference docs and the workspace store (spec 12 "Lesson lint").
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, renameSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, renameSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fixtureVault, tmpVault, put } from './helpers.mjs';
@@ -855,4 +855,14 @@ test('a lesson with no image and no svg text draws the findings it drew before (
   const good = readFileSync(join(dir, 'lessons', '0001-good.html'), 'utf8');
   writeFileSync(join(dir, 'lessons', '0001-good.html'), good.replace(/<text[^]*?<\/text>/g, ''));
   assert.deepEqual(lintFile(dir, 'lessons/0001-good.html'), []);
+});
+
+test('LESSON_IMG_MISSING: an image file teach serve cannot read is missing too', (t) => {
+  if (process.getuid?.() === 0) return t.skip('root ignores mode bits');
+  const dir = copyFixture();
+  imgLesson(dir, FIG());
+  writeFileSync(join(dir, 'assets', 'locked.png'), 'x');
+  chmodSync(join(dir, 'assets', 'locked.png'), 0o000);
+  t.after(() => chmodSync(join(dir, 'assets', 'locked.png'), 0o644));
+  assert.deepEqual(codes(imgLesson(dir, FIG('../assets/locked.png'), { png: false })), ['LESSON_IMG_MISSING']);
 });

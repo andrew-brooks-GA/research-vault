@@ -370,7 +370,7 @@ export function footnoteCitations(html, titles = {}) {
 }
 
 // The resolved file to serve for a URL path, or a status: 400 undecodable, 404 anything not allowlisted.
-export function serveFile(workspaceDir, urlPath, { titles } = {}) {
+export function serveFile(workspaceDir, urlPath, { titles, bytes = true } = {}) {
   let decoded;
   try { decoded = decodeURIComponent(urlPath); } catch { return { status: 400 }; }
   if (decoded.includes('\0') || decoded.split('/').some((seg) => seg.startsWith('.'))) return { status: 404 };
@@ -380,6 +380,7 @@ export function serveFile(workspaceDir, urlPath, { titles } = {}) {
   if (!allowed) return { status: 404 };
   try {
     if (!statSync(target).isFile()) return { status: 404 };
+    if (!bytes) return { status: 200 };
     const body = readFileSync(target);
     const isPage = /\.html$/i.test(target) && (decoded.startsWith('/lessons/') || decoded.startsWith('/reference/'));
     let out = isPage ? footnoteCitations(body.toString('utf8'), titles ?? {}) : body;

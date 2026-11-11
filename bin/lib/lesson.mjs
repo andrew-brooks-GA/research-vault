@@ -1,6 +1,6 @@
 // research-teach lesson parser and the `teach lint` checks for lessons, reference docs and the
 // workspace store (spec 12 "Lesson lint"). Pure over files; the verb lives in bin/commands/teach.mjs.
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { parseFrontmatter } from './frontmatter.mjs';
 import { checkCitations } from '../commands/check.mjs';
@@ -366,6 +366,18 @@ function figureFindings(html, add) {
   });
 }
 
+// An attribute's value in an <img> tag's attribute text, or undefined.
+export const imgAttr = (attrs, name) => new RegExp(`\\s${name}\\s*=\\s*(["'])(.*?)\\1`, 'i').exec(attrs)?.[2];
+
+// The file `teach serve` returns for the URL of an <img> src on a page in fromDir, and under lessons/, reference/ or assets/
+// (serveFile decodes, refuses a dot segment and a non-file): its workspace-relative path, ok, and the bytes (body null when
+// there is no such file; with bytes false the file is only stat-ed and body is undefined).
+export function imageTarget(ws, fromDir, src, { bytes = true } = {}) {
+  const raw = relative(ws, src.startsWith('/') ? join(ws, src.split(/[?#]/)[0]) : resolve(fromDir, src.split(/[?#]/)[0])).replace(/\\/g, '/');
+  const served = !raw.startsWith('..') && ['lessons', 'reference', 'assets'].includes(raw.split('/')[0]) ? serveFile(ws, `/${raw}`, { bytes }) : { status: 404 };
+  return served.status === 200 ? { path: decodeURIComponent(raw), ok: true, body: served.body } : { path: raw, ok: false, body: null };
+}
+
 // Issue #58: each <img>, in page order. An error when alt is empty or missing, when no <figcaption> sits in its
 // enclosing <figure> (none at all counts), or when src (resolved as `teach serve` does) is no file under lessons/, reference/ or assets/;
 // advisory when the data-block holding it has no data-cite (an image in no block warns).
@@ -374,14 +386,14 @@ function figureFindings(html, add) {
 function imageFindings(html, blocks, ws, fromDir, add) {
   const figures = [...html.matchAll(/<figure\b[\s\S]*?<\/figure>/gi)].map((f) => ({ at: f.index, end: f.index + f[0].length, cap: /<figcaption\b/i.test(f[0]) }));
   [...html.matchAll(/<img\b([^>]*)>/gi)].forEach((m, i) => {
-    const at = (name) => new RegExp(`\\s${name}\\s*=\\s*(["'])(.*?)\\1`, 'i').exec(m[1])?.[2];
+    const at = (name) => imgAttr(m[1], name);
     const n = `image ${i + 1}`;
     if (!at('alt')?.trim()) add('LESSON_IMG_NO_ALT', `${n}: <img> has an empty or missing alt; describe what is visible`);
     if (!figures.some((f) => f.at < m.index && m.index < f.end && f.cap)) add('LESSON_IMG_NO_CAPTION', `${n}: no <figcaption> in the <figure> holding the <img>`);
     const src = at('src') ?? '';
-    // The file `teach serve` returns for the page's URL of src, and under lessons/, reference/ or assets/ (serveFile decodes, refuses a dot segment and a non-file).
-    const target = relative(ws, src.startsWith('/') ? join(ws, src.split(/[?#]/)[0]) : resolve(fromDir, src.split(/[?#]/)[0])).replace(/\\/g, '/');
-    const served = !target.startsWith('..') && ['lessons', 'reference', 'assets'].includes(target.split('/')[0]) && serveFile(ws, `/${target}`).status === 200;
+    const t = imageTarget(ws, fromDir, src, { bytes: false });
+    let served = t.ok;
+    if (served) try { accessSync(join(ws, t.path), constants.R_OK); } catch { served = false; } // teach serve answers 404 for a file it cannot read
     if (!served) add('LESSON_IMG_MISSING', `${n}: src ${src} is no file under lessons/, reference/ or assets/ that teach serve returns`);
     if (![...blocks.values()].some((b) => b.html.includes(m[0]) && /\bdata-cite\s*=/i.test(b.html))) add('WARN_IMG_UNCITED', `${n}: no data-cite in the block holding the <img>`);
   });
