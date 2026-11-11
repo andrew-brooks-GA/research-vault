@@ -388,3 +388,16 @@ test('teach lint --prose keeps the first line and the exit code and adds one pro
   assert.match(prose.stdout, /^prose reference\/good\.html note: 2 paragraphs, 2 sentences, avg /m);
   assert.equal(plain.stdout.includes('prose '), false);
 });
+
+// Issue 60: teach lint passes the binding's `lab` block to lintWorkspace.
+test('CLI teach lint reads the binding lab block and prints WARN_LAB_BYPASSED, exit 0', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-teach-lab-'));
+  mkdirSync(join(dir, 'evidence', '0001'), { recursive: true });
+  writeFileSync(join(dir, 'MISSION.md'), '# Mission\n');
+  writeFileSync(join(dir, 'evidence', '0001', 'run.sh'), '#!/usr/bin/env bash\nkind create cluster\n');
+  assert.equal(cli(['lint', dir]).stdout, 'lint: clean\n');
+  writeFileSync(join(dir, '.research-vault.json'), JSON.stringify({ lab: { docs: ['docs/lab.md'], uses: ['lab/lib.sh'], bypass: ['kind create cluster'] } }));
+  const r = cli(['lint', dir]);
+  assert.equal(r.stdout, "lint: clean\nwarning WARN_LAB_BYPASSED  evidence/0001/run.sh: line 2: kind create cluster; the binding's lab is docs/lab.md\n");
+  assert.equal(r.status, 0);
+});

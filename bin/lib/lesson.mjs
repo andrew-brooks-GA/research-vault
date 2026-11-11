@@ -377,8 +377,9 @@ const TASK_VALUE_FLAGS = ['-n', '--namespace', '--context', '--kubeconfig', '--h
 // The offending word of a checker line, or undefined: a disallowed tool verb names the tool, a denied first
 // word names itself, a redirect to a file names `>`. Quoted strings read as `""`, so a `|`, `;` or `>` inside one
 // splits or redirects nothing. Blind to $(...), [[ a > b ]], heredocs and called scripts.
+const blankQuotes = (line) => line.replace(/"[^"]*"|'[^']*'/g, '""');
 function checkMutates(line) {
-  for (const seg of line.replace(/"[^"]*"|'[^']*'/g, '""').split(/\|\|?|&&|;/)) {
+  for (const seg of blankQuotes(line).split(/\|\|?|&&|;/)) {
     const words = seg.trim().split(/\s+/).filter((w) => w && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w));
     while (['sudo', 'timeout', 'time', 'if', '!', 'then', 'do', 'else'].includes(words[0])) {
       if (words.shift() !== 'timeout') continue;
@@ -393,6 +394,31 @@ function checkMutates(line) {
     if (TASK_DENY.includes(word)) return word;
     if (/>>?(?!&|>|\s*\/dev\/null\b)/.test(seg)) return '>';
   }
+}
+
+// Issue 60: with the binding's `lab` block, each `.sh` under evidence/ and lessons/ is on the lab when a
+// non-comment, non-echo line holds a `uses` string (raw line, since a library is sourced through a quoted path);
+// else the first non-comment line holding a `bypass` string (quoted strings read as empty) is one advisory finding,
+// unless evidence/NNNN/PLAN.md (NNNN from evidence/NNNN/ or lessons/files/NNNN-) has an `own environment: <reason>` line.
+// Reads each line as written: a quoted `bypass` string is blanked, an unquoted $(...) and a heredoc body are
+// read as lines, and a called script counts only when it is itself a .sh under the two trees.
+function lintLab(ws, lab) {
+  const findings = [];
+  for (const d of ['evidence', 'lessons']) {
+    if (!existsSync(join(ws, d))) continue;
+    for (const rel of readdirSync(join(ws, d), { recursive: true }).filter((f) => f.endsWith('.sh')).sort()) {
+      const file = `${d}/${rel.split(/[\\/]/).join('/')}`;
+      const lines = readFileSync(join(ws, file), 'utf8').split(/\r?\n/).map((l, i) => [i + 1, l]).filter(([, l]) => l.trim() && !l.trim().startsWith('#'));
+      if (lines.some(([, l]) => !/^\s*echo\b/.test(l) && lab.uses.some((u) => l.includes(u)))) continue;
+      const hit = lines.flatMap(([n, l]) => lab.bypass.filter((b) => blankQuotes(l).includes(b)).map((b) => [n, b]))[0];
+      if (!hit) continue;
+      const nnnn = file.match(/^(?:evidence\/|lessons\/files\/)(\d{4})[\/-]/)?.[1];
+      const plan = nnnn && join(ws, 'evidence', nnnn, 'PLAN.md');
+      if (plan && existsSync(plan) && /^own environment:[ \t]*\S/m.test(readFileSync(plan, 'utf8'))) continue;
+      findings.push({ code: 'WARN_LAB_BYPASSED', file, message: `line ${hit[0]}: ${hit[1]}; the binding's lab is ${lab.docs[0]}`, warning: true });
+    }
+  }
+  return findings;
 }
 
 export function lintLesson(filePath, ctx) {
@@ -771,6 +797,7 @@ export function lintWorkspace(workspaceDir, ctx) {
   const findings = ['lessons', 'reference'].flatMap((d) =>
     listDir(join(workspaceDir, d), '.html').flatMap((f) => lintLesson(join(workspaceDir, d, f), c)));
   findings.push(...lintStore(workspaceDir, c));
+  if (c.lab) findings.push(...lintLab(workspaceDir, c.lab));
   const path = readPath(workspaceDir);
   if (path !== null) {
     findings.push(...lintPath(path));

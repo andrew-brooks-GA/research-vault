@@ -166,3 +166,31 @@ test('parseProjectConfig validates the embedding block: an http(s) url, an optio
   for (const block of ['{"url":"ftp://x"}', '{"url":42}', '{"url":"http://h/e","chunk":0}', '{"url":"http://h/e","chunk":800,"overlap":800}', '{"url":"http://h/e","model":1}'])
     assert.throws(() => parseProjectConfig(`{"vault":"v","embedding":${block}}`, schema), /embedding\./, block);
 });
+
+// Issue 60: the optional `lab` block { docs, uses, bypass }; each a non-empty array of non-empty strings,
+// `docs` relative to the binding file with no `..` segment.
+const LAB = { docs: ['docs/lab.md'], uses: ['lab/lib.sh'], bypass: ['kind create cluster'] };
+const parseLab = (lab) => parseProjectConfig(JSON.stringify({ vault: 'v', lab }), SCHEMA);
+
+test('a binding with a valid lab block parses it, and one without has no lab key', () => {
+  assert.deepEqual(parseLab(LAB).lab, LAB);
+  assert.ok(!('lab' in parseProjectConfig('{"vault":"v"}', SCHEMA)));
+});
+
+const malformedLab = [
+  ['lab is not an object', [], /lab must be an object/],
+  ...['docs', 'uses', 'bypass'].flatMap((f) => [
+    [`lab.${f} is missing`, { ...LAB, [f]: undefined }, new RegExp(`lab\\.${f} must be a non-empty array of non-empty strings`)],
+    [`lab.${f} is not an array`, { ...LAB, [f]: 'x' }, new RegExp(`lab\\.${f} must be a non-empty array`)],
+    [`lab.${f} is empty`, { ...LAB, [f]: [] }, new RegExp(`lab\\.${f} must be a non-empty array`)],
+    [`lab.${f} holds an empty string`, { ...LAB, [f]: ['x', ''] }, new RegExp(`lab\\.${f} must be a non-empty array`)],
+    [`lab.${f} holds a non-string`, { ...LAB, [f]: [1] }, new RegExp(`lab\\.${f} must be a non-empty array`)],
+  ]),
+  ['lab.docs holds an absolute path', { ...LAB, docs: ['/etc/lab.md'] }, /lab\.docs entries must be relative paths with no \.\. segment/],
+  ['lab.docs holds a .. segment', { ...LAB, docs: ['docs/../../lab.md'] }, /lab\.docs entries must be relative paths with no \.\. segment/],
+];
+for (const [name, lab, re] of malformedLab) {
+  test(`parseProjectConfig rejects a malformed lab block: ${name}`, () => {
+    assert.throws(() => parseLab(lab), (e) => e.message.startsWith('invalid .research-vault.json: ') && re.test(e.message), name);
+  });
+}

@@ -92,13 +92,31 @@ export function compilePattern(field, source, { groups = 1, flags = '' } = {}) {
   return re;
 }
 
+// A path relative to the binding file with no `..` segment.
+const isRelativeInside = (p) => !isAbsolute(p) && !p.split(/[\\/]/).includes('..');
+
+// Issue 60: the optional `lab` block `{ docs, uses, bypass }`: `docs` are files explaining the repo's lab
+// (relative to the binding, no `..`), `uses` strings that show a script stands on the lab, `bypass` strings
+// that show it stands up an environment by hand. All literal strings.
+function validateLab(lab) {
+  const bad = (msg) => new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${msg}`);
+  if (lab === null || typeof lab !== 'object' || Array.isArray(lab)) throw bad('lab must be an object');
+  const out = {};
+  for (const f of ['docs', 'uses', 'bypass']) {
+    if (!Array.isArray(lab[f]) || !lab[f].length || !lab[f].every((v) => typeof v === 'string' && v)) throw bad(`lab.${f} must be a non-empty array of non-empty strings`);
+    out[f] = [...lab[f]];
+  }
+  if (!out.docs.every(isRelativeInside)) throw bad('lab.docs entries must be relative paths with no .. segment');
+  return out;
+}
+
 // Validate the `code` block (spec 15). It needs a project-specific vault inside the repo: a
 // relative `vault` with no `..` segment. Returns { globs, languages, versions } with every pattern
 // compiled; throws on misuse.
 function validateCode(code, vault) {
   const bad = (msg) => new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${msg}`);
   if (code === null || typeof code !== 'object' || Array.isArray(code)) throw bad('code must be an object');
-  if (typeof vault !== 'string' || !vault || isAbsolute(vault) || vault.split(/[\\/]/).includes('..')) {
+  if (typeof vault !== 'string' || !vault || !isRelativeInside(vault)) {
     throw bad(`code links need a project-specific vault inside the repo (a relative vault path); this binding points at ${vault || '(none)'}`);
   }
   const globs = code.globs ?? [];
@@ -179,6 +197,7 @@ export function parseProjectConfig(raw, schema) {
   const out = { vault: data.vault, defaults, references, gates, capture, usage, taxonomyExtensions };
   if (data.embedding !== undefined) out.embedding = validateEmbedding(data.embedding);
   if (data.code !== undefined) out.code = validateCode(data.code, data.vault);
+  if (data.lab !== undefined) out.lab = validateLab(data.lab);
   return out;
 }
 
