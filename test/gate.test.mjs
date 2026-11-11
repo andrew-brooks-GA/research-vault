@@ -393,6 +393,29 @@ test('unitHashes over the shared parseBlocks keeps the hashes ledger rows were k
   });
 });
 
+test('a Markdown draft is cut into its own sections whatever data-block HTML it quotes, and a lesson page is cut as before', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  const md = (rule) => `# Format\n\nWrite a note as \`<p data-block="note">\`.\n\n## Example\n\n\`\`\`html\n<section data-block="mission"><p>m</p></section>\n<section data-block="fact"><p>f</p></section>\n\`\`\`\n\n## Rules\n\n${rule}\n`;
+  const file = join(root, 'docs', 'format.md');
+  writeFileSync(file, md('One rule.'));
+  assert.deepEqual(Object.keys(unitHashes(readFileSync(file), null, file)), ['sec:format', 'sec:example', 'sec:rules']);
+  assert.equal(gateCli(root, vault, 'record', 'docs/format.md', 'PASS').code, 0);
+  writeFileSync(file, md('One rule, revised.'));
+  assert.deepEqual(changedUnits(root, file), ['sec:rules']);
+  const r = gateCli(root, vault, 'evidence', 'docs/format.md', '--changed');
+  assert.equal(r.out, 'changed units: sec:rules\nunit sec:rules docs/format.md:12-14 prose\n', r.err);
+  // A Markdown file with no data-block text keeps the hashes its ledger rows were keyed to.
+  assert.deepEqual(unitHashes('# A\n\ntext\n\n## B\n\n| k | v |\n|---|---|\n| x | y |\n', null, join(root, 'a.md')), {
+    'sec:a': 'd22b769515dfe6ca62b802e396c03708b2d0992608de48bbdcaf3544a31e4f12',
+    'sec:b': '5cf51c0783ce360dcec432f24b59c128437d5880a453afae3e941e0c8a26dbd8',
+    'sec:b/x': '149f958a2ac77025c943700ae54fa157052ab0a2d3ae363e2613b0bf011e7e06',
+  });
+  // An HTML lesson given its path gets the units and hashes pinned above.
+  const lesson = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'teach', 'lessons', '0001-good.html');
+  assert.deepEqual(unitHashes(readFileSync(lesson), null, lesson), unitHashes(readFileSync(lesson)));
+});
+
 // ---- code links (spec 15 D4) ----
 import { codeRepo, LUA_A } from './helpers.mjs';
 import { codeLang } from '../bin/lib/gate.mjs';

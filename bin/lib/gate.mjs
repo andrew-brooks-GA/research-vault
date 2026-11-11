@@ -93,7 +93,7 @@ export function mdUnits(text) {
 // a missing file hashes differently from a present one. Given the page's path, so src can be resolved as the image lint does.
 // With a language, one `sym:<name>` unit per linked declaration; a Markdown draft without data-block
 // elements is one unit per heading section and per table row (mdUnits); anything else, or a code file without an
-// attached link, is one unit, "all".
+// attached link, is one unit, "all". A page whose path ends in .md is never cut as a lesson (pageBlocks).
 export function unitHashes(content, lang = null, page = null) {
   const html = typeof content === 'string' ? content : content.toString('utf8');
   if (lang) {
@@ -101,7 +101,7 @@ export function unitHashes(content, lang = null, page = null) {
     if (Object.keys(code).length) return code;
   }
   const units = {};
-  const blocks = parseBlocks(html);
+  const blocks = pageBlocks(html, page);
   if (!blocks.size) {
     const lines = html.split(/\r?\n/);
     const md = mdUnits(html);
@@ -132,6 +132,9 @@ export function unitHashes(content, lang = null, page = null) {
   }
   return units;
 }
+
+// A page's data-block elements, none for a Markdown file: what it quotes in a code span or fence is not its own block.
+const pageBlocks = (text, page) => (page && extname(page) === '.md' ? new Map() : parseBlocks(text));
 
 // The workspace is the nearest directory above the page that holds MISSION.md, else the page's grandparent.
 function workspaceOf(page) {
@@ -281,7 +284,7 @@ export function evidenceFor(draftPath, vaultPath, { extra = [], code = null } = 
     out.units = codeUnits(text, code.lang).map((u) => ({
       unit: u.unit, start: u.start, end: u.end, status: worstStatus(rows.filter((r, i) => links[i].declLine === u.declLine)),
     }));
-  } else if (!parseBlocks(text).size) {
+  } else if (!pageBlocks(text, draftPath).size) {
     // A Markdown draft: one line per heading section, so the reviewer can read only the changed ones.
     const sections = mdUnits(text);
     if (sections.length) out.units = sections.map((u) => ({ ...u, status: 'prose' }));
