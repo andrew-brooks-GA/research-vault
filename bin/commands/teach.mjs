@@ -42,9 +42,11 @@ function lint(ws, args) {
     process.stderr.write(`teach lint: no vault at ${vaultPath}\n`);
     return 2;
   }
+  const schema = loadSchema(REPO_ROOT, { vaultPath });
   const findings = lintWorkspace(ws, {
     workspaceDir: ws, vaultPath, entries: buildManifest(vaultPath).entries,
-    schema: loadSchema(REPO_ROOT, { vaultPath }), teachSchema: loadTeachSchema(REPO_ROOT), now: new Date(),
+    schema, teachSchema: loadTeachSchema(REPO_ROOT), now: new Date(),
+    lab: loadProjectConfig(ws, { schema })?.config.lab,
   });
   const violations = findings.filter((f) => !f.warning);
   if (violations.length === 0) out('lint: clean');

@@ -694,3 +694,68 @@ test('WARN_TASK_CHECK_MUTATES reads every segment, the command after timeout, an
   assert.deepEqual(lintFile(dir, 'lessons/0006-project-fx.html').map((x) => x.message),
     ['check.sh line 2: rm', 'check.sh line 3: rm', 'check.sh line 4: kubectl', 'check.sh line 5: kubectl', 'check.sh line 8: tee', 'check.sh line 9: kubectl']);
 });
+
+// Issue 60: WARN_LAB_BYPASSED, advisory, only when the binding's `lab` block reaches the lint context.
+const LAB = { docs: ['docs/lab.md'], uses: ['lab/lib.sh'], bypass: ['kind create cluster'] };
+const labWs = (files) => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-lab-'));
+  for (const [rel, body] of Object.entries(files)) {
+    mkdirSync(join(dir, rel, '..'), { recursive: true });
+    writeFileSync(join(dir, rel), body);
+  }
+  return dir;
+};
+const labFindings = (dir) => lintWorkspace(dir, ctxFor(dir, { lab: LAB })).filter((f) => f.code === 'WARN_LAB_BYPASSED');
+const BYPASS = '#!/usr/bin/env bash\n# stand up\nkind create cluster --name t\n';
+
+test('WARN_LAB_BYPASSED: a run.sh that stands up an environment by hand warns once and names its first line', () => {
+  const dir = labWs({ 'evidence/0003/run.sh': BYPASS + 'kind create cluster --name u\n' });
+  const f = labFindings(dir);
+  assert.equal(f.length, 1);
+  assert.deepEqual(f[0], { code: 'WARN_LAB_BYPASSED', file: 'evidence/0003/run.sh', message: "line 3: kind create cluster; the binding's lab is docs/lab.md", warning: true });
+});
+
+test('WARN_LAB_BYPASSED: a source line naming a uses string, quoted, keeps the file silent', () => {
+  const dir = labWs({ 'evidence/0003/run.sh': BYPASS + 'source "$ROOT/lab/lib.sh"\n' });
+  assert.deepEqual(labFindings(dir), []);
+});
+
+test('WARN_LAB_BYPASSED: an own environment: line in the lesson PLAN.md silences evidence/NNNN/ and lessons/files/NNNN-lab/', () => {
+  const dir = labWs({
+    'evidence/0003/run.sh': BYPASS, 'evidence/0003/PLAN.md': '# Plan\n\n## Revisions\nown environment: the lab has no Windows node\n',
+    'lessons/files/0004-lab/run.sh': BYPASS, 'evidence/0004/PLAN.md': 'own environment: needs a bare Docker daemon\n',
+  });
+  assert.deepEqual(labFindings(dir), []);
+  // No reason, or a different NNNN: still warns.
+  writeFileSync(join(dir, 'evidence/0004/PLAN.md'), 'own environment:\nnext line\n');
+  assert.equal(labFindings(dir).length, 1);
+  writeFileSync(join(dir, 'evidence/0004/PLAN.md'), 'own environment: x\n');
+  rmSync(join(dir, 'evidence/0004'), { recursive: true });
+  mkdirSync(join(dir, 'evidence/0005'), { recursive: true });
+  writeFileSync(join(dir, 'evidence/0005/PLAN.md'), 'own environment: x\n');
+  assert.equal(labFindings(dir).length, 1);
+});
+
+test('WARN_LAB_BYPASSED: a uses string only in an echo line does not put the file on the lab', () => {
+  const dir = labWs({ 'evidence/0003/run.sh': BYPASS + 'echo using lab/lib.sh\n' });
+  assert.equal(labFindings(dir).length, 1);
+});
+
+test('WARN_LAB_BYPASSED: a bypass string inside quotes, a comment or an escaped echo is silent', () => {
+  const dir = labWs({ 'evidence/0003/run.sh': '#!/usr/bin/env bash\n# kind create cluster\necho "### \\$ kind create cluster"\nlog \'kind create cluster\'\n' });
+  assert.deepEqual(labFindings(dir), []);
+});
+
+test('WARN_LAB_BYPASSED: only .sh files under evidence/ and lessons/ are read', () => {
+  const dir = labWs({ 'evidence/0003/run.txt': BYPASS, 'notes/run.sh': BYPASS });
+  assert.deepEqual(labFindings(dir), []);
+});
+
+test('a workspace whose binding has no lab block produces exactly the findings it produces today', () => {
+  const dir = copyFixture();
+  const before = lintWorkspace(dir, ctxFor(dir));
+  mkdirSync(join(dir, 'evidence/0003'), { recursive: true });
+  writeFileSync(join(dir, 'evidence/0003/run.sh'), BYPASS);
+  assert.deepEqual(lintWorkspace(dir, ctxFor(dir)), before);
+  assert.equal(lintWorkspace(dir, ctxFor(dir, { lab: LAB })).length, before.length + 1);
+});
