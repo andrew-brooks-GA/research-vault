@@ -1,5 +1,5 @@
 // research-teach workspace verbs: record, attempt, lint and next (spec 12 "Workspace store").
-import { existsSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync, rmSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../lib/resolve.mjs';
@@ -9,6 +9,7 @@ import { TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
 import { writeRecord, supersedeRecord, writeAttempt, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft } from '../lib/teach.mjs';
+import { gateStatus, ledgerRoot } from '../lib/gate.mjs';
 import { lintWorkspace, proseMetrics, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -62,17 +63,28 @@ function lint(ws, args) {
 const fmt = (l) => `${l.n}. ${l.title}` + [['terms', l.terms.join(', ')], ['tool', l.tool], ['after', l.after.join(', ')], ['lesson', l.lesson]]
   .filter(([, v]) => v).map(([k, v]) => ` | ${k}: ${v}`).join('');
 
-function pathLines(ws) {
+// Issue 66: after `fringe: complete`, the README's state: missing (no regular file), ok (a PASS or MERIT for its
+// current content, by gate status's own rule and ledger) or ungated (none, or no ledger resolves).
+function readmeLine(ws, args) {
+  const file = join(ws, 'README.md');
+  if (!statSync(file, { throwIfNoEntry: false })?.isFile()) return 'readme: missing';
+  try {
+    const root = ledgerRoot(file, resolveVault({ flag: args.vault ?? null, cwd: ws }).path);
+    return root && gateStatus(root, file).verdict ? 'readme: ok' : 'readme: ungated';
+  } catch { return 'readme: ungated'; }
+}
+
+function pathLines(ws, args) {
   const path = readPath(ws);
   if (path === null) return ['fringe: none (write PATH.md)'];
   const { fringe, inner } = pathFringe(path);
-  const head = path.every((l) => l.lesson) ? ['fringe: complete']
+  const head = path.every((l) => l.lesson) ? ['fringe: complete', readmeLine(ws, args)]
     : fringe.length ? fringe.map((l) => `fringe: ${fmt(l)}`)
       : ['fringe: none (every untaken line waits on an untaken or unknown line; run teach lint)'];
   return [...head, ...(inner.length ? inner.map((l) => `inner: ${fmt(l)}`) : ['inner: none'])];
 }
 
-function next(ws) {
+function next(ws, args) {
   const idx = teachIndex(ws, { now: new Date() });
   if (!idx.criteria.length) {
     process.stderr.write('teach next: MISSION.md has no "Success looks like" section\n');
@@ -90,7 +102,7 @@ function next(ws) {
     '',
     `review-due: ${ids(active.filter((r) => r.reviewDue))}`,
     `review-failed: ${ids(active.filter((r) => r.reviewFailed))}`,
-    ...pathLines(ws),
+    ...pathLines(ws, args),
   ].join('\n'));
   return 0;
 }
@@ -190,7 +202,7 @@ export async function run(args) {
   if (verb === 'lint' || verb === 'next') {
     const ws = workspace(sub);
     if (!ws) return usage();
-    return verb === 'lint' ? lint(ws, args) : next(ws);
+    return verb === 'lint' ? lint(ws, args) : next(ws, args);
   }
   if (verb === 'path' && (sub === 'candidates' || sub === 'edges')) {
     const ws = workspace(rest[0]);

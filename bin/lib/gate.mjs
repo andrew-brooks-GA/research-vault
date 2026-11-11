@@ -15,7 +15,8 @@ import { loadSchema } from './schema.mjs';
 import { SKIP_DIRS, expandFiles } from './files.mjs';
 import { checkCitations } from '../commands/check.mjs';
 import { parseBlocks, imgAttr, imageTarget } from './lesson.mjs';
-import { loadProjectConfig } from './projectconfig.mjs';
+import { findProjectConfig, loadProjectConfig } from './projectconfig.mjs';
+import { isInsideVault } from './containment.mjs';
 import { langFor, codeFiles, extractCodeLinks, codeUnits, codeUnitHashes, checkCodeLinks, worstStatus } from './codelinks.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -36,6 +37,12 @@ const counts = (r, file, reviewer) => r.event === 'claims' && r.file === file &&
 // Raw bytes (a Buffer) or a string; a string hashes as its UTF-8 encoding.
 export function contentHash(data) { return createHash('sha256').update(data).digest('hex'); }
 
+// The ledger root for a file: the repo bound above it, else the vault when the file is inside it, else null.
+export function ledgerRoot(abs, vaultPath) {
+  const cfg = findProjectConfig(dirname(abs));
+  return cfg ? dirname(cfg.path) : isInsideVault(vaultPath, abs) ? resolve(vaultPath) : null;
+}
+
 export function ledgerKey(repoRoot, filePath) {
   return relative(resolve(repoRoot), resolve(repoRoot, filePath)).replace(/\\/g, '/');
 }
@@ -46,8 +53,8 @@ export function ledgerKey(repoRoot, filePath) {
 // Each data row of a table (the `|` lines after a `|---|` separator) is its own unit,
 // `sec:<slug>/<first-cell slug>` with `row: true`, listed after its section, so a one-row edit reopens
 // that row only; the header and separator stay in the section.
-const HEADING_RE = /^#{1,6}\s+(.+?)\s*#*\s*$/;
-const TABLE_SEP_RE = /^\s*\|[\s:|-]*-[\s:|-]*$/;
+export const HEADING_RE = /^#{1,6}\s+(.+?)\s*#*\s*$/;
+export const TABLE_SEP_RE = /^\s*\|[\s:|-]*-[\s:|-]*$/;
 const slugOf = (s) => s.toLowerCase().replace(/`/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'untitled';
 export function mdUnits(text) {
   const lines = text.split(/\r?\n/);

@@ -1,7 +1,7 @@
 // `teach serve`: host, origin, content-type, body-size and path limits (spec 12 "Serving and recording").
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, existsSync, writeFileSync, chmodSync, renameSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +10,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { fixtureVault } from './helpers.mjs';
 import { createServer, ATTEMPT_BODY_MAX } from '../bin/lib/teach.mjs';
-import { footnoteCitations } from '../bin/lib/teach.mjs';
+import { footnoteCitations, markdownHtml } from '../bin/lib/teach.mjs';
 import { loadTeachSchema } from '../bin/lib/schema.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -289,4 +289,53 @@ test('every html page teach serve returns carries the navigation bar or loads qu
       assert.equal(bars, /<script[^>]*quiz\.js/.test(r.text) ? 0 : 1, path);
     }
   } finally { server.close(); }
+});
+
+// Issue 66 part 2: GET / shows the workspace README above the lesson index, escaped, and is unchanged without one.
+test('GET / renders README.md above the lesson index with its HTML escaped, and is unchanged without one (issue 66)', async () => {
+  const ws = copyFixture();
+  const { server, port } = await start(ws);
+  try {
+    const before = (await req(port, { path: '/' })).text;
+    assert.ok(!before.includes('data-block="readme"'));
+    writeFileSync(join(ws, 'README.md'), [
+      '# Reading the fixture function', '', '## Lesson map', '| Group | Lessons | What it builds |', '|---|---|---|',
+      '| Project: Predict, then run | 0001-good, 0003-review-good (review) | Predicting what a function prints |', '',
+      'A <script>alert(1)</script> tag, [a bad link](javascript:alert(1)) and [the index](#top).', '',
+    ].join('\n'));
+    const r = await req(port, { path: '/' });
+    assert.equal(r.status, 200);
+    const at = (s) => { const i = r.text.indexOf(s); assert.ok(i !== -1, s); return i; };
+    assert.ok(at('<h1>Reading the fixture function</h1>') < at('<td>0001-good, 0003-review-good (review)</td>'));
+    assert.ok(at('<td>0001-good, 0003-review-good (review)</td>') < at('<h1>Lessons</h1>'));
+    assert.ok(at('<h1>Lessons</h1>') < at('<section data-block="index">'));
+    at('A &lt;script&gt;alert(1)&lt;/script&gt; tag');
+    at('<a href="#top">the index</a>');
+    assert.ok(!r.text.includes('<script>alert') && !r.text.includes('href="javascript'));
+    assert.equal(r.text.replace(/<section data-block="readme">[\s\S]*?<\/section>\n/, ''), before, 'only the README section is added');
+    // A symlinked README.md is not followed, and an unreadable one gives the page with no README.
+    renameSync(join(ws, 'README.md'), join(ws, 'target.md'));
+    symlinkSync(join(ws, 'target.md'), join(ws, 'README.md'));
+    assert.equal((await req(port, { path: '/' })).text, before, 'symlink');
+    if (process.getuid?.() !== 0) {
+      renameSync(join(ws, 'target.md'), join(ws, 'README.md'));
+      chmodSync(join(ws, 'README.md'), 0);
+      const u = await req(port, { path: '/' });
+      assert.equal(u.status, 200);
+      assert.equal(u.text, before, 'unreadable');
+    }
+  } finally { server.close(); }
+});
+
+test('markdownHtml: headings, lists, fenced and inline code, tables and links, every character escaped (issue 66)', () => {
+  assert.equal(markdownHtml([
+    '### Small', 'one', 'two', '', '- a `<b>`', '- [x](https://example.com/?a=1&b=2)', '', '```sh', '<i>raw</i>', '```',
+    '| h | i |', '|---|---|', '| [r](lessons/0001-good.html) | [m](mailto:a@b.c) |', '[d](data:text/html,x) [c](\x01javascript:alert(1))',
+  ].join('\n')), [
+    '<h3>Small</h3>', '<p>one two</p>',
+    '<ul><li>a <code>&lt;b&gt;</code></li><li><a href="https://example.com/?a=1&amp;b=2">x</a></li></ul>',
+    '<pre><code>&lt;i&gt;raw&lt;/i&gt;</code></pre>',
+    '<table><thead><tr><th>h</th><th>i</th></tr></thead><tbody><tr><td><a href="lessons/0001-good.html">r</a></td><td>[m](mailto:a@b.c)</td></tr></tbody></table>',
+    '<p>[d](data:text/html,x) [c](\x01javascript:alert(1))</p>',
+  ].join('\n'));
 });

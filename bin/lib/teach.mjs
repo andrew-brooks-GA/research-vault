@@ -1,6 +1,6 @@
 // research-teach workspace store: learning records, attempts and the derived index.
 // Pure logic over a workspace directory; the verbs live in bin/commands/teach.mjs.
-import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, statSync, lstatSync } from 'node:fs';
 import { join, resolve, basename, extname } from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,7 @@ import { slugify } from './ids.mjs';
 import { isInsideVault } from './containment.mjs';
 import { grade } from '../../skills/research-teach/assets/quiz.js';
 import { lessonItems, readPath, isProject, lessonClass, README_SECTIONS } from './lesson.mjs';
+import { HEADING_RE, TABLE_SEP_RE } from './gate.mjs';
 
 export const SPACING_DAYS = 21;
 export const ATTEMPT_BODY_MAX = 4096;
@@ -437,9 +438,64 @@ export function readmeDraft(ws) {
 
 const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-// Lessons in id order, each consecutive run under the project that closes its group as an h2.
+// Issue 66: the workspace README.md as HTML for GET /: headings, paragraphs, - lists, pipe tables, fenced code,
+// inline code and inline links. All source text goes through escapeHtml, so raw HTML shows as text. A link
+// becomes an <a> only when its target is http:, https: or has no scheme (relative or #) and holds no control
+// character (a browser drops a leading one, so \x01javascript: would run); any other stays text.
+const INLINE_RE = /`([^`]+)`|\[([^\]]+)\]\(([^)\s]+)\)/g;
+const linkable = (href) => !/[\x00-\x1f\x7f]/.test(href) && (/^https?:/i.test(href) || !/^[a-z][a-z0-9+.-]*:/i.test(href));
+function mdInline(s) {
+  let out = '', i = 0;
+  for (const m of s.matchAll(INLINE_RE)) {
+    out += escapeHtml(s.slice(i, m.index));
+    if (m[1] !== undefined) out += `<code>${escapeHtml(m[1])}</code>`;
+    else out += linkable(m[3]) ? `<a href="${escapeHtml(m[3])}">${mdInline(m[2])}</a>` : escapeHtml(m[0]);
+    i = m.index + m[0].length;
+  }
+  return out + escapeHtml(s.slice(i));
+}
+const FENCE_RE = /^\s*```/;
+const ITEM_RE = /^\s*-\s/;
+const cells = (row, tag) => row.trim().replace(/^\||\|$/g, '').split('|').map((c) => `<${tag}>${mdInline(c.trim())}</${tag}>`).join('');
+export function markdownHtml(md) {
+  const lines = md.split(/\r?\n/);
+  const out = [];
+  let para = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const h = HEADING_RE.exec(line);
+    const table = /^\s*\|/.test(line) && TABLE_SEP_RE.test(lines[i + 1] ?? '');
+    if (line.trim() && !FENCE_RE.test(line) && !h && !ITEM_RE.test(line) && !table) { para.push(line.trim()); continue; }
+    if (para.length) out.push(`<p>${mdInline(para.join(' '))}</p>`);
+    para = [];
+    const run = (re) => { const r = []; while (i < lines.length && re.test(lines[i])) r.push(lines[i++]); i--; return r; };
+    if (FENCE_RE.test(line)) {
+      const body = [];
+      while (++i < lines.length && !FENCE_RE.test(lines[i])) body.push(lines[i]);
+      out.push(`<pre><code>${escapeHtml(body.join('\n'))}</code></pre>`);
+    } else if (h) {
+      const n = /^#+/.exec(line)[0].length;
+      out.push(`<h${n}>${mdInline(h[1])}</h${n}>`);
+    } else if (ITEM_RE.test(line)) {
+      out.push(`<ul>${run(ITEM_RE).map((l) => `<li>${mdInline(l.replace(ITEM_RE, '').trim())}</li>`).join('')}</ul>`);
+    } else if (table) {
+      const [head, , ...rows] = run(/^\s*\|/);
+      out.push(`<table><thead><tr>${cells(head, 'th')}</tr></thead><tbody>${rows.map((r) => `<tr>${cells(r, 'td')}</tr>`).join('')}</tbody></table>`);
+    }
+  }
+  if (para.length) out.push(`<p>${mdInline(para.join(' '))}</p>`);
+  return out.join('\n');
+}
+
+// Lessons in id order, each consecutive run under the project that closes its group as an h2; a README.md
+// that is a regular file (lstat: a symlink is not followed) and reads goes above them, rendered by markdownHtml.
 export function indexHtml(ws) {
   const { lessons, reference } = lessonIndex(ws);
+  const readme = join(ws, 'README.md');
+  let readmeHtml = '';
+  try {
+    if (lstatSync(readme).isFile()) readmeHtml = `<section data-block="readme">${markdownHtml(readFileSync(readme, 'utf8'))}</section>\n`;
+  } catch { /* absent or unreadable: the page has no README */ }
   const li = (e) => `<li><a href="${escapeHtml(e.path)}">${escapeHtml(e.title)}</a>${e.shape ? ` <span class="lesson-shape">${escapeHtml(e.shape)}</span>` : ''} <small>${escapeHtml(e.id)}</small></li>`;
   const runs = [];
   for (const l of lessons) {
@@ -449,7 +505,7 @@ export function indexHtml(ws) {
   const lessonHtml = runs.map((r) => `${r.project ? `<h2>${escapeHtml(r.project)}</h2>` : ''}<ol class="lesson-index">${r.lessons.map(li).join('')}</ol>`).join('');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Lessons</title><link rel="stylesheet" href="/assets/lesson.css"></head>
-<body>${navHtml()}<h1>Lessons</h1>
+<body>${navHtml()}${readmeHtml}<h1>Lessons</h1>
 <p class="reading-link"><a href="/assets/reading.html">How to read a lesson</a></p>
 <section data-block="index">${lessonHtml || '<ol class="lesson-index"></ol>'}</section>
 ${reference.length ? `<section data-block="reference-index"><ul class="lesson-index">${reference.map(li).join('')}</ul></section>` : ''}

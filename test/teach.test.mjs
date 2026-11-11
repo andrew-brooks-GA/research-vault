@@ -236,7 +236,7 @@ test('CLI teach next: fringe empty states, and teach lint reports a forward afte
   const path = join(ws, 'PATH.md');
   const last = (r) => r.stdout.trim().split('\n').slice(-2).join('\n');
   writeFileSync(path, '# Path\n\n1. Only | after: floor | lesson: 0001-good\n');
-  assert.equal(last(cli(['next', ws])), 'fringe: complete\ninner: 1. Only | after: floor | lesson: 0001-good');
+  assert.equal(cli(['next', ws]).stdout.trim().split('\n').slice(-3).join('\n'), 'fringe: complete\nreadme: missing\ninner: 1. Only | after: floor | lesson: 0001-good');
   writeFileSync(path, '# Path\n\n1. Waits | after: 2\n2. Waits too | after: 1\n');
   assert.equal(last(cli(['next', ws])), 'fringe: none (every untaken line waits on an untaken or unknown line; run teach lint)\ninner: none');
   rmSync(path);
@@ -492,4 +492,23 @@ test('teach readme prints one map row per Project: group with reviews marked and
   assert.deepEqual(snapshot(), before);
   rmSync(join(ws, 'lessons', 'files'), { recursive: true });
   assert.match(cli(['readme', ws]).stdout, /\n## Labs\n\nNo lesson ships files under `lessons\/files\/`\.\n$/);
+});
+
+// Issue 66 part 2: the readme: line teach next prints after fringe: complete, by gate status's rule and ledger.
+test('teach next prints readme: missing, ungated or ok after fringe: complete, and no readme: line while a line is untaken (issue 66)', () => {
+  const ws = copyFixture();
+  const lines = () => { const r = cli(['next', ws]); assert.equal(r.status, 0); return r.stdout.split('\n').filter((l) => /^(fringe|readme):/.test(l)).join('\n'); };
+  assert.ok(!lines().includes('readme:'), 'fixture PATH.md has untaken lines');
+  writeFileSync(join(ws, 'PATH.md'), '# Path\n\n1. Only | after: floor | lesson: 0001-good\n');
+  assert.equal(lines(), 'fringe: complete\nreadme: missing');
+  writeFileSync(join(ws, 'README.md'), README);
+  assert.equal(lines(), 'fringe: complete\nreadme: ungated', 'no binding, so no ledger');
+  writeFileSync(join(ws, '.research-vault.json'), JSON.stringify({ vault: VAULT }) + '\n');
+  assert.equal(lines(), 'fringe: complete\nreadme: ungated', 'no ledger row');
+  const gate = (...a) => spawnSync(process.execPath, [BIN, 'gate', ...a], { cwd: ws, encoding: 'utf8' });
+  assert.equal(gate('record', 'README.md', 'PASS').status, 0);
+  assert.equal(lines(), 'fringe: complete\nreadme: ok');
+  writeFileSync(join(ws, 'README.md'), README + 'One more line.\n');
+  assert.equal(lines(), 'fringe: complete\nreadme: ungated', 'edited after the verdict');
+  assert.equal(gate('status', 'README.md', '--check').status, 1);
 });

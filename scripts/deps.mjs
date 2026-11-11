@@ -125,10 +125,10 @@ export const COUPLINGS = [
   ['bin/lib/teach.mjs', 'skills/research-teach/README-FORMAT.md', "readmeDraft's output is stated: the two tables' columns, (no Project: line), (review), the lessons/files/<directory>/ cell and the no-lab line", '(no Project: line)'],
   ['agents/lesson-reader.md', 'skills/research-teach/SKILL.md', 'section 5 dispatches the reader with the README path for its README mode', 'README mode'],
   ['agents/lesson-reader.md', 'skills/research-teach/README-FORMAT.md', 'the Gated like a lesson rule names the reader in README mode', 'README mode'],
-  ['bin/lib/teach.mjs', 'docs/REFERENCE.md', "the teach row restates readmeDraft's output: (no Project: line), (review), the lab rows and the no-lab line", '(no Project: line)'],
+  ['bin/lib/teach.mjs', 'docs/REFERENCE.md', "the teach row restates readmeDraft's output: (no Project: line), (review), the lab rows and the no-lab line, and states what markdownHtml renders on / and its escaping and link rule", '(no Project: line)'],
   ['bin/lib/lesson.mjs', 'skills/research-teach/PATH-FORMAT.md', 'the PATH.md line grammar is parsed; PATH_AFTER_FORWARD, PATH_AFTER_CYCLE, PATH_PROJECT_AFTER and WARN_PATH_TERM_UNPLANNED are named; the after: proposal rule of teach path edges, which skips Project: lines, and the inner fringe that counts a Project: line as a review are stated', 'PATH_PROJECT_AFTER'],
   ['bin/commands/teach.mjs', 'skills/research-teach/PATH-FORMAT.md', 'the PATH.md line grammar is parsed by next, which prints the fringe: and inner: lines (a built Project: line keeps the lines it names inner)'],
-  ['bin/commands/teach.mjs', 'skills/research-teach/SKILL.md', 'the teach verbs, the serving line, .teach-serve.json, the line N of M nav and the index grouped by Project: line with each shape, the fringe: and inner: lines, teach attempt add with --answers and --result pass|fail, teach path candidates with its no line and term groups, and teach path edges are quoted', '.teach-serve.json'],
+  ['bin/commands/teach.mjs', 'skills/research-teach/SKILL.md', "the teach verbs, the serving line, .teach-serve.json, the line N of M nav and the index grouped by Project: line with each shape, the fringe: and inner: lines, teach attempt add with --answers and --result pass|fail, teach path candidates with its no line and term groups, and teach path edges are quoted; next's readme: missing | ungated | ok line after fringe: complete is named in section 4, quoted in section 6", '.teach-serve.json'],
   ['bin/lib/lesson.mjs', 'bin/commands/related.mjs', 'path candidates prints `related <id> --depth 2` as the query behind a linked candidate'],
   ['bin/lib/lesson.mjs', 'docs/REFERENCE.md', 'the prose line shape: paragraphs, sentences, avg words, longest', 'longest'],
   ['bin/commands/teach.mjs', 'skills/research-teach/SKILL.md', 'the --prose flag of teach lint', 'prose'],
@@ -177,6 +177,8 @@ export const COUPLINGS = [
   ['vault-template/meta/freshness-policy.md', 'vault-template/meta/prompt-templates/probe-tool.md', 'freshness-policy §8 is cited by number', '§8'],
   ['.github/workflows/ci.yml', 'docs/REFERENCE.md', 'the CI matrix and steps are restated'],
   ['.gitattributes', 'scripts/check-encoding.mjs', 'eol=lf keeps the CR gate green on Windows'],
+  ['bin/commands/teach.mjs', 'docs/REFERENCE.md', "the teach row states next's readme: line, its three values and when each is printed", 'readme: ungated'],
+  ['bin/commands/teach.mjs', 'skills/research-teach/README-FORMAT.md', "the Gated like a lesson rule states next's readme: line and its three values", 'readme: ungated'],
 ];
 
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

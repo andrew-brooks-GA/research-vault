@@ -1,6 +1,6 @@
 # README.md Format
 
-`README.md` lives at the workspace root, beside `MISSION.md`. It introduces the program to a learner who has not opened a lesson and says how to take it. `teach readme` drafts its last two sections; the author writes the rest.
+`README.md` lives at the workspace root, beside `MISSION.md`. It introduces the program to a learner who has not opened a lesson and says how to take it. `teach readme` drafts its last two sections; the author writes the rest. `teach serve` shows it at `/`, the address it prints, above the lesson index, when it is a regular file the server can read (a symlink is not followed).
 
 ## Template
 
@@ -32,7 +32,7 @@
 - **Five sections, in this order, under these `##` headings.** A workspace with no lab files says so under `## Labs`.
 - **Written for the learner.** Every term is a Known term or is said in plain words; a New to me term, or a term a lesson introduces, is not used. No link into the vault or `evidence/`, and no account of how the lessons were checked; those are for the author.
 - **Draft the tables, then write the prose.** `teach readme [workspace]` prints `## Lesson map` with one row per group of built lessons, in the order of each group's first lesson, groups whose `Project:` lines share a title sharing one row: the Group cell is the title of the first `Project:` line at or after the lesson's `PATH.md` line, or `(no Project: line)` for a lesson with none or off the path; the Lessons cell lists the ids, each review lesson's followed by `(review)`; the last cell is empty. Then `## Labs`, with one row per directory under `lessons/files/`: the built lesson whose number begins the directory's name, `lessons/files/<directory>/`, and two empty cells, the Lesson cell empty when no built lesson matches, or the line ``No lesson ships files under `lessons/files/`.`` when there is none. It writes nothing. Redirect it into `README.md`, rewrite a Group cell that uses a lesson's term, and fill the empty cells.
-- **Gated like a lesson.** `teach lint`, then the `lesson-reader` in README mode, then the claims gate.
+- **Gated like a lesson.** `teach lint`, then the `lesson-reader` in README mode, then the claims gate. Once every `PATH.md` line has a lesson, `teach next` prints `readme: missing`, `readme: ungated` or `readme: ok` after `fringe: complete`: no `README.md` file, no `PASS` or `MERIT` for its current content (or no ledger to read), or one.
 
 ## What lint checks
 
