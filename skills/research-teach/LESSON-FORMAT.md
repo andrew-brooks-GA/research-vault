@@ -145,7 +145,7 @@ A review lesson is retrieval practice for records already written. Blocks: `miss
 
 ## Reference docs
 
-A reference doc renders one vault note. The note body goes in `<div data-block="note" data-cite="<vault note id>">`, then a `sources` block. Store no freshness date in the page; the note's `last_verified` is in the vault schema's `derived_forbidden` list (`schema/frontmatter.schema.json`), so the doc stores no freshness date, and a stale note surfaces through the session brief and `check`.
+A reference doc renders one vault note. The note body goes in `<div data-block="note" data-cite="<vault note id>">`, then a `sources` block. Store no freshness date in the page. The vault derives the note's `last_verified` from its verifications, and the vault schema lists `last_verified` under `derived_forbidden` (`schema/frontmatter.schema.json`); a stale note surfaces through the session brief and `check`.
 
 ## Plan before probe
 
@@ -162,7 +162,7 @@ Write the probe, or choose the passages, against the claim lines. The `fact` blo
 
 ## Example
 
-A complete minimal lesson that passes `teach lint`:
+A complete minimal lesson. It is `test/fixtures/teach/lessons/0001-good.html`, which draws no `teach lint` finding in the fixture workspace `test/fixtures/teach`; its citations are entries of the test suite's fixture vault (`fixtureVault` in `test/helpers.mjs`), not of a real vault:
 
 ```html
 <!doctype html>

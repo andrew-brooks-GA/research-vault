@@ -746,9 +746,19 @@ test('WARN_LAB_BYPASSED: a bypass string inside quotes, a comment or an escaped 
   assert.deepEqual(labFindings(dir), []);
 });
 
+test('WARN_LAB_BYPASSED: a bypass string in a # comment above a real bypass line warns once and names the later line', () => {
+  const dir = labWs({ 'evidence/0003/run.sh': '#!/usr/bin/env bash\n# kind create cluster\nkind create cluster --name t\n' });
+  assert.deepEqual(labFindings(dir).map((f) => f.message), ["line 3: kind create cluster; the binding's lab is docs/lab.md"]);
+});
+
 test('WARN_LAB_BYPASSED: only .sh files under evidence/ and lessons/ are read', () => {
   const dir = labWs({ 'evidence/0003/run.txt': BYPASS, 'notes/run.sh': BYPASS });
   assert.deepEqual(labFindings(dir), []);
+});
+
+test('WARN_LAB_BYPASSED: a directory named x.sh is skipped, not read', () => {
+  const dir = labWs({ 'evidence/0003/x.sh/run.sh': BYPASS });
+  assert.deepEqual(labFindings(dir).map((f) => f.file), ['evidence/0003/x.sh/run.sh']);
 });
 
 test('a workspace whose binding has no lab block produces exactly the findings it produces today', () => {

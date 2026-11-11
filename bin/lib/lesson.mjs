@@ -1,6 +1,6 @@
 // research-teach lesson parser and the `teach lint` checks for lessons, reference docs and the
 // workspace store (spec 12 "Lesson lint"). Pure over files; the verb lives in bin/commands/teach.mjs.
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { parseFrontmatter } from './frontmatter.mjs';
 import { checkCitations } from '../commands/check.mjs';
@@ -406,7 +406,7 @@ function lintLab(ws, lab) {
   const findings = [];
   for (const d of ['evidence', 'lessons']) {
     if (!existsSync(join(ws, d))) continue;
-    for (const rel of readdirSync(join(ws, d), { recursive: true }).filter((f) => f.endsWith('.sh')).sort()) {
+    for (const rel of readdirSync(join(ws, d), { recursive: true }).filter((f) => f.endsWith('.sh') && statSync(join(ws, d, f), { throwIfNoEntry: false })?.isFile()).sort()) {
       const file = `${d}/${rel.split(/[\\/]/).join('/')}`;
       const lines = readFileSync(join(ws, file), 'utf8').split(/\r?\n/).map((l, i) => [i + 1, l]).filter(([, l]) => l.trim() && !l.trim().startsWith('#'));
       if (lines.some(([, l]) => !/^\s*echo\b/.test(l) && lab.uses.some((u) => l.includes(u)))) continue;
