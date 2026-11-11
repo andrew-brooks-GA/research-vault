@@ -27,3 +27,10 @@ test('lesson-reader body reads only the lesson and ends with READS or REVISE', (
   assert.match(fm[2], /Do not comment on whether the facts are true/);
   assert.match(fm[2], /the model, fact and example blocks tell one story/, 'Thread check reads the three (spec 41)');
 });
+
+test('lesson-reader has a README mode that reads a workspace README.md as a newcomer and reports terms, register and setup (issue 66)', () => {
+  assert.match(fm[2], /^## README mode$/m);
+  assert.match(fm[2], /When the path is a workspace's `README\.md`, read it as a newcomer who has not opened a lesson/);
+  assert.match(fm[2], /\*\*Terms\.\*\*[\s\S]*\*\*Register\.\*\*[\s\S]*\*\*Setup\.\*\*/);
+  assert.match(fm[2], /`VERDICT: READS` or `VERDICT: REVISE` as for a lesson/);
+});

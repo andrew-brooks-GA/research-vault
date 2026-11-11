@@ -11,7 +11,7 @@ import { allowedValues } from './validate.mjs';
 import { slugify } from './ids.mjs';
 import { isInsideVault } from './containment.mjs';
 import { grade } from '../../skills/research-teach/assets/quiz.js';
-import { lessonItems, readPath, isProject } from './lesson.mjs';
+import { lessonItems, readPath, isProject, lessonClass, README_SECTIONS } from './lesson.mjs';
 
 export const SPACING_DAYS = 21;
 export const ATTEMPT_BODY_MAX = 4096;
@@ -418,6 +418,21 @@ export function lessonIndex(ws) {
       });
   };
   return { lines: path ? path.length : null, lessons: read('lessons', true), reference: read('reference', false) };
+}
+
+// Issue 66: `teach readme`, the README's lesson map and lab list as Markdown for the author to write the prose around.
+// One map row per lessonIndex project of the built lessons (none: after the last Project: line or off the path), each
+// review lesson marked (review); one lab row per directory under lessons/files/, named for the built lesson whose number begins it.
+export function readmeDraft(ws) {
+  const { lessons } = lessonIndex(ws);
+  const groups = new Map();
+  for (const l of lessons) (groups.get(l.project) ?? groups.set(l.project, []).get(l.project)).push(l);
+  const map = [...groups].map(([p, ls]) => `| ${p ?? '(no Project: line)'} | ${ls.map((l) => l.id + (lessonClass(`lessons/${l.id}.html`) === 'review' ? ' (review)' : '')).join(', ')} |  |`);
+  const files = join(ws, 'lessons', 'files');
+  const dirs = existsSync(files) ? readdirSync(files, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort() : [];
+  const labs = dirs.map((d) => `| ${lessons.find((l) => l.id.slice(0, 4) === d.slice(0, 4))?.id ?? ''} | lessons/files/${d}/ |  |  |`);
+  return [`## ${README_SECTIONS[3]}`, '', '| Group | Lessons | What it builds |', '|---|---|---|', ...map, '', `## ${README_SECTIONS[4]}`, '',
+    ...(labs.length ? ["| Lesson | Files | Needs on the learner's machine | Fallback |", '|---|---|---|---|', ...labs] : ['No lesson ships files under `lessons/files/`.'])].join('\n') + '\n';
 }
 
 const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

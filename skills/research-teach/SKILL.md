@@ -9,9 +9,9 @@ The pedagogy here is adapted from Matt Pocock's `teach` skill (mattpocock/skills
 
 ## 0. Resolve paths once
 
-- CLI: `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs"`. Resolve `${CLAUDE_PLUGIN_ROOT}` to an absolute path now; a dispatched general-purpose subagent's Bash does not have it set either.
+- CLI: `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs"`. Resolve `${CLAUDE_PLUGIN_ROOT}` to an absolute path now; it was unset in the controller's Bash and in the Bash of the one general-purpose subagent probed on 2026-11-03.
 - The repo must be vault-bound (`.research-vault.json`). If it is not, run `init --project` first and set `defaults.topics` to the topic.
-- Format files for the workspace documents live next to this file: [MISSION-FORMAT.md](MISSION-FORMAT.md), [PATH-FORMAT.md](PATH-FORMAT.md), [LEARNING-RECORD-FORMAT.md](LEARNING-RECORD-FORMAT.md), [GLOSSARY-FORMAT.md](GLOSSARY-FORMAT.md), [LESSON-FORMAT.md](LESSON-FORMAT.md). The shared lesson components are in `assets/` next to this file.
+- Format files for the workspace documents live next to this file: [MISSION-FORMAT.md](MISSION-FORMAT.md), [PATH-FORMAT.md](PATH-FORMAT.md), [LEARNING-RECORD-FORMAT.md](LEARNING-RECORD-FORMAT.md), [GLOSSARY-FORMAT.md](GLOSSARY-FORMAT.md), [LESSON-FORMAT.md](LESSON-FORMAT.md), [README-FORMAT.md](README-FORMAT.md). The shared lesson components are in `assets/` next to this file.
 
 ## 1. The workspace
 
@@ -27,6 +27,7 @@ The directory `/research-teach` was run in. One mission per workspace.
 | `GATE-LOG.md` | Reader verdicts and the third-round decision, claims-gate decisions, and the path-edges record of what was proposed and taken; append-only | gate record |
 | `lessons/NNNN-slug.html` | One tightly scoped win each; the unit of teaching | view |
 | `reference/*.html` | Compressed essence, printable, revisited | view of vault notes |
+| `README.md` | Introduces the program to a learner who has not opened a lesson ([README-FORMAT.md](README-FORMAT.md)) | view |
 | `assets/` | `lesson.css`, `quiz.js` (copied from the skill), other reusable components | view |
 | `evidence/NNNN/` | The plan for lesson NNNN, with the probe programs and `run.sh` when it has a probe; a working folder, not evidence until captured | scratch |
 | `evidence/NNNN/PLAN.md` | The plan written before the probe | scratch |
@@ -92,7 +93,7 @@ Procedure, in order:
 
 `teach lint` must be clean first. Then the reader gate: dispatch ONE `research-vault:lesson-reader` agent (Agent tool, `subagent_type: research-vault:lesson-reader`, no `model`, not a fork) with a prompt that is exactly the lesson's absolute path and nothing else. It has no mission, evidence or session context on purpose: it reads the page as the learner will and returns `VERDICT: READS` or `VERDICT: REVISE` with findings. On `REVISE`, fix the lesson, run `teach lint`, and dispatch a fresh reader. When a third reader round still returns `REVISE`, split the lesson only if the findings name scope (too much in the page, a second lesson inside it); otherwise apply the findings, record that round as the decision in `GATE-LOG.md`, and go to the claims gate from that record as from `READS`. Record each reader verdict in `GATE-LOG.md` under the lesson's heading.
 
-After `READS`, run the `research-claims-gate` skill on the lesson (extra ids: its snippet and experiment, when it has them). Reference docs go through the same lint and gate. After any revision, lint and gate again.
+After `READS`, run the `research-claims-gate` skill on the lesson (extra ids: its snippet and experiment, when it has them). Reference docs go through the same lint and gate. The workspace `README.md` goes the same way: draft its tables with `teach readme`, write it per [README-FORMAT.md](README-FORMAT.md), then `teach lint`, one `lesson-reader` dispatched with the README's absolute path (its README mode), and the claims gate, with the ids of the vault entries behind its claims passed to `gate evidence` as `--extra` ids when the README cites none. After any revision, lint and gate again.
 
 After the gate records `PASS` or `MERIT`, open the lesson:
 
@@ -100,7 +101,7 @@ After the gate records `PASS` or `MERIT`, open the lesson:
 2. Print the lesson URL, `http://127.0.0.1:<port>/lessons/<id>.html`.
 3. Open it with `open` on macOS or `xdg-open` elsewhere. With no browser available, print the lesson's path instead.
 
-Always open lessons through `teach serve`: a module script loaded from a `file://` page fails on CORS, as MDN's modules guide says, so by that guide quiz.js, a module script, would not load from a `file://` page, and a lesson opened from disk shows no quiz widget. Served this way, the quiz records the attempt itself. The widget posts only when the page origin matches `http://127.0.0.1:<port>`; otherwise, or when the POST fails or returns an error, it shows the score and "Tell me your score in the terminal."; record that score with `teach attempt add --lesson <id> --answers <comma list>`.
+Always open lessons through `teach serve`: a module script loaded from a `file://` page fails on CORS, as MDN's modules guide says, so by that guide quiz.js, a module script, would not load from a `file://` page, and a lesson opened from disk would show no quiz widget. Served this way, the quiz records the attempt itself. quiz.js's `postAttempt`, the widget's default submit, returns without posting unless `location.origin` matches `http://127.0.0.1:<port>`, and when it gets no reply (a refused origin, a failed POST or an error response) the widget appends "Tell me your score in the terminal." to the score; record that score with `teach attempt add --lesson <id> --answers <comma list>`.
 
 ## 6. After the lesson
 

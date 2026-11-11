@@ -737,3 +737,16 @@ test('an image the gate cannot read is a missing image: status names its img: un
   utimesSync(page, new Date(Date.now() - 3600000), new Date(Date.now() - 3600000));
   assert.deepEqual(missingGates(root, vault, {}, Date.now() - 60000).map((m) => m.file), ['ws/lessons/0001-x.html']);
 });
+
+test('a workspace README.md is gated: an edit after its verdict shows in gate changed and the Stop hook check; no README adds nothing (issue 66)', () => {
+  const { root, vault } = workspaceRepo();
+  const without = gatedFiles(root, vault, {});
+  const readme = join(root, 'learn/k8s/README.md');
+  writeFileSync(readme, '# Fx\n\n## Lesson map\n\nOne group.\n');
+  assert.deepEqual(gatedFiles(root, vault, {}).sort(), [...without, readme].sort());
+  for (const f of [...without, readme]) recordVerdict(root, f, 'PASS');
+  assert.deepEqual(missingGates(root, vault, {}, 0), []);
+  appendFileSync(readme, 'Edited.\n');
+  assert.deepEqual(changedUnits(root, readme), ['sec:lesson-map']);
+  assert.deepEqual(missingGates(root, vault, {}, 0).map((m) => m.file), ['learn/k8s/README.md']);
+});

@@ -1,7 +1,7 @@
 // `teach` CLI verbs (record, attempt, lint, next) and the session brief (spec 12).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +15,7 @@ const BIN = join(ROOT, 'bin', 'research-vault.mjs');
 const FIX = join(ROOT, 'test', 'fixtures', 'teach');
 const VAULT = fixtureVault();
 const TODAY = new Date().toISOString().slice(0, 10);
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | serve [workspace]\n';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [workspace]\n';
 
 const copyFixture = () => {
   const dir = mkdtempSync(join(tmpdir(), 'rv-teach-'));
@@ -400,4 +400,96 @@ test('CLI teach lint reads the binding lab block and prints WARN_LAB_BYPASSED, e
   const r = cli(['lint', dir]);
   assert.equal(r.stdout, "lint: clean\nwarning WARN_LAB_BYPASSED  evidence/0001/run.sh: line 2: kind create cluster; the binding's lab is docs/lab.md\n");
   assert.equal(r.status, 0);
+});
+
+// Issue 66: the workspace README.md, read by teach lint and drafted by teach readme.
+const cleanWorkspace = () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-teach-readme-'));
+  for (const f of ['MISSION.md', 'PATH.md', 'GLOSSARY.md', 'lessons/0001-good.html', 'lessons/0003-review-good.html', 'reference/good.html',
+    'learning-records/0001-known.md', 'attempts/a-20260101-120000-0001.md', 'evidence/0001/PLAN.md']) {
+    mkdirSync(dirname(join(dir, f)), { recursive: true });
+    cpSync(join(FIX, f), join(dir, f));
+  }
+  return dir;
+};
+const README = [
+  '# Reading the fixture function', '',
+  '## What this is for', 'Predict what a function prints before you run it, for anyone who runs node daily.', '',
+  '## Before you start', 'You know what a function is.', '',
+  '## How to take it', 'Run `teach serve` and open the address it prints.', '',
+  '## Lesson map', '| Group | Lessons | What it builds |', '|---|---|---|', '| Project: Predict, then run | 0001-good, 0003-review-good (review) | Predicting what a function prints |', '',
+  '## Labs', 'No lesson ships files under `lessons/files/`.', '',
+].join('\n');
+
+test('teach lint reports a README term only a lesson defines, and a README in Floor terms lints clean (issue 66)', () => {
+  const ws = cleanWorkspace();
+  writeFileSync(join(ws, 'README.md'), README);
+  const ok = cli(['lint', ws]);
+  assert.equal(ok.stdout, 'lint: clean\n');
+  assert.equal(ok.status, 0);
+  writeFileSync(join(ws, 'README.md'), README.replace('before you run it', 'before you run fx'));
+  const r = cli(['lint', ws]);
+  assert.equal(r.stdout, 'README_TERM_NOT_INTRODUCED  README.md: uses the term "fx", which is New to me or a lesson\'s data-introduces and not among the Floor\'s known terms\n');
+  assert.equal(r.status, 1);
+  // fx held only by lesson 0001's data-introduces, not by the mission's New to me list: still reported.
+  const mission = join(ws, 'MISSION.md');
+  writeFileSync(mission, readFileSync(mission, 'utf8').replace('- fx\n', ''));
+  const only = cli(['lint', ws]);
+  assert.match(only.stdout, /^README_TERM_NOT_INTRODUCED {2}README\.md: uses the term "fx"/);
+  assert.equal(only.status, 1);
+});
+
+test('teach lint on a workspace whose README.md is a directory lints as with no README (issue 66)', () => {
+  const ws = cleanWorkspace();
+  mkdirSync(join(ws, 'README.md'));
+  const r = cli(['lint', ws]);
+  assert.equal(r.stderr, '');
+  assert.equal(r.stdout, 'lint: clean\n');
+  assert.equal(r.status, 0);
+});
+
+test('teach lint warns on a README link into evidence/ or the vault and a vault id, and on a missing section (issue 66)', () => {
+  const ws = cleanWorkspace();
+  const vaultLink = join(VAULT, 'sources', '2026-01-01-fx-doc.md');
+  writeFileSync(join(ws, 'README.md'), README.replace('## Labs\nNo lesson ships files under `lessons/files/`.\n', '')
+    + `See [the plan](evidence/0001/PLAN.md), [the doc](${vaultLink}) and 2026-01-01-fx-doc.\n`
+    // Not warned: the same link again, an inline link inside backticks, a reference-style link and an <a href>.
+    + 'Again [the plan](evidence/0001/PLAN.md); in code `[log](evidence/0001/run.log)`; [ref][r]; <a href="evidence/0001/x.md">x</a>.\n\n[r]: evidence/0001/ref.md\n');
+  const r = cli(['lint', ws]);
+  assert.equal(r.stdout, [
+    'lint: clean',
+    `warning WARN_README_EVIDENCE_LINK  README.md: cites the vault entry 2026-01-01-fx-doc, which is for the author`,
+    `warning WARN_README_EVIDENCE_LINK  README.md: links evidence/0001/PLAN.md, which is under evidence/ and for the author`,
+    `warning WARN_README_EVIDENCE_LINK  README.md: links ${vaultLink}, which is in the vault and for the author`,
+    'warning WARN_README_SECTION_MISSING  README.md: no "## Labs" section (README-FORMAT.md)',
+  ].join('\n') + '\n');
+  assert.equal(r.status, 0);
+});
+
+test('teach readme prints one map row per Project: group with reviews marked and the lab folders, and writes nothing (issue 66)', () => {
+  const ws = copyFixture();
+  const path = join(ws, 'PATH.md');
+  writeFileSync(path, readFileSync(path, 'utf8').replace('| lesson: 0003-review-good\n', '| lesson: 0003-review-good\n10. Project: Use fx | after: 1, 2\n'));
+  mkdirSync(join(ws, 'lessons', 'files', '0004-lab'), { recursive: true });
+  writeFileSync(join(ws, 'lessons', 'files', '0004-lab', 'run.sh'), 'echo hi\n');
+  const snapshot = () => readdirSync(ws, { recursive: true }).sort().map((f) => {
+    const s = statSync(join(ws, f));
+    return [f, s.mtimeMs, s.isFile() ? readFileSync(join(ws, f), 'utf8') : null];
+  });
+  const before = snapshot();
+  const r = cli(['readme', ws]);
+  assert.equal(r.stderr, '');
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, [
+    '## Lesson map', '',
+    '| Group | Lessons | What it builds |', '|---|---|---|',
+    '| Project: Use fx | 0001-good, 0002-bad, 0003-review-good (review) |  |',
+    '| Project: Predict, then run | 0004-tool-fxctl, 0005-diagnose-fx, 0006-project-fx |  |', '',
+    '## Labs', '',
+    '| Lesson | Files | Needs on the learner\'s machine | Fallback |', '|---|---|---|---|',
+    '| 0004-tool-fxctl | lessons/files/0004-lab/ |  |  |',
+  ].join('\n') + '\n');
+  assert.deepEqual(snapshot(), before);
+  rmSync(join(ws, 'lessons', 'files'), { recursive: true });
+  assert.match(cli(['readme', ws]).stdout, /\n## Labs\n\nNo lesson ships files under `lessons\/files\/`\.\n$/);
 });

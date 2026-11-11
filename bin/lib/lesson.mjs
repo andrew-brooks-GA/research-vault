@@ -5,6 +5,8 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import { parseFrontmatter } from './frontmatter.mjs';
 import { checkCitations } from '../commands/check.mjs';
 import { matchRows } from '../commands/search.mjs';
+import { extractCitations, SPAN_RE } from './citations.mjs';
+import { isInsideVault } from './containment.mjs';
 import { traverse } from './graph.mjs';
 import {
   extractQuizJson, extractCites, serveFile, validateEntry, ENUM_CODES, LESSON_ID_RE, RECORD_ID_RE,
@@ -829,12 +831,41 @@ export function proseMetrics(workspaceDir) {
   return rows;
 }
 
+// Issue 66: the workspace README.md, read before any lesson. README_SECTIONS are README-FORMAT.md's `##` headings in
+// order; teach readme prints the last two. A New to me term or one a lesson introduces (trackedTerms) that the Floor's known terms do not
+// hold is a finding, as in a lesson; fenced code and inline link targets are not read for terms. A cited vault id, an inline
+// link into evidence/ or the vault outside code (each target once), and a missing section are advisory.
+export const README_SECTIONS = ['What this is for', 'Before you start', 'How to take it', 'Lesson map', 'Labs'];
+function lintReadme(ws, ctx) {
+  const text = readFileSync(join(ws, 'README.md'), 'utf8');
+  const findings = [];
+  const add = (code, message) => findings.push({ code, file: 'README.md', message, warning: code.startsWith('WARN_') });
+  const prose = text.replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?^ {0,3}\1/gm, ' ');
+  const known = new Set(missionFloor(ws).knownTerms ?? []);
+  const words = prose.replace(/\]\([^)]*\)/g, ']');
+  for (const t of trackedTerms(ws)) {
+    if (!known.has(t) && termRe(t).test(words)) add('README_TERM_NOT_INTRODUCED', `uses the term "${t}", which is New to me or a lesson's data-introduces and not among the Floor's known terms`);
+  }
+  const ids = new Set(ctx.entries.map((e) => e.id));
+  for (const c of extractCitations(text)) if (c.type === 'id' && ids.has(c.value)) add('WARN_README_EVIDENCE_LINK', `cites the vault entry ${c.value}, which is for the author`);
+  for (const href of new Set([...prose.replace(SPAN_RE, ' ').matchAll(/\]\(\s*<?([^)\s>]+)/g)].map((m) => m[1]))) {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('#')) continue;
+    const target = resolve(ws, href.split(/[?#]/)[0]);
+    if (isInsideVault(join(ws, 'evidence'), target)) add('WARN_README_EVIDENCE_LINK', `links ${href}, which is under evidence/ and for the author`);
+    else if (ctx.vaultPath && isInsideVault(ctx.vaultPath, target)) add('WARN_README_EVIDENCE_LINK', `links ${href}, which is in the vault and for the author`);
+  }
+  const heads = new Set([...text.matchAll(/^##\s+(.+?)\s*#*\s*$/gm)].map((m) => m[1].toLowerCase()));
+  for (const s of README_SECTIONS) if (!heads.has(s.toLowerCase())) add('WARN_README_SECTION_MISSING', `no "## ${s}" section (README-FORMAT.md)`);
+  return findings;
+}
+
 export function lintWorkspace(workspaceDir, ctx) {
   const c = { ...ctx, workspaceDir };
   const findings = ['lessons', 'reference'].flatMap((d) =>
     listDir(join(workspaceDir, d), '.html').flatMap((f) => lintLesson(join(workspaceDir, d, f), c)));
   findings.push(...lintStore(workspaceDir, c));
   if (c.lab) findings.push(...lintLab(workspaceDir, c.lab));
+  if (statSync(join(workspaceDir, 'README.md'), { throwIfNoEntry: false })?.isFile()) findings.push(...lintReadme(workspaceDir, c));
   const path = readPath(workspaceDir);
   if (path !== null) {
     findings.push(...lintPath(path));

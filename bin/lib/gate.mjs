@@ -302,7 +302,7 @@ export function findWorkspaces(repoRoot, vaultPath) {
   return out;
 }
 
-// Workspace lessons and reference docs, gates.globs, and every code.globs file with an attached link.
+// Workspace lessons, reference docs and README.md, gates.globs, and every code.globs file with an attached link.
 // Staged files that are gated, each with the verdict for its current content. Empty outside git.
 // The index is the one git finds from cwd, so a worktree that inherits the binding above it is
 // judged by its own index and the binding's globs expanded at its own top; the ledger key stays
@@ -322,7 +322,7 @@ export function stagedGates(repoRoot, vaultPath, cfg, cwd = repoRoot) {
 }
 
 export function gatedFiles(repoRoot, vaultPath, cfg) {
-  const files = findWorkspaces(repoRoot, vaultPath).flatMap((ws) => expandFiles(['lessons/*.html', 'reference/*.html'], ws));
+  const files = findWorkspaces(repoRoot, vaultPath).flatMap((ws) => expandFiles(['lessons/*.html', 'reference/*.html', 'README.md'], ws));
   const globs = cfg?.gates?.globs ?? [];
   if (globs.length) files.push(...expandFiles(globs, resolve(repoRoot)));
   for (const f of codeFiles(cfg, repoRoot)) {
