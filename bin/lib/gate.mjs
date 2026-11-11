@@ -230,6 +230,15 @@ export function gateStatus(repoRoot, filePath) {
   return { file, sha256, verdict: last ? `${last.verdict} (by unit)` : null, ts: last?.ts ?? null, units: [] };
 }
 
+// A PASS or MERIT for the file's current content, by gate status's rule and the ledger ledgerRoot finds;
+// false when no ledger resolves or the file cannot be read. `teach next` and `teach export` ask this.
+export function hasVerdict(file, vaultPath) {
+  try {
+    const root = ledgerRoot(file, vaultPath);
+    return Boolean(root && gateStatus(root, file).verdict);
+  } catch { return false; }
+}
+
 export const MIN_BODY_CHARS = 200;
 const BODY_TYPES = new Set(['source', 'note']);
 
@@ -328,8 +337,11 @@ export function stagedGates(repoRoot, vaultPath, cfg, cwd = repoRoot) {
   return pages.map((f) => { const { file, verdict, reviewerChanged } = gateStatus(repoRoot, f); return { file, verdict, ...(reviewerChanged && { reviewerChanged }) }; });
 }
 
+// The files of a teach workspace the gate covers; `teach export` gates exactly these.
+export const WORKSPACE_GATES = ['lessons/*.html', 'reference/*.html', 'README.md'];
+
 export function gatedFiles(repoRoot, vaultPath, cfg) {
-  const files = findWorkspaces(repoRoot, vaultPath).flatMap((ws) => expandFiles(['lessons/*.html', 'reference/*.html', 'README.md'], ws));
+  const files = findWorkspaces(repoRoot, vaultPath).flatMap((ws) => expandFiles(WORKSPACE_GATES, ws));
   const globs = cfg?.gates?.globs ?? [];
   if (globs.length) files.push(...expandFiles(globs, resolve(repoRoot)));
   for (const f of codeFiles(cfg, repoRoot)) {

@@ -1,5 +1,5 @@
 // research-teach workspace verbs: record, attempt, lint and next (spec 12 "Workspace store").
-import { existsSync, readdirSync, readFileSync, writeFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync, rmSync, statSync, lstatSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../lib/resolve.mjs';
@@ -8,12 +8,13 @@ import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
 import { TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
-import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft } from '../lib/teach.mjs';
-import { gateStatus, ledgerRoot } from '../lib/gate.mjs';
+import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft, exportWorkspace, writeExport } from '../lib/teach.mjs';
+import { hasVerdict } from '../lib/gate.mjs';
+import { isInsideVault } from '../lib/containment.mjs';
 import { lintWorkspace, proseMetrics, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [workspace]';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [workspace]';
 
 const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
 const out = (s) => process.stdout.write(s + '\n');
@@ -69,9 +70,32 @@ function readmeLine(ws, args) {
   const file = join(ws, 'README.md');
   if (!statSync(file, { throwIfNoEntry: false })?.isFile()) return 'readme: missing';
   try {
-    const root = ledgerRoot(file, resolveVault({ flag: args.vault ?? null, cwd: ws }).path);
-    return root && gateStatus(root, file).verdict ? 'readme: ok' : 'readme: ungated';
+    return hasVerdict(file, resolveVault({ flag: args.vault ?? null, cwd: ws }).path) ? 'readme: ok' : 'readme: ungated';
   } catch { return 'readme: ungated'; }
+}
+
+// Spec 48: `teach export`. Exit 2 before any work on a bad --out or no vault; every check runs before the first
+// write, so a refusal (exit 1) leaves nothing behind.
+function exportCopy(ws, args) {
+  if (typeof args.out !== 'string') return usage();
+  const dir = resolve(args.out);
+  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws });
+  const refuse = (why) => { process.stderr.write(`teach export: ${why}\n`); return 2; };
+  if (!existsSync(vaultPath)) return refuse(`no vault at ${vaultPath}`);
+  if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) return refuse(`--out ${dir} is a symlink`);
+  if (isInsideVault(vaultPath, dir)) return refuse(`--out ${dir} is inside the vault`);
+  for (const d of ['lessons', 'reference', 'assets']) if (isInsideVault(join(ws, d), dir)) return refuse(`--out ${dir} is inside the workspace's ${d}/`);
+  const st = statSync(dir, { throwIfNoEntry: false });
+  if (st && !(st.isDirectory() && readdirSync(dir).length === 0)) return refuse(`--out ${dir} exists and is not an empty directory`);
+  const r = exportWorkspace(ws, { vaultPath, entries: buildManifest(vaultPath).entries, skipUngated: args['skip-ungated'] === true });
+  if (r.lines.length) out(r.lines.join('\n'));
+  if (r.error) process.stderr.write(r.error + '\n');
+  if (r.code) return r.code;
+  try { writeExport(dir, r.files); } catch (e) {
+    return refuse(`cannot write under ${dir} (${e.code ?? e.message}); removed what this run wrote`);
+  }
+  out(`wrote ${r.files.size} files to ${dir}`);
+  return 0;
 }
 
 function pathLines(ws, args) {
@@ -250,6 +274,11 @@ export async function run(args) {
     const { code, lines } = importAttempts(ws, text, { schema: teachSchema, now });
     if (lines.length) out(lines.join('\n'));
     return code;
+  }
+  if (verb === 'export') {
+    const ws = workspace(sub);
+    if (!ws) return usage();
+    return exportCopy(ws, args);
   }
   if (verb === 'serve') {
     const ws = workspace(sub);

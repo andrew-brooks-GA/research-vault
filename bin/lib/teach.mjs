@@ -1,7 +1,7 @@
 // research-teach workspace store: learning records, attempts and the derived index.
 // Pure logic over a workspace directory; the verbs live in bin/commands/teach.mjs.
-import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, statSync, lstatSync } from 'node:fs';
-import { join, resolve, basename, extname } from 'node:path';
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, statSync, lstatSync, rmSync } from 'node:fs';
+import { join, resolve, basename, dirname, extname } from 'node:path';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.mjs';
@@ -10,9 +10,10 @@ import { loadTeachSchema } from './schema.mjs';
 import { allowedValues } from './validate.mjs';
 import { slugify } from './ids.mjs';
 import { isInsideVault } from './containment.mjs';
-import { grade } from '../../skills/research-teach/assets/quiz.js';
-import { lessonItems, readPath, isProject, lessonClass, README_SECTIONS } from './lesson.mjs';
-import { HEADING_RE, TABLE_SEP_RE } from './gate.mjs';
+import { expandFiles } from './files.mjs';
+import { grade, neighbours, pathPosition } from '../../skills/research-teach/assets/quiz.js';
+import { lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWUP, CONNECT_LEAD } from './lesson.mjs';
+import { HEADING_RE, TABLE_SEP_RE, WORKSPACE_GATES, hasVerdict } from './gate.mjs';
 
 export const SPACING_DAYS = 21;
 export const ATTEMPT_BODY_MAX = 4096;
@@ -369,10 +370,20 @@ export function progressText(p) {
 }
 
 // The navigation bar of a page that does not load quiz.js; renderNav in quiz.js builds the same links
-// (plus previous, next and the path position) on a lesson page.
-export function navHtml() {
-  return '<nav class="lesson-nav"><a class="lesson-nav-index" href="/">All lessons</a><a class="lesson-nav-progress" href="/progress">Progress</a><a class="lesson-nav-reading" href="/assets/reading.html">How to read</a></nav>';
+// (plus previous, next and the path position) on a lesson page. Spec 48 D3: given lessonIndex's index and a
+// lesson id, it adds those three as renderNav does, for an exported lesson that fetches nothing.
+export function navHtml(index = null, id = null) {
+  const links = '<nav class="lesson-nav"><a class="lesson-nav-index" href="/">All lessons</a><a class="lesson-nav-progress" href="/progress">Progress</a><a class="lesson-nav-reading" href="/assets/reading.html">How to read</a>';
+  if (!index) return links + '</nav>';
+  const { prev, next } = neighbours(index.lessons ?? [], id);
+  const pos = pathPosition(index, id);
+  const a = (e, text, cls) => `<a class="${cls}" href="${escapeHtml(e.path)}">${text}</a>`;
+  return links + (prev ? a(prev, `&#8592; ${escapeHtml(prev.title)}`, 'lesson-nav-prev') : '') +
+    (pos ? `<span class="lesson-nav-line">${pos}</span>` : '') + (next ? a(next, `${escapeHtml(next.title)} &#8594;`, 'lesson-nav-next') : '') + '</nav>';
 }
+
+// The server-inserted bar: after <body> on an HTML page that does not load quiz.js.
+export const withNav = (html) => (/<script[^>]*quiz\.js/i.test(html) ? html : html.replace(/<body\b[^>]*>/i, (m) => m + navHtml()));
 
 export function progressHtml(p) {
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -416,7 +427,8 @@ function send(req, res, status, body = '', type = 'text/plain; charset=utf-8', c
 // the list lacks numbers after it) carrying the entry's title, and the sources block's
 // anchors get `id="src-ID"`, their title as text, and their number. The file on disk is untouched, so
 // the claims-gate hash is unaffected. `titles` maps vault id to title; an unknown id keeps the id as its title.
-export function footnoteCitations(html, titles = {}) {
+// `sourceHref(id)` is the href given a sources-block anchor that has none (`teach export` points it at sources.html).
+export function footnoteCitations(html, titles = {}, sourceHref = (id) => `#src-${id}`) {
   const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const srcRe = /(<[a-z][a-z0-9]*\b[^>]*\bdata-block\s*=\s*(["'])sources\2[^>]*>)([\s\S]*?)(<\/section>|<\/div>)/i;
   const m = srcRe.exec(html);
@@ -433,30 +445,30 @@ export function footnoteCitations(html, titles = {}) {
   if (!m) return body;
   const srcBody = sources.replace(anchor, (_, pre, q, id, post) => {
     const n = num(id);
-    const hrefOnly = /\bhref\s*=/.test(pre + post) ? '' : ` href="#src-${esc(id)}"`;
+    const hrefOnly = /\bhref\s*=/.test(pre + post) ? '' : ` href="${esc(sourceHref(id))}"`;
     return `<a${pre}data-cite="${id}"${post}${hrefOnly} id="src-${esc(id)}">[${n}] ${esc(titles[id] ?? id)}</a>`;
   });
   return body + m[1] + srcBody + m[4] + after;
 }
 
 // The resolved file to serve for a URL path, or a status: 400 undecodable, 404 anything not allowlisted.
-export function serveFile(workspaceDir, urlPath, { titles, bytes = true } = {}) {
+export function serveFile(workspaceDir, urlPath, { titles, sourceHref, bytes = true } = {}) {
   let decoded;
   try { decoded = decodeURIComponent(urlPath); } catch { return { status: 400 }; }
   if (decoded.includes('\0') || decoded.split('/').some((seg) => seg.startsWith('.'))) return { status: 404 };
   const target = join(workspaceDir, decoded);
-  const allowed = target === join(workspaceDir, 'GLOSSARY.md') ||
-    STATIC_DIRS.some((d) => isInsideVault(join(workspaceDir, d), target));
+  const glossary = target === join(workspaceDir, 'GLOSSARY.md');
+  const allowed = glossary || STATIC_DIRS.some((d) => isInsideVault(join(workspaceDir, d), target));
   if (!allowed) return { status: 404 };
   try {
+    if (glossary && lstatSync(target).isSymbolicLink()) return { status: 404 }; // allowed by name only: not followed
     if (!statSync(target).isFile()) return { status: 404 };
     if (!bytes) return { status: 200 };
     const body = readFileSync(target);
     const isPage = /\.html$/i.test(target) && (decoded.startsWith('/lessons/') || decoded.startsWith('/reference/'));
-    let out = isPage ? footnoteCitations(body.toString('utf8'), titles ?? {}) : body;
+    let out = isPage ? footnoteCitations(body.toString('utf8'), titles ?? {}, sourceHref) : body;
     if (/\.html$/i.test(target)) {
-      const html = out.toString('utf8');
-      if (!/<script[^>]*quiz\.js/i.test(html)) out = html.replace(/<body\b[^>]*>/i, (m) => m + navHtml());
+      out = withNav(out.toString('utf8'));
     }
     return { status: 200, body: out, type: CONTENT_TYPES[extname(target).toLowerCase()] ?? 'application/octet-stream' };
   } catch {
@@ -558,13 +570,18 @@ export function markdownHtml(md) {
 
 // Lessons in id order, each consecutive run under the project that closes its group as an h2; a README.md
 // that is a regular file (lstat: a symlink is not followed) and reads goes above them, rendered by markdownHtml.
-export function indexHtml(ws) {
-  const { lessons, reference } = lessonIndex(ws);
+// Spec 48 D2: `index` (default lessonIndex) and `readme` (the README's text, null for none; default read
+// from the workspace) let `teach export` pass its filtered index and its README text.
+function readmeText(ws) {
   const readme = join(ws, 'README.md');
-  let readmeHtml = '';
   try {
-    if (lstatSync(readme).isFile()) readmeHtml = `<section data-block="readme">${markdownHtml(readFileSync(readme, 'utf8'))}</section>\n`;
+    if (lstatSync(readme).isFile()) return readFileSync(readme, 'utf8');
   } catch { /* absent or unreadable: the page has no README */ }
+  return null;
+}
+export function indexHtml(ws, { index = lessonIndex(ws), readme = readmeText(ws) } = {}) {
+  const { lessons, reference } = index;
+  const readmeHtml = readme === null ? '' : `<section data-block="readme">${markdownHtml(readme)}</section>\n`;
   const li = (e) => `<li><a href="${escapeHtml(e.path)}">${escapeHtml(e.title)}</a>${e.shape ? ` <span class="lesson-shape">${escapeHtml(e.shape)}</span>` : ''} <small>${escapeHtml(e.id)}</small></li>`;
   const runs = [];
   for (const l of lessons) {
@@ -580,6 +597,190 @@ export function indexHtml(ws) {
 ${reference.length ? `<section data-block="reference-index"><ul class="lesson-index">${reference.map(li).join('')}</ul></section>` : ''}
 </body></html>
 `;
+}
+
+// Spec 48: `teach export`, a static copy of the workspace that works from file://. An exported page is the
+// served page (serveFile, indexHtml) passed through exportPage; everything is built in memory and checked before
+// the command writes a byte.
+const PLUGIN_ASSETS = fileURLToPath(new URL('../../skills/research-teach/assets/', import.meta.url));
+// D7: what an exported page says in place of FOLLOWUP and CONNECT_LEAD, and the README's How to take it body.
+export const EXPORT_TEXT = {
+  followup: 'You can ask your instructor follow-up questions.',
+  connect: 'Write your answer down, or send it to your instructor, in a few sentences:',
+  howToTake: 'Open the lessons below in order. Your quiz answers are kept in this browser; use Export my results on the Progress page and send the file to your instructor.',
+};
+export const MENTION_RE = /\bin (?:the|your) terminal\b|\bteach serve\b|\bClaude Code\b/i;
+
+// D2: the quiz.js tag made a deferred classic script, on a lesson the bar built here (D3), data-export and
+// data-lesson on <body>, D7's two sentences replaced (not on sources.html), then every root-absolute href and src
+// (one /, not //host) made relative to `path`, the page's path under --out: / is index.html, /progress progress.html.
+export function exportPage(html, path, { key, index }) {
+  const name = /^lessons\/([^/]+)\.html$/.exec(path)?.[1];
+  const id = name && LESSON_ID_RE.test(name) ? name : null;
+  let out = html.replace(/<script\b[^>]*quiz\.js[^>]*>/gi, (tag) => {
+    const t = tag.replace(/\s+type\s*=\s*(["'])module\1/i, '');
+    return /\sdefer\b/i.test(t) ? t : t.replace(/^<script\b/i, '<script defer');
+  });
+  if (/<script[^>]*quiz\.js/i.test(out)) out = out.replace(/<body\b[^>]*>/i, (m) => m + navHtml(index, id));
+  out = out.replace(/<body\b([^>]*)>/i, (_, attrs) =>
+    `<body data-export="${escapeHtml(key)}"${id && !/\sdata-lesson\s*=/i.test(attrs) ? ` data-lesson="${id}"` : ''}${attrs}>`);
+  if (path !== 'sources.html') out = out.replace(loose(FOLLOWUP), EXPORT_TEXT.followup).replace(loose(CONNECT_LEAD), EXPORT_TEXT.connect);
+  const up = '../'.repeat(path.split('/').length - 1);
+  return out.replace(/(\s(?:href|src)\s*=\s*)(?:"\/(?!\/)([^"]*)"|'\/(?!\/)([^']*)')/gi, (m, attr, dq, sq) => {
+    const q = dq === undefined ? "'" : '"';
+    const [, p, tail] = /^([^?#]*)(.*)$/s.exec(dq ?? sq);
+    return `${attr}${q}${up}${p === '' ? 'index.html' : p === 'progress' ? 'progress.html' : p}${tail}${q}`;
+  });
+}
+
+// D1: progress.html of an exported copy. quiz.js fills the progress section from this browser's storage, and
+// exportPage adds the bar, as on any page that loads quiz.js.
+export function localProgressHtml() {
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Progress</title><link rel="stylesheet" href="/assets/lesson.css"><script defer src="/assets/quiz.js"></script></head>
+<body><h1>Progress</h1>
+<section data-block="progress"></section>
+</body></html>
+`;
+}
+
+// D5: one <li id> per cited entry, in id order: its title (linked only to an http: or https: source_url), the
+// date its id begins with and its summary, all escaped.
+function sourcesHtml(ids, byId) {
+  const li = (id) => {
+    const e = byId.get(id);
+    const url = typeof e.source_url === 'string' ? e.source_url : '';
+    const title = escapeHtml(String(e.title ?? id));
+    const date = /^\d{4}-\d{2}-\d{2}/.exec(id)?.[0];
+    return `<li id="${escapeHtml(id)}">${/^https?:/i.test(url) && linkable(url) ? `<a href="${escapeHtml(url)}">${title}</a>` : title}` +
+      `${date ? ` <small>${date}</small>` : ''}${e.summary ? `: ${escapeHtml(String(e.summary))}` : ''}</li>`;
+  };
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Sources</title><link rel="stylesheet" href="/assets/lesson.css"></head>
+<body>${navHtml()}<h1>Sources</h1>
+<ul class="sources">${ids.map(li).join('')}</ul>
+</body></html>
+`;
+}
+
+// D7: the body of the README's "## How to take it" section (to the next # or ## heading outside a fence) replaced.
+function exportReadme(text) {
+  const lines = text.split(/\r?\n/);
+  let start = -1, end = lines.length, fence = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (FENCE_RE.test(lines[i])) fence = !fence;
+    if (fence || !/^#{1,2}\s/.test(lines[i])) continue;
+    if (start !== -1) { end = i; break; }
+    if (/^##\s+(.+?)\s*#*\s*$/.exec(lines[i])?.[1].toLowerCase() === README_SECTIONS[2].toLowerCase()) start = i;
+  }
+  return start === -1 ? text : [...lines.slice(0, start + 1), '', EXPORT_TEXT.howToTake, '', ...lines.slice(end)].join('\n');
+}
+
+// Workspace-relative files under a directory; a symlinked directory is listed as a file, not followed, so
+// serveFile (which stats it as no regular file) leaves it out.
+function walk(ws, rel) {
+  let ents;
+  try { ents = readdirSync(join(ws, rel), { withFileTypes: true }); } catch { return []; }
+  return ents.sort((a, b) => (a.name < b.name ? -1 : 1)).flatMap((d) => (d.isDirectory() ? walk(ws, `${rel}/${d.name}`) : [`${rel}/${d.name}`]));
+}
+const urlOf = (p) => '/' + p.split('/').map(encodeURIComponent).join('/');
+// A fixed sentence matched with any run of whitespace between its words, so a sentence wrapped in the source matches.
+const loose = (s) => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+'), 'g');
+// D7: a page's rendered text: the sources block (vault titles, as on sources.html), <pre> and <code> removed, a
+// non-breaking space a space, every whitespace run one space (a source line break is a space), then a block-level
+// tag a line break and any other tag nothing (script text such as quiz JSON stays); then its sentences, cut at a
+// line break or after . ! ?, that name the terminal, teach serve or Claude Code. GLOSSARY.md is Markdown: a blank
+// line ends a paragraph, a single line break is a space.
+const BLOCK_TAG = /<\/?(?:p|div|section|article|aside|header|footer|main|nav|ul|ol|li|dl|dt|dd|h[1-6]|table|thead|tbody|tr|td|th|figure|figcaption|blockquote|script|style|title|head|body|br|hr)\b[^>]*>/gi;
+const NBSP = /&nbsp;|&#160;|&#x0*a0;/gi;
+// Only the last element whose data-block is sources, and only when it closes (matched by depth, as parseBlocks does);
+// an earlier one, or an unclosed one, is checked like any other text.
+function withoutSources(html) {
+  const m = [...html.matchAll(/<([a-z][a-z0-9]*)\b[^>]*\bdata-block\s*=\s*(["'])sources\2[^>]*>/gi)].at(-1);
+  if (!m) return html;
+  const start = m.index + m[0].length;
+  const re = new RegExp(`<(/?)${m[1]}\\b[^>]*>`, 'gi');
+  re.lastIndex = start;
+  for (let depth = 1, t; (t = re.exec(html));) if ((depth += t[1] ? -1 : 1) === 0) return html.slice(0, start) + ' ' + html.slice(t.index);
+  return html;
+}
+const pageText = (html) => withoutSources(html).replace(/<pre\b[\s\S]*?<\/pre>/gi, '<br>').replace(/<code\b[\s\S]*?<\/code>/gi, ' ')
+  .replace(NBSP, ' ').replace(/\s+/g, ' ').replace(BLOCK_TAG, '\n').replace(/<[^>]*>/g, '');
+const markdownText = (md) => md.replace(NBSP, ' ').split(/\n[ \t]*\n/).map((p) => p.replace(/\s+/g, ' ')).join('\n');
+const mentions = (text) => text.split(/\n|(?<=[.!?])\s/).map((s) => s.trim()).filter((s) => MENTION_RE.test(s));
+
+// The files of the export (path under --out to content) and the lines to print, or code 1 and the refusals.
+// `entries` is the vault manifest's; nothing is written here.
+export function exportWorkspace(ws, { vaultPath, entries, skipUngated = false }) {
+  const key = workspaceKey(ws);
+  const gated = new Set(expandFiles(WORKSPACE_GATES, ws));
+  const found = STATIC_DIRS.flatMap((d) => walk(ws, d)).filter((p) => serveFile(ws, urlOf(p), { bytes: false }).status === 200);
+  const notGated = [], pages = [], raw = [], ungated = [];
+  for (const p of found) {
+    // The plugin's copies go out, under any case of the name (a case-insensitive disk serves Quiz.js as quiz.js).
+    if (['assets/quiz.js', 'assets/reading.html'].includes(p.toLowerCase())) continue;
+    if (!/\.html?$/i.test(p)) raw.push(p);
+    else if (!gated.has(join(ws, p))) notGated.push(p);
+    else (hasVerdict(join(ws, p), vaultPath) ? pages : ungated).push(p);
+  }
+  let readme = readmeText(ws);
+  if (readme !== null && !hasVerdict(join(ws, 'README.md'), vaultPath)) ungated.push('README.md');
+  if (skipUngated && ungated.includes('README.md')) readme = null;
+  if (!skipUngated) pages.push(...ungated.filter((p) => p !== 'README.md')); // checked too, so one run lists every refusal
+  const kept = new Set(pages);
+  const full = lessonIndex(ws);
+  const index = { ...full, lessons: full.lessons.filter((e) => kept.has(e.path.slice(1))), reference: full.reference.filter((e) => kept.has(e.path.slice(1))) };
+  const ctx = { key, index };
+  const titles = Object.fromEntries(entries.map((e) => [e.id, e.title ?? e.id]));
+  const sourceHref = (id) => `/sources.html#${encodeURIComponent(id)}`;
+  const files = new Map();
+  for (const p of pages) files.set(p, exportPage(serveFile(ws, urlOf(p), { titles, sourceHref }).body.toString('utf8'), p, ctx));
+  files.set('index.html', exportPage(indexHtml(ws, { index, readme: readme === null ? null : exportReadme(readme) }), 'index.html', ctx));
+  files.set('progress.html', exportPage(localProgressHtml(), 'progress.html', ctx));
+  files.set('assets/reading.html', exportPage(withNav(readFileSync(join(PLUGIN_ASSETS, 'reading.html'), 'utf8')), 'assets/reading.html', ctx));
+  files.set('assets/quiz.js', readFileSync(join(PLUGIN_ASSETS, 'quiz.js'), 'utf8').replace(/^export /gm, ''));
+  for (const p of raw) files.set(p, serveFile(ws, urlOf(p)).body);
+  if (![...files.keys()].some((p) => p.toLowerCase() === 'assets/lesson.css')) files.set('assets/lesson.css', readFileSync(join(PLUGIN_ASSETS, 'lesson.css')));
+  if (serveFile(ws, '/GLOSSARY.md', { bytes: false }).status === 200) files.set('GLOSSARY.md', serveFile(ws, '/GLOSSARY.md').body);
+
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  const html = [...files].filter(([p]) => /\.html?$/i.test(p));
+  const unknown = html.flatMap(([p, h]) => extractCites(h).filter((id) => !byId.has(id)).map((id) => `unknown-source ${p}: ${id}`));
+  const ids = uniq(html.flatMap(([, h]) => extractCites(h))).filter((id) => byId.has(id)).sort();
+  files.set('sources.html', exportPage(sourcesHtml(ids, byId), 'sources.html', ctx));
+  const glossary = files.has('GLOSSARY.md') ? [['GLOSSARY.md', markdownText(files.get('GLOSSARY.md').toString('utf8'))]] : [];
+  const mention = [...html.map(([p, h]) => [p, pageText(h)]), ...glossary].flatMap(([p, t]) => mentions(t).map((s) => `mention ${p}: ${s}`));
+  // Two paths that differ only by case would be one file on a case-insensitive disk.
+  const byCase = new Map();
+  const collide = [...files.keys()].flatMap((p) => { const k = p.toLowerCase(); if (byCase.has(k)) return [`case-collision ${byCase.get(k)}: ${p}`]; byCase.set(k, p); return []; });
+  const lines = [...notGated.map((p) => `not gated ${p}`), ...ungated.map((p) => `${skipUngated ? 'skipped' : 'ungated'} ${p}`), ...mention, ...unknown, ...collide];
+  const error = !skipUngated && ungated.length
+    ? `teach export: ${ungated.length} page(s) have no PASS or MERIT for their current content; nothing written (--skip-ungated leaves them out)` : null;
+  if (error || mention.length || unknown.length || collide.length) return { code: 1, lines, error };
+  const urlFor = (id) => byId.get(id).source_url;
+  for (const id of ids) lines.push(`source ${id} ${typeof urlFor(id) === 'string' && urlFor(id) ? urlFor(id) : '-'}`);
+  return { code: 0, lines, files };
+}
+
+// Writes the export under `dir`, which the caller has checked is absent or an empty directory; never overwrites.
+// When a write fails, what this run created is removed (`dir` itself when it was absent) and the error rethrown.
+export function writeExport(dir, files) {
+  const existed = lstatSync(dir, { throwIfNoEntry: false }) !== undefined; // a dangling link exists: never removed
+  const made = [];
+  try {
+    mkdirSync(dir, { recursive: true });
+    for (const [p, body] of files) {
+      const dest = join(dir, p);
+      if (!isInsideVault(dir, dest)) throw new Error(`${p} would be written outside ${dir}`);
+      const sub = mkdirSync(dirname(dest), { recursive: true });
+      if (sub) made.push(sub);
+      writeFileSync(dest, body, { flag: 'wx' });
+      made.push(dest);
+    }
+  } catch (e) {
+    for (const p of existed ? made.reverse() : [dir]) rmSync(p, { recursive: true, force: true });
+    throw e;
+  }
 }
 
 function postAttempt(req, res, workspaceDir, origin, schema, now) {

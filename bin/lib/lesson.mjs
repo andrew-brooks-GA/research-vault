@@ -19,7 +19,9 @@ export const QUIZ_SPREAD_MAX = 1.6;
 export const FIGURE_VIEWBOX_MAX = 440;
 export const FIGURE_LABEL_MIN = 14;
 export const FIGURE_LABEL_MAX = 40;
-const FOLLOWUP = 'You can ask follow-up questions in the terminal.';
+export const FOLLOWUP = 'You can ask follow-up questions in the terminal.';
+// Spec 48 D7: the connect block's opening sentence; `teach export` replaces it, and WARN_CONNECT_LEAD flags another.
+export const CONNECT_LEAD = 'Type your answer to Claude Code in the terminal, in a few sentences:';
 // Spec 22 D1: a lesson is the frame (prereq optional) around its shape's middle, in this one table.
 // D3: a project's scaffold is optional (the mission's first project carries one), so it is not listed.
 const FRAME = ['mission', 'sources', 'followup'];
@@ -483,6 +485,8 @@ export function lintLesson(filePath, ctx) {
   }
   const followup = blocks.get('followup');
   if (followup && !textOf(followup.html).includes(FOLLOWUP)) add('LESSON_FOLLOWUP_MISSING', `followup block lacks: ${FOLLOWUP}`);
+  const connect = blocks.get('connect');
+  if (connect && !textOf(connect.html).startsWith(CONNECT_LEAD)) add('WARN_CONNECT_LEAD', `connect block does not open with: ${CONNECT_LEAD}`);
 
   const fact = blocks.get('fact');
   if (fact) {
