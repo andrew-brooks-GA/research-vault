@@ -123,6 +123,10 @@ export function attemptId(now, lessonNumber, exists) {
   return id;
 }
 
+// One in-range integer per quiz item: what gradeAttempt accepts, and the import's test of a changed lesson.
+const fits = (items, answers) => Array.isArray(answers) && answers.length === items.length &&
+  answers.every((a, i) => Number.isInteger(a) && a >= 0 && a < items[i].options.length);
+
 // Spec 22 D3: `result` (pass|fail) records a project run in place of answers, stored as one item, 1/1 or 0/1.
 function gradeAttempt(workspaceDir, lesson, answers, result) {
   if (result !== undefined) {
@@ -130,8 +134,7 @@ function gradeAttempt(workspaceDir, lesson, answers, result) {
     return { result, total: 1, wrong: result === 'pass' ? [] : [0], records: [] };
   }
   const { items } = readQuiz(workspaceDir, lesson);
-  if (!Array.isArray(answers) || answers.length !== items.length ||
-      !answers.every((a, i) => Number.isInteger(a) && a >= 0 && a < items[i].options.length)) {
+  if (!fits(items, answers)) {
     throw new Error(`answers must be one in-range integer per quiz item (${items.length} items)`);
   }
   const { total, wrong } = grade(items, answers);
@@ -158,6 +161,72 @@ export function writeAttempt(workspaceDir, { lesson, answers, result, now }, sch
     }
     return { id, path, score: total - wrong.length, total, wrong, result: data.result };
   }
+}
+
+// Spec 48 D4: `teach attempt import` of the results file quiz.js's resultsFile builds in an exported copy.
+export const RESULTS_MAX = 1024 * 1024;
+const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const keysAre = (o, keys) => o !== null && typeof o === 'object' && !Array.isArray(o) &&
+  Object.keys(o).length === keys.length && keys.every((k) => Object.hasOwn(o, k));
+// A file value in a printed line: an array or object is named, never walked, so a deeply nested value cannot
+// overflow the stack; JSON.stringify escapes a quote, a backslash and U+0000 to U+001F, ESC_RE what it leaves raw.
+const ESC_RE = /[\u007f-\u009f\u200e\u200f\u202a-\u202e\u2028\u2029\u2066-\u2069]/g;
+const show = (v) => (v !== null && typeof v === 'object' ? (Array.isArray(v) ? 'an array' : 'an object')
+  : String(JSON.stringify(v)).replace(ESC_RE, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`));
+const sameList = (xs, ys) => Array.isArray(ys) && ys.length === xs.length && xs.every((x, i) => x === ys[i]);
+// The storage key and `workspace` field of an exported copy: the workspace directory's name through slugify.
+export const workspaceKey = (workspaceDir) => slugify(basename(resolve(workspaceDir)));
+
+function attemptProblems(workspaceDir, a, now) {
+  if (!keysAre(a, ['lesson', 'answers', 'at', 'total', 'wrong'])) return ['keys must be exactly lesson, answers, at, total, wrong'];
+  const out = [];
+  if (typeof a.lesson !== 'string' || !LESSON_ID_RE.test(a.lesson)) out.push(`lesson ${show(a.lesson)} is not a lesson id`);
+  else if (!existsSync(join(workspaceDir, 'lessons', `${a.lesson}.html`))) out.push(`no lesson ${show(a.lesson)}`);
+  if (!Array.isArray(a.answers) || !a.answers.every((x) => Number.isInteger(x) && x >= 0)) out.push('answers is not an array of non-negative integers');
+  if (typeof a.at !== 'string' || !ISO_RE.test(a.at) || Number.isNaN(Date.parse(a.at)) || new Date(a.at).toISOString() !== a.at) out.push(`at ${show(a.at)} is not a toISOString time`);
+  else if (new Date(a.at) > now) out.push(`at ${show(a.at)} is later than this machine's clock`);
+  return out;
+}
+
+// Structural problems refuse the whole file (code 1, nothing written). Otherwise each attempt is skipped when
+// its id without a collision suffix is in attempts/ or earlier in the file, reported `changed` when its lesson has
+// no quiz that parses, its answers no longer fit the lesson or its regrade differs from the file's total and wrong
+// (code 1), else written by writeAttempt with `at` as now. Every attempt is decided before the first is written.
+// Every file value a problem line or a changed line prints goes through show; a changed line names the lesson,
+// which has passed its checks.
+export function importAttempts(workspaceDir, text, { schema, now }) {
+  let file;
+  try { file = JSON.parse(text); } catch { return { code: 1, lines: ['file: not JSON'] }; }
+  const key = workspaceKey(workspaceDir);
+  const problems = [];
+  if (!keysAre(file, ['format', 'version', 'workspace', 'attempts'])) problems.push('file: keys must be exactly format, version, workspace, attempts');
+  if (file?.format !== 'research-vault-attempts') problems.push(`file: format ${show(file?.format)} is not "research-vault-attempts"`);
+  if (file?.version !== 1) problems.push(`file: version ${show(file?.version)} is not 1`);
+  if (file?.workspace !== key) problems.push(`file: workspace ${show(file?.workspace)} is not this workspace's ${show(key)}`);
+  const list = file?.attempts;
+  if (!Array.isArray(list) || !list.length) problems.push('file: attempts is not a non-empty array');
+  else list.forEach((a, i) => { for (const p of attemptProblems(workspaceDir, a, now)) problems.push(`attempt ${i + 1}: ${p}`); });
+  if (problems.length) return { code: 1, lines: problems };
+  const planned = new Set();
+  const plan = list.map((a) => {
+    const base = attemptId(new Date(a.at), a.lesson.slice(0, 4), () => false);
+    if (planned.has(base) || existsSync(join(workspaceDir, 'attempts', `${base}.md`))) return { line: `skipped ${base}: already recorded` };
+    let items = [];
+    try { ({ items } = readQuiz(workspaceDir, a.lesson)); } catch { items = []; } // no quiz that parses: now -/0
+    const g = items.length && fits(items, a.answers) ? grade(items, a.answers) : null;
+    if (!g || g.total !== a.total || !sameList(g.wrong, a.wrong)) {
+      const was = Number.isInteger(a.total) && Array.isArray(a.wrong) ? a.total - a.wrong.length : null;
+      return { changed: true, line: `changed ${a.lesson}: browser ${show(was)}/${show(a.total)}, now ${g ? g.total - g.wrong.length : '-'}/${items.length}` };
+    }
+    planned.add(base);
+    return { a };
+  });
+  const lines = plan.map(({ a, line }) => {
+    if (!a) return line;
+    const r = writeAttempt(workspaceDir, { lesson: a.lesson, answers: a.answers, now: new Date(a.at) }, schema);
+    return `recorded ${r.id}: ${r.score}/${r.total}`;
+  });
+  return { code: plan.some((p) => p.changed) ? 1 : 0, lines };
 }
 
 // `teach lint --fix` upgrade for a legacy record: no frontmatter, or frontmatter without `type`

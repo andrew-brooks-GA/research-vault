@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { shuffleOptions, grade, answerLengthSpread, lessonIdFrom, neighbours, pathPosition, mergeQuizzes, answerMark, renderQuiz } from '../skills/research-teach/assets/quiz.js';
+import { shuffleOptions, grade, answerLengthSpread, lessonIdFrom, neighbours, pathPosition, mergeQuizzes, answerMark, renderQuiz, resultsFile } from '../skills/research-teach/assets/quiz.js';
 
 const QUIZ = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills/research-teach/assets/quiz.js');
 
@@ -60,7 +60,7 @@ test('importing quiz.js in Node touches no DOM', () => {
   `;
   const out = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }));
   console.log(`exports=${out.exports.length} dom_accesses=${out.touched}`);
-  assert.deepEqual(out.exports, ['answerLengthSpread', 'answerMark', 'grade', 'lessonIdFrom', 'mergeQuizzes', 'neighbours', 'pathPosition', 'renderQuiz', 'shuffleOptions']);
+  assert.deepEqual(out.exports, ['answerLengthSpread', 'answerMark', 'grade', 'lessonIdFrom', 'mergeQuizzes', 'neighbours', 'pathPosition', 'renderQuiz', 'resultsFile', 'shuffleOptions']);
   assert.equal(out.touched, 0);
   assert.equal(out.hasDocument, false);
 });
@@ -96,7 +96,7 @@ test('answerMark is the visible text of a revealed option', () => {
 });
 
 // The smallest DOM renderQuiz touches: enough to read roles, labels and texts back.
-function fakeDocument() {
+function fakeDocument(dataset = {}) {
   const make = (tag) => {
     const node = {
       tag, children: [], attrs: {}, listeners: {}, className: '', id: '', textContent: '',
@@ -104,11 +104,14 @@ function fakeDocument() {
       setAttribute(k, v) { node.attrs[k] = v; },
       append(...c) { node.children.push(...c); },
       addEventListener(t, f) { node.listeners[t] = f; },
+      click() { node.clicked = true; }, remove() { node.removed = true; },
       querySelectorAll(sel) { const out = []; const walk = (n) => n.children.forEach((c) => { if (c.tag === sel) out.push(c); walk(c); }); walk(node); return out; },
     };
     return node;
   };
-  return { createElement: make, body: { dataset: { lesson: '0005-diagnose-fx' } } };
+  const body = make('body');
+  body.dataset = { lesson: '0005-diagnose-fx', ...dataset };
+  return { createElement: make, body };
 }
 
 test('renderQuiz: one attempt over predict and quiz, group roles, status roles, aria-disabled and visible marks', async () => {
@@ -149,6 +152,131 @@ test('renderQuiz: one attempt over predict and quiz, group roles, status roles, 
   } finally {
     delete globalThis.document;
     delete globalThis.location;
+  }
+});
+
+// Spec 48 D4: with data-export on <body>, the default submit stores the attempt in localStorage under the workspace
+// key, never fetches, and the Export my results button downloads resultsFile of what is stored plus what is held.
+test('export mode: the attempt goes to localStorage, and Export my results carries it even when storage throws (spec 48)', async () => {
+  const realCreate = URL.createObjectURL;
+  const blobs = [];
+  globalThis.location = { pathname: '/Users/me/out/lessons/0005-diagnose-fx.html', origin: 'http://127.0.0.1:8080' };
+  const fetched = [];
+  globalThis.fetch = (u) => { fetched.push(u); return new Promise(() => {}); };
+  URL.createObjectURL = (b) => { blobs.push(b); return 'blob:x'; };
+  const item = (q) => ({ q, options: ['a', 'b', 'c'], correct: 0, why: ['wa', 'wb', 'wc'] });
+  const answer = async (picks) => {
+    const box = document.createElement('div');
+    renderQuiz([{ container: box, items: [item('q1'), item('q2')] }], { rand: () => 0.999 });
+    const items = box.children[0].children.filter((c) => c.className === 'quiz-item');
+    for (const [i, k] of picks.entries()) await items[i].querySelectorAll('button')[k].listeners.click();
+    return box.children[0].children.at(-1);
+  };
+  const exported = async (result) => {
+    const btn = result.children.find((c) => c.className === 'quiz-export');
+    assert.equal(btn.textContent, 'Export my results');
+    btn.listeners.click();
+    const a = document.body.children.at(-1);
+    assert.ok(a.clicked && a.removed);
+    assert.match(a.download, /^results-learn-ws-\d{8}-\d{6}\.json$/);
+    return JSON.parse(await blobs.at(-1).text());
+  };
+  try {
+    globalThis.document = fakeDocument({ export: 'learn-ws' });
+    const store = new Map();
+    globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) };
+    const before = new Date().toISOString();
+    const result = await answer([0, 1]);
+    assert.equal(result.textContent, 'Score: 1/2');
+    assert.equal(result.children[0].textContent, ' Saved in this browser.');
+    const saved = JSON.parse(store.get('research-vault-attempts:learn-ws'));
+    assert.equal(saved.length, 1);
+    assert.deepEqual(Object.keys(saved[0]), ['lesson', 'answers', 'at', 'total', 'wrong']);
+    assert.deepEqual({ ...saved[0], at: undefined }, { lesson: '0005-diagnose-fx', answers: [0, 1], at: undefined, total: 2, wrong: [1] });
+    assert.ok(saved[0].at >= before && saved[0].at <= new Date().toISOString());
+    const file = await exported(result);
+    assert.equal(await blobs.at(-1).text(), resultsFile('learn-ws', saved));
+    assert.deepEqual(file, { format: 'research-vault-attempts', version: 1, workspace: 'learn-ws', attempts: saved });
+
+    // Storage that throws on every read and write: the attempt is held in memory and still exported.
+    globalThis.localStorage = { getItem() { throw new Error('SecurityError'); }, setItem() { throw new Error('QuotaExceededError'); } };
+    const result2 = await answer([0, 0]);
+    assert.equal(result2.children[0].textContent, ' Not saved in this browser.');
+    const file2 = await exported(result2);
+    assert.equal(file2.attempts.length, 1);
+    assert.deepEqual({ ...file2.attempts[0], at: undefined }, { lesson: '0005-diagnose-fx', answers: [0, 0], at: undefined, total: 2, wrong: [] });
+    assert.deepEqual(fetched, []);
+  } finally {
+    URL.createObjectURL = realCreate;
+    for (const k of ['document', 'location', 'fetch', 'localStorage']) delete globalThis[k];
+  }
+});
+
+test('export mode on a page whose data-block is progress: the stored attempts, linked, with the button, and no nav fetch (spec 48)', async () => {
+  const doc = fakeDocument({ export: 'learn-ws' });
+  const section = doc.createElement('section');
+  doc.querySelectorAll = () => [];
+  doc.querySelector = (sel) => (sel === '[data-block="progress"]' ? section : null);
+  const attempt = { lesson: '0001-one', answers: [0, 1], at: '2026-11-11T20:57:00.690Z', total: 2, wrong: [1] };
+  globalThis.document = doc;
+  // A 127.0.0.1 origin, where a served page's renderNav would fetch /lessons.json.
+  globalThis.location = { pathname: '/lessons/0001-one.html', origin: 'http://127.0.0.1:8080' };
+  const fetched = [];
+  globalThis.fetch = (u) => { fetched.push(u); return new Promise(() => {}); };
+  // A null and a number among the stored entries are dropped, not rendered or exported.
+  globalThis.localStorage = { getItem: (k) => (k === 'research-vault-attempts:learn-ws' ? JSON.stringify([null, attempt, 7]) : null), setItem() {} };
+  const realCreate = URL.createObjectURL;
+  let blob;
+  URL.createObjectURL = (b) => { blob = b; return 'blob:x'; };
+  try {
+    await import(`${QUIZ}?progress`); // a fresh module instance, so its auto-run block runs on this document
+    const [table, btn] = section.children;
+    const rows = table.children.map((r) => r.children.map((c) => c.children[0]?.textContent ?? c.textContent));
+    assert.deepEqual(rows, [['lesson', 'date', 'score'], ['0001-one', '2026-11-11', '1/2']]);
+    assert.equal(table.children[1].children[0].children[0].href, 'lessons/0001-one.html');
+    assert.equal(btn.textContent, 'Export my results');
+    btn.listeners.click();
+    assert.equal(await blob.text(), resultsFile('learn-ws', [attempt]));
+    assert.deepEqual(fetched, []);
+  } finally {
+    URL.createObjectURL = realCreate;
+    for (const k of ['document', 'location', 'fetch', 'localStorage']) delete globalThis[k];
+  }
+});
+
+// The served widget (no data-export, no submit option): one POST /attempt, the recorded line, no export button,
+// no local progress table, and localStorage never read or written.
+test('served mode: the default submit posts once, with no export button, no local progress and no localStorage (spec 48)', async () => {
+  const doc = fakeDocument();
+  const section = doc.createElement('section');
+  doc.querySelectorAll = () => [];
+  doc.querySelector = () => section;
+  const calls = [];
+  let storage = 0;
+  globalThis.document = doc;
+  globalThis.location = { pathname: '/lessons/0005-diagnose-fx.html', origin: 'http://127.0.0.1:8080' };
+  globalThis.fetch = async (u, o) => {
+    calls.push([u, o?.method ?? 'GET', o?.body]);
+    return u === '/attempt' ? { ok: true, json: async () => ({ id: 'a-1', score: 1, total: 2, wrong: [1] }) } : { ok: false };
+  };
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, get() { storage++; return { getItem() { storage++; return null; }, setItem() { storage++; } }; } });
+  try {
+    const m = await import(`${QUIZ}?served`); // a fresh module instance, so its auto-run block runs on this served document
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(section.children.length, 0);
+    const item = (q) => ({ q, options: ['a', 'b', 'c'], correct: 0, why: ['wa', 'wb', 'wc'] });
+    const box = doc.createElement('div');
+    m.renderQuiz([{ container: box, items: [item('q1'), item('q2')] }], { rand: () => 0.999 });
+    const items = box.children[0].children.filter((c) => c.className === 'quiz-item');
+    await items[0].querySelectorAll('button')[0].listeners.click();
+    await items[1].querySelectorAll('button')[1].listeners.click();
+    assert.deepEqual(calls, [['/lessons.json', 'GET', undefined], ['/attempt', 'POST', JSON.stringify({ lesson: '0005-diagnose-fx', answers: [0, 1] })]]);
+    const result = box.children[0].children.at(-1);
+    assert.equal(result.textContent, 'Score: 1/2');
+    assert.deepEqual(result.children.map((c) => [c.tag, c.className, c.textContent]), [['span', '', ' recorded a-1: 1/2']]);
+    assert.equal(storage, 0);
+  } finally {
+    for (const k of ['document', 'location', 'fetch', 'localStorage']) delete globalThis[k];
   }
 });
 

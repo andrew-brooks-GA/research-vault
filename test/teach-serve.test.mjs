@@ -6,10 +6,11 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { request } from 'node:http';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { fixtureVault } from './helpers.mjs';
 import { createServer, ATTEMPT_BODY_MAX } from '../bin/lib/teach.mjs';
+import { resultsFile } from '../skills/research-teach/assets/quiz.js';
 import { footnoteCitations, markdownHtml } from '../bin/lib/teach.mjs';
 import { loadTeachSchema } from '../bin/lib/schema.mjs';
 
@@ -229,6 +230,131 @@ test('POST /attempt rejects foreign Origin, wrong Content-Type, oversized body (
   } finally {
     server.close();
   }
+});
+
+// Spec 48 Tests item 2, on a workspace built here: two lessons with quizzes, the directory named learn-ws (its key).
+const quizLesson = (ws, id, correct) => writeFileSync(join(ws, 'lessons', `${id}.html`),
+  `<!doctype html><html><head><title>${id}</title></head><body><h1>${id}</h1>\n<section data-block="quiz"><script type="application/json" data-quiz>${
+    JSON.stringify({ items: correct.map((c, i) => ({ q: `q${i}`, options: ['a', 'b', 'c'], correct: c, why: ['1', '2', '3'] })) })}</script></section></body></html>\n`);
+function importWorkspace() {
+  const ws = join(mkdtempSync(join(tmpdir(), 'rv-teach-import-')), 'learn-ws');
+  mkdirSync(join(ws, 'lessons'), { recursive: true });
+  writeFileSync(join(ws, 'MISSION.md'), '# Mission\n\n## Success looks like\n\n- One\n');
+  quizLesson(ws, '0001-one', [0, 1]);
+  quizLesson(ws, '0002-two', [2, 2, 0]);
+  return ws;
+}
+const AT = '2026-10-26T20:57:00.690Z';
+const importCli = (file, ws) => spawnSync(process.execPath, [BIN, 'teach', 'attempt', 'import', file, ws], { encoding: 'utf8' });
+const files = (ws) => (existsSync(join(ws, 'attempts')) ? readdirSync(join(ws, 'attempts')).sort() : []);
+const resultsAt = (ws, name, text) => { const f = join(dirname(ws), name); writeFileSync(f, text); return f; };
+
+test('teach attempt import writes what POST /attempt writes at the same clock, skips a second import, and reports changed lessons (spec 48)', async () => {
+  const ws = importWorkspace();
+  const one = { lesson: '0001-one', answers: [0, 0], at: AT, total: 2, wrong: [1] };
+  const two = { lesson: '0002-two', answers: [2, 2, 1], at: '2026-10-26T21:00:05.001Z', total: 3, wrong: [2] };
+  const r = importCli(resultsAt(ws, 'r.json', resultsFile('learn-ws', [one, two])), ws);
+  console.log(r.stdout);
+  assert.equal(r.stderr, '');
+  assert.equal(r.stdout, 'recorded a-20261026-205700-0001: 1/2\nrecorded a-20261026-210005-0002: 2/3\n');
+  assert.equal(r.status, 0);
+
+  // The same answers posted to teach serve with its clock fixed at `at` write the same bytes.
+  const ws2 = importWorkspace();
+  const server = createServer(ws2, { schema: SCHEMA, now: () => new Date(AT) });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const p = await json(server.address().port, JSON.stringify({ lesson: one.lesson, answers: one.answers }));
+    assert.equal(p.status, 200);
+  } finally { server.close(); }
+  assert.deepEqual(files(ws2), ['a-20261026-205700-0001.md']);
+  assert.equal(readFileSync(join(ws, 'attempts', 'a-20261026-205700-0001.md'), 'utf8'), readFileSync(join(ws2, 'attempts', 'a-20261026-205700-0001.md'), 'utf8'));
+
+  // A second import of the same file writes nothing.
+  const again = importCli(join(dirname(ws), 'r.json'), ws);
+  assert.equal(again.stdout, 'skipped a-20261026-205700-0001: already recorded\nskipped a-20261026-210005-0002: already recorded\n');
+  assert.equal(again.status, 0);
+  assert.equal(files(ws).length, 2);
+
+  // atSecond(a, s): a copy of the attempt at second s of 2026-10-25T22:00. An answer out of range for the current lesson: changed, the other attempt written, exit 1.
+  const atSecond = (a, s) => ({ ...a, at: `2026-10-25T22:00:0${s}.000Z` });
+  const out = importCli(resultsAt(ws, 'out.json', resultsFile('learn-ws', [atSecond({ ...one, answers: [0, 9] }, 1), atSecond(two, 2)])), ws);
+  assert.equal(out.stdout, 'changed 0001-one: browser 1/2, now -/2\nrecorded a-20261025-220002-0002: 2/3\n');
+  assert.equal(out.status, 1);
+
+  // A changed quiz (item 1's answer is now 0): changed with both scores, the other attempt written, exit 1.
+  quizLesson(ws, '0001-one', [0, 0]);
+  const ch = importCli(resultsAt(ws, 'ch.json', resultsFile('learn-ws', [atSecond(one, 3), atSecond(two, 4)])), ws);
+  assert.equal(ch.stdout, 'changed 0001-one: browser 1/2, now 2/2\nrecorded a-20261025-220004-0002: 2/3\n');
+  assert.equal(ch.status, 1);
+  assert.equal(files(ws).length, 4);
+
+  // Structural errors write nothing: a non-integer answer, another workspace, a later `at`, extra keys, not JSON.
+  const n = files(ws).length;
+  const refused = [
+    [resultsFile('learn-ws', [atSecond(two, 5), atSecond({ ...one, answers: [0, 1.5] }, 6)]), 'attempt 2: answers is not an array of non-negative integers\n'],
+    [resultsFile('other-ws', [atSecond(two, 7)]), 'file: workspace "other-ws" is not this workspace\'s "learn-ws"\n'],
+    [resultsFile('learn-ws', [{ ...two, at: '2999-01-01T00:00:00.000Z' }]), 'attempt 1: at "2999-01-01T00:00:00.000Z" is later than this machine\'s clock\n'],
+    [JSON.stringify({ format: 'research-vault-attempts', version: 1, workspace: 'learn-ws', attempts: [{ ...atSecond(two, 8), x: 1 }], note: '' }),
+      'file: keys must be exactly format, version, workspace, attempts\nattempt 1: keys must be exactly lesson, answers, at, total, wrong\n'],
+    [JSON.stringify({ format: 'research-vault-attempts', version: 2, workspace: 'learn-ws', attempts: [] }),
+      'file: version 2 is not 1\nfile: attempts is not a non-empty array\n'],
+    [resultsFile('learn-ws', [{ ...atSecond(two, 9), lesson: '0009-gone' }, { ...atSecond(two, 9), lesson: '<b>', at: 'yesterday' }]),
+      'attempt 1: no lesson "0009-gone"\nattempt 2: lesson "<b>" is not a lesson id\nattempt 2: at "yesterday" is not a toISOString time\n'],
+    ['{"format": ', 'file: not JSON\n'],
+  ];
+  for (const [text, want] of refused) {
+    const x = importCli(resultsAt(ws, 'bad.json', text), ws);
+    assert.equal(x.stdout, want);
+    assert.equal(x.status, 1);
+  }
+  assert.equal(files(ws).length, n);
+
+  // Exit 2: no file argument, a file that cannot be read, a file over 1 MiB.
+  assert.equal(spawnSync(process.execPath, [BIN, 'teach', 'attempt', 'import'], { encoding: 'utf8', cwd: ws }).status, 2);
+  const missing = importCli(join(dirname(ws), 'nope.json'), ws);
+  assert.equal(missing.status, 2);
+  assert.match(missing.stderr, /^teach attempt import: cannot read .*nope\.json \(ENOENT\)\n$/);
+  const big = importCli(resultsAt(ws, 'big.json', ' '.repeat(1024 * 1024 + 1)), ws);
+  assert.equal(big.status, 2);
+  assert.match(big.stderr, /is over 1 MiB\n$/);
+  assert.equal(files(ws).length, n);
+});
+
+// Review of spec 48 commit 1: every attempt is decided before the first write, a value too deep to print is named,
+// a lesson with no quiz that parses is a changed lesson, and characters JSON.stringify leaves raw are escaped.
+test('teach attempt import: a deeply nested value, a lesson with no quiz that parses, and escaped characters (spec 48)', () => {
+  const ws = importWorkspace();
+  const good = { lesson: '0001-one', answers: [0, 1], at: '2026-10-25T10:00:00.000Z', total: 2, wrong: [] };
+  const deep = '['.repeat(200000) + ']'.repeat(200000);
+  const head = '{"format":"research-vault-attempts","version":1,"workspace":';
+  const deepWrong = `${head}"learn-ws","attempts":[${JSON.stringify(good)},{"lesson":"0002-two","answers":[2,2,0],"at":"2026-10-25T10:00:01.000Z","total":3,"wrong":${deep}}]}`;
+  const r = importCli(resultsAt(ws, 'deep.json', deepWrong), ws);
+  assert.equal(r.stderr, '');
+  assert.equal(r.stdout, 'recorded a-20261025-100000-0001: 2/2\nchanged 0002-two: browser 2/3, now 3/3\n');
+  assert.equal(r.status, 1);
+  assert.deepEqual(files(ws), ['a-20261025-100000-0001.md']);
+  const deepWs = importCli(resultsAt(ws, 'deepws.json', `${head}${deep},"attempts":[]}`), ws);
+  assert.equal(deepWs.stdout, 'file: workspace an array is not this workspace\'s "learn-ws"\nfile: attempts is not a non-empty array\n');
+  assert.equal(deepWs.status, 1);
+
+  // A lesson whose quiz block is gone, and one whose quiz JSON no longer parses: changed, now -/0, the rest written.
+  writeFileSync(join(ws, 'lessons', '0003-gone.html'), '<!doctype html><html><body><p>No quiz now.</p></body></html>\n');
+  writeFileSync(join(ws, 'lessons', '0004-broken.html'), '<html><body><section data-block="quiz"><script type="application/json" data-quiz>{nope</script></section></body></html>\n');
+  const noQuiz = importCli(resultsAt(ws, 'noquiz.json', resultsFile('learn-ws', [
+    { lesson: '0003-gone', answers: [0], at: '2026-10-25T10:00:02.000Z', total: 1, wrong: [] },
+    { lesson: '0004-broken', answers: [0], at: '2026-10-25T10:00:03.000Z', total: 1, wrong: [0] },
+    { ...good, at: '2026-10-25T10:00:04.000Z' },
+  ])), ws);
+  assert.equal(noQuiz.stdout, 'changed 0003-gone: browser 1/1, now -/0\nchanged 0004-broken: browser 0/1, now -/0\nrecorded a-20261025-100004-0001: 2/2\n');
+  assert.equal(noQuiz.status, 1);
+  assert.equal(files(ws).length, 2);
+
+  // JSON.stringify escapes the quote and ESC; DEL, C1 controls, bidi marks and U+2028 come out as \uXXXX too.
+  const esc = importCli(resultsAt(ws, 'esc.json', resultsFile('ws\u001b"\u007f\u009b\u200e\u202e\u2028\u2066x', [good])), ws);
+  assert.equal(esc.stdout, 'file: workspace "ws\\u001b\\"\\u007f\\u009b\\u200e\\u202e\\u2028\\u2066x" is not this workspace\'s "learn-ws"\n');
+  assert.equal(files(ws).length, 2);
 });
 
 test('serve writes and removes .teach-serve.json', async () => {

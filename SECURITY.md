@@ -30,6 +30,17 @@ A third local write is the usage log, `_index/usage.jsonl` in the vault, appende
 - **The server grades.** The client sends answers, never a score. The server grades them against the lesson's own quiz data through `writeAttempt`, the same function `teach attempt add` calls, and replies `{ "id", "score", "total", "wrong" }`.
 - **Its other write.** On start it writes `.teach-serve.json` (`{ port, pid }`) in the workspace and removes it on exit, including on `SIGINT` and `SIGTERM`. Besides that file and the attempt files, it writes nothing.
 
+## Results import (`teach attempt import`)
+
+`teach attempt import <file> [workspace]` records the attempts in a results file, the JSON that quiz.js's `resultsFile` builds when a quiz is taken with no server. The file comes from the learner, so the command treats it as untrusted input.
+
+- **Read, not fetched.** It reads the one local path it is given, refuses a file over 1 MiB before reading it (exit 2), and opens no listener and no network connection.
+- **Checked whole before any write.** The file must be JSON with exactly the keys `format`, `version`, `workspace` and `attempts`: `"format": "research-vault-attempts"`, `"version": 1`, `workspace` equal to the workspace directory's name passed through `slugify`, and a non-empty `attempts` array of objects with exactly the keys `lesson`, `answers`, `at`, `total` and `wrong`. Each lesson id must match `^\d{4}-[a-z][a-z0-9-]*$` and name an existing `lessons/<id>.html`, `answers` must be non-negative integers, and `at` must be in `toISOString` form and no later than this machine's clock. Any failure prints one line per problem, exits 1 and writes nothing.
+- **Graded here.** Each attempt is regraded against the lesson's own quiz data. One whose lesson has no quiz that parses, whose answers no longer fit the lesson, or whose grade differs from the file's `total` and `wrong`, is reported as `changed` and not written. Every attempt is decided before the first is written. The rest are written through `writeAttempt`, the function `POST /attempt` and `teach attempt add` call, so the score comes from the lesson, not the file, and the attempt file's name comes from the lesson number and `at`; `writeAttempt` never overwrites an existing attempt file. An attempt whose id is already in `attempts/`, or is recorded earlier in the same file, is skipped.
+- **Printed escaped.** Every value from the file that a problem line or a `changed` line prints goes through `JSON.stringify`, which escapes a quote, a backslash and U+0000 to U+001F; U+007F to U+009F, U+200E, U+200F, U+202A to U+202E, U+2028, U+2029 and U+2066 to U+2069 are then written as `\uXXXX`. An array or object value is printed as `an array` or `an object`, never walked, so a deeply nested value cannot exhaust the stack. A `changed` line names the lesson only after its id has passed the lesson id pattern.
+- **What it cannot check.** It cannot tell answers a learner chose on the page from answers typed into the file, and an attempt's date and id come from the file's `at`, the learner's browser clock.
+- **What it writes.** Only attempt files in the workspace's `attempts/`.
+
 ## Network refresh (`refresh`)
 
 `refresh`, `capture --batch` over a URL list and the embedding endpoint (`embed`, `search --semantic`) are the only features that open an outbound network connection, and all are off by default.

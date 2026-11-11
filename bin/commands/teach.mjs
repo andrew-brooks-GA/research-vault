@@ -8,12 +8,12 @@ import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
 import { TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
-import { writeRecord, supersedeRecord, writeAttempt, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft } from '../lib/teach.mjs';
+import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft } from '../lib/teach.mjs';
 import { gateStatus, ledgerRoot } from '../lib/gate.mjs';
 import { lintWorkspace, proseMetrics, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [workspace]';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [workspace]';
 
 const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
 const out = (s) => process.stdout.write(s + '\n');
@@ -230,6 +230,26 @@ export async function run(args) {
     const r = writeAttempt(ws, { lesson: args.lesson, answers: args.answers && parseAnswers(args.answers), result: args.result, now }, teachSchema);
     out(`recorded ${r.id}: ${r.result ?? `${r.score}/${r.total}`}`);
     return 0;
+  }
+  // Spec 48 D4: the results file of an exported copy; exit 2 before any read of its content.
+  if (verb === 'attempt' && sub === 'import') {
+    const [file, pos] = rest;
+    const ws = workspace(pos);
+    if (!file || !ws) return usage();
+    let text;
+    try {
+      if (statSync(file).size > RESULTS_MAX) {
+        process.stderr.write(`teach attempt import: ${file} is over 1 MiB\n`);
+        return 2;
+      }
+      text = readFileSync(file, 'utf8');
+    } catch (e) {
+      process.stderr.write(`teach attempt import: cannot read ${file} (${e.code ?? e.message})\n`);
+      return 2;
+    }
+    const { code, lines } = importAttempts(ws, text, { schema: teachSchema, now });
+    if (lines.length) out(lines.join('\n'));
+    return code;
   }
   if (verb === 'serve') {
     const ws = workspace(sub);

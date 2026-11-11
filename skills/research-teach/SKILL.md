@@ -22,7 +22,7 @@ The directory `/research-teach` was run in. One mission per workspace.
 | `MISSION.md` | Why the learner wants this; grounds every decision | learner state |
 | `GLOSSARY.md` | Terms the learner can already use correctly | learner state |
 | `learning-records/NNNN-slug.md` | What the learner has demonstrated; sets the zone of proximal development. Frontmatter the teach schema validates; written by `teach record add` | learner state |
-| `attempts/` | What the learner scored; written by `teach serve` or `teach attempt add`, never edited | learner state |
+| `attempts/` | What the learner scored; written by `teach serve`, `teach attempt add` or `teach attempt import`, never edited | learner state |
 | `NOTES.md` | Preferences, chapter progress | learner state |
 | `GATE-LOG.md` | Reader verdicts and the third-round decision, claims-gate decisions, and the path-edges record of what was proposed and taken; append-only | gate record |
 | `lessons/NNNN-slug.html` | One tightly scoped win each; the unit of teaching | view |

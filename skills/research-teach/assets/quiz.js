@@ -58,7 +58,78 @@ export function answerMark(chosen, correct) {
   return chosen === correct ? 'Correct' : 'Not this one';
 }
 
+// Spec 48 D4: the results file of an exported copy, the one shape `teach attempt import` accepts.
+export function resultsFile(key, attempts) {
+  return JSON.stringify({
+    format: 'research-vault-attempts', version: 1, workspace: key,
+    attempts: attempts.map(({ lesson, answers, at, total, wrong }) => ({ lesson, answers, at, total, wrong })),
+  }, null, 2) + '\n';
+}
+
+// Export mode: <body data-export="<key>">, set only on a page `teach export` writes; undefined when served.
+const exportKey = () => document.body.dataset.export;
+const STORE = 'research-vault-attempts:';
+const held = []; // attempts the browser would not store, kept for the Export my results file
+
+// The attempts stored under the workspace key: [] when none, null when storage cannot be read.
+function stored() {
+  try {
+    const v = JSON.parse(localStorage.getItem(STORE + exportKey()) ?? '[]');
+    return Array.isArray(v) ? v.filter((a) => a && typeof a === 'object') : null;
+  } catch { return null; }
+}
+
+async function saveLocal({ lesson, answers }, { total, wrong }) {
+  const attempt = { lesson, answers, at: new Date().toISOString(), total, wrong };
+  const prior = stored();
+  try {
+    if (prior === null) throw new Error('storage unreadable'); // never overwrite what cannot be read
+    localStorage.setItem(STORE + exportKey(), JSON.stringify([...prior, attempt]));
+    return 'Saved in this browser.';
+  } catch {
+    held.push(attempt);
+    return 'Not saved in this browser.';
+  }
+}
+
+function exportButton() {
+  const btn = el('button', 'quiz-export', 'Export my results');
+  btn.type = 'button';
+  btn.addEventListener('click', () => {
+    const key = exportKey();
+    const s = new Date().toISOString();
+    const a = el('a');
+    a.href = URL.createObjectURL(new Blob([resultsFile(key, [...(stored() ?? []), ...held])], { type: 'application/json' }));
+    a.download = `results-${key}-${s.slice(0, 10).replaceAll('-', '')}-${s.slice(11, 19).replaceAll(':', '')}.json`;
+    document.body.append(a);
+    a.click();
+    a.remove();
+  });
+  return btn;
+}
+
+// progress.html of an exported copy: the attempts this browser holds, lesson linked, date and score.
+function renderLocalProgress(section) {
+  const attempts = [...(stored() ?? []), ...held];
+  const table = el('table', 'progress');
+  const head = el('tr');
+  for (const h of ['lesson', 'date', 'score']) head.append(el('th', null, h));
+  table.append(head);
+  for (const a of attempts) {
+    const link = el('a', null, String(a.lesson));
+    link.href = `lessons/${encodeURIComponent(String(a.lesson))}.html`;
+    const cell = el('td');
+    cell.append(link);
+    const score = Number.isInteger(a.total) && Array.isArray(a.wrong) ? `${a.total - a.wrong.length}/${a.total}` : '';
+    const row = el('tr');
+    row.append(cell, el('td', null, String(a.at ?? '').slice(0, 10)), el('td', null, score));
+    table.append(row);
+  }
+  section.append(attempts.length ? table : el('p', null, 'No attempts saved in this browser.'), exportButton());
+}
+
 async function renderNav() {
+  if (exportKey() !== undefined) return; // an exported page carries its nav built in; never fetch /lessons.json
   if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(location.origin)) return;
   let index;
   try {
@@ -104,8 +175,8 @@ function el(tag, cls, text) {
 }
 
 // `parts` are { container, items } in attempt order (mergeQuizzes): every item joins one attempt, one
-// answers array and one POST; the score goes after the last part's items.
-export function renderQuiz(parts, { rand = Math.random, submit = postAttempt } = {}) {
+// answers array and one POST (in export mode, one saveLocal); the score goes after the last part's items.
+export function renderQuiz(parts, { rand = Math.random, submit = exportKey() === undefined ? postAttempt : saveLocal } = {}) {
   const items = parts.flatMap((p) => p.items);
   const answers = new Array(items.length);
   let answered = 0;
@@ -139,8 +210,9 @@ export function renderQuiz(parts, { rand = Math.random, submit = postAttempt } =
           if (++answered < items.length) return;
           const { total, wrong } = grade(items, answers);
           result.textContent = `Score: ${total - wrong.length}/${total}`;
-          const reply = await submit({ lesson: lessonIdFrom(location.pathname, document.body.dataset.lesson), answers });
+          const reply = await submit({ lesson: lessonIdFrom(location.pathname, document.body.dataset.lesson), answers }, { total, wrong });
           result.append(el('span', null, ` ${reply ?? TERMINAL}`));
+          if (exportKey() !== undefined) result.append(exportButton());
         });
         box.append(btn);
       });
@@ -163,4 +235,6 @@ if (typeof document !== 'undefined') {
     return { container, items: JSON.parse(script.textContent).items, predict: !!script.closest('[data-block="predict"]') };
   });
   if (parts.length) renderQuiz(mergeQuizzes(parts));
+  const local = exportKey() !== undefined && document.querySelector('[data-block="progress"]');
+  if (local) renderLocalProgress(local);
 }
