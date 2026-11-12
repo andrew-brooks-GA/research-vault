@@ -85,6 +85,8 @@ export const COUPLINGS = [
   ['bin/lib/gate.mjs', 'hooks/stop-gate.mjs', 'the PASS|MERIT text the hook prints', 'MERIT'],
   ['bin/lib/gate.mjs', 'docs/REFERENCE.md', 'the ledger filename and the verdicts', '.research-vault-ledger.jsonl'],
   ['bin/lib/gate.mjs', 'bin/lib/lesson.mjs', "unitHashes depends on the data-block names 'fact' and 'quiz'"],
+  ['bin/lib/gate.mjs', 'skills/research-claims-gate/SKILL.md', "changedCites's rules are restated: the changed units' citations, a changed row's section, the whole file's when none"],
+  ['bin/lib/gate.mjs', 'docs/REFERENCE.md', "changedCites's rules are restated: the changed units' citations, a changed row's section, the whole file's when none"],
   ['bin/commands/gate.mjs', 'agents/claims-reviewer.md', "the 'changed units:' line the gate prints is the line the agent keys on", 'changed units:'],
   ['bin/lib/codelinks.mjs', 'agents/claims-reviewer.md', "the sym: unit name and the 'unit sym:<name> <file>:<start>-<end> <status>' line format", 'sym:'],
   ['bin/lib/codelinks.mjs', 'skills/research-authoring/SKILL.md', 'the <id>@<key>=<version> link form and the stale reason tag', '<id>@<key>=<version>'],
