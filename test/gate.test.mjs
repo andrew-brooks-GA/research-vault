@@ -773,3 +773,64 @@ test('a workspace README.md is gated: an edit after its verdict shows in gate ch
   assert.deepEqual(changedUnits(root, readme), ['sec:lesson-map']);
   assert.deepEqual(missingGates(root, vault, {}, 0).map((m) => m.file), ['learn/k8s/README.md']);
 });
+
+// ---- per-unit evidence (claims gate plan, item 2): with --changed, a Markdown draft's list is the changed units' citations ----
+const EV_MD = [
+  '# Ref', '',
+  '## Alpha', '<!-- evidence: 2026-01-01-fx-doc -->', '', 'Alpha text.', '',
+  '## Beta', '<!-- evidence: 2026-01-01-fx-experiment -->', '', 'Beta text.', '',
+  '| Command | Does |', '|---|---|', '| `init` | Init. |', '| `gate` | Gate, per 2026-01-01-old. |', '',
+  '## Gamma', '<!-- evidence: 2026-01-01-fx-doc-nobody -->', '', 'Gamma text.', '', '```md', '<!-- evidence: 2026-01-01-fx-snippet -->', '```', '',
+  '## Delta', '', 'Delta text.', '', '| k | v |', '|---|---|', '| x | y |', '',
+].join('\n');
+const EV_ALL = ['2026-01-01-fx-doc [source, active]', '2026-01-01-fx-doc-nobody [source, active, no-body]', '2026-01-01-fx-experiment [experiment, active]', '2026-01-01-old [note, active, STALE]'];
+
+// A bound repo whose docs/ev.md has a PASS for EV_MD, then holds EV_MD with `from` replaced by `to`.
+function evRepo(from, to) {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  const file = join(root, 'docs', 'ev.md');
+  writeFileSync(file, EV_MD);
+  assert.equal(gateCli(root, vault, 'record', 'docs/ev.md', 'PASS').code, 0);
+  if (from) writeFileSync(file, EV_MD.replace(from, to));
+  const ev = (...a) => { const r = gateCli(root, vault, 'evidence', 'docs/ev.md', ...a); assert.equal(r.code, 0, r.err); return r.out; };
+  return { root, ev };
+}
+const evIds = (out) => out.split('\n').filter((l) => /^\d{4}-/.test(l));
+
+test('gate evidence --changed lists the changed section\'s comment ids and --extra, and no unchanged section\'s ids', () => {
+  const { ev } = evRepo('Alpha text.', 'Alpha text, revised.');
+  assert.equal(ev('--changed'), '2026-01-01-fx-doc [source, active]\nchanged units: sec:alpha\nunit sec:alpha docs/ev.md:3-6 prose\n');
+  assert.deepEqual(evIds(ev('--changed', '--extra', '2026-01-01-old')), ['2026-01-01-fx-doc [source, active]', '2026-01-01-old [note, active, STALE]']);
+});
+
+test('gate evidence --changed: a changed row lists its own ids; a changed row with none lists its section\'s, from the lines outside rows', () => {
+  assert.deepEqual(evIds(evRepo('Gate, per', 'Gate the draft, per').ev('--changed')), ['2026-01-01-old [note, active, STALE]']);
+  const out = evRepo('Init.', 'Init a vault.').ev('--changed');
+  assert.deepEqual(evIds(out), ['2026-01-01-fx-experiment [experiment, active]']);
+  assert.match(out, /^changed units: sec:beta\/init$/m);
+});
+
+test('gate evidence --changed: a changed unit with no citation in range, or no changed unit, lists the whole file\'s', () => {
+  assert.deepEqual(evIds(evRepo('Delta text.', 'Delta text, revised.').ev('--changed')), EV_ALL);
+  assert.deepEqual(evIds(evRepo('| x | y |', '| x | z |').ev('--changed')), EV_ALL, 'a row with no id in a section with none');
+  const none = evRepo().ev('--changed');
+  assert.deepEqual(evIds(none), EV_ALL);
+  assert.match(none, /^changed units: none$/m);
+});
+
+test('gate evidence without --changed lists every citation; --json follows the list; an id in a fenced comment is never listed', () => {
+  const { ev } = evRepo('Gamma text.', 'Gamma text, revised.');
+  assert.deepEqual(evIds(ev()), EV_ALL);
+  assert.deepEqual(evIds(ev('--changed')), ['2026-01-01-fx-doc-nobody [source, active, no-body]']);
+  assert.deepEqual(JSON.parse(ev('--changed', '--json')).entries.map((e) => e.id), ['2026-01-01-fx-doc-nobody']);
+  assert.deepEqual(JSON.parse(ev('--json')).entries.map((e) => e.id), EV_ALL.map((l) => l.split(' ')[0]));
+  assert.doesNotMatch(ev() + ev('--changed'), /fx-snippet/);
+});
+
+test('gate evidence leaves the ledger file\'s bytes unchanged', () => {
+  const { root, ev } = evRepo('Alpha text.', 'Alpha text, revised.');
+  const before = readFileSync(join(root, LEDGER_FILENAME));
+  ev(); ev('--changed'); ev('--changed', '--json', '--extra', '2026-01-01-old');
+  assert.deepEqual(readFileSync(join(root, LEDGER_FILENAME)), before);
+});

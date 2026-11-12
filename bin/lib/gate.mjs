@@ -252,14 +252,35 @@ function bodyText(body) {
   return lines.slice(i + 1).join('\n').trim();
 }
 
+// A Markdown draft's citations inside the `changed` units' line ranges. A changed row with none takes
+// its section's, from the section's lines outside rows. A changed unit with none, or no changed unit,
+// gives the whole file's: the list is never empty for want of a citation in range.
+function changedCites(text, sections, changed) {
+  const all = extractCitations(text);
+  if (!changed || !sections.length) return all;
+  const lines = text.split(/\r?\n/);
+  const rowLines = new Set(sections.filter((u) => u.row).map((u) => u.start));
+  const cut = (u, rows) => extractCitations(lines.slice(u.start - 1, u.end).filter((_, k) => rows || !rowLines.has(u.start + k)).join('\n'));
+  const out = [];
+  for (const u of sections.filter((s) => changed.includes(s.unit))) {
+    let c = cut(u, true);
+    if (!c.length && u.row) c = cut(sections.find((s) => !s.row && s.start <= u.start && u.end <= s.end), false);
+    if (!c.length) return all;
+    out.push(...c);
+  }
+  return out.length ? out : all;
+}
+
 // `code` ({ lang, versions }) marks a code file: its citations are its links, and the result
 // gains `units`, one per linked declaration with its line range and the worst status of its links.
-export function evidenceFor(draftPath, vaultPath, { extra = [], code = null } = {}) {
+// `changed` (unit names, from `gate evidence --changed`) narrows a Markdown draft's citations (changedCites).
+export function evidenceFor(draftPath, vaultPath, { extra = [], code = null, changed = null } = {}) {
   const manifest = buildManifest(vaultPath);
   const byId = new Map(manifest.entries.map((e) => [e.id, e]));
   const text = readFileSync(draftPath, 'utf8');
   const links = code ? extractCodeLinks(text, code.lang) : null;
-  const cites = [...(links ? links.map((l) => ({ type: 'id', value: l.id })) : extractCitations(text)), ...extra.map((value) => ({ type: 'id', value }))];
+  const sections = !code && !pageBlocks(text, draftPath).size ? mdUnits(text) : null;
+  const cites = [...(links ? links.map((l) => ({ type: 'id', value: l.id })) : changedCites(text, sections ?? [], changed)), ...extra.map((value) => ({ type: 'id', value }))];
   const now = new Date().toISOString().slice(0, 10);
   const schema = loadSchema(REPO_ROOT);
   const hit = new Map();
@@ -284,9 +305,8 @@ export function evidenceFor(draftPath, vaultPath, { extra = [], code = null } = 
     out.units = codeUnits(text, code.lang).map((u) => ({
       unit: u.unit, start: u.start, end: u.end, status: worstStatus(rows.filter((r, i) => links[i].declLine === u.declLine)),
     }));
-  } else if (!pageBlocks(text, draftPath).size) {
+  } else if (sections) {
     // A Markdown draft: one line per heading section, so the reviewer can read only the changed ones.
-    const sections = mdUnits(text);
     if (sections.length) out.units = sections.map((u) => ({ ...u, status: 'prose' }));
   } else {
     // A lesson or reference page: the image files it references that exist, for the reviewer to open.

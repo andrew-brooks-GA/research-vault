@@ -44,8 +44,10 @@ export async function run(args) {
   if (sub === 'evidence') {
     const extra = csvList(args.extra);
     const c = codeLang(repoRoot, abs);
-    const r = evidenceFor(abs, vaultPath, { extra, code: c && { lang: c.lang, versions: readVersions(c.cfg, repoRoot) } });
-    if (args.changed) r.changed = changedUnits(repoRoot, abs);
+    // With --changed, a Markdown draft's list holds only the citations in the changed units (evidenceFor).
+    const changed = args.changed ? changedUnits(repoRoot, abs) : null;
+    const r = evidenceFor(abs, vaultPath, { extra, changed, code: c && { lang: c.lang, versions: readVersions(c.cfg, repoRoot) } });
+    if (changed) r.changed = changed;
     if (args.json) { process.stdout.write(JSON.stringify(r, null, 2) + '\n'); return 0; }
     let out = renderEvidence(r);
     if (args.changed) {

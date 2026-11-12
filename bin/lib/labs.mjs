@@ -249,10 +249,12 @@ async function stopGroup(pgid, L) {
 // D5 start: the one spawn. The script's path is checked against readLabs' rules and its bytes hashed against the pin
 // here, immediately before it starts; it runs by its absolute path, no shell, no argument, from the workspace root,
 // stdin ignored, leading a process group of its own, with only `env`. { child }, or { error } with the line's text.
+// A script whose first two bytes are not #! is refused here, before spawn, as lint's LAB_SCRIPT_NOT_RUNNABLE does.
 function launch(ws, cmd, env) {
   let bytes = null;
   try { if (!scriptProblem(ws, cmd.script)) bytes = readFileSync(join(ws, cmd.script)); } catch { /* a mismatch */ }
   if (bytes === null || sha256(bytes) !== cmd.sha256) return { error: `not started, pin mismatch: ${cmd.script}` };
+  if (bytes.subarray(0, 2).toString('latin1') !== '#!') return { error: 'could not start: ENOEXEC' };
   try {
     return { child: spawn(join(ws, cmd.script), [], { cwd: ws, env, shell: false, detached: true, stdio: ['ignore', 'pipe', 'pipe'] }) };
   } catch (e) {

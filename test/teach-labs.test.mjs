@@ -855,13 +855,20 @@ test('the end of a run: a timeout, a leader that leaves a background child, a ch
     assert.ok(await gone(Number(/pid (\d+)/.exec(run.text)[1]), true, 50));
     assert.match((await run.done).text, /lab: stopped\n$/);
   } finally { await s.close(); }
-  // An interpreter that does not exist: ENOENT on macOS and on Linux. (A script with no interpreter line is ENOEXEC on macOS, and Linux runs it with /bin/sh.)
+  // An interpreter that does not exist: ENOENT on macOS and on Linux.
   const odd = runWs({ up: '#!/nonexistent/interpreter\necho unreachable\n' });
   chmodSync(join(odd.ws, 'labs', 'down.sh'), 0o644);
   s = await labServer(odd.ws);
   try {
     assert.deepEqual(await text(s.act('run')), [200, 'lab: could not start: ENOENT\n']);
     assert.deepEqual(await text(s.act('reset')), [200, 'lab: could not start: EACCES\n']);
+  } finally { await s.close(); }
+  // No #! line: the server refuses it before spawn, on every platform, and the script does not run.
+  const bare = runWs({ up: 'echo ran > ran\n' });
+  s = await labServer(bare.ws);
+  try {
+    assert.deepEqual(await text(s.act('run')), [200, 'lab: could not start: ENOEXEC\n']);
+    assert.ok(!existsSync(join(bare.ws, 'ran')), 'the script did not run');
   } finally { await s.close(); }
 });
 
