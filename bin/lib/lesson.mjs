@@ -13,6 +13,7 @@ import {
 } from './teach.mjs';
 import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
 import { readLabs, labPin, lessonLab, sha256, LAB_MANIFEST } from './labs.mjs';
+import { scanCast, PLAYER_FILES, PLAYER_VERSION } from './cast.mjs';
 
 export const QUIZ_MIN_ITEMS = 3;
 export const QUIZ_SPREAD_MAX = 1.6;
@@ -404,6 +405,22 @@ function imageFindings(html, blocks, ws, fromDir, add) {
   });
 }
 
+// Issue 65: each element carrying data-cast (a replay). Its cast must be a file under assets/ that teach serve returns
+// (LESSON_CAST_MISSING), parse (LESSON_CAST_INVALID) and match none of the scan's token shapes (LESSON_CAST_SECRET), and
+// the element must be followed, after whitespace only, by its transcript in a <pre> (LESSON_CAST_TRANSCRIPT_MISSING).
+const CAST_RE = /<([a-z][a-z0-9]*)\b[^>]*\bdata-cast\s*=\s*(["'])(.*?)\2[^>]*>[\s\S]*?<\/\1>\s*(<pre\b)?/gi;
+function castFindings(html, ws, fromDir, add) {
+  [...html.matchAll(CAST_RE)].forEach((m, i) => {
+    const n = `replay ${i + 1}`;
+    if (!m[4]) add('LESSON_CAST_TRANSCRIPT_MISSING', `${n}: no <pre> transcript right after the element naming ${m[3]}`);
+    const t = imageTarget(ws, fromDir, m[3]);
+    if (!t.ok || !t.path.startsWith('assets/')) return add('LESSON_CAST_MISSING', `${n}: data-cast ${m[3]} is no file under assets/ that teach serve returns`);
+    let hits;
+    try { hits = scanCast(t.body.toString('utf8')); } catch { return add('LESSON_CAST_INVALID', `${n}: ${t.path} is not an asciicast v2 or v3 file`); }
+    for (const h of hits) add('LESSON_CAST_SECRET', `${n}: ${t.path} matches ${h.kind} at ${h.at === 'header' ? 'the header' : `event ${h.at}`}; record it again with the value masked`);
+  });
+}
+
 // Issue 4 (spec 46 D3 rule 2): the Checked task section's read-only verbs per tool (a two-word entry is the
 // verb and the next word), its deny list of first words, and the flags whose value precedes the verb.
 const TASK_READ_ONLY = {
@@ -568,6 +585,7 @@ export function lintLesson(filePath, ctx) {
   }
   figureFindings(raw, add);
   imageFindings(raw, blocks, ws, dirname(filePath), add);
+  castFindings(raw, ws, dirname(filePath), add);
   pairFindings(raw, add);
   for (const href of new Set(links)) {
     if (!linkResolves(ws, dirname(filePath), href)) add('LESSON_LINK_DANGLING', `href ${href} does not resolve`);
@@ -916,6 +934,12 @@ export function lintWorkspace(workspaceDir, ctx) {
     listDir(join(workspaceDir, d), '.html').flatMap((f) => lintLesson(join(workspaceDir, d, f), c)));
   findings.push(...lintStore(workspaceDir, c));
   findings.push(...lintLabManifest(workspaceDir));
+  // Issue 65 (spec 47 D1): a player file in assets/ must be the pinned release's.
+  for (const [name, want] of Object.entries(PLAYER_FILES)) {
+    const p = join(workspaceDir, 'assets', name);
+    const got = existsSync(p) ? sha256(readFileSync(p)) : want;
+    if (got !== want) findings.push({ code: 'LESSON_CAST_PLAYER_HASH', file: `assets/${name}`, message: `sha256 ${got} is not the pinned asciinema-player ${PLAYER_VERSION} value ${want}`, warning: false });
+  }
   if (c.lab) findings.push(...lintLab(workspaceDir, c.lab));
   if (statSync(join(workspaceDir, 'README.md'), { throwIfNoEntry: false })?.isFile()) findings.push(...lintReadme(workspaceDir, c));
   const path = readPath(workspaceDir);

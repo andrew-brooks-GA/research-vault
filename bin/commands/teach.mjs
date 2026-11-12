@@ -9,14 +9,15 @@ import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
 import { TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
-import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft, exportWorkspace, writeExport, lessonIndex } from '../lib/teach.mjs';
+import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft, exportWorkspace, writeExport, lessonIndex, escapeHtml } from '../lib/teach.mjs';
+import { scanCast, castTranscript } from '../lib/cast.mjs';
 import { hasVerdict } from '../lib/gate.mjs';
 import { readLabs, secretHits } from '../lib/labs.mjs';
 import { isInsideVault } from '../lib/containment.mjs';
 import { lintWorkspace, proseMetrics, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [--labs] [workspace]';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | cast check <file> [--needle <value>]... | cast transcript <file> | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [--labs] [workspace]';
 
 const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
 const out = (s) => process.stdout.write(s + '\n');
@@ -98,6 +99,24 @@ function exportCopy(ws, args) {
   }
   out(`wrote ${r.files.size} files to ${dir}`);
   return 0;
+}
+
+// Issue 65 (spec 47 D2): `teach cast check` exits 0 when the cast is clean and 1 with one line per hit, naming the
+// needle's kind and the event, never the value; `teach cast transcript` prints the output events, HTML-escaped, for the
+// replay's <pre>. Exit 2 on usage, or a file that cannot be read or is no asciicast (no parser message: it may quote the file).
+function cast(sub, file, args) {
+  const needles = args.needle ?? [];
+  if (!['check', 'transcript'].includes(sub) || !file || needles.some((n) => !n)) return usage();
+  try {
+    const text = readFileSync(file, 'utf8');
+    if (sub === 'transcript') { process.stdout.write(escapeHtml(castTranscript(text))); return 0; }
+    const hits = scanCast(text, needles);
+    out(hits.length ? hits.map((h) => `secret ${file}: ${h.kind} at ${h.at === 'header' ? 'the header' : `event ${h.at}`}`).join('\n') : 'cast: clean');
+    return hits.length ? 1 : 0;
+  } catch (e) {
+    process.stderr.write(`teach cast: ${file}: ${e.code ? `cannot read (${e.code})` : 'not an asciicast v2 or v3 file'}\n`);
+    return 2;
+  }
 }
 
 function pathLines(ws, args) {
@@ -304,6 +323,7 @@ export async function run(args) {
     if (lines.length) out(lines.join('\n'));
     return code;
   }
+  if (verb === 'cast') return cast(sub, rest[0], args);
   if (verb === 'export') {
     const ws = workspace(sub);
     if (!ws) return usage();

@@ -294,6 +294,14 @@ export function renderLab(section) {
   section.append(bar, output, status);
 }
 
+// Issue 65 (spec 47 D1): each element carrying data-cast gets the asciinema player, when the page loaded it from assets/
+// (`player` is window.AsciinemaPlayer); without it the transcript <pre> after the element is what the page shows. An
+// exported copy carries the cast's text in data-cast-text.
+export function mountReplays(root, player) {
+  if (!player) return;
+  for (const el of root.querySelectorAll('[data-cast]')) player.create(el.dataset.castText !== undefined ? { data: el.dataset.castText } : el.dataset.cast, el);
+}
+
 if (typeof document !== 'undefined') {
   renderNav();
   const parts = [...document.querySelectorAll('script[data-quiz]')].map((script) => {
@@ -308,4 +316,5 @@ if (typeof document !== 'undefined') {
   const local = exportKey() !== undefined && document.querySelector('[data-block="progress"]');
   if (local) renderLocalProgress(local);
   renderLab(document.querySelector('[data-block="lab"]'));
+  mountReplays(document, globalThis.AsciinemaPlayer);
 }

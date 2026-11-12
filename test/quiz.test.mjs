@@ -60,7 +60,7 @@ test('importing quiz.js in Node touches no DOM', () => {
   `;
   const out = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }));
   console.log(`exports=${out.exports.length} dom_accesses=${out.touched}`);
-  assert.deepEqual(out.exports, ['LAB_ENDED_EARLY', 'answerLengthSpread', 'answerMark', 'grade', 'labStatus', 'lessonIdFrom', 'mergeQuizzes', 'neighbours', 'pathPosition', 'renderLab', 'renderQuiz', 'resultsFile', 'shuffleOptions']);
+  assert.deepEqual(out.exports, ['LAB_ENDED_EARLY', 'answerLengthSpread', 'answerMark', 'grade', 'labStatus', 'lessonIdFrom', 'mergeQuizzes', 'mountReplays', 'neighbours', 'pathPosition', 'renderLab', 'renderQuiz', 'resultsFile', 'shuffleOptions']);
   assert.equal(out.touched, 0);
   assert.equal(out.hasDocument, false);
 });

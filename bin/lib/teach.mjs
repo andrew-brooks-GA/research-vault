@@ -13,7 +13,7 @@ import { slugify } from './ids.mjs';
 import { isInsideVault } from './containment.mjs';
 import { expandFiles } from './files.mjs';
 import { grade, neighbours, pathPosition } from '../../skills/research-teach/assets/quiz.js';
-import { lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWUP, CONNECT_LEAD } from './lesson.mjs';
+import { lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWUP, CONNECT_LEAD, imageTarget } from './lesson.mjs';
 import { HEADING_RE, TABLE_SEP_RE, WORKSPACE_GATES, hasVerdict } from './gate.mjs';
 import { readLabs, lessonLab, labRunner, secretHits, labCookie, LAB_ACTIONS, LAB_BODY_MAX, LAB_ID_RE } from './labs.mjs';
 
@@ -544,7 +544,7 @@ export function readmeDraft(ws) {
     ...(labs.length ? ["| Lesson | Files | Needs on the learner's machine | Fallback |", '|---|---|---|---|', ...labs] : ['No lesson ships files under `lessons/files/`.'])].join('\n') + '\n';
 }
 
-const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+export const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 // Issue 66: the workspace README.md as HTML for GET /: headings, paragraphs, - lists, pipe tables, fenced code,
 // inline code and inline links. All source text goes through escapeHtml, so raw HTML shows as text. A link
@@ -736,6 +736,13 @@ const pageText = (html) => withoutSources(html).replace(/<pre\b[\s\S]*?<\/pre>/g
 const markdownText = (md) => md.replace(NBSP, ' ').split(/\n[ \t]*\n/).map((p) => p.replace(/\s+/g, ' ')).join('\n');
 const mentions = (text) => text.split(/\n|(?<=[.!?])\s/).map((s) => s.trim()).filter((s) => MENTION_RE.test(s));
 
+// Issue 65: a file:// page cannot fetch a cast (Chrome refuses it on CORS), so each element carrying data-cast whose cast
+// teach serve returns gets the cast's text in data-cast-text, which quiz.js hands the player.
+const withCastText = (ws, p, html) => html.replace(/<[a-z][a-z0-9]*\b[^>]*?\sdata-cast\s*=\s*(["'])(.*?)\1/gi, (m, q, src) => {
+  const t = imageTarget(ws, dirname(join(ws, p)), src);
+  return t.ok ? `${m} data-cast-text="${escapeHtml(t.body.toString('utf8'))}"` : m;
+});
+
 // The files of the export (path under --out to content) and the lines to print, or code 1 and the refusals.
 // `entries` is the vault manifest's; nothing is written here.
 export function exportWorkspace(ws, { vaultPath, entries, skipUngated = false, env = process.env }) {
@@ -761,7 +768,7 @@ export function exportWorkspace(ws, { vaultPath, entries, skipUngated = false, e
   const titles = Object.fromEntries(entries.map((e) => [e.id, e.title ?? e.id]));
   const sourceHref = (id) => `/sources.html#${encodeURIComponent(id)}`;
   const files = new Map();
-  for (const p of pages) files.set(p, exportPage(serveFile(ws, urlOf(p), { titles, sourceHref }).body.toString('utf8'), p, ctx));
+  for (const p of pages) files.set(p, exportPage(withCastText(ws, p, serveFile(ws, urlOf(p), { titles, sourceHref }).body.toString('utf8')), p, ctx));
   files.set('index.html', exportPage(indexHtml(ws, { index, readme: readme === null ? null : exportReadme(readme) }), 'index.html', ctx));
   files.set('progress.html', exportPage(localProgressHtml(), 'progress.html', ctx));
   files.set('assets/reading.html', exportPage(withNav(readFileSync(join(PLUGIN_ASSETS, 'reading.html'), 'utf8')), 'assets/reading.html', ctx));
