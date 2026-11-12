@@ -192,6 +192,8 @@ export const COUPLINGS = [
   ['bin/lib/labs.mjs', 'SECURITY.md', 'the Lab runs section states LAB_BODY_MAX, the cookie name, LAB_ID_RE, the scripts each action hashes and every labRefusal body', 'rv-labs-'],
   ['bin/lib/labs.mjs', 'docs/REFERENCE.md', "the teach section quotes labRefusal's busy and not running bodies, the runner's final lines, the redaction marker and the limits (5 s, 10 s, 1 MiB)", 'lab: verify pass'],
   ['bin/lib/labs.mjs', 'SECURITY.md', 'the Lab runs section states STOP_GRACE, KILL_WAIT, CHECK_TIMEOUT, LAB_OUTPUT_MAX, the 65536-character line rule, LAB_ENV_ALLOW by name, the spawn options, the 503 while stopping and every final line', 'LAB_ENV_ALLOW'],
+  ['bin/lib/labs.mjs', 'SECURITY.md', "the What runs bullet states launch()'s refusal of a script whose first two bytes are not #!", 'could not start: ENOEXEC'],
+  ['bin/lib/lesson.mjs', 'bin/lib/labs.mjs', "launch() repeats LAB_SCRIPT_NOT_RUNNABLE's test of the first two bytes for #!", 'LAB_SCRIPT_NOT_RUNNABLE'],
   ['skills/research-teach/assets/quiz.js', 'bin/lib/teach.mjs', "renderLab acts on data-lab-live and data-lab-verify, which withLabSteps adds under --labs on a request with the cookie, and posts {\"lab\": \"<id>\"} to the /lab/<action> routes", 'data-lab-live'],
   ['skills/research-teach/assets/quiz.js', 'bin/lib/labs.mjs', "labStatus takes the status from a final line starting 'lab: ', which only the runner writes: lineRedactor puts '> ' before a script piece starting lab:", "startsWith('lab:"],
   ['skills/research-teach/assets/quiz.js', 'skills/research-teach/LESSON-FORMAT.md', "the Labs section names renderLab's buttons, its output pre and its status line", 'Check my work'],

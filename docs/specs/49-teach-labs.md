@@ -144,8 +144,9 @@ Checks 1 to 4 read no byte of the body. Checks 6 to 12 and taking the run slot h
 The server prints one line per lab request that passes check 5, `lab <id> <action>: <status or ending>`, and nothing of a script's output.
 
 ### D5. Starting, stopping and resetting (judgment)
+<!-- evidence: 2026-11-12-claims-gate-item-5-shebang-refusal 2026-11-12-lines-behind-claims-gate-item-5 2026-11-12-reviewed-lines-spec-49-commit-2 2026-11-12-reviewed-spec-49-commit-2-lab 2026-11-12-third-round-spec-49-lab-runner -->
 
-- **Start.** `spawn(<absolute script path>, [], { cwd: <workspace>, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })` inside `try`, with an `error` listener; `ENOEXEC` throws and `EACCES` arrives as an event (F6).
+- **Start.** `spawn(<absolute script path>, [], { cwd: <workspace>, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })` inside `try`, with an `error` listener. Before `spawn`, the server refuses a script whose first two bytes are not `#!` with the final line `lab: could not start: ENOEXEC`. The test runs on the bytes read for the pin, with no platform branch (run on macOS). `EACCES` still arrives as an event (F6).
 - **Environment.** `PATH`, `HOME`, `USER`, `LOGNAME`, `SHELL`, `TMPDIR`, `LANG` and `LC_ALL` from the server's environment when set, plus the lab's `env` names; nothing else (F6). Anything else a tool needs, `KUBECONFIG` for example, is declared in `env` and so redacted.
 - **Process groups.** Each `up`, `down`, `verify` and check leads its own group (F5). Every signal goes to a group, never to a leader alone (F5).
 - **The end of a run.** When the leader exits, the rest of its group gets the Stop sequence, and the reply ends on `close` (F6). Nothing a run left in its group outlives it. A lab that needs a process to stay up keeps it in the foreground of `up`, where Stop ends it and a concurrent `verify` can check it. An environment meant to outlive `up` lives outside the group, under a daemon, and `down` removes it; that case was not run.
