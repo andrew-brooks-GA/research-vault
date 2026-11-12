@@ -1,7 +1,10 @@
-// Spec 49 commit 1: the lab manifest, pins, lab address and every refusal of `teach serve --labs`; nothing runs.
-import { test } from 'node:test';
+// Spec 49: the lab manifest, pins, lab address and every refusal of `teach serve --labs` (commit 1), and the runner,
+// the redactor, the widget and the export's refusals (commit 2). Every script a test here starts is written by the test
+// under a temp directory, and every test leaves no process of a group it started.
+import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, rmSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, symlinkSync, rmSync, chmodSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +12,7 @@ import { request } from 'node:http';
 import { once } from 'node:events';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer, labStepsHtml, readmeDraft } from '../bin/lib/teach.mjs';
-import { readLabs, labPin, lessonLab } from '../bin/lib/labs.mjs';
+import { readLabs, labPin, lessonLab, lineRedactor, secretHits } from '../bin/lib/labs.mjs';
 import { lintWorkspace } from '../bin/lib/lesson.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
@@ -19,11 +22,15 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCHEMA = loadTeachSchema(ROOT);
 const sha = (b) => createHash('sha256').update(b).digest('hex');
 const newT = () => randomBytes(32).toString('hex');
+// Every temp directory a test makes is removed once that test ends: exactly the directories made here, nothing else.
+const made = [];
+const tempDir = (prefix) => { const d = mkdtempSync(join(tmpdir(), prefix)); made.push(d); return d; };
+afterEach(() => { for (const d of made.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 // A workspace with one lab, `demo`, whose up.sh would write up-ran; the lesson stores the pin, computed here
 // as spec 49 D2 words it (SHA-256 of JSON.stringify([id, entry]), the entry's keys in D1's order).
 function labWorkspace({ extra = {}, pin } = {}) {
-  const ws = mkdtempSync(join(tmpdir(), 'rv-labs-'));
+  const ws = tempDir('rv-labs-');
   writeFileSync(join(ws, 'MISSION.md'), '# Mission\n');
   mkdirSync(join(ws, 'lessons', 'files', '0001-lab'), { recursive: true });
   mkdirSync(join(ws, 'labs'));
@@ -153,7 +160,7 @@ test('the lab address: 303 with the exact cookie, reusable for the life of the s
     const again = await req(port, { path: `/labs/open?t=${t}` });
     console.log(`GET /labs/open?t=<t> a second time -> ${again.status} same cookie: ${again.headers['set-cookie']?.[0] === setCookie}`);
     assert.deepEqual([again.status, again.headers.location, again.headers['set-cookie']], [303, '/', [setCookie]]);
-    assert.equal((await post(port, 'run', { lab: 'demo' }, { cookie: `rv-labs-${port}=${m[2]}` })).status, 501);
+    assert.deepEqual(await post(port, 'run', { lab: 'demo' }, { cookie: `rv-labs-${port}=${m[2]}` }).then((r) => [r.status, r.text]), [200, 'lab: exit 0\n']);
     assert.equal((await post(port, 'run', { lab: 'demo' }, { cookie: `rv-labs-${port}=${t}` })).status, 403, 't as the cookie');
     for (const next of ['//evil.example/', 'https://evil.example/', '/lessons/../MISSION.md', '/lessons/0001-lab.html/x', '/lessons/x.html',
       '/lessons/0001-lab.html\r\nX: y', '/%2F%2Fevil.example', '/\\evil.example', '/lessons/0001-lab.html?x=1', '/lessons/0001-lab.html#x']) {
@@ -188,17 +195,17 @@ test('cookie, body and pin-reader edge cases (security review B8)', async () => 
     const { cookie } = await openLab(port, t);
     const session = cookie.split('=')[1];
     const name = `rv-labs-${port}`;
-    for (const [c, status] of [[`${name}=${newT()}; ${name}=${session}`, 501], [`${name}="${session}"`, 403], [`x${name}=${session}`, 403],
+    for (const [c, status] of [[`${name}=${newT()}; ${name}=${session}`, 200], [`${name}="${session}"`, 403], [`x${name}=${session}`, 403],
       [`${name}x=${session}`, 403], [`${name}=${session}x`, 403], [`${name}=`, 403], [`${name}`, 403]]) {
       assert.equal((await post(port, 'run', { lab: 'demo' }, { cookie: c })).status, status, c);
     }
-    for (const [body, status] of [['{"__proto__": {"lab": "demo"}}', 400], ['{"lab": "demo", "__proto__": {}}', 400], ['{"lab": "nope", "lab": "demo"}', 501], ['{"lab": "demo", "lab": "nope"}', 404]]) {
+    for (const [body, status] of [['{"__proto__": {"lab": "demo"}}', 400], ['{"lab": "demo", "__proto__": {}}', 400], ['{"lab": "nope", "lab": "demo"}', 200], ['{"lab": "demo", "lab": "nope"}', 404]]) {
       assert.equal((await post(port, 'run', body, { cookie })).status, status, body);
     }
     // Check 9 reads lessons/<lesson id>.html regular files only.
     writeLesson(ws, '0001-lab', 'demo', 'a'.repeat(64));
     writeFileSync(join(ws, 'lessons', 'notes.html'), `<!-- <section data-block="lab" data-lab="demo"><data class="lab-pin" value="${sha(JSON.stringify(['demo', entry]))}"></data></section> -->\n`);
-    const elsewhere = mkdtempSync(join(tmpdir(), 'rv-labs-lesson-'));
+    const elsewhere = tempDir('rv-labs-lesson-');
     mkdirSync(join(elsewhere, 'lessons'));
     writeLesson(elsewhere, '0002-real', 'demo', sha(JSON.stringify(['demo', entry])));
     symlinkSync(join(elsewhere, 'lessons', '0002-real.html'), join(ws, 'lessons', '0002-link.html'));
@@ -227,7 +234,7 @@ test('without --labs every lab path is as before: POST 404 not found, /labs/open
   assert.throws(() => createServer(ws, { schema: SCHEMA, labs: true, t: 'short' }), /64 hex/);
 });
 
-test('every refusal of checks 1 to 11 and 13, in order, with its status and body; nothing echoes the request', async () => {
+test('every refusal of checks 1 to 11 and 13, in order, with its status and body; nothing echoes the request; past them the action runs', async () => {
   const { ws, script } = labWorkspace({ extra: { env: ['LAB_TOKEN'], checks: [] } });
   // A second lab with a verify and a check; a third lab no lesson stores the pin of.
   const check = script('labs/ready.sh', '#!/bin/sh\nexit 0\n');
@@ -281,11 +288,11 @@ test('every refusal of checks 1 to 11 and 13, in order, with its status and body
     await check1('11 a multi-line value', post(port, 'run', { lab: 'demo' }, { cookie }), 409, 'env LAB_TOKEN is unset, shorter than 8 characters or multi-line\n');
     env.LAB_TOKEN = 'abcdefgh';
     await check1('13 stop with nothing running', post(port, 'stop', { lab: 'demo' }, { cookie }), 409, 'not running\n');
-    for (const a of ['run', 'reset', 'verify']) await check1(`all checks pass: ${a}`, post(port, a, { lab: a === 'verify' ? 'full' : 'demo' }, { cookie }), 501, 'lab runs are not built yet\n');
+    for (const [a, end] of [['run', 'lab: exit 0\n'], ['reset', 'lab: exit 0\n'], ['verify', 'lab: verify pass\n']]) await check1(`all checks pass: ${a}`, post(port, a, { lab: a === 'verify' ? 'full' : 'demo' }, { cookie }), 200, end);
     // 10: a check's script, then verify's, each hashed by the action that runs it.
     writeFileSync(join(ws, 'labs', 'ready.sh'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
     await check1('10 run hashes a check', post(port, 'run', { lab: 'full' }, { cookie }), 409, 'pin mismatch: labs/ready.sh\n');
-    await check1('10 reset does not run the check', post(port, 'reset', { lab: 'full' }, { cookie }), 501, 'lab runs are not built yet\n');
+    await check1('10 reset does not run the check', post(port, 'reset', { lab: 'full' }, { cookie }), 200, 'lab: exit 0\n');
     writeFileSync(join(ws, 'evidence', '0002', 'check.sh'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
     await check1('10 verify hashes verify', post(port, 'verify', { lab: 'full' }, { cookie }), 409, 'pin mismatch: evidence/0002/check.sh\n');
     await check1('10 stop hashes nothing', post(port, 'stop', { lab: 'full' }, { cookie }), 409, 'not running\n');
@@ -313,7 +320,7 @@ test('the lab section on a served lesson: the steps; under --labs the lab-open l
     assert.ok(!/<button|data-lab-live/.test(plain.text));
     const { cookie } = await openLab(port, t);
     const live = await req(port, { path: '/lessons/0001-lab.html', headers: { Cookie: cookie } });
-    assert.ok(live.text.includes(`data-lab="demo">${steps}<data class="lab-pin"`) && !live.text.includes('lab-open'));
+    assert.ok(live.text.includes(`data-lab="demo" data-lab-live>${steps}<data class="lab-pin"`) && !live.text.includes('lab-open'));
     for (const r of [plain, live]) for (const s of [t, cookie.split('=')[1]]) assert.ok(!r.text.includes(s));
     // An id the manifest lacks, and an invalid manifest, add nothing.
     writeLesson(ws, '0002-other', 'other', 'x');
@@ -332,8 +339,8 @@ test('readLabs: the shape D1 lists, the pin over the entry as returned, and ever
   const got = readLabs(ws);
   assert.deepEqual(Object.keys(got.labs.demo), ['cost', 'timeout', 'env', 'up', 'down']);
   assert.equal(labPin('demo', got.labs.demo), sha(JSON.stringify(['demo', entry])));
-  assert.deepEqual(readLabs(mkdtempSync(join(tmpdir(), 'rv-labs-none-'))), { version: 1, labs: {} });
-  const outside = mkdtempSync(join(tmpdir(), 'rv-labs-out-'));
+  assert.deepEqual(readLabs(tempDir('rv-labs-none-')), { version: 1, labs: {} });
+  const outside = tempDir('rv-labs-out-');
   writeFileSync(join(outside, 'x.sh'), '#!/bin/sh\n', { mode: 0o755 });
   symlinkSync(join(outside, 'x.sh'), join(ws, 'labs', 'link.sh'));
   symlinkSync(join(ws, 'lessons/files/0001-lab/up.sh'), join(ws, 'lessons', 'files', 'up-link.sh'));
@@ -459,9 +466,514 @@ test('teach readme prints one Labs row per manifest lab after the lessons/files/
   assert.ok(!readmeDraft(ws).includes('labs/labs.json'));
 });
 
-test('nothing in this version can start a process: no child_process in the lab code, and every lab route that passes ends in 501', () => {
-  for (const f of ['bin/lib/labs.mjs', 'bin/lib/teach.mjs', 'bin/lib/lesson.mjs', 'bin/commands/teach.mjs', 'bin/lib/args.mjs']) {
-    const src = readFileSync(join(ROOT, f), 'utf8');
-    assert.ok(!/child_process|\bspawn\b|\bexecFile|\bexecSync\b|\bfork\(/.test(src), f);
+test('one file imports child_process and one function spawns, with no shell and no argument; no exec, execFile or eval in the serve path (spec 49 D5)', () => {
+  const serve = ['bin/lib/labs.mjs', 'bin/lib/teach.mjs', 'bin/lib/lesson.mjs', 'bin/commands/teach.mjs', 'bin/lib/args.mjs', 'skills/research-teach/assets/quiz.js'];
+  const RUNS = /child_process|\bspawn\b|(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function/;
+  for (const f of serve.slice(1)) assert.ok(!RUNS.test(readFileSync(join(ROOT, f), 'utf8')), f);
+  // gate.mjs, which teach.mjs imports for hasVerdict, runs git through execFileSync with an argument array; nothing else under bin/.
+  const walk = (d) => readdirSync(join(ROOT, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith('.mjs') ? [join(d, e.name)] : []));
+  assert.deepEqual(walk('bin').filter((f) => readFileSync(join(ROOT, f), 'utf8').includes('child_process')).sort(), ['bin/lib/gate.mjs', 'bin/lib/labs.mjs']);
+  assert.match(readFileSync(join(ROOT, 'bin/lib/gate.mjs'), 'utf8'), /import \{ execFileSync \} from 'node:child_process';/);
+  const src = readFileSync(join(ROOT, 'bin/lib/labs.mjs'), 'utf8');
+  assert.deepEqual(src.match(/^import .*child_process.*$/gm), ["import { spawn } from 'node:child_process';"]);
+  assert.ok(!/(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function|shell:\s*true/.test(src));
+  const calls = [...src.matchAll(/\bspawn\(/g)];
+  assert.equal(calls.length, 1);
+  assert.match(src, /spawn\(join\(ws, cmd\.script\), \[\], \{ cwd: ws, env, shell: false, detached: true, stdio: \['ignore', 'pipe', 'pipe'\] \}\)/);
+  // The one spawn sits in launch, right after the path check and the hash, with nothing awaited between.
+  const launch = src.slice(src.indexOf('function launch('), src.indexOf('\n}\n', src.indexOf('function launch(')));
+  assert.ok(launch.includes('scriptProblem(ws, cmd.script)') && launch.includes('sha256(bytes) !== cmd.sha256') && launch.includes('spawn(') && !launch.includes('await'));
+});
+
+const ENV = { PATH: `${dirname(process.execPath)}:/usr/bin:/bin`, HOME: tmpdir(), LANG: 'C' };
+const FAST = { STOP_GRACE: 300, KILL_WAIT: 1000, CHECK_TIMEOUT: 2000 };
+const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
+const gone = async (pid, group = true, ms = 3000) => {
+  for (const end = Date.now() + ms; Date.now() < end; await sleep(20)) {
+    try { process.kill(group ? -pid : pid, 0); } catch (e) { if (e.code === 'ESRCH') return true; }
   }
+  return false;
+};
+
+// A workspace with one lab, `demo`, whose scripts are the given bodies, written under labs/ with mode 755; one lesson
+// stores the lab's pin.
+function runWs({ up, down = '#!/bin/sh\nexit 0\n', verify, checks = [], env, timeout = 30 } = {}) {
+  const ws = tempDir('rv-labs-run-');
+  writeFileSync(join(ws, 'MISSION.md'), '# Mission\n');
+  mkdirSync(join(ws, 'labs'));
+  mkdirSync(join(ws, 'lessons'));
+  const script = (rel, body) => { writeFileSync(join(ws, rel), body, { mode: 0o755 }); return { script: rel, sha256: sha(body) }; };
+  const entry = {
+    cost: 'Seconds', timeout, ...(env ? { env } : {}),
+    ...(checks.length ? { checks: checks.map(([body, message], i) => ({ ...script(`labs/check-${i + 1}.sh`, body), message })) } : {}),
+    up: script('labs/up.sh', up), down: script('labs/down.sh', down), ...(verify ? { verify: script('labs/verify.sh', verify) } : {}),
+  };
+  writeFileSync(join(ws, 'labs', 'labs.json'), JSON.stringify({ version: 1, labs: { demo: entry } }));
+  writeLesson(ws, '0001-lab', 'demo', sha(JSON.stringify(['demo', entry])));
+  return { ws, entry };
+}
+
+// A --labs server on `ws` with the lab cookie: act(action) posts {"lab": "demo"}; read() follows a reply as it streams.
+async function labServer(ws, { env = ENV, limits = FAST } = {}) {
+  const t = newT();
+  const logs = [];
+  const { server, port } = await start(ws, { labs: true, t, env, limits, log: (s) => logs.push(s) });
+  const { cookie } = await openLab(port, t);
+  const base = `http://127.0.0.1:${port}`;
+  const act = (action, signal) => fetch(`${base}/lab/${action}`, { method: 'POST', signal, headers: { Origin: base, 'Content-Type': 'application/json', Cookie: cookie }, body: '{"lab":"demo"}' });
+  const close = async () => { await server.stopLabs(); server.closeAllConnections(); server.close(); };
+  return { server, port, t, session: cookie.split('=')[1], logs, act, close };
+}
+function read(reply) {
+  const r = { chunks: [], text: '', status: 0 };
+  let waiting = [];
+  r.done = reply.then(async (res) => {
+    r.status = res.status;
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    try {
+      for (let c; !(c = await reader.read()).done;) {
+        const s = dec.decode(c.value, { stream: true });
+        r.chunks.push([Date.now(), s]);
+        r.text += s;
+        waiting = waiting.filter(([re, ok]) => (re.test(r.text) ? (ok(), false) : true));
+      }
+    } catch { r.aborted = true; }
+    r.end = Date.now();
+    return r;
+  }, () => { r.aborted = true; return r; });
+  r.until = (re) => new Promise((ok, fail) => {
+    if (re.test(r.text)) return ok();
+    waiting.push([re, ok]);
+    r.done.then(() => (re.test(r.text) ? ok() : fail(new Error(`no ${re} in ${JSON.stringify(r.text)}`))));
+  });
+  return r;
+}
+const text = async (reply) => { const res = await reply; return [res.status, await res.text()]; };
+
+test('spec 49 test 1: two unrelated labs on the same code; no topic-specific word in the runner or the widget', async () => {
+  // A: up keeps a background sleep, a stand-in service, in its foreground; verify checks it while up runs.
+  const a = runWs({
+    up: '#!/bin/sh\nsleep 61 &\necho $! > service.pid\necho ready\nwait\n',
+    verify: '#!/bin/sh\nkill -0 "$(cat service.pid)"\n',
+    down: '#!/bin/sh\nrm -f service.pid\n',
+  });
+  const s = await labServer(a.ws);
+  try {
+    const run = read(s.act('run'));
+    await run.until(/ready\n/);
+    const svc = Number(readFileSync(join(a.ws, 'service.pid'), 'utf8'));
+    assert.deepEqual(await text(s.act('verify')), [200, 'lab: verify pass\n']);
+    assert.deepEqual(await text(s.act('stop')), [200, 'lab: stopped\n']);
+    assert.equal((await run.done).text, 'ready\nlab: stopped\n');
+    assert.ok(await gone(svc, false), 'the stand-in service ended with its group');
+    assert.deepEqual(await text(s.act('reset')), [200, 'lab: exit 0\n']);
+    assert.equal(existsSync(join(a.ws, 'service.pid')), false);
+    console.log(`A: run ${JSON.stringify(run.text)}; ${s.logs.join(' | ')}`);
+  } finally { await s.close(); }
+  // B: up runs node -e to write a file and exits.
+  const b = runWs({
+    up: `#!/bin/sh\nnode -e "require('fs').writeFileSync('built.txt', 'built')"\n`,
+    verify: '#!/bin/sh\ntest -f built.txt\n',
+    down: '#!/bin/sh\nrm -f built.txt\n',
+  });
+  const s2 = await labServer(b.ws);
+  try {
+    assert.deepEqual(await text(s2.act('run')), [200, 'lab: exit 0\n']);
+    assert.deepEqual(await text(s2.act('verify')), [200, 'lab: verify pass\n']);
+    assert.deepEqual(await text(s2.act('reset')), [200, 'lab: exit 0\n']);
+    assert.deepEqual(await text(s2.act('verify')), [200, 'lab: verify fail (exit 1)\n']);
+    console.log(`B: ${s2.logs.join(' | ')}`);
+  } finally { await s2.close(); }
+  const quiz = readFileSync(join(ROOT, 'skills/research-teach/assets/quiz.js'), 'utf8');
+  const widget = quiz.slice(quiz.indexOf('export const LAB_ENDED_EARLY'), quiz.indexOf("if (typeof document !== 'undefined')"));
+  for (const [f, src] of [['bin/lib/labs.mjs', readFileSync(join(ROOT, 'bin/lib/labs.mjs'), 'utf8')], ['quiz.js renderLab and labStatus', widget]]) {
+    assert.ok(src.length > 1000, f);
+    assert.doesNotMatch(src, /\b(docker|podman|kubectl|helm|kubernetes|vcluster|python|pip|venv)\b/i, f);
+  }
+});
+
+test('spec 49 test 2: Run streams line by line, Stop ends the group, Reset is refused while up runs and runs down after', async () => {
+  const { ws } = runWs({
+    up: '#!/bin/sh\necho "pid $$"\necho up > up-file\nwhile true; do echo tick; sleep 0.1; done\n',
+    down: '#!/bin/sh\nrm -f up-file\necho removed\n',
+  });
+  const s = await labServer(ws);
+  try {
+    const run = read(s.act('run'));
+    await run.until(/tick\ntick\ntick\n/);
+    const pid = Number(/^pid (\d+)$/m.exec(run.text)[1]);
+    assert.deepEqual(await text(s.act('reset')), [409, 'busy: demo run\n']);
+    assert.deepEqual(await text(s.act('stop')), [200, 'lab: stopped\n']);
+    await run.done;
+    console.log(`${run.chunks.length} chunks; the reply ended ${run.end - run.chunks[0][0]} ms after the first`);
+    assert.ok(run.chunks.length >= 3 && run.end - run.chunks[0][0] >= 200, 'the first line arrived before the action ended');
+    assert.match(run.text, /^pid \d+\n(tick\n)+lab: stopped\n$/);
+    assert.ok(await gone(pid), 'kill(-pid, 0) throws ESRCH');
+    assert.ok(existsSync(join(ws, 'up-file')));
+    assert.deepEqual(await text(s.act('reset')), [200, 'removed\nlab: exit 0\n']);
+    assert.equal(existsSync(join(ws, 'up-file')), false);
+    assert.deepEqual(s.logs, ['lab demo reset: 409 busy: demo run', 'lab demo stop: 200 lab: stopped', 'lab demo run: 200 lab: stopped', 'lab demo reset: 200 lab: exit 0']);
+  } finally { await s.close(); }
+});
+
+test('spec 49 test 2: a page that closes during up stops its group; one that closes during down does not stop down', async () => {
+  const { ws } = runWs({
+    up: '#!/bin/sh\necho "pid $$"\nsleep 61\n',
+    down: '#!/bin/sh\necho "pid $$"\nsleep 0.5\necho done > down-done\n',
+  });
+  const s = await labServer(ws);
+  try {
+    let ac = new AbortController();
+    const run = read(s.act('run', ac.signal));
+    await run.until(/pid \d+\n/);
+    const pid = Number(/pid (\d+)/.exec(run.text)[1]);
+    ac.abort();
+    assert.ok(await gone(pid), 'up\'s group is gone after the page closed');
+    await sleep(100);
+    assert.deepEqual(s.logs, ['lab demo run: 200 lab: stopped']);
+    ac = new AbortController();
+    const reset = read(s.act('reset', ac.signal));
+    await reset.until(/pid \d+\n/);
+    ac.abort();
+    await sleep(900);
+    assert.equal(readFileSync(join(ws, 'down-done'), 'utf8'), 'done\n', 'down ran to its end');
+    assert.deepEqual(s.logs.at(-1), 'lab demo reset: 200 lab: exit 0');
+  } finally { await s.close(); }
+});
+
+test('spec 49 test 4: checks run before up; one failing leaves up unstarted, and no check output is shown', async () => {
+  const fail = runWs({
+    checks: [['#!/bin/sh\necho check-one-output\nexit 0\n', 'One is ready.'], ['#!/bin/sh\necho check-two-output >&2\nexit 1\n', 'Start the stand-in, then press Run again.']],
+    up: '#!/bin/sh\necho up > up-file\n',
+  });
+  const s = await labServer(fail.ws);
+  try {
+    const [status, body] = await text(s.act('run'));
+    console.log(`two checks, the second exits 1 -> ${status} ${JSON.stringify(body)}`);
+    assert.deepEqual([status, body], [200, 'lab: check 1 ok\nlab: check 2 failed: Start the stand-in, then press Run again.\nlab: not started, 1 check(s) failed\n']);
+    assert.equal(existsSync(join(fail.ws, 'up-file')), false);
+  } finally { await s.close(); }
+  const pass = runWs({ checks: [['#!/bin/sh\nexit 0\n', 'a'], ['#!/bin/sh\necho quiet\n', 'b']], up: '#!/bin/sh\necho up > up-file\necho started\n' });
+  const s2 = await labServer(pass.ws);
+  try {
+    assert.deepEqual(await text(s2.act('run')), [200, 'lab: check 1 ok\nlab: check 2 ok\nstarted\nlab: exit 0\n']);
+    assert.ok(existsSync(join(pass.ws, 'up-file')));
+  } finally { await s2.close(); }
+});
+
+test('a check over CHECK_TIMEOUT has failed; Stop during the checks starts nothing; up is hashed again after the checks', async () => {
+  const slow = runWs({ checks: [['#!/bin/sh\necho "pid $$" > check.pid\nsleep 61\n', 'Too slow.']], up: '#!/bin/sh\necho up > up-file\n', verify: '#!/bin/sh\nexit 0\n' });
+  const s = await labServer(slow.ws, { limits: { ...FAST, CHECK_TIMEOUT: 300 } });
+  try {
+    assert.deepEqual(await text(s.act('run')), [200, 'lab: check 1 failed: Too slow.\nlab: not started, 1 check(s) failed\n']);
+    assert.ok(await gone(Number(/\d+/.exec(readFileSync(join(slow.ws, 'check.pid'), 'utf8'))[0])));
+  } finally { await s.close(); }
+  const s2 = await labServer(slow.ws);
+  try {
+    const run = read(s2.act('run'));
+    await sleep(300);
+    // Check 12: verify may run beside this lab's up, not beside its checks.
+    assert.deepEqual(await text(s2.act('verify')), [409, 'busy: demo run\n']);
+    assert.deepEqual(await text(s2.act('stop')), [200, 'lab: stopped\n']);
+    assert.equal((await run.done).text, 'lab: stopped\n');
+    assert.equal(existsSync(join(slow.ws, 'up-file')), false);
+  } finally { await s2.close(); }
+  // A check that rewrites up.sh: the run is refused just before up would start.
+  const swap = runWs({ checks: [['#!/bin/sh\nprintf \'#!/bin/sh\\necho swapped > up-file\\n\' > labs/up.sh\n', 'x']], up: '#!/bin/sh\necho up > up-file\n' });
+  const s3 = await labServer(swap.ws);
+  try {
+    assert.deepEqual(await text(s3.act('run')), [200, 'lab: check 1 ok\nlab: not started, pin mismatch: labs/up.sh\n']);
+    assert.equal(existsSync(join(swap.ws, 'up-file')), false);
+  } finally { await s3.close(); }
+});
+
+test('spec 49 test 5: verify shows pass or fail, runs beside the same lab\'s up in its own group, and records nothing under attempts/', async () => {
+  const { ws } = runWs({
+    up: '#!/bin/sh\necho "pid $$"\necho made > made\nsleep 61\n',
+    verify: '#!/bin/sh\necho "verify $$ $(ps -o pgid= -p $$ | tr -d \' \')"\ntest -f made\n',
+  });
+  const s = await labServer(ws);
+  try {
+    const alone = await text(s.act('verify'));
+    assert.match(alone[1], /^verify \d+ \d+\nlab: verify fail \(exit 1\)\n$/);
+    const run = read(s.act('run'));
+    await run.until(/pid \d+\n/);
+    const upPid = Number(/pid (\d+)/.exec(run.text)[1]);
+    const [status, body] = await text(s.act('verify'));
+    console.log(`verify beside up (pid ${upPid}) -> ${status} ${JSON.stringify(body)}`);
+    const [, vpid, vpgid] = /^verify (\d+) (\d+)\n/.exec(body);
+    assert.equal(status, 200);
+    assert.equal(vpid, vpgid, 'verify leads its own group');
+    assert.notEqual(Number(vpgid), upPid);
+    assert.ok(body.endsWith('\nlab: verify pass\n'));
+    assert.deepEqual(await text(s.act('stop')), [200, 'lab: stopped\n']);
+    await run.done;
+    assert.ok(await gone(upPid));
+    assert.equal(existsSync(join(ws, 'attempts')), false, 'nothing recorded');
+  } finally { await s.close(); }
+  // Exit 0 and exit 1 alone, a timeout and a stop.
+  for (const [verify, limits, expected] of [['#!/bin/sh\nexit 0\n', FAST, 'lab: verify pass\n'], ['#!/bin/sh\nexit 1\n', FAST, 'lab: verify fail (exit 1)\n']]) {
+    const w = runWs({ up: '#!/bin/sh\n', verify });
+    const v = await labServer(w.ws, { limits });
+    try { assert.deepEqual(await text(v.act('verify')), [200, expected]); } finally { await v.close(); }
+  }
+  const w = runWs({ up: '#!/bin/sh\nsleep 61\n', verify: '#!/bin/sh\necho "pid $$"\nsleep 61\n', timeout: 1 });
+  const v = await labServer(w.ws);
+  try {
+    const [, body] = await text(v.act('verify'));
+    assert.match(body, /^pid \d+\nlab: verify fail \(timed out\)\n$/);
+    assert.ok(await gone(Number(/\d+/.exec(body)[0])));
+    const r = read(v.act('verify'));
+    await r.until(/pid \d+\n/);
+    assert.deepEqual(await text(v.act('stop')), [200, 'lab: stopped\n']);
+    assert.match((await r.done).text, /^pid \d+\nlab: verify fail \(stopped\)\n$/);
+  } finally { await v.close(); }
+});
+
+test('check 12: a busy server is 409, and two runs sent together give one 200 and one 409', async () => {
+  const { ws } = runWs({ up: '#!/bin/sh\necho "pid $$"\nsleep 61\n', verify: '#!/bin/sh\nsleep 0.5\n' });
+  const s = await labServer(ws);
+  try {
+    const [a, b] = [read(s.act('run')), read(s.act('run'))];
+    const busy = await Promise.race([a.done, b.done]);
+    console.log(`two runs together: ${busy.status} ${JSON.stringify(busy.text)}`);
+    assert.deepEqual([busy.status, busy.text], [409, 'busy: demo run\n']);
+    const live = busy === a ? b : a;
+    await live.until(/pid \d+\n/);
+    assert.equal(live.status, 200);
+    // Verify beside this lab's up is allowed; a second verify beside them is busy.
+    const v1 = read(s.act('verify'));
+    await sleep(100);
+    assert.deepEqual(await text(s.act('verify')), [409, 'busy: demo verify\n']);
+    assert.deepEqual([(await v1.done).status, v1.text], [200, 'lab: verify pass\n']);
+    assert.deepEqual(await text(s.act('reset')), [409, 'busy: demo run\n']);
+    assert.deepEqual(await text(s.act('run')), [409, 'busy: demo run\n']);
+    assert.deepEqual(await text(s.act('stop')), [200, 'lab: stopped\n']);
+    await live.done;
+    assert.ok(await gone(Number(/pid (\d+)/.exec(live.text)[1])));
+  } finally { await s.close(); }
+});
+
+test('spec 49 test 6: a declared value never reaches the reply, the log or a file; whole, split in a two-byte character, on stderr, in a long line, last', async () => {
+  const value = 'tok-\u00e9-0123456789abcd'; // 20 characters; the e-acute is two bytes, the 5th and 6th
+  assert.equal(value.length, 20);
+  const up = ['#!/bin/sh',
+    'printf \'whole %s\\n\' "$LAB_TOKEN"',
+    'printf \'%s\' "$LAB_TOKEN" | head -c 5; sleep 0.2; printf \'%s\\n\' "$LAB_TOKEN" | tail -c +6',
+    'printf \'err %s\\n\' "$LAB_TOKEN" >&2',
+    'sleep 0.1; head -c 70000 /dev/zero | tr \'\\0\' a; printf \'%s\' "$LAB_TOKEN"; sleep 0.2; printf \'rest-of-the-long-line\\nafter\\n\'',
+    'sleep 0.1; printf \'last %s\' "$LAB_TOKEN"', ''].join('\n');
+  const { ws } = runWs({ up, env: ['LAB_TOKEN'] });
+  const s = await labServer(ws, { env: { ...ENV, LAB_TOKEN: value } });
+  try {
+    const run = read(s.act('run'));
+    await run.done;
+    console.log(`reply: ${JSON.stringify(run.text)}`);
+    // stdout and stderr are read side by side, so the err line's place among the others is not fixed.
+    const lines = run.text.split('\n');
+    assert.deepEqual(lines.slice(-3), ['last [redacted]', 'lab: exit 0', '']);
+    assert.deepEqual(lines.slice(0, -3).sort(), ['[redacted]', 'after', 'err [redacted]', 'lab: a line over 65536 characters is not shown', 'whole [redacted]']);
+    assert.ok(!run.text.includes(value) && !run.text.includes('rest-of-the-long-line'));
+    for (const l of s.logs) for (const x of [value, s.t, s.session]) assert.ok(!l.includes(x), l);
+    const files = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(d, e.name)) : [join(d, e.name)]));
+    for (const f of files(ws)) assert.ok(!readFileSync(f).includes(Buffer.from(value)), f);
+    for (const x of [s.t, s.session]) assert.ok(!(await req(s.port, { path: '/lessons/0001-lab.html' })).text.includes(x));
+  } finally { await s.close(); }
+});
+
+test('the redactor: longest value first, the \\r cut after it, "> " before a piece that starts lab:, the long-line rule, the last partial line', () => {
+  const run = (values, chunks, max) => {
+    const out = [];
+    const r = lineRedactor(values, (s, own) => out.push(own ? `[own] ${s}` : s), max);
+    for (const c of chunks) r.write(Buffer.isBuffer(c) ? c : Buffer.from(c));
+    r.end();
+    return out;
+  };
+  assert.deepEqual(run(['abcdefgh', 'abcdefghij'], ['x abcdefghij abcdefgh\n']), ['x [redacted] [redacted]']);
+  // Overlapping values: the union of their matches is one [redacted]; a value inside another leaves nothing either.
+  assert.deepEqual(run(['abcdefgh12', '12345678'], ['abcdefgh12345678\n', 'x 12345678abcdefgh12 y\n']), ['[redacted]', 'x [redacted] y']);
+  assert.deepEqual(run(['long-secret-value', 'secret-v'], ['a long-secret-value b secret-v c\n']), ['a [redacted] b [redacted] c']);
+  // A line that reads "lab: " once an escape sequence or an invisible character before it is set aside gets "> " too.
+  assert.deepEqual(run([], ['\x1b]0;t\x07lab: exit 0\n\u200blab: exit 0\n\x1b[31mlab: verify pass\n\u202elab: x\nsee lab: x\n']),
+    ['> \x1b]0;t\x07lab: exit 0', '> \u200blab: exit 0', '> \x1b[31mlab: verify pass', '> \u202elab: x', 'see lab: x']);
+  assert.deepEqual(run([], ['x\rlab: verify pass\nlab: exit 0\n\rlab:\n']), ['x', '> lab: verify pass', '> lab: exit 0', '', '> lab:']);
+  assert.deepEqual(run(['secret12'], ['secr', 'et12\rlab: secret12']), ['[redacted]', '> lab: [redacted]']);
+  const e = Buffer.from('\u00e9');
+  assert.deepEqual(run(['\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9'], [Buffer.concat([e, e, e, e, e, e, e, e.subarray(0, 1)]), Buffer.concat([e.subarray(1), Buffer.from('\n')])]), ['[redacted]']);
+  assert.deepEqual(run([], ['a'.repeat(11), 'b'.repeat(5), '\nkept\n'], 10), ['[own] lab: a line over 65536 characters is not shown', 'kept']);
+  assert.deepEqual(run([], ['a'.repeat(11) + '\nkept\n', 'x'.repeat(12)], 10), ['[own] lab: a line over 65536 characters is not shown', 'kept', '[own] lab: a line over 65536 characters is not shown']);
+});
+
+test('a script printing x\\rlab: verify pass, or a line of its own starting lab:, cannot set the status line', async () => {
+  const { ws } = runWs({ up: '#!/bin/sh\nprintf \'x\\rlab: verify pass\\n\'\nprintf \'\\033]0;t\\007lab: exit 0\\n\'\nprintf \'\\342\\200\\213lab: exit 0\\n\'\nprintf \'lab: exit 0\'\n', verify: '#!/bin/sh\nprintf \'lab: verify pass\\n\'\nexit 1\n' });
+  const s = await labServer(ws);
+  try {
+    assert.deepEqual(await text(s.act('run')), [200, 'x\n> lab: verify pass\n> \x1b]0;t\x07lab: exit 0\n> \u200blab: exit 0\n> lab: exit 0\nlab: exit 0\n']);
+    assert.deepEqual(await text(s.act('verify')), [200, '> lab: verify pass\nlab: verify fail (exit 1)\n']);
+  } finally { await s.close(); }
+});
+
+test('the environment a script sees is the allowlist and the declared names, nothing else', async () => {
+  const { ws } = runWs({ up: '#!/bin/sh\nenv | cut -d= -f1 | sort\n', env: ['LAB_TOKEN', 'KUBE_FILE'] });
+  const env = { PATH: ENV.PATH, HOME: tmpdir(), USER: 'learner', LOGNAME: 'learner', SHELL: '/bin/sh', TMPDIR: tmpdir(), LANG: 'C', LC_ALL: 'C',
+    LAB_TOKEN: 'abcdefgh-1', KUBE_FILE: '/nowhere/config', OTHER_SECRET: 'not-for-scripts', NODE_OPTIONS: '--inspect', DYLD_INSERT_LIBRARIES: '/x' };
+  const s = await labServer(ws, { env });
+  try {
+    const [, body] = await text(s.act('run'));
+    const names = body.split('\n').filter((l) => l && !l.startsWith('lab: '));
+    console.log(`names: ${names.join(' ')}`);
+    // /bin/sh itself adds PWD, SHLVL and _.
+    assert.deepEqual(names.filter((n) => !['PWD', 'SHLVL', '_'].includes(n)), ['HOME', 'KUBE_FILE', 'LAB_TOKEN', 'LANG', 'LC_ALL', 'LOGNAME', 'PATH', 'SHELL', 'TMPDIR', 'USER']);
+  } finally { await s.close(); }
+});
+
+test('the end of a run: a timeout, a leader that leaves a background child, a child that ignores SIGTERM, a script that cannot start', async () => {
+  const slow = runWs({ up: '#!/bin/sh\necho "pid $$"\nsleep 61\n', timeout: 1 });
+  let s = await labServer(slow.ws);
+  try {
+    const [, body] = await text(s.act('run'));
+    assert.match(body, /^pid \d+\nlab: timed out after 1 s\n$/);
+    assert.ok(await gone(Number(/\d+/.exec(body)[0])));
+  } finally { await s.close(); }
+  const bg = runWs({ up: '#!/bin/sh\nsleep 61 &\necho "child $!"\nexit 3\n' });
+  s = await labServer(bg.ws);
+  try {
+    const [, body] = await text(s.act('run'));
+    assert.match(body, /^child \d+\nlab: exit 3\n$/);
+    assert.ok(await gone(Number(/\d+/.exec(body)[0]), false), 'the background child is gone');
+  } finally { await s.close(); }
+  const stubborn = runWs({ up: '#!/bin/sh\ntrap \'\' TERM\necho "pid $$"\nsleep 61\n' });
+  s = await labServer(stubborn.ws);
+  try {
+    const run = read(s.act('run'));
+    await run.until(/pid \d+\n/);
+    const t0 = Date.now();
+    assert.deepEqual(await text(s.act('stop')), [200, 'lab: stopped\n']);
+    console.log(`a child ignoring SIGTERM: stopped after ${Date.now() - t0} ms (STOP_GRACE ${FAST.STOP_GRACE})`);
+    assert.ok(Date.now() - t0 >= FAST.STOP_GRACE);
+    assert.ok(await gone(Number(/pid (\d+)/.exec(run.text)[1]), true, 50));
+    assert.match((await run.done).text, /lab: stopped\n$/);
+  } finally { await s.close(); }
+  const odd = runWs({ up: 'echo no interpreter line\n' });
+  chmodSync(join(odd.ws, 'labs', 'down.sh'), 0o644);
+  s = await labServer(odd.ws);
+  try {
+    assert.deepEqual(await text(s.act('run')), [200, 'lab: could not start: ENOEXEC\n']);
+    assert.deepEqual(await text(s.act('reset')), [200, 'lab: could not start: EACCES\n']);
+  } finally { await s.close(); }
+});
+
+test('a process that left the group and holds the output pipe: the reply still ends once the group is gone; that process is out of reach', async () => {
+  const { ws } = runWs({ up: `#!/bin/sh\nnode -e "const c = require('child_process').spawn('sleep', ['61'], { detached: true, stdio: ['ignore', 'inherit', 'inherit'] }); console.log('escaped ' + c.pid); c.unref()"\necho leader-done\n` });
+  const s = await labServer(ws);
+  let pid;
+  try {
+    const [, body] = await text(s.act('run'));
+    pid = Number(/escaped (\d+)/.exec(body)[1]);
+    assert.equal(body, `escaped ${pid}\nleader-done\nlab: exit 0\n`);
+    assert.equal(await gone(pid, false, 100), false, 'a new session is not in the group the Stop sequence reaches');
+  } finally {
+    if (pid) try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ }
+    await s.close();
+  }
+});
+
+test('the output limit: script output past LAB_OUTPUT_MAX is dropped with one line, and the script runs on', async () => {
+  const { ws } = runWs({ up: '#!/bin/sh\ni=0\nwhile [ $i -lt 200 ]; do echo "line $i of the output"; i=$((i+1)); done\necho done > finished\n' });
+  const s = await labServer(ws, { limits: { ...FAST, LAB_OUTPUT_MAX: 1000 } });
+  try {
+    const [, body] = await text(s.act('run'));
+    const lines = body.split('\n');
+    assert.deepEqual(lines.slice(-3), ['lab: output over 1 MiB not shown', 'lab: exit 0', '']);
+    assert.ok(Buffer.byteLength(lines.slice(0, -3).join('\n') + '\n') <= 1000);
+    assert.ok(existsSync(join(ws, 'finished')));
+  } finally { await s.close(); }
+});
+
+test('teach serve --labs: SIGTERM, SIGHUP and SIGINT during a run leave no process of the group; the start warning names a page holding a declared value', async () => {
+  const value = 'made-up-value-0123';
+  const { ws } = runWs({ up: '#!/bin/sh\nsleep 61 &\necho "pid $$ child $!"\nwhile true; do sleep 0.1; done\n', env: ['LAB_TOKEN'] });
+  writeFileSync(join(ws, 'lessons', '0002-leak.html'), `<p>${value}</p>\n`);
+  const env = { ...ENV, RESEARCH_VAULT_PATH: fixtureVault(), LAB_TOKEN: value };
+  for (const sig of ['SIGTERM', 'SIGHUP', 'SIGINT']) {
+    const child = spawn(process.execPath, [join(ROOT, 'bin', 'research-vault.mjs'), 'teach', 'serve', '--labs', ws], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '', stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (c) => { stderr += c; });
+    try {
+      await new Promise((ok, fail) => {
+        child.stdout.on('data', (c) => { stdout += c; if (/labs: open .*\n/.test(stdout)) ok(); });
+        child.on('exit', (code) => fail(new Error(`serve exited ${code}: ${stderr}`)));
+      });
+      const [, port, t] = /127\.0\.0\.1:(\d+)\/labs\/open\?t=([0-9a-f]{64})/.exec(stdout);
+      const open = await req(Number(port), { path: `/labs/open?t=${t}` });
+      const cookie = open.headers['set-cookie'][0].split(';')[0];
+      const base = `http://127.0.0.1:${port}`;
+      const run = read(fetch(`${base}/lab/run`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json', Cookie: cookie }, body: '{"lab":"demo"}' }));
+      await run.until(/pid \d+ child \d+\n/);
+      const [, pid, bgPid] = /pid (\d+) child (\d+)/.exec(run.text).map(Number);
+      child.kill(sig);
+      const [code, signal] = await once(child, 'exit');
+      const left = [await gone(pid), await gone(bgPid, false)];
+      console.log(`${sig} during a run: server exit ${code ?? signal}; group gone ${left[0]}, background child gone ${left[1]}`);
+      assert.deepEqual(left, [true, true], sig);
+      assert.equal(code, 0, sig);
+      assert.equal(stderr, 'warning: lessons/0002-leak.html holds the value of LAB_TOKEN\n');
+      assert.equal(stdout.split('\n').filter((l) => l.includes(t)).length, 1);
+      assert.ok(!stdout.includes(value) && !stderr.includes(value));
+      assert.equal(existsSync(join(ws, '.teach-serve.json')), false);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await once(child, 'exit'); }
+    }
+  }
+});
+
+test('SIGTERM to teach serve --labs runs the Stop sequence before exiting: up\'s own TERM trap runs', async () => {
+  const { ws } = runWs({ up: '#!/bin/sh\ntrap \'echo cleaned > cleaned; exit 0\' TERM\necho "pid $$"\nwhile true; do sleep 0.1; done\n' });
+  const env = { ...ENV, RESEARCH_VAULT_PATH: fixtureVault() };
+  const child = spawn(process.execPath, [join(ROOT, 'bin', 'research-vault.mjs'), 'teach', 'serve', '--labs', ws], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  try {
+    let stdout = '';
+    child.stdout.setEncoding('utf8');
+    await new Promise((ok, fail) => {
+      child.stdout.on('data', (c) => { stdout += c; if (/labs: open .*\n/.test(stdout)) ok(); });
+      child.on('exit', (code) => fail(new Error(`serve exited ${code}`)));
+    });
+    const [, port, t] = /127\.0\.0\.1:(\d+)\/labs\/open\?t=([0-9a-f]{64})/.exec(stdout);
+    const cookie = (await req(Number(port), { path: `/labs/open?t=${t}` })).headers['set-cookie'][0].split(';')[0];
+    const base = `http://127.0.0.1:${port}`;
+    const run = read(fetch(`${base}/lab/run`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json', Cookie: cookie }, body: '{"lab":"demo"}' }));
+    await run.until(/pid \d+\n/);
+    child.kill('SIGTERM');
+    const [code] = await once(child, 'exit');
+    assert.equal(code, 0);
+    assert.equal(readFileSync(join(ws, 'cleaned'), 'utf8'), 'cleaned\n', 'the group got SIGTERM before the server exited, so the trap ran');
+    assert.ok(await gone(Number(/pid (\d+)/.exec(run.text)[1])));
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) { child.kill('SIGKILL'); await once(child, 'exit'); }
+  }
+});
+
+test('once the server has begun stopping its labs, a lab POST past check 5 is 503 the server is stopping', async () => {
+  const { ws } = runWs({ up: '#!/bin/sh\necho "pid $$"\nsleep 61\n', verify: '#!/bin/sh\nexit 0\n' });
+  const s = await labServer(ws);
+  try {
+    const run = read(s.act('run'));
+    await run.until(/pid \d+\n/);
+    const stopping = s.server.stopLabs();
+    for (const a of ['run', 'verify', 'reset', 'stop']) assert.deepEqual(await text(s.act(a)), [503, 'the server is stopping\n'], a);
+    await stopping;
+    assert.equal((await run.done).text.split('\n').at(-2), 'lab: stopped');
+    assert.ok(await gone(Number(/pid (\d+)/.exec(run.text)[1])));
+  } finally { await s.close(); }
+});
+
+test('secretHits skips a declared value under 8 characters, so it gives no start warning and no export refusal', () => {
+  const labs = { demo: { env: ['SHORT_ONE', 'LONG_ONE', 'UNSET_ONE'] } };
+  const env = { SHORT_ONE: 'abc', LONG_ONE: 'long-value-1', OTHER: 'long-value-2' };
+  assert.deepEqual(secretHits([['lessons/a.html', 'abc and long-value-1 and long-value-2'], ['b.sh', Buffer.from('abc')]], labs, env), [['lessons/a.html', 'LONG_ONE']]);
+  assert.deepEqual(secretHits([['lessons/a.html', 'abcdefg']], labs, { SHORT_ONE: 'abcdefg' }), []);
+  assert.deepEqual(secretHits([['lessons/a.html', 'abcdefgh']], labs, { SHORT_ONE: 'abcdefgh' }), [['lessons/a.html', 'SHORT_ONE']]);
 });

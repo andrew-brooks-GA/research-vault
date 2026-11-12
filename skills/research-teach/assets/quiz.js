@@ -224,6 +224,76 @@ export function renderQuiz(parts, { rand = Math.random, submit = exportKey() ===
   });
 }
 
+// Spec 49 D3: the status line of a lab reply, its final line only when the reader reported done and that line starts
+// "lab: " (the server writes it after the script's output has ended, and a script's own line never starts so).
+export const LAB_ENDED_EARLY = 'The reply ended before the lab finished.';
+export function labStatus(text, done) {
+  const last = text.replace(/\n$/, '').split('\n').at(-1);
+  return done && last.startsWith('lab: ') ? last : LAB_ENDED_EARLY;
+}
+
+// Spec 49 D3: the lab buttons, only on a lesson teach serve --labs served through the lab address (data-lab-live on
+// the first element whose data-block is lab), never on an exported copy, and only from the server's own origin. Each
+// button posts {"lab": "<id>"} and appends the reply, chunk by chunk, to the output through textContent only. Stop is
+// enabled while a Run or Check my work reply is open; Run and Reset only while nothing is open; Check my work also
+// beside Run, not beside Reset or itself. A 4xx or 5xx reply's body becomes the status.
+export function renderLab(section) {
+  if (!section?.dataset || section.dataset.labLive === undefined || exportKey() !== undefined) return;
+  if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(location.origin)) return;
+  const id = section.dataset.lab;
+  const open = { run: false, verify: false, reset: false };
+  const output = el('pre', 'lab-output');
+  const status = el('p', 'lab-status');
+  status.setAttribute('role', 'status');
+  const bar = el('div', 'lab-buttons');
+  const buttons = {};
+  const update = () => {
+    const any = open.run || open.verify || open.reset;
+    buttons.run.disabled = any;
+    buttons.reset.disabled = any;
+    if (buttons.verify) buttons.verify.disabled = open.verify || open.reset;
+    buttons.stop.disabled = !(open.run || open.verify);
+  };
+  const act = async (action) => {
+    const own = action !== 'stop';
+    if (own) {
+      open[action] = true;
+      if (action !== 'verify') output.textContent = '';
+      status.textContent = '';
+      update();
+    }
+    let text = '', done = false, ok = false;
+    try {
+      const res = await fetch(`/lab/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lab: id }) });
+      ok = res.ok;
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) { done = true; break; }
+        const s = dec.decode(chunk.value, { stream: true });
+        text += s;
+        if (ok && own) output.textContent += s;
+      }
+    } catch { /* the reply ended early */ }
+    if (own) {
+      open[action] = false;
+      update();
+    }
+    if (!ok && done) status.textContent = text.trim();
+    else if (own) status.textContent = labStatus(text, done);
+  };
+  for (const [action, label] of [['run', 'Run'], ['stop', 'Stop'], ['reset', 'Reset'], ...(section.dataset.labVerify !== undefined ? [['verify', 'Check my work']] : [])]) {
+    const b = el('button', `lab-${action}`, label);
+    b.type = 'button';
+    b.addEventListener('click', () => act(action));
+    buttons[action] = b;
+    bar.append(b);
+  }
+  update();
+  section.append(bar, output, status);
+}
+
 if (typeof document !== 'undefined') {
   renderNav();
   const parts = [...document.querySelectorAll('script[data-quiz]')].map((script) => {
@@ -237,4 +307,5 @@ if (typeof document !== 'undefined') {
   if (parts.length) renderQuiz(mergeQuizzes(parts));
   const local = exportKey() !== undefined && document.querySelector('[data-block="progress"]');
   if (local) renderLocalProgress(local);
+  renderLab(document.querySelector('[data-block="lab"]'));
 }

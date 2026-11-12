@@ -1,7 +1,10 @@
-// Spec 49 D1, D2: the lab manifest `labs/labs.json`, its reader and the pins. Nothing here starts a process.
+// Spec 49: the lab manifest `labs/labs.json`, its reader and the pins (D1, D2), and the runner (D4 to D7). This is
+// the one file that imports node:child_process, and `launch` the one function that calls spawn.
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { spawn } from 'node:child_process';
+import { StringDecoder } from 'node:string_decoder';
 import { isInsideVault } from './containment.mjs';
 import { parseBlocks } from './lesson.mjs';
 import { show, LESSON_ID_RE } from './teach.mjs';
@@ -134,16 +137,19 @@ function lessonStoresPin(ws, id, pin) {
   });
 }
 
-// D4 checks 6 to 11 and 13, in order, for a lab id that passed check 5; every file is read synchronously, so the
-// checks happen in one turn. [status, body] of the first that fails. No action runs in this version: one that
-// passes them all is 501, and a stop is 409 not running.
-export function labRefusal(ws, action, id, env) {
+// D4 checks 6 to 13, in order, for a lab id that passed check 5; every file is read synchronously, so the checks
+// happen in one turn, and the caller takes the slot in that same turn. `jobs` are the actions running now (check 12
+// and 13). [status, body] of the first that fails, else [200, lab].
+// Check 13's set: the lab's running run (any phase) and verify; Reset's down cannot be stopped from the page.
+const stoppable = (j, id) => j.id === id && j.action !== 'reset';
+const stoppedLine = (gone) => `lab: stopped${gone ? '' : ' (processes remain)'}`;
+export function labRefusal(ws, action, id, env, jobs = []) {
   let labs;
   try { ({ labs } = readLabs(ws)); } catch { return [500, 'labs/labs.json is invalid; run teach lint']; }
   if (!Object.hasOwn(labs, id)) return [404, 'no lab'];
   const lab = labs[id];
   if (action === 'verify' && !lab.verify) return [404, 'no verify'];
-  if (action === 'stop') return [409, 'not running'];
+  if (action === 'stop') return jobs.some((j) => stoppable(j, id)) ? [200, lab] : [409, 'not running'];
   if (!lessonStoresPin(ws, id, labPin(id, lab))) return [409, "no lesson stores this lab's current pin"];
   for (const c of actionScripts(lab, action)) {
     let actual = null;
@@ -154,5 +160,239 @@ export function labRefusal(ws, action, id, env) {
     const v = env[name];
     if (typeof v !== 'string' || v.length < 8 || /[\r\n]/.test(v)) return [409, `env ${name} is unset, shorter than 8 characters or multi-line`];
   }
-  return [501, 'lab runs are not built yet'];
+  // Check 12: verify may run beside this lab's up, and nothing else beside anything.
+  const busy = jobs.find((j) => !(action === 'verify' && j.id === id && j.action === 'run' && j.phase === 'up'));
+  if (busy) return [409, `busy: ${busy.id} ${busy.action}`];
+  return [200, lab];
+}
+
+// D5 limits, in milliseconds and bytes; createServer's `limits` option replaces any of them (tests pass smaller ones).
+export const STOP_GRACE = 5000;
+export const KILL_WAIT = 2000;
+export const CHECK_TIMEOUT = 10000;
+export const LAB_OUTPUT_MAX = 1024 * 1024;
+export const LAB_LINE_MAX = 65536;
+const POLL = 20;
+// D5: the names a script gets from the server's environment, when set, besides the lab's own `env` names.
+export const LAB_ENV_ALLOW = ['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'LANG', 'LC_ALL'];
+export const labEnv = (env, lab) =>
+  Object.fromEntries([...new Set([...LAB_ENV_ALLOW, ...(lab.env ?? [])])].filter((k) => typeof env[k] === 'string').map((k) => [k, env[k]]));
+
+// D6: one output stream's lines. write() decodes with a streaming UTF-8 decoder and passes on each complete line;
+// end() the final partial one. In a line every character inside any match of any value is marked, and each run of
+// marked characters becomes one [redacted], so overlapping or nested values leave nothing of either. The line is
+// then cut at \r, and a piece that starts with lab: once its escape sequences and invisible characters are set aside
+// gets "> " in front, so a script never writes a line that reads "lab: ". A line over `lineMax` characters is
+// dropped, with the rest of it up to the next \n, and one line of the server's own (emit's second argument true)
+// said in its place.
+export const LONG_LINE = `lab: a line over ${LAB_LINE_MAX} characters is not shown`;
+// What the "lab:" test sets aside (the output keeps it): ESC sequences (CSI, OSC to BEL or ST, and two-character
+// ones), C0 controls but tab, DEL, C1, zero-width, bidi, word-joiner and BOM characters.
+const INVISIBLE_RE = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b[\s\S]?|[\x00-\x08\x0a-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g;
+export function redactLine(l, values) {
+  const marked = new Uint8Array(l.length);
+  for (const v of values) for (let i = l.indexOf(v); i !== -1; i = l.indexOf(v, i + 1)) marked.fill(1, i, i + v.length);
+  let out = '';
+  for (let i = 0; i < l.length;) {
+    let j = i;
+    while (j < l.length && marked[j] === marked[i]) j++;
+    out += marked[i] ? '[redacted]' : l.slice(i, j);
+    i = j;
+  }
+  return out;
+}
+export function lineRedactor(values, emit, lineMax = LAB_LINE_MAX) {
+  const dec = new StringDecoder('utf8');
+  let buf = '', skip = false;
+  const line = (l) => {
+    redactLine(l, values).split('\r').forEach((p, i) => {
+      if (i === 0 || p !== '') emit(p.replace(INVISIBLE_RE, '').startsWith('lab:') ? `> ${p}` : p, false);
+    });
+  };
+  const take = (text) => {
+    if (skip) {
+      const i = text.indexOf('\n');
+      if (i === -1) return;
+      skip = false;
+      text = text.slice(i + 1);
+    }
+    const parts = (buf + text).split('\n');
+    buf = parts.pop();
+    for (const p of parts) (p.length > lineMax ? emit(LONG_LINE, true) : line(p));
+    if (buf.length > lineMax) { emit(LONG_LINE, true); skip = true; buf = ''; }
+  };
+  return {
+    write: (chunk) => take(dec.write(chunk)),
+    end: () => {
+      take(dec.end());
+      if (buf !== '') line(buf);
+      buf = '';
+    },
+  };
+}
+
+const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms));
+// A process group still has a member: signal 0 to it succeeds (EPERM: it exists, so it counts).
+const groupAlive = (pgid) => { try { process.kill(-pgid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+const signalGroup = (pgid, sig) => { try { process.kill(-pgid, sig); } catch { /* the group is gone */ } };
+// D5's Stop sequence on one group: SIGTERM; SIGKILL once STOP_GRACE has passed with the group still there; then at
+// most KILL_WAIT for it to go, polled every 20 ms. True when the group is gone. Every signal goes to the group.
+async function stopGroup(pgid, L) {
+  signalGroup(pgid, 'SIGTERM');
+  for (const end = Date.now() + L.STOP_GRACE; groupAlive(pgid) && Date.now() < end;) await sleep(POLL);
+  if (!groupAlive(pgid)) return true;
+  signalGroup(pgid, 'SIGKILL');
+  for (const end = Date.now() + L.KILL_WAIT; groupAlive(pgid) && Date.now() < end;) await sleep(POLL);
+  return !groupAlive(pgid);
+}
+
+// D5 start: the one spawn. The script's path is checked against readLabs' rules and its bytes hashed against the pin
+// here, immediately before it starts; it runs by its absolute path, no shell, no argument, from the workspace root,
+// stdin ignored, leading a process group of its own, with only `env`. { child }, or { error } with the line's text.
+function launch(ws, cmd, env) {
+  let bytes = null;
+  try { if (!scriptProblem(ws, cmd.script)) bytes = readFileSync(join(ws, cmd.script)); } catch { /* a mismatch */ }
+  if (bytes === null || sha256(bytes) !== cmd.sha256) return { error: `not started, pin mismatch: ${cmd.script}` };
+  try {
+    return { child: spawn(join(ws, cmd.script), [], { cwd: ws, env, shell: false, detached: true, stdio: ['ignore', 'pipe', 'pipe'] }) };
+  } catch (e) {
+    return { error: `could not start: ${e.code ?? 'error'}` };
+  }
+}
+
+// Runs one script of a job to its end. Its output goes line by line through the redactor to `put` (or is read and
+// dropped when `put` is null). At `ms`, or when the job is stopped, its group gets the Stop sequence; when the leader
+// exits first, the rest of its group gets it. Resolves after close, once both streams' final lines are out:
+// { error } or { code, timedOut, stopped (the Stop sequence began before the leader exited), gone }.
+function runScript(job, ws, cmd, env, ms, put, values, L) {
+  const { child, error } = launch(ws, cmd, env);
+  if (error) return Promise.resolve({ error });
+  // A file that cannot be executed (EACCES, ENOENT) gives no pid and an error event.
+  if (child.pid === undefined) return new Promise((done) => child.once('error', (e) => done({ error: `could not start: ${e.code ?? 'error'}` })));
+  return new Promise((done) => {
+    const pgid = child.pid;
+    job.pgid = pgid;
+    let timedOut = false, exited = false, stopped = false, code = null, finished = false;
+    job.halt = () => { if (!exited) stopped = true; return (job.stopping ??= stopGroup(pgid, L)); };
+    const streams = [child.stdout, child.stderr];
+    const lines = streams.map((s) => {
+      if (!put) { s.resume(); return null; }
+      const r = lineRedactor(values, put);
+      s.on('data', r.write);
+      return r;
+    });
+    const timer = setTimeout(() => { timedOut = true; job.halt(); }, ms);
+    const finish = async (result) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      for (const r of lines) r?.end();
+      const gone = job.stopping ? await job.stopping : true;
+      job.pgid = null;
+      job.halt = null;
+      job.stopping = null;
+      done({ ...result, gone });
+    };
+    child.on('exit', (c, sig) => {
+      clearTimeout(timer);
+      exited = true; // from here halt() runs the sequence on the rest of the group, and does not count as a stop
+      code = c ?? sig;
+      // A process that left the group can hold a pipe open; once the group is gone, stop waiting for close.
+      job.halt().then(() => setTimeout(() => streams.forEach((s) => s.destroy()), 200).unref());
+    });
+    child.on('close', () => finish({ code, timedOut, stopped }));
+  });
+}
+
+// The runner of one `teach serve --labs` server: `post` answers a lab POST that passed checks 1 to 5, `stopAll`
+// runs the Stop sequence on every running group (SIGINT, SIGTERM, SIGHUP), and `killAll` sends SIGKILL to each (exit).
+export function labRunner(ws, { env, log, limits = {} }) {
+  const L = { STOP_GRACE, KILL_WAIT, CHECK_TIMEOUT, LAB_OUTPUT_MAX, ...limits };
+  const jobs = [];
+  let closing = false;
+  const reply = (res) => res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' });
+  const out = (res, s) => { if (!res.destroyed && !res.writableEnded) res.write(`${s}\n`); };
+  // At most LAB_OUTPUT_MAX bytes of script output per reply, then one line; the rest is read and dropped.
+  const capped = (res) => {
+    let sent = 0, over = false;
+    return (s, own) => {
+      if (over) return;
+      if (!own && (sent += Buffer.byteLength(s) + 1) > L.LAB_OUTPUT_MAX) { over = true; s = 'lab: output over 1 MiB not shown'; }
+      out(res, s);
+    };
+  };
+  const stopJob = (job, reason) => {
+    job.reason ??= reason;
+    return job.halt ? job.halt() : Promise.resolve(true);
+  };
+
+  async function steps(job, lab, res, put, values, runEnv) {
+    const ms = lab.timeout * 1000;
+    const ending = (r, verify) => {
+      if (r.error) return `lab: ${r.error}`;
+      if (verify) return r.timedOut ? 'lab: verify fail (timed out)' : r.stopped ? 'lab: verify fail (stopped)' : r.code === 0 ? 'lab: verify pass' : `lab: verify fail (exit ${r.code})`;
+      return r.timedOut ? `lab: timed out after ${lab.timeout} s` : r.stopped ? stoppedLine(r.gone) : `lab: exit ${r.code}`;
+    };
+    if (job.action === 'reset') return ending(await runScript(job, ws, lab.down, runEnv, ms, put, values, L));
+    if (job.action === 'verify') return ending(await runScript(job, ws, lab.verify, runEnv, ms, put, values, L), true);
+    let failed = 0;
+    for (const [i, c] of (lab.checks ?? []).entries()) {
+      if (job.reason) return 'lab: stopped';
+      const r = await runScript(job, ws, c, runEnv, L.CHECK_TIMEOUT, null, values, L);
+      if (r.error?.startsWith('not started')) return `lab: ${r.error}`;
+      if (r.stopped && !r.timedOut) return stoppedLine(r.gone);
+      const ok = !r.error && !r.timedOut && r.code === 0;
+      if (!ok) failed++;
+      out(res, ok ? `lab: check ${i + 1} ok` : `lab: check ${i + 1} failed: ${c.message}`);
+    }
+    if (failed) return `lab: not started, ${failed} check(s) failed`;
+    if (job.reason) return 'lab: stopped';
+    job.phase = 'up';
+    return ending(await runScript(job, ws, lab.up, runEnv, ms, put, values, L));
+  }
+
+  // Checks 6 to 13 and taking the slot, in one turn (nothing here awaits before the slot is taken and the first script
+  // spawned). [status, body] of a refusal, or undefined when this function has taken the reply.
+  function post(action, id, res) {
+    if (closing) return [503, 'the server is stopping'];
+    const [status, lab] = labRefusal(ws, action, id, env, jobs);
+    if (status !== 200) return [status, lab];
+    reply(res);
+    if (action === 'stop') {
+      Promise.all(jobs.filter((j) => stoppable(j, id)).map((j) => stopJob(j, 'stopped'))).then((gone) => {
+        const line = stoppedLine(gone.every(Boolean));
+        log(`lab ${id} stop: 200 ${line}`);
+        res.end(`${line}\n`);
+      });
+      return undefined;
+    }
+    const job = { id, action, phase: action === 'run' ? 'checks' : action, reason: null, pgid: null, halt: null, stopping: null };
+    jobs.push(job);
+    // The page closing stops its action, except down, which runs to its end.
+    if (action !== 'reset') res.on('close', () => { if (!res.writableFinished) stopJob(job, 'closed'); });
+    const values = (lab.env ?? []).map((n) => env[n]);
+    steps(job, lab, res, capped(res), values, labEnv(env, lab)).then((line) => {
+      jobs.splice(jobs.indexOf(job), 1);
+      log(`lab ${id} ${action}: 200 ${line}`);
+      if (!res.destroyed && !res.writableEnded) res.end(`${line}\n`);
+    });
+    return undefined;
+  }
+
+  return {
+    post,
+    stopAll: () => { closing = true; return Promise.all(jobs.map((j) => stopJob(j, 'server'))); },
+    killAll: () => { for (const j of jobs) if (j.pgid) signalGroup(j.pgid, 'SIGKILL'); },
+  };
+}
+
+// D6, D8: [path, name] for each declared env name of `labs` whose value is set in `env` and occurs in a file of
+// `files` ([path, text or bytes]): the start warning of teach serve --labs and the export's secret refusal.
+// A value under 8 characters is skipped: check 11 refuses it for a run, and it would match too much.
+export function secretHits(files, labs, env) {
+  const names = [...new Set(Object.values(labs).flatMap((l) => l.env ?? []))].filter((n) => typeof env[n] === 'string' && env[n].length >= 8);
+  return files.flatMap(([p, body]) => {
+    const bytes = Buffer.isBuffer(body) ? body : Buffer.from(String(body));
+    return names.filter((n) => bytes.includes(env[n])).map((n) => [p, n]);
+  });
 }

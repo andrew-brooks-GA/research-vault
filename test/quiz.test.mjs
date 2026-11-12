@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { shuffleOptions, grade, answerLengthSpread, lessonIdFrom, neighbours, pathPosition, mergeQuizzes, answerMark, renderQuiz, resultsFile } from '../skills/research-teach/assets/quiz.js';
+import { shuffleOptions, grade, answerLengthSpread, lessonIdFrom, neighbours, pathPosition, mergeQuizzes, answerMark, renderQuiz, resultsFile, renderLab, labStatus, LAB_ENDED_EARLY } from '../skills/research-teach/assets/quiz.js';
 
 const QUIZ = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills/research-teach/assets/quiz.js');
 
@@ -60,7 +60,7 @@ test('importing quiz.js in Node touches no DOM', () => {
   `;
   const out = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }));
   console.log(`exports=${out.exports.length} dom_accesses=${out.touched}`);
-  assert.deepEqual(out.exports, ['answerLengthSpread', 'answerMark', 'grade', 'lessonIdFrom', 'mergeQuizzes', 'neighbours', 'pathPosition', 'renderQuiz', 'resultsFile', 'shuffleOptions']);
+  assert.deepEqual(out.exports, ['LAB_ENDED_EARLY', 'answerLengthSpread', 'answerMark', 'grade', 'labStatus', 'lessonIdFrom', 'mergeQuizzes', 'neighbours', 'pathPosition', 'renderLab', 'renderQuiz', 'resultsFile', 'shuffleOptions']);
   assert.equal(out.touched, 0);
   assert.equal(out.hasDocument, false);
 });
@@ -278,6 +278,122 @@ test('served mode: the default submit posts once, with no export button, no loca
   } finally {
     for (const k of ['document', 'location', 'fetch', 'localStorage']) delete globalThis[k];
   }
+});
+
+// Spec 49 test 2, browser side, and test 7's widget half: renderLab on a fake section with a stub fetch whose replies
+// stream chunks the test releases.
+test('renderLab: buttons enabled per D3, each chunk appended through textContent, the status from the final lab: line only (spec 49)', async () => {
+  const doc = fakeDocument();
+  const section = doc.createElement('section');
+  section.dataset = { lab: 'demo', labLive: '', labVerify: '' };
+  globalThis.document = doc;
+  globalThis.location = { pathname: '/lessons/0001-lab.html', origin: 'http://127.0.0.1:8080' };
+  const calls = [];
+  const replies = [];
+  const enc = new TextEncoder();
+  globalThis.fetch = async (u, o) => {
+    calls.push([u, o.method, o.headers['Content-Type'], o.body]);
+    let ctl;
+    const body = new ReadableStream({ start(c) { ctl = c; } });
+    const r = { push: (s) => ctl.enqueue(enc.encode(s)), end: () => ctl.close(), fail: () => ctl.error(new Error('reset')) };
+    replies.push(r);
+    const [status, text] = u === '/lab/reset' && replies.length === 5 ? [409, 'busy: demo run\n'] : [200, null];
+    if (text) { r.push(text); r.end(); }
+    return { ok: status < 400, status, body };
+  };
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  try {
+    renderLab(section);
+    const [bar, output, status] = section.children;
+    assert.equal(output.tag, 'pre');
+    assert.equal(status.attrs.role, 'status');
+    const b = Object.fromEntries(bar.children.map((c) => [c.className.slice(4), c]));
+    assert.deepEqual(bar.children.map((c) => [c.textContent, c.type]), [['Run', 'button'], ['Stop', 'button'], ['Reset', 'button'], ['Check my work', 'button']]);
+    const state = () => ['run', 'stop', 'reset', 'verify'].map((k) => (b[k].disabled ? '-' : k)).join(' ');
+    assert.equal(state(), 'run - reset verify');
+    // Run: three chunks, an earlier "> lab: verify pass" line, then the server's final line.
+    const run = b.run.listeners.click();
+    await tick();
+    assert.equal(state(), '- stop - verify', 'while Run is open: Run and Reset disabled, Stop and Check my work enabled');
+    const chunks = ['pid 1\n', '> lab: verify pass\n', 'tick\nlab: exit 0\n'];
+    for (const [i, c] of chunks.entries()) {
+      replies[0].push(c);
+      await tick();
+      assert.equal(output.textContent, chunks.slice(0, i + 1).join(''));
+    }
+    // Check my work beside Run: its own button disabled while it is open, its output appended.
+    const verify = b.verify.listeners.click();
+    await tick();
+    assert.equal(state(), '- stop - -');
+    replies[1].push('lab: verify pass\n');
+    replies[1].end();
+    await verify;
+    assert.equal(status.textContent, 'lab: verify pass');
+    assert.equal(state(), '- stop - verify');
+    replies[0].end();
+    await run;
+    assert.equal(status.textContent, 'lab: exit 0');
+    assert.equal(state(), 'run - reset verify');
+    assert.deepEqual(calls[0], ['/lab/run', 'POST', 'application/json', '{"lab":"demo"}']);
+    // Reset: Stop disabled while it is open; a body with no final lab: line is "ended early".
+    const reset = b.reset.listeners.click();
+    await tick();
+    assert.equal(state(), '- - - -');
+    assert.equal(output.textContent, '', 'Run and Reset start a fresh output');
+    replies[2].push('removed\n');
+    replies[2].end();
+    await reset;
+    assert.equal(status.textContent, LAB_ENDED_EARLY);
+    // A reply that fails part way is "ended early" too; Stop posts and leaves the output alone.
+    const run2 = b.run.listeners.click();
+    await tick();
+    replies[3].push('x\n');
+    replies[3].fail();
+    await run2;
+    assert.equal(status.textContent, LAB_ENDED_EARLY);
+    // A 4xx reply's body becomes the status and is not output.
+    await b.reset.listeners.click();
+    assert.deepEqual([status.textContent, output.textContent], ['busy: demo run', '']);
+    assert.deepEqual(calls.map((c) => c[0]), ['/lab/run', '/lab/verify', '/lab/reset', '/lab/run', '/lab/reset']);
+  } finally {
+    for (const k of ['document', 'location', 'fetch']) delete globalThis[k];
+  }
+  assert.equal(labStatus('a\n> lab: verify pass\n', true), LAB_ENDED_EARLY);
+  assert.equal(labStatus('a\nlab: exit 0\n', false), LAB_ENDED_EARLY);
+  assert.equal(labStatus('a\nlab: exit 0\n', true), 'lab: exit 0');
+  assert.equal(labStatus('lab:exit 0\n', true), LAB_ENDED_EARLY);
+});
+
+test('renderLab adds nothing without data-lab-live, on an exported page, off the server\'s origin, or with no lab section; no verify button without data-lab-verify (spec 49)', () => {
+  const cases = [
+    [{ lab: 'demo' }, {}, 'http://127.0.0.1:8080'],
+    [{ lab: 'demo', labLive: '' }, { export: 'learn-ws' }, 'http://127.0.0.1:8080'],
+    [{ lab: 'demo', labLive: '' }, {}, 'null'],
+    [{ lab: 'demo', labLive: '' }, {}, 'http://localhost:8080'],
+  ];
+  try {
+    for (const [data, body, origin] of cases) {
+      globalThis.document = fakeDocument(body);
+      globalThis.location = { pathname: '/lessons/0001-lab.html', origin };
+      const section = document.createElement('section');
+      section.dataset = data;
+      renderLab(section);
+      assert.equal(section.children.length, 0, JSON.stringify([data, body, origin]));
+    }
+    renderLab(null);
+    globalThis.document = fakeDocument();
+    globalThis.location = { pathname: '/lessons/0001-lab.html', origin: 'http://127.0.0.1:8080' };
+    const section = document.createElement('section');
+    section.dataset = { lab: 'demo', labLive: '' };
+    renderLab(section);
+    assert.deepEqual(section.children[0].children.map((c) => c.textContent), ['Run', 'Stop', 'Reset']);
+  } finally {
+    for (const k of ['document', 'location']) delete globalThis[k];
+  }
+  // The widget writes the reply only as text.
+  const src = readFileSync(QUIZ, 'utf8');
+  const widget = src.slice(src.indexOf('export const LAB_ENDED_EARLY'), src.indexOf("if (typeof document !== 'undefined')"));
+  assert.doesNotMatch(widget, /innerHTML|outerHTML|insertAdjacent|document\.write|DOMParser|createContextualFragment|\beval\b/);
 });
 
 test('the navigation bar links the reading page (spec 38)', () => {

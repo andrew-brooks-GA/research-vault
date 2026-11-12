@@ -9,9 +9,9 @@ import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
 import { TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
-import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft, exportWorkspace, writeExport } from '../lib/teach.mjs';
+import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft, exportWorkspace, writeExport, lessonIndex } from '../lib/teach.mjs';
 import { hasVerdict } from '../lib/gate.mjs';
-import { readLabs } from '../lib/labs.mjs';
+import { readLabs, secretHits } from '../lib/labs.mjs';
 import { isInsideVault } from '../lib/containment.mjs';
 import { lintWorkspace, proseMetrics, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
@@ -194,13 +194,19 @@ function edges(ws) {
 }
 
 // Runs until killed: the returned promise settles only when the server closes. Spec 49 D4: with --labs, an invalid
-// labs/labs.json exits 2, and the lab address is printed once, here, and nowhere else.
+// labs/labs.json exits 2, and the lab address is printed once, here, and nowhere else. D6: a lesson or reference page
+// that holds a declared env value gets one warning line. D5: with --labs, SIGINT, SIGTERM and SIGHUP run the Stop
+// sequence on every running lab group before exiting (a second signal exits at once), and exit sends each SIGKILL.
 async function serve(ws, teachSchema, titles, labs) {
   if (labs) {
-    try { readLabs(ws); } catch {
+    let manifest;
+    try { ({ labs: manifest } = readLabs(ws)); } catch {
       process.stderr.write('teach serve: labs/labs.json is invalid; run teach lint\n');
       return 2;
     }
+    const { lessons, reference } = lessonIndex(ws);
+    const pages = [...lessons, ...reference].map((p) => [p.path.slice(1), readFileSync(join(ws, p.path), 'utf8')]);
+    for (const [p, name] of secretHits(pages, manifest, process.env)) process.stderr.write(`warning: ${p} holds the value of ${name}\n`);
   }
   const t = labs ? randomBytes(32).toString('hex') : undefined;
   const server = createServer(ws, { schema: teachSchema, titles, labs, t, log: out });
@@ -209,7 +215,19 @@ async function serve(ws, teachSchema, titles, labs) {
   const file = join(ws, '.teach-serve.json');
   writeFileSync(file, JSON.stringify({ port, pid: process.pid }) + '\n');
   process.on('exit', () => rmSync(file, { force: true }));
-  for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0)); // exit handler removes the file
+  if (labs) {
+    let stopping = false;
+    for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+      process.on(sig, () => {
+        if (stopping) process.exit(0);
+        stopping = true;
+        server.stopLabs().finally(() => process.exit(0));
+      });
+    }
+    process.on('exit', () => server.killLabs());
+  } else {
+    for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0)); // exit handler removes the file
+  }
   out(`serving ${ws} at http://127.0.0.1:${port}/`);
   if (labs) out(`labs: open http://127.0.0.1:${port}/labs/open?t=${t}`);
   await new Promise((ok) => server.on('close', ok));

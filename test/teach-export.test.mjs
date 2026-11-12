@@ -9,7 +9,9 @@ import { spawnSync } from 'node:child_process';
 import vm from 'node:vm';
 import { fixtureVault, put } from './helpers.mjs';
 import { recordVerdict } from '../bin/lib/gate.mjs';
-import { lessonIndex, serveFile, navHtml, extractCites, MENTION_RE } from '../bin/lib/teach.mjs';
+import { lessonIndex, serveFile, navHtml, extractCites, MENTION_RE, exportWorkspace } from '../bin/lib/teach.mjs';
+import { buildManifest } from '../bin/lib/manifest.mjs';
+import { createHash } from 'node:crypto';
 import { CONNECT_LEAD } from '../bin/lib/lesson.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -364,4 +366,49 @@ test('only the last element whose data-block is sources, and only a closed one, 
   const r2 = cli(open.ws, '--out', outDir());
   assert.equal(r2.status, 1);
   assert.deepEqual(lines(r2, 'mention'), ['mention lessons/0002-two.html: Ask Claude Code.']);
+});
+
+// Spec 49 test 7 and D8: the export reads pages without --labs, so a lab section exports as its steps and the author's
+// captured output; a page holding a declared env value, or a lab section beside an invalid manifest, refuses.
+test('an exported lab is the steps and captured output with no buttons; labs/ and evidence/ are not copied; the secret and lab-manifest refusals (spec 49 test 7)', () => {
+  const value = 'made-up-value-0123';
+  const sha = (b) => createHash('sha256').update(b).digest('hex');
+  const { vault, ws } = exportRepo({ edit: (w) => {
+    mkdirSync(join(w, 'labs'));
+    const script = (rel, body) => { writeFileSync(join(w, rel), body, { mode: 0o755 }); return { script: rel, sha256: sha(body) }; };
+    const entry = { cost: 'About a second, no downloads', timeout: 5, env: ['LAB_TOKEN'], up: script('labs/up.sh', '#!/bin/sh\necho up\n'),
+      down: script('lessons/files/0002-lab/down.sh', '#!/bin/sh\n'), verify: script('evidence/0001/verify.sh', '#!/bin/sh\n') };
+    writeFileSync(join(w, 'labs', 'labs.json'), JSON.stringify({ version: 1, labs: { demo: entry } }));
+    const p = join(w, 'lessons', '0001-one.html');
+    writeFileSync(p, readFileSync(p, 'utf8').replace('<section data-block="sources">', `<section data-block="lab" aria-label="lab" data-lab="demo"><data class="lab-pin" value="${sha(JSON.stringify(['demo', entry]))}"></data><p>It prints one line.</p><pre>up</pre></section>\n<section data-block="sources">`));
+    const two = join(w, 'lessons', '0002-two.html');
+    writeFileSync(two, readFileSync(two, 'utf8').replace('<h1>Two</h1>', `<h1>Two</h1><p>Value ${value}.</p>`));
+  } });
+  const entries = buildManifest(vault).entries;
+  const ok = exportWorkspace(ws, { vaultPath: vault, entries, env: {} });
+  assert.equal(ok.code, 0, ok.lines.join('\n'));
+  const page = ok.files.get('lessons/0001-one.html');
+  const lab = /<section data-block="lab"[\s\S]*?<\/section>/.exec(page)[0];
+  console.log(`exported lab section: ${lab}`);
+  assert.equal(lab, `<section data-block="lab" aria-label="lab" data-lab="demo"><p class="lab-cost">About a second, no downloads</p><p>The author ran:</p><pre>labs/up.sh</pre><pre>evidence/0001/verify.sh</pre><pre>lessons/files/0002-lab/down.sh</pre><data class="lab-pin" value="${/value="([0-9a-f]{64})"/.exec(lab)[1]}"></data><p>It prints one line.</p><pre>up</pre></section>`);
+  assert.doesNotMatch(page, /<button|data-lab-live|lab-open/);
+  assert.deepEqual([...ok.files.keys()].filter((p) => /^(labs|evidence)\//.test(p)), []);
+  assert.ok(ok.files.has('lessons/files/0002-lab/down.sh'), 'a script under lessons/files/ is copied as any file there is');
+  // The value of a declared name, set in the export's environment, in an exported page.
+  const leak = exportWorkspace(ws, { vaultPath: vault, entries, env: { LAB_TOKEN: value } });
+  console.log(`LAB_TOKEN set: exit ${leak.code} ${leak.lines.filter((l) => l.startsWith('secret')).join('; ')}`);
+  assert.deepEqual([leak.code, leak.lines.filter((l) => l.startsWith('secret'))], [1, ['secret lessons/0002-two.html: LAB_TOKEN']]);
+  assert.ok(!leak.lines.join('\n').includes(value));
+  // An invalid manifest beside a lab section; and with no lab section, no refusal.
+  writeFileSync(join(ws, 'labs', 'labs.json'), '{');
+  const bad = exportWorkspace(ws, { vaultPath: vault, entries, env: { LAB_TOKEN: value } });
+  assert.deepEqual([bad.code, bad.lines.filter((l) => l.startsWith('lab-manifest'))], [1, ['lab-manifest labs/labs.json: invalid; run teach lint']]);
+  const plain = exportRepo();
+  mkdirSync(join(plain.ws, 'labs'));
+  writeFileSync(join(plain.ws, 'labs', 'labs.json'), '{');
+  assert.equal(exportWorkspace(plain.ws, { vaultPath: plain.vault, entries: buildManifest(plain.vault).entries, env: {} }).code, 0);
+  // The CLI prints the refusal and writes nothing.
+  const out = outDir();
+  const r = cli(ws, '--out', out);
+  assert.deepEqual([r.status, lines(r, 'lab-manifest'), existsSync(out)], [1, ['lab-manifest labs/labs.json: invalid; run teach lint'], false]);
 });

@@ -15,7 +15,7 @@ import { expandFiles } from './files.mjs';
 import { grade, neighbours, pathPosition } from '../../skills/research-teach/assets/quiz.js';
 import { lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWUP, CONNECT_LEAD } from './lesson.mjs';
 import { HEADING_RE, TABLE_SEP_RE, WORKSPACE_GATES, hasVerdict } from './gate.mjs';
-import { readLabs, lessonLab, labRefusal, labCookie, LAB_ACTIONS, LAB_BODY_MAX, LAB_ID_RE } from './labs.mjs';
+import { readLabs, lessonLab, labRunner, secretHits, labCookie, LAB_ACTIONS, LAB_BODY_MAX, LAB_ID_RE } from './labs.mjs';
 
 export const SPACING_DAYS = 21;
 export const ATTEMPT_BODY_MAX = 4096;
@@ -458,14 +458,17 @@ export const labStepsHtml = (lab) => `<p class="lab-cost">${escapeHtml(lab.cost)
   [lab.up, lab.verify, lab.down].filter(Boolean).map((c) => `<pre>${escapeHtml(c.script)}</pre>`).join('');
 export const LAB_OPEN_LINE = '<p class="lab-open">To run this lab from the page, open the lab address teach serve printed when it started.</p>';
 // After the opening tag of the lab block parseBlocks returns, when labs/labs.json is valid and names its data-lab:
-// the steps, then under --labs on a request without the lab cookie (`lab: 'open'`) the lab-open line. Else nothing.
+// the steps, then under --labs on a request without the lab cookie (`lab: 'open'`) the lab-open line. With the
+// cookie (`lab: 'live'`) the opening tag gains data-lab-live, and data-lab-verify when the lab has one, which the
+// widget's buttons need. Else nothing.
 function withLabSteps(ws, html, mode) {
   const l = lessonLab(html);
   if (!l?.id) return html;
   let labs;
   try { ({ labs } = readLabs(ws)); } catch { return html; }
   if (!Object.hasOwn(labs, l.id)) return html;
-  return html.slice(0, l.start) + labStepsHtml(labs[l.id]) + (mode === 'open' ? LAB_OPEN_LINE : '') + html.slice(l.start);
+  const live = mode === 'live' ? ` data-lab-live${labs[l.id].verify ? ' data-lab-verify' : ''}` : '';
+  return html.slice(0, l.start - 1) + live + '>' + labStepsHtml(labs[l.id]) + (mode === 'open' ? LAB_OPEN_LINE : '') + html.slice(l.start);
 }
 
 // The resolved file to serve for a URL path, or a status: 400 undecodable, 404 anything not allowlisted.
@@ -735,7 +738,7 @@ const mentions = (text) => text.split(/\n|(?<=[.!?])\s/).map((s) => s.trim()).fi
 
 // The files of the export (path under --out to content) and the lines to print, or code 1 and the refusals.
 // `entries` is the vault manifest's; nothing is written here.
-export function exportWorkspace(ws, { vaultPath, entries, skipUngated = false }) {
+export function exportWorkspace(ws, { vaultPath, entries, skipUngated = false, env = process.env }) {
   const key = workspaceKey(ws);
   const gated = new Set(expandFiles(WORKSPACE_GATES, ws));
   const found = STATIC_DIRS.flatMap((d) => walk(ws, d)).filter((p) => serveFile(ws, urlOf(p), { bytes: false }).status === 200);
@@ -777,10 +780,16 @@ export function exportWorkspace(ws, { vaultPath, entries, skipUngated = false })
   // Two paths that differ only by case would be one file on a case-insensitive disk.
   const byCase = new Map();
   const collide = [...files.keys()].flatMap((p) => { const k = p.toLowerCase(); if (byCase.has(k)) return [`case-collision ${byCase.get(k)}: ${p}`]; byCase.set(k, p); return []; });
-  const lines = [...notGated.map((p) => `not gated ${p}`), ...ungated.map((p) => `${skipUngated ? 'skipped' : 'ungated'} ${p}`), ...mention, ...unknown, ...collide];
+  // Spec 49 D8: a lab page needs a valid manifest, and no file of the copy may hold a declared env value.
+  let manifest = null;
+  try { ({ labs: manifest } = readLabs(ws)); } catch { /* refused below when a page has a lab section */ }
+  const lab = manifest === null
+    ? (html.some(([p, h]) => p.startsWith('lessons/') && lessonLab(h)) ? ['lab-manifest labs/labs.json: invalid; run teach lint'] : [])
+    : secretHits([...files], manifest, env).map(([p, name]) => `secret ${p}: ${name}`);
+  const lines = [...notGated.map((p) => `not gated ${p}`), ...ungated.map((p) => `${skipUngated ? 'skipped' : 'ungated'} ${p}`), ...mention, ...unknown, ...collide, ...lab];
   const error = !skipUngated && ungated.length
     ? `teach export: ${ungated.length} page(s) have no PASS or MERIT for their current content; nothing written (--skip-ungated leaves them out)` : null;
-  if (error || mention.length || unknown.length || collide.length) return { code: 1, lines, error };
+  if (error || mention.length || unknown.length || collide.length || lab.length) return { code: 1, lines, error };
   const urlFor = (id) => byId.get(id).source_url;
   for (const id of ids) lines.push(`source ${id} ${typeof urlFor(id) === 'string' && urlFor(id) ? urlFor(id) : '-'}`);
   return { code: 0, lines, files };
@@ -854,13 +863,17 @@ const same = (a, b) => {
 // Spec 49 D4, under teach serve --labs only (`labs`). `t` is the lab address value, 64 hex characters, which the
 // caller prints; every GET /labs/open?t=<t> for the life of the server sets the lab cookie to one session value, made at
 // the first. Under labs every response forbids framing. `env` is the
-// environment check 11 reads; `log` gets one line per lab request that passes check 5. t and the session value are
-// never written to a page, a response body or a log line.
-export function createServer(workspaceDir, { schema, now = () => new Date(), titles = {}, labs = false, t, env = process.env, log = () => {} } = {}) {
+// environment check 11 reads, the scripts' environment comes from and redaction takes its values from; `log` gets one
+// line per lab request that passes check 5; `limits` replaces labs.mjs's STOP_GRACE, KILL_WAIT, CHECK_TIMEOUT or
+// LAB_OUTPUT_MAX. t and the session value are never written to a page, a response body or a log line. Under labs
+// the server carries stopLabs (the Stop sequence on every running group) and killLabs (SIGKILL to each) for the
+// caller's signal and exit handlers.
+export function createServer(workspaceDir, { schema, now = () => new Date(), titles = {}, labs = false, t, env = process.env, log = () => {}, limits } = {}) {
   const ws = resolve(workspaceDir);
   const clock = typeof now === 'function' ? now : () => now;
   if (labs && !/^[0-9a-f]{64}$/.test(t ?? '')) throw new Error('teach serve --labs needs a lab address value of 64 hex characters');
   let session = null;
+  const runner = labs ? labRunner(ws, { env, log, limits }) : null;
   const hasCookie = (req, port) => session !== null && String(req.headers.cookie ?? '').split(';').some((p) => {
     const i = p.indexOf('=');
     return i !== -1 && p.slice(0, i).trim() === labCookie(port) && same(p.slice(i + 1).trim(), session);
@@ -881,7 +894,8 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
     });
     res.end();
   };
-  // Checks 3 to 11 and 13 of a lab POST (1 and 2 are the caller's), in order; 3 and 4 before a byte of the body is read.
+  // Checks 3 to 5 of a lab POST (1 and 2 are the caller's), in order, 3 and 4 before a byte of the body is read; then the
+  // runner's checks 6 to 13 and the action.
   const postLab = (req, res, action, port) => {
     const type = req.headers['content-type'];
     const length = req.headers['content-length'];
@@ -894,9 +908,10 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
       let body = null;
       try { body = JSON.parse(text); } catch { /* the 400 below */ }
       if (!keysAre(body, ['lab']) || typeof body.lab !== 'string' || !LAB_ID_RE.test(body.lab)) return send(req, res, 400, 'body must be {"lab": "<id>"}\n');
-      const [status, reply] = labRefusal(ws, action, body.lab, env);
-      log(`lab ${body.lab} ${action}: ${status} ${reply}`);
-      send(req, res, status, `${reply}\n`);
+      const refused = runner.post(action, body.lab, res);
+      if (!refused) return;
+      log(`lab ${body.lab} ${action}: ${refused[0]} ${refused[1]}`);
+      send(req, res, refused[0], `${refused[1]}\n`);
     });
   };
   // requireHostHeader off: a missing Host gets our 403, not node:http's own 400.
@@ -926,5 +941,9 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
     if (f.status !== 200) return send(req, res, f.status, f.status === 400 ? 'bad request\n' : 'not found\n');
     send(req, res, 200, f.body, f.type); // HEAD: node:http drops the body itself
   });
+  if (runner) {
+    server.stopLabs = runner.stopAll;
+    server.killLabs = runner.killAll;
+  }
   return server;
 }
