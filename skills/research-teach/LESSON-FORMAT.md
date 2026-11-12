@@ -110,6 +110,8 @@ A replay plays a recorded terminal session (an asciicast v2 or v3 file) in the l
 </pre>
 ```
 
+For a worked example, the `example` block of the plugin's fixture lesson `test/fixtures/teach/lessons/0004-tool-fxctl.html` replays `test/fixtures/teach/assets/fxctl.cast`, and the `<pre>` after it is that cast's transcript.
+
 `teach cast transcript <file>` prints the cast's output events as text for that `<pre>`: CSI, OSC and charset escape sequences removed, CRLF a line break, other C0 control characters but tab and line feed, and DEL, dropped, and `&`, `<`, `>` and `"` escaped. Before a cast is kept, `teach cast check <file> [--needle <value>]...` scans it (docs/REFERENCE.md, `teach`).
 
 The transcript is always in the page; the player is added beside it only when the lesson loads it. The repo ships no player. The author downloads the two assets of the asciinema-player v3.18.0 release on GitHub (`https://github.com/asciinema/asciinema-player/releases/tag/v3.18.0`) into the workspace's `assets/`, checks their SHA-256 against these values, which `bin/lib/cast.mjs` pins in `PLAYER_FILES`, and loads them in the lesson's `<head>`:
@@ -124,7 +126,7 @@ The transcript is always in the page; the player is added beside it only when th
 <script src="../assets/asciinema-player.min.js"></script>
 ```
 
-quiz.js then starts a player in each element that has `data-cast`; without the files, the page shows the transcript only. `teach serve` returns the cast and the player files as it returns any file under `assets/`. `teach export` copies them, and gives each such element whose cast `teach serve` returns a `data-cast-text` attribute holding the cast's text, which quiz.js hands the player in place of the path, since headless Chrome 157 refused a `file://` page's fetch of the cast file. In headless Chrome 157 the player mounted and played the cast on a lesson `teach serve` returned and on an exported lesson opened from `file://`. With the player files absent, each showed the transcript only. Safari and Firefox were not opened.
+quiz.js then starts a player in each element that has `data-cast`; without the files, the page shows the transcript only. `teach serve` returns the cast and the player files as it returns any file under `assets/`. `teach export` copies them, and gives each such element naming a cast under `assets/` that `teach serve` returns a `data-cast-text` attribute holding the cast's text, which quiz.js hands the player in place of the path, since headless Chrome 157 refused a `file://` page's fetch of the cast file. In headless Chrome 157 the player mounted and played the cast on a lesson `teach serve` returned and on an exported lesson opened from `file://`. With the player files absent, each showed the transcript only. Safari and Firefox were not opened.
 
 `teach lint` reads each element that has `data-cast` and the player files:
 

@@ -65,8 +65,23 @@ test('teach cast check exits 0 when clean, 1 with a hit line per needle that nev
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// A bound repo (fixture vault at research/) holding a copy of the teach fixture at ws/, with lesson 0004's example
-// replaying assets/fx.cast and followed by its transcript, and that lesson passed by the gate.
+// The fixture lesson's own replay, and the cast it plays: its <pre> is `teach cast transcript` of the cast.
+const FIX_REPLAY = /<([a-z][a-z0-9]*)\b[^>]*\bdata-cast="([^"]+)"[^>]*><\/\1>\s*<pre>([\s\S]*?)<\/pre>\n/;
+
+test('fixture lesson 0004 replays a v3 cast that passes the scan, and the <pre> after it is teach cast transcript of that cast', () => {
+  const m = FIX_REPLAY.exec(readFileSync(join(FIX, 'lessons', '0004-tool-fxctl.html'), 'utf8'));
+  assert.ok(m, 'no data-cast element followed by a <pre> in lessons/0004-tool-fxctl.html');
+  const file = join(FIX, 'lessons', m[2]);
+  assert.ok(file.startsWith(join(FIX, 'assets')), m[2]);
+  const text = readFileSync(file, 'utf8');
+  assert.equal(JSON.parse(text.split('\n')[0]).version, 3);
+  assert.deepEqual(scanCast(text), []);
+  assert.deepEqual(cli('cast', 'check', file).stdout, 'cast: clean\n');
+  assert.equal(m[3], cli('cast', 'transcript', file).stdout);
+});
+
+// A bound repo (fixture vault at research/) holding a copy of the teach fixture at ws/, with lesson 0004's replay
+// swapped for one of assets/fx.cast followed by its transcript, and that lesson passed by the gate.
 const REPLAY = `<div data-cast="../assets/fx.cast"></div>\n<pre>$ fxctl run 7\n42\n</pre>\n`;
 function replayRepo({ castText = CLEAN, replay = REPLAY } = {}) {
   const repo = tmp('rv-cast-ws-');
@@ -74,10 +89,12 @@ function replayRepo({ castText = CLEAN, replay = REPLAY } = {}) {
   writeFileSync(join(repo, '.research-vault.json'), JSON.stringify({ vault: 'research' }) + '\n');
   const ws = join(repo, 'ws');
   cpSync(FIX, ws, { recursive: true });
-  mkdirSync(join(ws, 'assets'));
+  mkdirSync(join(ws, 'assets'), { recursive: true });
   if (castText !== null) writeFileSync(join(ws, 'assets', 'fx.cast'), castText);
   const p = join(ws, 'lessons', '0004-tool-fxctl.html');
-  writeFileSync(p, readFileSync(p, 'utf8').replace('<p>The one line of output', `${replay}<p>The one line of output`));
+  const html = readFileSync(p, 'utf8');
+  assert.match(html, FIX_REPLAY);
+  writeFileSync(p, html.replace(FIX_REPLAY, () => replay));
   recordVerdict(repo, p, 'PASS');
   return { repo, vault, ws };
 }

@@ -35,7 +35,7 @@ function brandRepo(brand, files = {}) {
   writeFileSync(join(repo, '.research-vault.json'), JSON.stringify({ vault: 'research' }) + '\n');
   const ws = join(repo, 'learn-ws');
   cpSync(FIX, ws, { recursive: true });
-  mkdirSync(join(ws, 'assets'));
+  mkdirSync(join(ws, 'assets'), { recursive: true });
   for (const f of ['lesson.css', 'quiz.js', 'reading.html']) cpSync(join(ASSETS, f), join(ws, 'assets', f));
   for (const f of [...readdirSync(join(ws, 'lessons')).map((f) => `lessons/${f}`), 'reference/good.html']) recordVerdict(repo, join(ws, f), 'PASS');
   if (brand !== undefined) setBrand(ws, brand, files);
@@ -87,7 +87,8 @@ const edit = (ws, rel, from, to) => {
 };
 const treeHash = (dir) => readdirSync(dir, { recursive: true }).sort().map((p) => { try { return `${p} ${sha(readFileSync(join(dir, p)))}`; } catch { return p; } }).join('\n');
 
-// Computed at dffe549, the parent commit, by this file's brandRepo with no brand/ (scratch t11b/base-hashes.mjs).
+// Computed at dffe549, the parent commit, by this file's brandRepo with no brand/ (scratch t11b/base-hashes.mjs); lesson 0004's two
+// values taken again, and assets/fxctl.cast added, when the fixture lesson gained its replay (#65).
 const BASE_SERVED = {
   '/': 'c111d4926863e9ca09f35e69a57aac4547f3ee0b57ee648a81e6d5195e3245f2',
   '/progress': 'f637a583e3766f32883b8983e92a55845f246cab93c50582aca7bfb554652dc8',
@@ -95,7 +96,7 @@ const BASE_SERVED = {
   '/lessons/0001-good.html': '4dbd823d9927d5de1fc4074c6ca0dc6f921178480e7fbd5b1f5e49a44dca51b2',
   '/lessons/0002-bad.html': '6d016155a2fb4b0cdfac5d02b5d5c385a5ae9d9d81a6474aaf14d82cd7ba4b7e',
   '/lessons/0003-review-good.html': '16fab265248a5c7a1faad1cfabc5859fb7b219a4ba8ce61a33da12d6e89a87fa',
-  '/lessons/0004-tool-fxctl.html': '70abeaa79974dbd49c085568528d42c08888fbf12aa49fa2dae6bae960e6722e',
+  '/lessons/0004-tool-fxctl.html': 'a50015f8d7b71bac5a48573341d55864a97ab5464265ff017e82e27fd7657a34',
   '/lessons/0005-diagnose-fx.html': 'af262c45ebeb079578a48df2157d41d9344012d163d4160a9550da459a9bc6f2',
   '/lessons/0006-project-fx.html': '47cf09e698eb9a107e2688745faa845bd809cbf45c75125846819544b690523c',
   '/reference/good.html': '0dcec77cfe8fe264f8c6ab0d67a1dc4997733f6b8aee98e1f544326310b287dd',
@@ -105,7 +106,7 @@ const BASE_EXPORTED = {
   'lessons/0001-good.html': '9d12d40a12a086869ecfc2dd450c8a0cac96568c97bb4088e3e7c5ef51432295',
   'lessons/0002-bad.html': 'bfdbeafc0ebe1a80f001a4411dadbbfbe8c702748f77b89419abff08d86a21e9',
   'lessons/0003-review-good.html': '4185234629aa33e94196e99fc9d1eeac53b94a9b20125f6fffcb63b7de3f4b32',
-  'lessons/0004-tool-fxctl.html': '271d2d91bed1415d5f4af940f2e217589a595280d158b94135c5bd12acd0d3a3',
+  'lessons/0004-tool-fxctl.html': '87ebe4185b48364873eadb19cb692e46418c0f542b585c165c8ac77a574b7a55',
   'lessons/0005-diagnose-fx.html': '2eac32fa2425c7c769f5bed8de6a8135949a90433421aae4d9a500b7784ed27f',
   'lessons/0006-project-fx.html': '03fec945b3fa74ba0bca441c614c9d81da5ce075b3af57d6cef48748388d3978',
   'reference/good.html': '93759de0f2042134079b0c91b073a35d71762572fa5a005730448eea056b1c2c',
@@ -114,6 +115,7 @@ const BASE_EXPORTED = {
   'assets/reading.html': '52fd319a6d394e5524f362404f97f919633fe46a8a7b00003437ab9a9eed0b4a',
   'assets/quiz.js': 'eda7aa95b6cd79d14cc9eb0cfd2e28a217c118d6677049a15b60c0719f4d0e60',
   'assets/lesson.css': '87df4742d8ec6d84251e0f7a199e41826b9692aa13c949fb2352b6cc5ee7802e',
+  'assets/fxctl.cast': 'f4a49620ad4cbf2e69a6035bcd756da2946cf4b4db27e1ac9d080bcebbc0894f',
   'GLOSSARY.md': 'efcfcb71409f5fb07a868cbf663d9d284bfd66c61fa96d4592b2976277edf920',
   'sources.html': 'e4fabb4e2cab93fcd5e939bf5937c49e4df93f6aea816269f43f14e5c700c6d2',
 };
@@ -426,7 +428,8 @@ async function statuses(ws, paths) {
 const bar = (html) => /<nav class="lesson-nav">[\s\S]*?<\/nav>/.exec(html)[0];
 const hrefOf = (html, cls) => new RegExp(`<a class="${cls}" href="([^"]*)"`).exec(html)?.[1] ?? null;
 
-// Computed at 0c508f9 (the code as at 07f3974) by groupRepo(TWO_COLOURS, LOGO_FILES), a brand with no dividers key (scratch t15b/base-hashes.mjs).
+// Computed at 0c508f9 (the code as at 07f3974) by groupRepo(TWO_COLOURS, LOGO_FILES), a brand with no dividers key (scratch t15b/base-hashes.mjs);
+// lesson 0004's two values taken again, and assets/fxctl.cast added, when the fixture lesson gained its replay (#65).
 const GROUP_SERVED = {
   '/': '64786b10c7e7525d8a516961bbd6c401a3c0d9f78484308dc738824c7acafac8',
   '/progress': 'e6c8ed4de6f1d5de215eecccbe73d0a4ecfc549cabcf1e094023dd4e718a3a0a',
@@ -434,7 +437,7 @@ const GROUP_SERVED = {
   '/lessons/0001-good.html': '2ad921aadcbc8f38444e3dcee1dbd3ace82e30db760fb165174b698147c3f81e',
   '/lessons/0002-bad.html': '24c7e2a22eb9cdf8c5f4e5044ed7abb6a7e676ed8465ab70d7a24cd1765e1ce2',
   '/lessons/0003-review-good.html': '2effe215225a0f581e82e2296d69ff195ba20cff7153361ae8a3d616729e1727',
-  '/lessons/0004-tool-fxctl.html': 'bddfb16e4572d38fed547028031d7d1aee40b21bc73f2f7cd8a1416e09f4be4f',
+  '/lessons/0004-tool-fxctl.html': '3715954603faea03b52b56b63dde0753a4767beb5eebebc6235f3531a7e701bf',
   '/lessons/0005-diagnose-fx.html': '1049876dade61d8969771d3f92fd610d8137d70dcbbdb49961b29656bf6a0740',
   '/lessons/0006-project-fx.html': '6cc3aa798f780f319aa1018b37699aea89e2df1db5a57871a2b187aaf8c7f461',
   '/lessons/0007-extra.html': '488cea2d7fafd92b8d345acbfb7b95b64c5c73ae4bd926e0ea9611d36c09b199',
@@ -445,7 +448,7 @@ const GROUP_EXPORTED = {
   'lessons/0001-good.html': '1f81dd1af172050c066d363ec88ae1d4e9591f9fd3515e0c2d4df94dd75a1b5e',
   'lessons/0002-bad.html': 'bf5242bd4b2cb84c8df817a10444d487c82ebdc0188134daab67cfd48542a423',
   'lessons/0003-review-good.html': '6c0f208a5bbed685f5882ea076edc165cf257ffb02cfb6bd4149df7bca414bb4',
-  'lessons/0004-tool-fxctl.html': 'f78e183c454f081276e2d77782b02274c4b4b18f610e0ba4bc7defd6af851a4d',
+  'lessons/0004-tool-fxctl.html': '80856d9203d1e217b69525951f831f54f33dd16d35fb2d8a89927d116b126f0a',
   'lessons/0005-diagnose-fx.html': '78fa68f073e6fcf00ebc14aea6e5064eeff155f38bdf2c666bb543ff506b196f',
   'lessons/0006-project-fx.html': '99db7df25d4a5ab0d8725f9a0e91c8cd82caa15045c7097a4bd9d3c0ec51ab1a',
   'lessons/0007-extra.html': 'b79ac37d7fc9c854778a9a0f801a56bfe86a7532780c155c8182c2dec9db1530',
@@ -455,6 +458,7 @@ const GROUP_EXPORTED = {
   'assets/reading.html': '87cd8cfc8b3e828aeb2af506efdbc6aa4d9f0e7b3f64d7dc879ffa78ee114ed8',
   'assets/quiz.js': 'eda7aa95b6cd79d14cc9eb0cfd2e28a217c118d6677049a15b60c0719f4d0e60',
   'assets/lesson.css': '87df4742d8ec6d84251e0f7a199e41826b9692aa13c949fb2352b6cc5ee7802e',
+  'assets/fxctl.cast': 'f4a49620ad4cbf2e69a6035bcd756da2946cf4b4db27e1ac9d080bcebbc0894f',
   'brand/brand.json': '9efa3996b6a9671035070f1eee6393c01d0ad1664dac375247ef8138b22d7da1',
   'brand/favicon.png': '8f8cbb7dcf46e0bc7d53265749a6c17d116093a6ba95e442764060c76fd4a86c',
   'brand/img/logo-dark.svg': 'f25ed9604a4c2fb1c962ec373c1aaf9ef7939d724aa6dc41873224e610143834',

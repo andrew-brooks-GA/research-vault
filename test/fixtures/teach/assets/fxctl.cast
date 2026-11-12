@@ -1,0 +1,4 @@
+{"version":3,"term":{"cols":80,"rows":24,"type":"xterm-256color"},"timestamp":1794494891,"idle_time_limit":2.0,"command":"./probe-fx.sh","env":{"SHELL":"/bin/zsh"}}
+[0.073, "o", "\u001b[1m$ fxctl run 7\u001b[0m\r\n"]
+[0.049, "o", "42\r\n"]
+[0.002, "x", "0"]

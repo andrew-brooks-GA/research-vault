@@ -14,7 +14,7 @@ const DOC_EXT = 'mjs|js|md|json|yml|css|html';
 // Every extension in the tree must be in one of these two sets (test/deps.test.mjs). '' is the
 // extensionless bin/research-vault shim; dotfiles and LICENSE share it and yield nothing.
 export const EXTRACTED = new Set(['.mjs', '.js', '.md', '.yml', '.json', '']);
-export const IGNORED = new Set(['.css', '.html']);
+export const IGNORED = new Set(['.cast', '.css', '.html']);
 // Files no extractor reads: release history legitimately names removed files; the other two quote
 // every syntax (COUPLINGS rows are couples edges, the sample table is test input).
 const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.mjs']);
@@ -111,6 +111,7 @@ export const COUPLINGS = [
   ['bin/lib/lesson.mjs', 'skills/research-teach/LESSON-FORMAT.md', "the Checked task section's three scripts, step line and experiment citation are what LESSON_TASK_INCOMPLETE checks", 'check.sh'],
   ['bin/lib/lesson.mjs', 'skills/research-teach/LESSON-FORMAT.md', "the read-only allowlist, deny list and redirection rule of the Checked task section's safety rule 2 are TASK_READ_ONLY, TASK_DENY and the redirect test WARN_TASK_CHECK_MUTATES checks", 'api-resources'],
   ['bin/lib/lesson.mjs', 'test/fixtures/teach/lessons/0004-tool-fxctl.html', 'the shape table: the tool fixture (data-shape, data-teaches, complete) lints clean against SHAPES; its plan has an Elements part', 'data-shape'],
+  ['test/fixtures/teach/assets/fxctl.cast', 'test/fixtures/teach/lessons/0004-tool-fxctl.html', 'the example block replays the cast, and the <pre> after its data-cast element is teach cast transcript of the cast: record the cast again and paste its transcript again', '$ fxctl run 7'],
   ['bin/lib/lesson.mjs', 'test/fixtures/teach/lessons/0005-diagnose-fx.html', 'the shape table: the diagnose fixture (predict with one item) lints clean against SHAPES; its plan has an Elements part', 'data-shape'],
   ['bin/lib/lesson.mjs', 'test/fixtures/teach/lessons/0006-project-fx.html', 'the shape table: the project fixture (an optional scaffold, then step) lints clean against SHAPES; its plan has an Elements part', 'data-shape'],
   ['skills/research-teach/LESSON-FORMAT.md', 'skills/research-teach/assets/lesson.css', "the block label list: the Blocks table's Label column is each block's ::before content"],
