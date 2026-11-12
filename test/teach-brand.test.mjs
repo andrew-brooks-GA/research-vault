@@ -15,7 +15,8 @@ import { recordVerdict } from '../bin/lib/gate.mjs';
 import { createServer, exportWorkspace } from '../bin/lib/teach.mjs';
 import { readBrand, BRAND_TOKENS } from '../bin/lib/brand.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
-import { loadTeachSchema } from '../bin/lib/schema.mjs';
+import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
+import { lintWorkspace } from '../bin/lib/lesson.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'research-vault.mjs');
@@ -72,6 +73,17 @@ async function served(ws, paths = HTML_PATHS) {
 }
 const exported = (repo) => exportWorkspace(join(repo.repo, 'learn-ws'), { vaultPath: repo.vault, entries: buildManifest(repo.vault).entries, env: {} });
 const styleOf = (html) => /<style>\n([\s\S]*?)<\/style><\/head>/.exec(html)?.[1];
+// teach lint's lines for the workspace, as the CLI prints them.
+const lintLines = (repo) => lintWorkspace(repo.ws, {
+  workspaceDir: repo.ws, vaultPath: repo.vault, entries: buildManifest(repo.vault).entries, schema: loadSchema(ROOT, { vaultPath: repo.vault }),
+  teachSchema: loadTeachSchema(ROOT), now: NOW,
+}).map((f) => `${f.warning ? 'warning ' : ''}${f.code}  ${f.file}: ${f.message}`);
+// Replace `from`, which must occur once in the workspace file `rel`, with `to`.
+const edit = (ws, rel, from, to) => {
+  const t = readFileSync(join(ws, rel), 'utf8');
+  assert.equal(t.split(from).length, 2, from);
+  writeFileSync(join(ws, rel), t.replace(from, to));
+};
 const treeHash = (dir) => readdirSync(dir, { recursive: true }).sort().map((p) => { try { return `${p} ${sha(readFileSync(join(dir, p)))}`; } catch { return p; } }).join('\n');
 
 // Computed at dffe549, the parent commit, by this file's brandRepo with no brand/ (scratch t11b/base-hashes.mjs).
@@ -229,7 +241,70 @@ test('colours and families written as references into a design-tokens file, one 
   } finally { rmSync(repo.repo, { recursive: true, force: true }); }
 });
 
-test('two unrelated brands serve and export through the same code; neither brand\'s name, colours or terms are in bin/ or the plugin\'s assets (spec 50 test 8, serve and export)', async () => {
+test('brand lint: each BRAND_ code an error naming the path, token, colour or term; a term in <code> or <pre> is not reported; without brand/ the findings are as before and a figure colour is WARN_FIGURE_COLOR (spec 50 test 7)', () => {
+  const repo = brandRepo();
+  const L = 'lessons/0001-good.html';
+  try {
+    edit(repo.ws, L, '<p>The body of fx is <code>return n * 6;</code>.', '<p>The Zorblax body of fx is <code>Quuxly n * 6;</code>.');
+    edit(repo.ws, L, 'export function fx(n)', 'export function Quuxly(n)');
+    edit(repo.ws, L, '<rect x="70" y="15" width="60" height="30" fill="none"', '<rect x="70" y="15" width="60" height="30" fill="#ff0000"');
+    edit(repo.ws, L, '</head>', '<style>#abc { color: rgb(1, 2, 3); }\n@media print { p { background: #ABCDEF; } }</style></head>');
+    edit(repo.ws, 'reference/good.html', '<h1>The fixture note</h1>', '<h1 style="color: hsl(10, 50%, 50%)">The fixture note</h1>');
+    const base = lintLines(repo);
+    const figure = `${L}: figure 1: fill or stroke #ff0000; use currentColor, none or var(--muted)`;
+    assert.ok(base.includes(`warning WARN_FIGURE_COLOR  ${figure}`), base.join('\n'));
+    assert.ok(!base.some((l) => l.includes('BRAND_')));
+    const offPalette = [
+      `BRAND_OFF_PALETTE  ${figure}`,
+      `BRAND_OFF_PALETTE  ${L}: colour rgb(1, 2, 3) in a style attribute or <style> element; use a var(--token) the brand sets`,
+      `BRAND_OFF_PALETTE  ${L}: colour #ABCDEF in a style attribute or <style> element; use a var(--token) the brand sets`,
+      'BRAND_OFF_PALETTE  reference/good.html: colour hsl(10, 50%, 50%) in a style attribute or <style> element; use a var(--token) the brand sets',
+    ];
+    // The lines a brand adds to the base, and the base lines it takes away.
+    const diff = (brand, files) => {
+      setBrand(repo.ws, brand, files);
+      const got = lintLines(repo);
+      return { added: got.filter((l) => !base.includes(l)), removed: base.filter((l) => !got.includes(l)) };
+    };
+    const brandOnly = (brand, files) => {
+      const { added, removed } = diff(brand, files);
+      assert.deepEqual(removed, [`warning WARN_FIGURE_COLOR  ${figure}`]);
+      assert.deepEqual(added.filter((l) => l.startsWith('BRAND_OFF_PALETTE')).sort(), offPalette.slice().sort());
+      assert.ok(added.every((l) => l.startsWith('BRAND_')), added.join('\n'));
+      return added.filter((l) => !l.startsWith('BRAND_OFF_PALETTE'));
+    };
+    const J = 'brand/brand.json';
+    assert.deepEqual(brandOnly({}), []);
+    assert.deepEqual(brandOnly({ logo: { light: 'img/logo.svg', alt: 'Logo' } }), [`BRAND_FILE_MISSING  ${J}: logo.light: brand/img/logo.svg is not a regular file`]);
+    assert.deepEqual(brandOnly({ name: 'X', colour: {} }), [`BRAND_INVALID  ${J}: brand.json: unknown key colour`]);
+    assert.deepEqual(brandOnly({ color: { light: { '--brand-primary': '#ff6600' } } }), [`BRAND_TOKEN_UNKNOWN  ${J}: color.light: --brand-primary is not a token of lesson.css`]);
+    assert.deepEqual(brandOnly({ logo: { light: 'logo.svg' } }, { 'logo.svg': SVG('#000') }), [`BRAND_ALT_MISSING  ${J}: logo has no non-empty alt; set logo.alt to the text the logo shows`]);
+    const contrast = brandOnly({ color: { light: { '--ink': '#f6f7fa' } } });
+    assert.equal(contrast.length, 6, contrast.join('\n'));
+    assert.ok(contrast.includes(`BRAND_CONTRAST  ${J}: light: --ink #f6f7fa on --bg #f6f7fa is 1.00:1, under 4.5:1`), contrast.join('\n'));
+    assert.ok(contrast.every((l) => l.startsWith(`BRAND_CONTRAST  ${J}: light: --ink #f6f7fa on --`)));
+    assert.deepEqual(brandOnly({ color: { light: { '--link': '#777777' } } }), [
+      `BRAND_CONTRAST  ${J}: light: --link #777777 on --bg #f6f7fa is 4.18:1, under 4.5:1`,
+      `BRAND_CONTRAST  ${J}: light: --link #777777 on --card #ffffff is 4.48:1, under 4.5:1`,
+    ]);
+    assert.deepEqual(brandOnly({ color: { dark: { '--link': '#333' } } }), [
+      `BRAND_CONTRAST  ${J}: dark: --link #333 on --bg #0b1020 is 1.50:1, under 4.5:1`,
+      `BRAND_CONTRAST  ${J}: dark: --link #333 on --card #131a33 is 1.36:1, under 4.5:1`,
+    ]);
+    // Case-sensitive and whole-word; Quuxly is only in a <code> and a <pre>.
+    assert.deepEqual(brandOnly({ voice: { avoid: [{ term: 'Zorblax', use: 'the' }, { term: 'Quuxly' }, { term: 'ZORBLAX' }, { term: 'Zorbla' }] } }),
+      [`BRAND_VOICE  ${L}: uses "Zorblax"; use "the" (brand voice.avoid)`]);
+    // teach lint exits 1 on an invalid brand.json and prints the code.
+    setBrand(repo.ws, '{');
+    const r = spawnSync(process.execPath, [BIN, 'teach', 'lint', repo.ws], { encoding: 'utf8' });
+    assert.equal(r.status, 1);
+    assert.ok(r.stdout.split('\n').includes(`BRAND_INVALID  ${J}: brand/brand.json is not JSON`), r.stdout);
+    rmSync(join(repo.ws, 'brand'), { recursive: true });
+    assert.deepEqual(lintLines(repo), base);
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('two unrelated brands serve, export and lint through the same code; neither brand\'s name, colours or terms are in bin/ or the plugin\'s assets (spec 50 test 8)', async () => {
   const brands = [
     { name: 'Quillfeather Guild', color: { light: { '--ink': '#1a2b3c' }, dark: { '--ink': '#d4e5f6' } }, font: { body: 'Gill Sans, sans-serif' }, voice: { avoid: [{ term: 'Frobnicator', use: 'tool' }] } },
     { name: 'Brightmoor Assembly', color: { light: { '--mark': '#f1e2d3' } }, font: { code: 'Courier New' }, voice: { avoid: [{ term: 'Wibblewidget' }] } },
@@ -244,7 +319,20 @@ test('two unrelated brands serve and export through the same code; neither brand
       assert.equal(ex.code, 0, ex.lines.join('\n'));
       assert.ok(ex.files.get('index.html').toString().includes(b.name));
     }
-    const needles = ['Quillfeather', 'Brightmoor', '1a2b3c', 'd4e5f6', 'f1e2d3', 'Frobnicator', 'Wibblewidget', 'Gill Sans', 'Courier New'];
+    // Lint: each brand's own term, and its own colour on lesson.css's background, through the same code.
+    edit(repo.ws, 'lessons/0001-good.html', '<p>The body of fx is', '<p>The Frobnicator and the Wibblewidget: the body of fx is');
+    brands[0].color.light['--muted'] = '#c9d8e7';
+    brands[1].color.dark = { '--link': '#0a1b2c' };
+    const linted = brands.map((b) => { setBrand(repo.ws, b); return lintLines(repo).filter((l) => l.startsWith('BRAND_')); });
+    assert.deepEqual(linted, [
+      ['BRAND_CONTRAST  brand/brand.json: light: --muted #c9d8e7 on --bg #f6f7fa is 1.36:1, under 4.5:1',
+        'BRAND_CONTRAST  brand/brand.json: light: --muted #c9d8e7 on --card #ffffff is 1.45:1, under 4.5:1',
+        'BRAND_VOICE  lessons/0001-good.html: uses "Frobnicator"; use "tool" (brand voice.avoid)'],
+      ['BRAND_CONTRAST  brand/brand.json: dark: --link #0a1b2c on --bg #0b1020 is 1.09:1, under 4.5:1',
+        'BRAND_CONTRAST  brand/brand.json: dark: --link #0a1b2c on --card #131a33 is 1.01:1, under 4.5:1',
+        'BRAND_VOICE  lessons/0001-good.html: uses "Wibblewidget" (brand voice.avoid)'],
+    ]);
+    const needles = ['Quillfeather', 'Brightmoor', '1a2b3c', 'd4e5f6', 'f1e2d3', 'Frobnicator', 'Wibblewidget', 'Gill Sans', 'Courier New', 'c9d8e7', '0a1b2c'];
     for (const dir of [join(ROOT, 'bin'), ASSETS]) {
       for (const f of readdirSync(dir, { recursive: true })) {
         let text;

@@ -7,6 +7,17 @@ import { escapeHtml } from './teach.mjs';
 const CSS = readFileSync(new URL('../../skills/research-teach/assets/lesson.css', import.meta.url), 'utf8');
 const ROOT_BLOCK = CSS.slice(CSS.indexOf(':root {'), CSS.indexOf('}', CSS.indexOf(':root {')));
 export const BRAND_TOKENS = [...ROOT_BLOCK.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]);
+// D7: lesson.css's own value of each token in light (that block) and in dark (its :root[data-theme="dark"] rule).
+const values = (block) => Object.fromEntries([...block.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
+const DARK_AT = CSS.indexOf(':root[data-theme="dark"] {');
+export const BRAND_DEFAULTS = { light: values(ROOT_BLOCK), dark: values(CSS.slice(DARK_AT, CSS.indexOf('}', DARK_AT))) };
+// D7 and WCAG 2.2: the contrast ratio (L1 + 0.05) / (L2 + 0.05) of two #rgb or #rrggbb colours, L the relative luminance.
+const luminance = (hex) => {
+  const h = hex.length === 4 ? hex.replace(/[0-9a-f]/gi, (d) => d + d).slice(1) : hex.slice(1);
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+    .reduce((s, c, i) => s + c * [0.2126, 0.7152, 0.0722][i], 0);
+};
+export const contrast = (a, b) => { const [l1, l2] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (l1 + 0.05) / (l2 + 0.05); };
 
 const KEYS = ['name', 'logo', 'favicon', 'color', 'font', 'footer', 'audience', 'tokens', 'voice'];
 const HEX_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;

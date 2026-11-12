@@ -14,6 +14,7 @@ import {
 import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
 import { readLabs, labPin, lessonLab, sha256, LAB_MANIFEST } from './labs.mjs';
 import { scanCast, PLAYER_FILES, PLAYER_VERSION } from './cast.mjs';
+import { readBrand, BRAND_DEFAULTS, contrast } from './brand.mjs';
 
 export const QUIZ_MIN_ITEMS = 3;
 export const QUIZ_SPREAD_MAX = 1.6;
@@ -233,18 +234,20 @@ export function trackedTerms(workspaceDir) {
 
 // The prose a term rule reads: every block except sources and followup, with <pre> blocks removed
 // (output and YAML name things before the lesson defines them) and the predict and quiz items included.
-function proseOf(blocks, quiz) {
+// With `noCode` (BRAND_VOICE, spec 50 D7) <code> elements are removed too.
+function proseOf(blocks, quiz, noCode = false) {
   let text = '';
   for (const [name, b] of blocks) {
     if (name === 'sources' || name === 'followup') continue;
-    text += ' ' + textOf(b.html.replace(/<pre\b[\s\S]*?<\/pre>/gi, ' ').replace(/<script\b[\s\S]*?<\/script>/gi, ' '));
+    const html = b.html.replace(/<pre\b[\s\S]*?<\/pre>/gi, ' ').replace(/<script\b[\s\S]*?<\/script>/gi, ' ');
+    text += ' ' + textOf(noCode ? html.replace(/<code\b[\s\S]*?<\/code>/gi, ' ') : html);
   }
   const predict = blocks.has('predict') ? parseQuiz(blocks.get('predict').html).items ?? [] : [];
   for (const it of [...predict, ...(quiz.items ?? [])]) text += ' ' + [it.q, ...(it.options ?? []), ...(it.why ?? [])].join(' ');
   return text;
 }
 
-const termRe = (t) => new RegExp(`(^|[^\\p{L}\\p{N}_-])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_-])`, 'iu');
+const termRe = (t, flags = 'iu') => new RegExp(`(^|[^\\p{L}\\p{N}_-])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_-])`, flags);
 
 const unescapeHtml = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
 
@@ -320,7 +323,8 @@ function pairFindings(html, add) {
   if (late) add('WARN_PAIR_FIGURE_LAST', `${late} pair(s) put the paragraph before the figure; put the figure first so the text wraps around it on a wide screen`);
 }
 
-function figureFindings(html, add) {
+// With a brand/ folder (spec 50 D7) a figure colour is the error BRAND_OFF_PALETTE in place of WARN_FIGURE_COLOR.
+function figureFindings(html, add, branded) {
   [...html.matchAll(/<figure\b[\s\S]*?<\/figure>/gi)].flatMap((f) => [...f[0].matchAll(/<svg\b([^>]*)>([\s\S]*?)<\/svg>/gi)]).forEach((svg, i) => {
     const [, attrs, inner] = svg;
     const at = (a, name) => new RegExp(`\\s${name}\\s*=\\s*(["'])(.*?)\\1`, 'i').exec(a)?.[2];
@@ -364,7 +368,7 @@ function figureFindings(html, add) {
     }
     for (const c of [at(attrs, 'fill'), at(attrs, 'stroke')]) if (c !== undefined) colors.add(c);
     const bad = [...colors].filter((c) => !/^\s*(currentColor|none|var\(--muted\))\s*$/i.test(c));
-    if (bad.length) add('WARN_FIGURE_COLOR', `${n}: fill or stroke ${bad.join(', ')}; use currentColor, none or var(--muted)`);
+    if (bad.length) add(branded ? 'BRAND_OFF_PALETTE' : 'WARN_FIGURE_COLOR', `${n}: fill or stroke ${bad.join(', ')}; use currentColor, none or var(--muted)`);
     if (nofill) add('WARN_FIGURE_TEXT_NO_FILL', `${n}: ${nofill} label(s) with no fill on the <text> or an ancestor in the <svg>; set fill="currentColor" so the label follows the theme`);
     if (small.length) add('WARN_FIGURE_LABEL_SMALL', `${n}: ${small.length} label(s) under ${FIGURE_LABEL_MIN} units or of unknown size (${[...new Set(small)].join(', ')})`);
     if (overflow.length) add('WARN_FIGURE_TEXT_OVERFLOW', `${n}: ${overflow.length} label(s) estimated wider than the shape holding them (${overflow.map((l) => `"${l}"`).join(', ')}); widen the box, shorten the label or break the line`);
@@ -583,7 +587,20 @@ export function lintLesson(filePath, ctx) {
       if (Number(m[3]) !== pos) add('LESSON_CITE_NUMBER', `data-cite ${m[2]} is numbered [${m[3]}] but is ${pos ? `source ${pos}` : 'not'} in the sources list`);
     }
   }
-  figureFindings(raw, add);
+  figureFindings(raw, add, !!ctx.brand);
+  if (ctx.brand) {
+    // Spec 50 D7: a colour literal in a style attribute or in a <style> element's declaration blocks (not its selectors).
+    const css = [...raw.matchAll(/\sstyle\s*=\s*(["'])(.*?)\1/gis)].map((m) => m[2])
+      .concat([...raw.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].flatMap((m) => [...m[1].matchAll(/\{([^{}]*)\}/g)].map((d) => d[1])));
+    const colours = new Set(css.flatMap((s) => s.match(/#[0-9a-f]{3,8}(?![\w-])|\b(?:rgb|hsl)a?\([^)]*\)/gi) ?? []));
+    for (const col of colours) add('BRAND_OFF_PALETTE', `colour ${col} in a style attribute or <style> element; use a var(--token) the brand sets`);
+    if (cls !== 'reference' && ctx.brand.brand?.voice) {
+      const prose = proseOf(blocks, quiz, true);
+      for (const { term, use } of ctx.brand.brand.voice.avoid) {
+        if (termRe(term, 'u').test(prose)) add('BRAND_VOICE', `uses "${term}"${use !== undefined ? `; use "${use}"` : ''} (brand voice.avoid)`);
+      }
+    }
+  }
   imageFindings(raw, blocks, ws, dirname(filePath), add);
   castFindings(raw, ws, dirname(filePath), add);
   pairFindings(raw, add);
@@ -928,10 +945,37 @@ function lintReadme(ws, ctx) {
   return findings;
 }
 
+// Spec 50 D7: the pairs BRAND_CONTRAST checks, text token on background token, at 4.5:1 in each scheme.
+const CONTRAST_PAIRS = [['--ink', '--bg'], ['--ink', '--card'], ['--ink', '--chip'], ['--ink', '--ok-bg'], ['--ink', '--bad-bg'], ['--ink', '--mark'],
+  ['--muted', '--bg'], ['--muted', '--card'], ['--link', '--bg'], ['--link', '--card'], ['--code-ink', '--code-bg']];
+
+// Spec 50 D7: readBrand's problems, then for a valid brand its named files, the logo's alt and the contrast pairs.
+function lintBrand(ws, { brand, problems }) {
+  const findings = [];
+  const add = (code, message) => findings.push({ code, file: 'brand/brand.json', message, warning: false });
+  for (const p of problems) add(p.code, p.message);
+  if (!brand) return findings;
+  for (const [key, f] of [['logo.light', brand.logo?.light], ['logo.dark', brand.logo?.dark], ['favicon', brand.favicon]]) {
+    if (f !== undefined && !statSync(join(ws, 'brand', f), { throwIfNoEntry: false })?.isFile()) add('BRAND_FILE_MISSING', `${key}: brand/${f} is not a regular file`);
+  }
+  if (brand.logo && !brand.logo.alt) add('BRAND_ALT_MISSING', 'logo has no non-empty alt; set logo.alt to the text the logo shows');
+  for (const scheme of ['light', 'dark']) {
+    const v = { ...BRAND_DEFAULTS[scheme], ...brand.color?.[scheme] };
+    for (const [fg, bg] of CONTRAST_PAIRS) {
+      const r = contrast(v[fg], v[bg]);
+      if (r < 4.5) add('BRAND_CONTRAST', `${scheme}: ${fg} ${v[fg]} on ${bg} ${v[bg]} is ${r.toFixed(2)}:1, under 4.5:1`);
+    }
+  }
+  return findings;
+}
+
 export function lintWorkspace(workspaceDir, ctx) {
-  const c = { ...ctx, workspaceDir };
+  // Spec 50 D7: the brand is read once, and only a workspace with a brand/ folder gets the BRAND_ codes.
+  const brand = existsSync(join(workspaceDir, 'brand')) ? readBrand(workspaceDir) : null;
+  const c = { ...ctx, workspaceDir, brand };
   const findings = ['lessons', 'reference'].flatMap((d) =>
     listDir(join(workspaceDir, d), '.html').flatMap((f) => lintLesson(join(workspaceDir, d, f), c)));
+  if (brand) findings.push(...lintBrand(workspaceDir, brand));
   findings.push(...lintStore(workspaceDir, c));
   findings.push(...lintLabManifest(workspaceDir));
   // Issue 65 (spec 47 D1): a player file in assets/ must be the pinned release's.

@@ -201,6 +201,7 @@ export const COUPLINGS = [
   ['bin/lib/brand.mjs', 'skills/research-teach/BRAND-FORMAT.md', "the format states readBrand's keys, its path, colour, family and audience rules and the eight-alias limit, and withBrand's link, style, header and footer", 'brand-footer'],
   ['bin/commands/teach.mjs', 'docs/REFERENCE.md', "serve's start line for an invalid brand.json is quoted", 'brand: brand/brand.json is invalid; run teach lint'],
   ['bin/lib/teach.mjs', 'docs/REFERENCE.md', "exportWorkspace's brand refusal is quoted", 'brand brand/brand.json: invalid; run teach lint'],
+  ['bin/lib/lesson.mjs', 'skills/research-teach/BRAND-FORMAT.md', "the Lint section names lintWorkspace's BRAND_ codes, the contrast pairs and threshold, the style-colour forms and BRAND_VOICE's prose", 'BRAND_OFF_PALETTE'],
 ];
 
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

@@ -48,6 +48,20 @@ With `footer.classification` written as an object, each key is an audience and `
 
 `teach serve` prints one line at start and serves every page without the brand; `teach export` prints one line, writes nothing and exits 1.
 
+## Lint
+
+With a `brand/` folder, `teach lint` reports these errors, in `brand/brand.json` unless a page is named:
+
+- `BRAND_INVALID`: `brand.json` is missing or not JSON, or breaks a rule above: an unknown key, a wrong type, a bad path, colour, family or audience, or a reference that does not resolve.
+- `BRAND_TOKEN_UNKNOWN`: a `color` key that is not a token, by name.
+- `BRAND_FILE_MISSING`: `logo.light`, `logo.dark` or `favicon` naming a path that is not a regular file, by key and path.
+- `BRAND_ALT_MISSING`: a `logo` with no non-empty `alt`.
+- `BRAND_CONTRAST`: a pair under 4.5:1 in the light or the dark scheme, with the scheme, the two tokens, their values and the ratio. Each token takes the brand's value for that scheme, or else `lesson.css`'s. The pairs are `--ink` on `--bg`, `--card`, `--chip`, `--ok-bg`, `--bad-bg` and `--mark`; `--muted` on `--bg` and `--card`; `--link` on `--bg` and `--card`; and `--code-ink` on `--code-bg`.
+- `BRAND_OFF_PALETTE`, on a lesson or reference page: a figure's fill or stroke colour, which is the warning `WARN_FIGURE_COLOR` without a brand. Also each `#hex`, `rgb(`, `rgba(`, `hsl(` or `hsla(` colour in a `style` attribute or in the rules of a `<style>` element; its selectors are not read.
+- `BRAND_VOICE`, on a lesson: each `voice.avoid` term in its prose, with its `use` when set. The match is case-sensitive and whole-word. The prose is every block but `sources` and `followup` with its `<pre>`, `<code>` and `<script>` elements removed, plus the quiz and predict items' questions, options and explanations.
+
+`BRAND_FILE_MISSING`, `BRAND_ALT_MISSING` and `BRAND_CONTRAST` are checked only once `brand.json` has no `BRAND_INVALID` or `BRAND_TOKEN_UNKNOWN`. Without a `brand/` folder none of these codes is reported.
+
 ## Example
 
 `brand/brand.json`, with `brand/logo.svg` beside it:
