@@ -88,7 +88,7 @@ function exportCopy(ws, args) {
   if (!existsSync(vaultPath)) return refuse(`no vault at ${vaultPath}`);
   if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) return refuse(`--out ${dir} is a symlink`);
   if (isInsideVault(vaultPath, dir)) return refuse(`--out ${dir} is inside the vault`);
-  for (const d of ['lessons', 'reference', 'assets']) if (isInsideVault(join(ws, d), dir)) return refuse(`--out ${dir} is inside the workspace's ${d}/`);
+  for (const d of ['lessons', 'reference', 'assets', 'brand']) if (isInsideVault(join(ws, d), dir)) return refuse(`--out ${dir} is inside the workspace's ${d}/`);
   const st = statSync(dir, { throwIfNoEntry: false });
   if (st && !(st.isDirectory() && readdirSync(dir).length === 0)) return refuse(`--out ${dir} exists and is not an empty directory`);
   const r = exportWorkspace(ws, { vaultPath, entries: buildManifest(vaultPath).entries, skipUngated: args['skip-ungated'] === true });

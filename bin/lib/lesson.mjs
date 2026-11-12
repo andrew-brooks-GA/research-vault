@@ -592,7 +592,7 @@ export function lintLesson(filePath, ctx) {
     // Spec 50 D7: a colour literal in a style attribute or in a <style> element's declaration blocks (not its selectors).
     const css = [...raw.matchAll(/\sstyle\s*=\s*(["'])(.*?)\1/gis)].map((m) => m[2])
       .concat([...raw.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].flatMap((m) => [...m[1].matchAll(/\{([^{}]*)\}/g)].map((d) => d[1])));
-    const colours = new Set(css.flatMap((s) => s.match(/#[0-9a-f]{3,8}(?![\w-])|\b(?:rgb|hsl)a?\([^)]*\)/gi) ?? []));
+    const colours = new Set(css.flatMap((s) => s.match(/(?<!&)#[0-9a-f]{3,8}(?![\w-])|\b(?:rgb|hsl)a?\([^)]*\)/gi) ?? []));
     for (const col of colours) add('BRAND_OFF_PALETTE', `colour ${col} in a style attribute or <style> element; use a var(--token) the brand sets`);
     if (cls !== 'reference' && ctx.brand.brand?.voice) {
       const prose = proseOf(blocks, quiz, true);

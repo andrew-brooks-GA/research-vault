@@ -112,7 +112,7 @@ const BASE_EXPORTED = {
   'progress.html': 'f8685389274ac9669710265d851e66beeb002ca5a1bef6329cedf05a92c30603',
   'assets/reading.html': '52fd319a6d394e5524f362404f97f919633fe46a8a7b00003437ab9a9eed0b4a',
   'assets/quiz.js': 'eda7aa95b6cd79d14cc9eb0cfd2e28a217c118d6677049a15b60c0719f4d0e60',
-  'assets/lesson.css': '5c7a7c12b9c3aac3a203b83a588340a8676dcfa9afabe8b9df5304c038585041',
+  'assets/lesson.css': '87df4742d8ec6d84251e0f7a199e41826b9692aa13c949fb2352b6cc5ee7802e',
   'GLOSSARY.md': 'efcfcb71409f5fb07a868cbf663d9d284bfd66c61fa96d4592b2976277edf920',
   'sources.html': 'e4fabb4e2cab93fcd5e939bf5937c49e4df93f6aea816269f43f14e5c700c6d2',
 };
@@ -249,7 +249,7 @@ test('brand lint: each BRAND_ code an error naming the path, token, colour or te
     edit(repo.ws, L, 'export function fx(n)', 'export function Quuxly(n)');
     edit(repo.ws, L, '<rect x="70" y="15" width="60" height="30" fill="none"', '<rect x="70" y="15" width="60" height="30" fill="#ff0000"');
     edit(repo.ws, L, '</head>', '<style>#abc { color: rgb(1, 2, 3); }\n@media print { p { background: #ABCDEF; } }</style></head>');
-    edit(repo.ws, 'reference/good.html', '<h1>The fixture note</h1>', '<h1 style="color: hsl(10, 50%, 50%)">The fixture note</h1>');
+    edit(repo.ws, 'reference/good.html', '<h1>The fixture note</h1>', '<h1 style="color: hsl(10, 50%, 50%); content: \'&#160;\'; background: #123456">The fixture note</h1>');
     const base = lintLines(repo);
     const figure = `${L}: figure 1: fill or stroke #ff0000; use currentColor, none or var(--muted)`;
     assert.ok(base.includes(`warning WARN_FIGURE_COLOR  ${figure}`), base.join('\n'));
@@ -259,6 +259,8 @@ test('brand lint: each BRAND_ code an error naming the path, token, colour or te
       `BRAND_OFF_PALETTE  ${L}: colour rgb(1, 2, 3) in a style attribute or <style> element; use a var(--token) the brand sets`,
       `BRAND_OFF_PALETTE  ${L}: colour #ABCDEF in a style attribute or <style> element; use a var(--token) the brand sets`,
       'BRAND_OFF_PALETTE  reference/good.html: colour hsl(10, 50%, 50%) in a style attribute or <style> element; use a var(--token) the brand sets',
+      // A numeric entity (&#160;) in the same attribute is not a colour; #123456 is.
+      'BRAND_OFF_PALETTE  reference/good.html: colour #123456 in a style attribute or <style> element; use a var(--token) the brand sets',
     ];
     // The lines a brand adds to the base, and the base lines it takes away.
     const diff = (brand, files) => {

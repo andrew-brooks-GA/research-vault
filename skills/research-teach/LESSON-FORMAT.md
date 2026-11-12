@@ -110,7 +110,7 @@ A replay plays a recorded terminal session (an asciicast v2 or v3 file) in the l
 </pre>
 ```
 
-`teach cast transcript <file>` prints the cast's output events as text for that `<pre>`: CSI, OSC and charset escape sequences removed, CRLF a line break, other C0 control characters but tab, and DEL, dropped, and `&`, `<` and `>` escaped. Before a cast is kept, `teach cast check <file> [--needle <value>]...` scans it (docs/REFERENCE.md, `teach`).
+`teach cast transcript <file>` prints the cast's output events as text for that `<pre>`: CSI, OSC and charset escape sequences removed, CRLF a line break, other C0 control characters but tab and line feed, and DEL, dropped, and `&`, `<`, `>` and `"` escaped. Before a cast is kept, `teach cast check <file> [--needle <value>]...` scans it (docs/REFERENCE.md, `teach`).
 
 The transcript is always in the page; the player is added beside it only when the lesson loads it. The repo ships no player. The author downloads the two assets of the asciinema-player v3.18.0 release on GitHub (`https://github.com/asciinema/asciinema-player/releases/tag/v3.18.0`) into the workspace's `assets/`, checks their SHA-256 against these values, which `bin/lib/cast.mjs` pins in `PLAYER_FILES`, and loads them in the lesson's `<head>`:
 
@@ -124,13 +124,13 @@ The transcript is always in the page; the player is added beside it only when th
 <script src="../assets/asciinema-player.min.js"></script>
 ```
 
-quiz.js then starts a player in each element that has `data-cast`; without the files, the page shows the transcript only. `teach serve` returns the cast and the player files as it returns any file under `assets/`. `teach export` copies them, and gives each such element a `data-cast-text` attribute holding the cast's text, which quiz.js hands the player in place of the path, since headless Chrome 157 refused a `file://` page's fetch of the cast file. In headless Chrome 157 the player mounted and played the cast on a lesson `teach serve` returned and on an exported lesson opened from `file://`. With the player files absent, each showed the transcript only. Safari and Firefox were not opened.
+quiz.js then starts a player in each element that has `data-cast`; without the files, the page shows the transcript only. `teach serve` returns the cast and the player files as it returns any file under `assets/`. `teach export` copies them, and gives each such element whose cast `teach serve` returns a `data-cast-text` attribute holding the cast's text, which quiz.js hands the player in place of the path, since headless Chrome 157 refused a `file://` page's fetch of the cast file. In headless Chrome 157 the player mounted and played the cast on a lesson `teach serve` returned and on an exported lesson opened from `file://`. With the player files absent, each showed the transcript only. Safari and Firefox were not opened.
 
 `teach lint` reads each element that has `data-cast` and the player files:
 
 - `LESSON_CAST_MISSING` (the lesson): `data-cast` names no file under `assets/` that `teach serve` returns.
 - `LESSON_CAST_INVALID` (the lesson): the file is not an asciicast v2 or v3 file.
-- `LESSON_CAST_SECRET` (the lesson): the cast matches a token shape of `TOKEN_SHAPES` in `bin/lib/cast.mjs`. The line names the kind and the event, never the value; record the session again with the value masked. The kinds are `aws-access-key` (`AKIA` or `ASIA` and 16 more), `github-token` (`ghp_`, `gho_`, `ghu_`, `ghs_` or `ghr_` and 36 or more, or `github_pat_` and 22 or more), `slack-token` (`xoxa-`, `xoxb-`, `xoxp-`, `xoxo-`, `xoxr-` or `xoxs-` and 10 or more), `jwt` (two `eyJ` segments and a third) or `private-key` (a `-----BEGIN ... PRIVATE KEY-----` line).
+- `LESSON_CAST_SECRET` (the lesson): the cast matches a token shape of `TOKEN_SHAPES` in `bin/lib/cast.mjs`. The line names the kind and the event, or the header, never the value; record the session again with the value masked. The kinds are `aws-access-key` (`AKIA` or `ASIA` and 16 more), `github-token` (`ghp_`, `gho_`, `ghu_`, `ghs_` or `ghr_` and 36 or more, or `github_pat_` and 22 or more), `slack-token` (`xoxa-`, `xoxb-`, `xoxp-`, `xoxo-`, `xoxr-` or `xoxs-` and 10 or more), `jwt` (two `eyJ` segments and a third) or `private-key` (a `-----BEGIN ... PRIVATE KEY-----` line).
 - `LESSON_CAST_TRANSCRIPT_MISSING` (the lesson): the element is not followed, after whitespace only, by a `<pre>`.
 - `LESSON_CAST_PLAYER_HASH` (`assets/<file>`): `assets/asciinema-player.min.js` or `assets/asciinema-player.css` exists and its SHA-256 is not the pinned value.
 

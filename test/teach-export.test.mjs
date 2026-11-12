@@ -201,6 +201,7 @@ test('teach export refuses a bad --out with exit 2 and writes nothing', () => {
     [join(ws, 'lessons', 'site'), "is inside the workspace's lessons/"],
     [join(ws, 'reference'), "is inside the workspace's reference/"],
     [join(ws, 'assets', 'x', 'y'), "is inside the workspace's assets/"],
+    [join(ws, 'brand', 'x'), "is inside the workspace's brand/"],
     [ws, 'exists and is not an empty directory'],
     [join(ws, 'NOTES.md'), 'exists and is not an empty directory'],
   ];
