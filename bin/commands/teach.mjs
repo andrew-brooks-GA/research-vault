@@ -13,6 +13,7 @@ import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX
 import { scanCast, castTranscript } from '../lib/cast.mjs';
 import { hasVerdict } from '../lib/gate.mjs';
 import { readLabs, secretHits } from '../lib/labs.mjs';
+import { readBrand } from '../lib/brand.mjs';
 import { isInsideVault } from '../lib/containment.mjs';
 import { lintWorkspace, proseMetrics, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
@@ -216,7 +217,9 @@ function edges(ws) {
 // labs/labs.json exits 2, and the lab address is printed once, here, and nowhere else. D6: a lesson or reference page
 // that holds a declared env value gets one warning line. D5: with --labs, SIGINT, SIGTERM and SIGHUP run the Stop
 // sequence on every running lab group before exiting (a second signal exits at once), and exit sends each SIGKILL.
+// Spec 50 D4: an invalid brand/brand.json gets one line at start, and the pages are served unbranded.
 async function serve(ws, teachSchema, titles, labs) {
+  if (readBrand(ws).problems.length) process.stderr.write('brand: brand/brand.json is invalid; run teach lint\n');
   if (labs) {
     let manifest;
     try { ({ labs: manifest } = readLabs(ws)); } catch {

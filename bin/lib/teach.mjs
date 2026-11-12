@@ -16,6 +16,7 @@ import { grade, neighbours, pathPosition } from '../../skills/research-teach/ass
 import { lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWUP, CONNECT_LEAD, imageTarget } from './lesson.mjs';
 import { HEADING_RE, TABLE_SEP_RE, WORKSPACE_GATES, hasVerdict } from './gate.mjs';
 import { readLabs, lessonLab, labRunner, secretHits, labCookie, LAB_ACTIONS, LAB_BODY_MAX, LAB_ID_RE } from './labs.mjs';
+import { readBrand, withBrand } from './brand.mjs';
 
 export const SPACING_DAYS = 21;
 export const ATTEMPT_BODY_MAX = 4096;
@@ -406,7 +407,7 @@ export function progressHtml(p) {
 
 // `teach serve` (spec 12 "Serving and recording"). Order matters: Host before anything;
 // for POST, Origin, Content-Type and Content-Length before a byte of the body is read.
-const STATIC_DIRS = ['lessons', 'reference', 'assets'];
+const STATIC_DIRS = ['lessons', 'reference', 'assets', 'brand'];
 const CONTENT_TYPES = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.md': 'text/markdown; charset=utf-8', '.json': 'application/json',
@@ -641,10 +642,11 @@ export const MENTION_RE = /\bin (?:the|your) terminal\b|\bteach serve\b|\bClaude
 // D2: the quiz.js tag made a deferred classic script, on a lesson the bar built here (D3), data-export and
 // data-lesson on <body>, D7's two sentences replaced (not on sources.html), then every root-absolute href and src
 // (one /, not //host) made relative to `path`, the page's path under --out: / is index.html, /progress progress.html.
-export function exportPage(html, path, { key, index }) {
+// Spec 50 D4: first of all, the workspace's brand (readBrand's, null for none) with the year `year`.
+export function exportPage(html, path, { key, index, brand = null, year }) {
   const name = /^lessons\/([^/]+)\.html$/.exec(path)?.[1];
   const id = name && LESSON_ID_RE.test(name) ? name : null;
-  let out = html.replace(/<script\b[^>]*quiz\.js[^>]*>/gi, (tag) => {
+  let out = withBrand(html, brand, { position: brand && lessonPosition(index, `/${path}`), year }).replace(/<script\b[^>]*quiz\.js[^>]*>/gi, (tag) => {
     const t = tag.replace(/\s+type\s*=\s*(["'])module\1/i, '');
     return /\sdefer\b/i.test(t) ? t : t.replace(/^<script\b/i, '<script defer');
   });
@@ -659,6 +661,12 @@ export function exportPage(html, path, { key, index }) {
     return `${attr}${q}${up}${p === '' ? 'index.html' : p === 'progress' ? 'progress.html' : p}${tail}${q}`;
   });
 }
+
+// Spec 50 D3: [n, m] for the lesson served at `path`, its place among the index's lessons and their count, else null.
+export const lessonPosition = (index, path) => {
+  const i = index.lessons.findIndex((e) => e.path === path);
+  return i === -1 ? null : [i + 1, index.lessons.length];
+};
 
 // D1: progress.html of an exported copy. quiz.js fills the progress section from this browser's storage, and
 // exportPage adds the bar, as on any page that loads quiz.js.
@@ -764,7 +772,8 @@ export function exportWorkspace(ws, { vaultPath, entries, skipUngated = false, e
   const kept = new Set(pages);
   const full = lessonIndex(ws);
   const index = { ...full, lessons: full.lessons.filter((e) => kept.has(e.path.slice(1))), reference: full.reference.filter((e) => kept.has(e.path.slice(1))) };
-  const ctx = { key, index };
+  const { brand, problems: brandProblems } = readBrand(ws);
+  const ctx = { key, index, brand, year: new Date().getFullYear() };
   const titles = Object.fromEntries(entries.map((e) => [e.id, e.title ?? e.id]));
   const sourceHref = (id) => `/sources.html#${encodeURIComponent(id)}`;
   const files = new Map();
@@ -793,10 +802,11 @@ export function exportWorkspace(ws, { vaultPath, entries, skipUngated = false, e
   const lab = manifest === null
     ? (html.some(([p, h]) => p.startsWith('lessons/') && lessonLab(h)) ? ['lab-manifest labs/labs.json: invalid; run teach lint'] : [])
     : secretHits([...files], manifest, env).map(([p, name]) => `secret ${p}: ${name}`);
-  const lines = [...notGated.map((p) => `not gated ${p}`), ...ungated.map((p) => `${skipUngated ? 'skipped' : 'ungated'} ${p}`), ...mention, ...unknown, ...collide, ...lab];
+  const brandLine = brandProblems.length ? ['brand brand/brand.json: invalid; run teach lint'] : [];
+  const lines = [...notGated.map((p) => `not gated ${p}`), ...ungated.map((p) => `${skipUngated ? 'skipped' : 'ungated'} ${p}`), ...mention, ...unknown, ...collide, ...lab, ...brandLine];
   const error = !skipUngated && ungated.length
     ? `teach export: ${ungated.length} page(s) have no PASS or MERIT for their current content; nothing written (--skip-ungated leaves them out)` : null;
-  if (error || mention.length || unknown.length || collide.length || lab.length) return { code: 1, lines, error };
+  if (error || mention.length || unknown.length || collide.length || lab.length || brandLine.length) return { code: 1, lines, error };
   const urlFor = (id) => byId.get(id).source_url;
   for (const id of ids) lines.push(`source ${id} ${typeof urlFor(id) === 'string' && urlFor(id) ? urlFor(id) : '-'}`);
   return { code: 0, lines, files };
@@ -940,13 +950,18 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
     }
     if (!isBodyless) return send(req, res, 405, 'method not allowed\n', undefined, true);
     if (labs && path === '/labs/open') return openLabs(req, res, port);
-    if (path === '/') return send(req, res, 200, indexHtml(ws), 'text/html; charset=utf-8');
+    // Spec 50 D4: every HTML reply carries the brand, read on each request; with none, or an invalid one, the page as it is.
+    const branded = (html) => {
+      const { brand } = readBrand(ws);
+      return withBrand(html, brand, { position: brand && lessonPosition(lessonIndex(ws), path), year: clock().getFullYear() });
+    };
+    if (path === '/') return send(req, res, 200, branded(indexHtml(ws)), 'text/html; charset=utf-8');
     if (path === '/lessons.json') return send(req, res, 200, JSON.stringify(lessonIndex(ws)), 'application/json');
-    if (path === '/progress') return send(req, res, 200, progressHtml(progress(ws, { now: clock() })), 'text/html; charset=utf-8');
+    if (path === '/progress') return send(req, res, 200, branded(progressHtml(progress(ws, { now: clock() }))), 'text/html; charset=utf-8');
     if (path === '/progress.json') return send(req, res, 200, JSON.stringify(progress(ws, { now: clock() })), 'application/json');
     const f = serveFile(ws, path, { titles, lab: labs ? (hasCookie(req, port) ? 'live' : 'open') : undefined });
     if (f.status !== 200) return send(req, res, f.status, f.status === 400 ? 'bad request\n' : 'not found\n');
-    send(req, res, 200, f.body, f.type); // HEAD: node:http drops the body itself
+    send(req, res, 200, f.type.startsWith('text/html') ? branded(f.body) : f.body, f.type); // HEAD: node:http drops the body itself
   });
   if (runner) {
     server.stopLabs = runner.stopAll;

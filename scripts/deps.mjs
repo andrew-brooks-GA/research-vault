@@ -197,6 +197,10 @@ export const COUPLINGS = [
   ['bin/lib/teach.mjs', 'docs/REFERENCE.md', "exportWorkspace's secret and lab-manifest refusals are quoted", 'lab-manifest labs/labs.json: invalid; run teach lint'],
   ['bin/lib/teach.mjs', 'SECURITY.md', "createServer's lab address flow (303, the Set-Cookie attributes, next, reusable for the life of the server), the two framing headers under --labs and the lab POST checks 1 to 5 are stated", 'HttpOnly; SameSite=Strict; Path=/'],
   ['bin/commands/teach.mjs', 'SECURITY.md', 'the labs: open line and the exit 2 on an invalid labs.json are quoted', '/labs/open?t='],
+  ['bin/lib/brand.mjs', 'skills/research-teach/assets/lesson.css', "BRAND_TOKENS is read from lesson.css's first :root block, and brandCss copies its two dark selectors", ':root:not([data-theme="light"])'],
+  ['bin/lib/brand.mjs', 'skills/research-teach/BRAND-FORMAT.md', "the format states readBrand's keys, its path, colour, family and audience rules and the eight-alias limit, and withBrand's link, style, header and footer", 'brand-footer'],
+  ['bin/commands/teach.mjs', 'docs/REFERENCE.md', "serve's start line for an invalid brand.json is quoted", 'brand: brand/brand.json is invalid; run teach lint'],
+  ['bin/lib/teach.mjs', 'docs/REFERENCE.md', "exportWorkspace's brand refusal is quoted", 'brand brand/brand.json: invalid; run teach lint'],
 ];
 
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

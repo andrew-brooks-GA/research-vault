@@ -29,6 +29,7 @@ The directory `/research-teach` was run in. One mission per workspace.
 | `reference/*.html` | Compressed essence, printable, revisited | view of vault notes |
 | `README.md` | Introduces the program to a learner who has not opened a lesson ([README-FORMAT.md](README-FORMAT.md)) | view |
 | `assets/` | `lesson.css`, `quiz.js` (copied from the skill), other reusable components | view |
+| `brand/` | The organisation's name, logo, colours, fonts and footer for every page: `brand.json` and the files it names ([BRAND-FORMAT.md](BRAND-FORMAT.md)) | view |
 | `evidence/NNNN/` | The plan for lesson NNNN, with the probe programs and `run.sh` when it has a probe; a working folder, not evidence until captured | scratch |
 | `evidence/NNNN/PLAN.md` | The plan written before the probe | scratch |
 | `.teach-serve.json` | The running server's port and pid; gitignored | scratch |
@@ -73,7 +74,7 @@ Pedagogy, in brief. Read the full source skill if you want the reasoning.
 - **Storage over fluency.** Retrieval practice, spacing, interleaving (skills only). A learner who feels fluent after reading has not learned yet; the quiz is where learning happens.
 - **Quiz hygiene.** Answers of equal length; correct position varies; no formatting tells.
 - **Cite.** Every claim links its vault entry or primary source. Recommend one primary source to read.
-- **Reuse components.** Read `assets/` before writing; the shared stylesheet is the first asset. It follows the OS light or dark scheme (`<html data-theme="light|dark">` forces one), labels every block, and stacks fact above example and lays quiz beside step from 1100px wide. Lessons link to each other and to reference docs by anchor.
+- **Reuse components.** Read `assets/` before writing; the shared stylesheet is the first asset. It follows the OS light or dark scheme (`<html data-theme="light|dark">` forces one), labels every block, and stacks fact above example and lays quiz beside step from 1100px wide. Lessons link to each other and to reference docs by anchor. A brand (colours, logo, fonts, footer) goes in `brand/` ([BRAND-FORMAT.md](BRAND-FORMAT.md)), never in `assets/lesson.css`.
 - **Wisdom is delegated.** Questions about idiom or real-world practice get an answer and a pointer to a community (a captured source with `authority_basis: community-report`). Respect an opt-out recorded in `NOTES.md`.
 - **Reminder in every lesson** that the learner can ask follow-up questions in the terminal.
 
