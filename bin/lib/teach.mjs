@@ -3,6 +3,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, statSync, lstatSync, rmSync } from 'node:fs';
 import { join, resolve, basename, dirname, extname } from 'node:path';
 import http from 'node:http';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.mjs';
 import { writeEntry } from './fsutil.mjs';
@@ -14,6 +15,7 @@ import { expandFiles } from './files.mjs';
 import { grade, neighbours, pathPosition } from '../../skills/research-teach/assets/quiz.js';
 import { lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWUP, CONNECT_LEAD } from './lesson.mjs';
 import { HEADING_RE, TABLE_SEP_RE, WORKSPACE_GATES, hasVerdict } from './gate.mjs';
+import { readLabs, lessonLab, labRefusal, labCookie, LAB_ACTIONS, LAB_BODY_MAX, LAB_ID_RE } from './labs.mjs';
 
 export const SPACING_DAYS = 21;
 export const ATTEMPT_BODY_MAX = 4096;
@@ -172,7 +174,7 @@ const keysAre = (o, keys) => o !== null && typeof o === 'object' && !Array.isArr
 // A file value in a printed line: an array or object is named, never walked, so a deeply nested value cannot
 // overflow the stack; JSON.stringify escapes a quote, a backslash and U+0000 to U+001F, ESC_RE what it leaves raw.
 const ESC_RE = /[\u007f-\u009f\u200e\u200f\u202a-\u202e\u2028\u2029\u2066-\u2069]/g;
-const show = (v) => (v !== null && typeof v === 'object' ? (Array.isArray(v) ? 'an array' : 'an object')
+export const show = (v) => (v !== null && typeof v === 'object' ? (Array.isArray(v) ? 'an array' : 'an object')
   : String(JSON.stringify(v)).replace(ESC_RE, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`));
 const sameList = (xs, ys) => Array.isArray(ys) && ys.length === xs.length && xs.every((x, i) => x === ys[i]);
 // The storage key and `workspace` field of an exported copy: the workspace directory's name through slugify.
@@ -451,8 +453,24 @@ export function footnoteCitations(html, titles = {}, sourceHref = (id) => `#src-
   return body + m[1] + srcBody + m[4] + after;
 }
 
+// Spec 49 D3: what the server shows of a lab: its cost line and the paths of the steps the author ran, escaped.
+export const labStepsHtml = (lab) => `<p class="lab-cost">${escapeHtml(lab.cost)}</p><p>The author ran:</p>` +
+  [lab.up, lab.verify, lab.down].filter(Boolean).map((c) => `<pre>${escapeHtml(c.script)}</pre>`).join('');
+export const LAB_OPEN_LINE = '<p class="lab-open">To run this lab from the page, open the lab address teach serve printed when it started.</p>';
+// After the opening tag of the lab block parseBlocks returns, when labs/labs.json is valid and names its data-lab:
+// the steps, then under --labs on a request without the lab cookie (`lab: 'open'`) the lab-open line. Else nothing.
+function withLabSteps(ws, html, mode) {
+  const l = lessonLab(html);
+  if (!l?.id) return html;
+  let labs;
+  try { ({ labs } = readLabs(ws)); } catch { return html; }
+  if (!Object.hasOwn(labs, l.id)) return html;
+  return html.slice(0, l.start) + labStepsHtml(labs[l.id]) + (mode === 'open' ? LAB_OPEN_LINE : '') + html.slice(l.start);
+}
+
 // The resolved file to serve for a URL path, or a status: 400 undecodable, 404 anything not allowlisted.
-export function serveFile(workspaceDir, urlPath, { titles, sourceHref, bytes = true } = {}) {
+// `lab` is 'open' or 'live' under teach serve --labs (withLabSteps), else undefined.
+export function serveFile(workspaceDir, urlPath, { titles, sourceHref, bytes = true, lab } = {}) {
   let decoded;
   try { decoded = decodeURIComponent(urlPath); } catch { return { status: 400 }; }
   if (decoded.includes('\0') || decoded.split('/').some((seg) => seg.startsWith('.'))) return { status: 404 };
@@ -466,7 +484,8 @@ export function serveFile(workspaceDir, urlPath, { titles, sourceHref, bytes = t
     if (!bytes) return { status: 200 };
     const body = readFileSync(target);
     const isPage = /\.html$/i.test(target) && (decoded.startsWith('/lessons/') || decoded.startsWith('/reference/'));
-    let out = isPage ? footnoteCitations(body.toString('utf8'), titles ?? {}, sourceHref) : body;
+    const text = isPage && decoded.startsWith('/lessons/') ? withLabSteps(workspaceDir, body.toString('utf8'), lab) : isPage ? body.toString('utf8') : null;
+    let out = isPage ? footnoteCitations(text, titles ?? {}, sourceHref) : body;
     if (/\.html$/i.test(target)) {
       out = withNav(out.toString('utf8'));
     }
@@ -504,7 +523,8 @@ export function lessonIndex(ws) {
 
 // Issue 66: `teach readme`, the README's lesson map and lab list as Markdown for the author to write the prose around.
 // One map row per lessonIndex project of the built lessons (none: after the last Project: line or off the path), each
-// review lesson marked (review); one lab row per directory under lessons/files/, named for the built lesson whose number begins it.
+// review lesson marked (review); one lab row per directory under lessons/files/, named for the built lesson whose number begins it,
+// then (spec 49 D9) one per lab of a valid labs/labs.json, named for the built lessons whose lab section names it.
 export function readmeDraft(ws) {
   const { lessons } = lessonIndex(ws);
   const groups = new Map();
@@ -512,7 +532,11 @@ export function readmeDraft(ws) {
   const map = [...groups].map(([p, ls]) => `| ${p ?? '(no Project: line)'} | ${ls.map((l) => l.id + (lessonClass(`lessons/${l.id}.html`) === 'review' ? ' (review)' : '')).join(', ')} |  |`);
   const files = join(ws, 'lessons', 'files');
   const dirs = existsSync(files) ? readdirSync(files, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort() : [];
-  const labs = dirs.map((d) => `| ${lessons.find((l) => l.id.slice(0, 4) === d.slice(0, 4))?.id ?? ''} | lessons/files/${d}/ |  |  |`);
+  let manifest = {};
+  try { ({ labs: manifest } = readLabs(ws)); } catch { /* teach lint reports it */ }
+  const naming = (id) => lessons.filter((l) => lessonLab(readFileSync(join(ws, 'lessons', `${l.id}.html`), 'utf8'))?.id === id).map((l) => l.id).join(', ');
+  const labs = [...dirs.map((d) => `| ${lessons.find((l) => l.id.slice(0, 4) === d.slice(0, 4))?.id ?? ''} | lessons/files/${d}/ |  |  |`),
+    ...Object.entries(manifest).map(([id, lab]) => `| ${naming(id)} | labs/labs.json: ${id} | ${lab.cost.replaceAll('|', '\\|')}; env: ${lab.env?.length ? lab.env.join(', ') : 'none'} |  |`)];
   return [`## ${README_SECTIONS[3]}`, '', '| Group | Lessons | What it builds |', '|---|---|---|', ...map, '', `## ${README_SECTIONS[4]}`, '',
     ...(labs.length ? ["| Lesson | Files | Needs on the learner's machine | Fallback |", '|---|---|---|---|', ...labs] : ['No lesson ships files under `lessons/files/`.'])].join('\n') + '\n';
 }
@@ -783,6 +807,21 @@ export function writeExport(dir, files) {
   }
 }
 
+// The body as text once it has all arrived; past `max` bytes, counted as they arrive, 403 and the connection dropped.
+function readBody(req, res, max, done) {
+  const chunks = [];
+  let size = 0;
+  req.on('data', (c) => {
+    size += c.length;
+    if (size > max) {
+      req.removeAllListeners('data').removeAllListeners('end').pause();
+      return send(req, res, 403, 'forbidden\n', undefined, true);
+    }
+    chunks.push(c);
+  });
+  req.on('end', () => done(Buffer.concat(chunks).toString('utf8')));
+}
+
 function postAttempt(req, res, workspaceDir, origin, schema, now) {
   const type = req.headers['content-type'];
   const length = req.headers['content-length'];
@@ -790,19 +829,9 @@ function postAttempt(req, res, workspaceDir, origin, schema, now) {
       (length !== undefined && !(Number(length) <= ATTEMPT_BODY_MAX))) {
     return send(req, res, 403, 'forbidden\n', undefined, true);
   }
-  const chunks = [];
-  let size = 0;
-  req.on('data', (c) => {
-    size += c.length;
-    if (size > ATTEMPT_BODY_MAX) {
-      req.removeAllListeners('data').removeAllListeners('end').pause();
-      return send(req, res, 403, 'forbidden\n', undefined, true);
-    }
-    chunks.push(c);
-  });
-  req.on('end', () => {
+  readBody(req, res, ATTEMPT_BODY_MAX, (text) => {
     let body;
-    try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { return send(req, res, 400, 'malformed JSON\n'); }
+    try { body = JSON.parse(text); } catch { return send(req, res, 400, 'malformed JSON\n'); }
     if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.lesson !== 'string' || !Array.isArray(body.answers)) {
       return send(req, res, 400, 'body must be {"lesson": "<id>", "answers": [integers]}\n');
     }
@@ -816,25 +845,84 @@ function postAttempt(req, res, workspaceDir, origin, schema, now) {
   });
 }
 
-export function createServer(workspaceDir, { schema, now = () => new Date(), titles = {} } = {}) {
+// Spec 49 D4: equal strings, compared in constant time once their byte lengths match.
+const same = (a, b) => {
+  const x = Buffer.from(String(a)), y = Buffer.from(String(b));
+  return x.length === y.length && timingSafeEqual(x, y);
+};
+
+// Spec 49 D4, under teach serve --labs only (`labs`). `t` is the lab address value, 64 hex characters, which the
+// caller prints; every GET /labs/open?t=<t> for the life of the server sets the lab cookie to one session value, made at
+// the first. Under labs every response forbids framing. `env` is the
+// environment check 11 reads; `log` gets one line per lab request that passes check 5. t and the session value are
+// never written to a page, a response body or a log line.
+export function createServer(workspaceDir, { schema, now = () => new Date(), titles = {}, labs = false, t, env = process.env, log = () => {} } = {}) {
   const ws = resolve(workspaceDir);
   const clock = typeof now === 'function' ? now : () => now;
+  if (labs && !/^[0-9a-f]{64}$/.test(t ?? '')) throw new Error('teach serve --labs needs a lab address value of 64 hex characters');
+  let session = null;
+  const hasCookie = (req, port) => session !== null && String(req.headers.cookie ?? '').split(';').some((p) => {
+    const i = p.indexOf('=');
+    return i !== -1 && p.slice(0, i).trim() === labCookie(port) && same(p.slice(i + 1).trim(), session);
+  });
+  // A wrong or missing t is 403 and sets no cookie; next is used only when it is /lessons/<lesson id>.html.
+  const openLabs = (req, res, port) => {
+    if (req.method !== 'GET') return send(req, res, 405, 'method not allowed\n');
+    const q = new URLSearchParams(req.url.includes('?') ? req.url.slice(req.url.indexOf('?') + 1) : '');
+    const ts = q.getAll('t');
+    if (ts.length !== 1 || !same(ts[0], t)) return send(req, res, 403, 'forbidden\n');
+    session ??= randomBytes(32).toString('hex');
+    const next = q.get('next') ?? '';
+    const lesson = /^\/lessons\/([^/]+)\.html$/.exec(next)?.[1];
+    res.writeHead(303, {
+      Location: lesson && LESSON_ID_RE.test(lesson) ? next : '/',
+      'Set-Cookie': `${labCookie(port)}=${session}; HttpOnly; SameSite=Strict; Path=/`,
+      'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=utf-8', 'X-Content-Type-Options': 'nosniff',
+    });
+    res.end();
+  };
+  // Checks 3 to 11 and 13 of a lab POST (1 and 2 are the caller's), in order; 3 and 4 before a byte of the body is read.
+  const postLab = (req, res, action, port) => {
+    const type = req.headers['content-type'];
+    const length = req.headers['content-length'];
+    if (req.headers.origin !== `http://127.0.0.1:${port}` || !/^application\/json(;\s*charset=utf-8)?$/i.test(type ?? '') ||
+        (length !== undefined && !(Number(length) <= LAB_BODY_MAX))) {
+      return send(req, res, 403, 'forbidden\n', undefined, true);
+    }
+    if (!hasCookie(req, port)) return send(req, res, 403, 'no lab cookie; open the lab address teach serve printed\n', undefined, true);
+    readBody(req, res, LAB_BODY_MAX, (text) => {
+      let body = null;
+      try { body = JSON.parse(text); } catch { /* the 400 below */ }
+      if (!keysAre(body, ['lab']) || typeof body.lab !== 'string' || !LAB_ID_RE.test(body.lab)) return send(req, res, 400, 'body must be {"lab": "<id>"}\n');
+      const [status, reply] = labRefusal(ws, action, body.lab, env);
+      log(`lab ${body.lab} ${action}: ${status} ${reply}`);
+      send(req, res, status, `${reply}\n`);
+    });
+  };
   // requireHostHeader off: a missing Host gets our 403, not node:http's own 400.
   const server = http.createServer({ requireHostHeader: false }, (req, res) => {
     const base = `127.0.0.1:${server.address().port}`;
+    if (labs) { // spec 49 D4: no page of a --labs server can be framed, so none can be clicked through a frame
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+    }
     const isBodyless = req.method === 'GET' || req.method === 'HEAD';
     if (req.headers.host !== base) return send(req, res, 403, 'forbidden\n', undefined, !isBodyless);
     const path = req.url.split('?')[0];
+    const port = server.address().port;
     if (req.method === 'POST') {
-      if (path !== '/attempt') return send(req, res, 404, 'not found\n', undefined, true);
-      return postAttempt(req, res, ws, `http://${base}`, schema, clock);
+      if (path === '/attempt') return postAttempt(req, res, ws, `http://${base}`, schema, clock);
+      const action = /^\/lab\/([a-z]+)$/.exec(path)?.[1];
+      if (labs && LAB_ACTIONS.includes(action)) return postLab(req, res, action, port);
+      return send(req, res, 404, 'not found\n', undefined, true);
     }
     if (!isBodyless) return send(req, res, 405, 'method not allowed\n', undefined, true);
+    if (labs && path === '/labs/open') return openLabs(req, res, port);
     if (path === '/') return send(req, res, 200, indexHtml(ws), 'text/html; charset=utf-8');
     if (path === '/lessons.json') return send(req, res, 200, JSON.stringify(lessonIndex(ws)), 'application/json');
     if (path === '/progress') return send(req, res, 200, progressHtml(progress(ws, { now: clock() })), 'text/html; charset=utf-8');
     if (path === '/progress.json') return send(req, res, 200, JSON.stringify(progress(ws, { now: clock() })), 'application/json');
-    const f = serveFile(ws, path, { titles });
+    const f = serveFile(ws, path, { titles, lab: labs ? (hasCookie(req, port) ? 'live' : 'open') : undefined });
     if (f.status !== 200) return send(req, res, f.status, f.status === 400 ? 'bad request\n' : 'not found\n');
     send(req, res, 200, f.body, f.type); // HEAD: node:http drops the body itself
   });

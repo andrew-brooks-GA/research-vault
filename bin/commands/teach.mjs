@@ -1,5 +1,6 @@
 // research-teach workspace verbs: record, attempt, lint and next (spec 12 "Workspace store").
 import { existsSync, readdirSync, readFileSync, writeFileSync, rmSync, statSync, lstatSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../lib/resolve.mjs';
@@ -10,11 +11,12 @@ import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
 import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft, exportWorkspace, writeExport } from '../lib/teach.mjs';
 import { hasVerdict } from '../lib/gate.mjs';
+import { readLabs } from '../lib/labs.mjs';
 import { isInsideVault } from '../lib/containment.mjs';
 import { lintWorkspace, proseMetrics, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [workspace]';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [--labs] [workspace]';
 
 const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
 const out = (s) => process.stdout.write(s + '\n');
@@ -191,9 +193,17 @@ function edges(ws) {
   return 0;
 }
 
-// Runs until killed: the returned promise settles only when the server closes.
-async function serve(ws, teachSchema, titles) {
-  const server = createServer(ws, { schema: teachSchema, titles });
+// Runs until killed: the returned promise settles only when the server closes. Spec 49 D4: with --labs, an invalid
+// labs/labs.json exits 2, and the lab address is printed once, here, and nowhere else.
+async function serve(ws, teachSchema, titles, labs) {
+  if (labs) {
+    try { readLabs(ws); } catch {
+      process.stderr.write('teach serve: labs/labs.json is invalid; run teach lint\n');
+      return 2;
+    }
+  }
+  const t = labs ? randomBytes(32).toString('hex') : undefined;
+  const server = createServer(ws, { schema: teachSchema, titles, labs, t, log: out });
   await new Promise((ok, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', ok); });
   const { port } = server.address();
   const file = join(ws, '.teach-serve.json');
@@ -201,6 +211,7 @@ async function serve(ws, teachSchema, titles) {
   process.on('exit', () => rmSync(file, { force: true }));
   for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0)); // exit handler removes the file
   out(`serving ${ws} at http://127.0.0.1:${port}/`);
+  if (labs) out(`labs: open http://127.0.0.1:${port}/labs/open?t=${t}`);
   await new Promise((ok) => server.on('close', ok));
   return 0;
 }
@@ -289,7 +300,7 @@ export async function run(args) {
       const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws });
       if (existsSync(vaultPath)) titles = Object.fromEntries(buildManifest(vaultPath).entries.map((e) => [e.id, e.title ?? e.id]));
     } catch { /* serve without titles */ }
-    return serve(ws, teachSchema, titles);
+    return serve(ws, teachSchema, titles, args.labs === true);
   }
   return usage();
 }

@@ -465,3 +465,39 @@ test('markdownHtml: headings, lists, fenced and inline code, tables and links, e
     '<p>[d](data:text/html,x) [c](\x01javascript:alert(1))</p>',
   ].join('\n'));
 });
+
+// Spec 49 D4: `teach serve --labs` prints the lab address once, after the serving line, and nowhere else.
+test('teach serve --labs prints the lab address once, reusable; .teach-serve.json and pages never hold t; an invalid labs.json exits 2', async () => {
+  const ws = copyFixture();
+  const file = join(ws, '.teach-serve.json');
+  const env = { ...process.env, RESEARCH_VAULT_PATH: fixtureVault() };
+  const child = spawn(process.execPath, [BIN, 'teach', 'serve', '--labs', ws], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout = '';
+  child.stdout.setEncoding('utf8');
+  await new Promise((resolve, reject) => {
+    child.stdout.on('data', (c) => { stdout += c; if (stdout.split('\n').length > 2) resolve(); });
+    child.on('exit', (code) => reject(new Error(`serve exited ${code} before serving`)));
+  });
+  try {
+    const m = /^serving .+ at http:\/\/127\.0\.0\.1:(\d+)\/\nlabs: open http:\/\/127\.0\.0\.1:\1\/labs\/open\?t=([0-9a-f]{64})\n$/.exec(stdout);
+    console.log(stdout.replace(/t=[0-9a-f]{64}/, 't=<64 hex>').trim());
+    assert.ok(m, stdout);
+    const [, port, t] = m;
+    const saved = readFileSync(file, 'utf8');
+    assert.deepEqual(JSON.parse(saved), { port: Number(port), pid: child.pid });
+    assert.ok(!saved.includes(t));
+    for (const p of ['/', '/lessons/0001-good.html', '/lessons.json', '/progress']) assert.ok(!(await req(Number(port), { path: p })).text.includes(t), p);
+    const first = await req(Number(port), { path: `/labs/open?t=${t}` });
+    const second = await req(Number(port), { path: `/labs/open?t=${t}` });
+    assert.deepEqual([first.status, second.status, second.headers['set-cookie']], [303, 303, first.headers['set-cookie']]);
+  } finally {
+    child.kill('SIGTERM');
+    await once(child, 'exit');
+  }
+  mkdirSync(join(ws, 'labs'));
+  writeFileSync(join(ws, 'labs', 'labs.json'), '{"version": 2}');
+  const bad = spawnSync(process.execPath, [BIN, 'teach', 'serve', '--labs', ws], { env, encoding: 'utf8', timeout: 10000 });
+  console.log(`invalid labs.json: exit ${bad.status} ${JSON.stringify(bad.stderr)}`);
+  assert.deepEqual([bad.status, bad.stdout, bad.stderr], [2, '', 'teach serve: labs/labs.json is invalid; run teach lint\n']);
+  assert.equal(existsSync(file), false);
+});

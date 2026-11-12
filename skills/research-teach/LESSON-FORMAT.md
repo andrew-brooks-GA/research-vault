@@ -27,7 +27,7 @@ Each block is an element with `data-block="<name>"`, normally a `<section>`. Ord
 | `example` | the output, read with me | tool | The probe's input and verbatim output, cited to its `snippet` and `experiment` |
 | `quiz` | check yourself | concept, diagnose, review | The quiz data block (below) |
 | `complete` | do it yourself | tool | The example's command with one part withheld: one `<pre>` command with `<mark aria-label="withheld">____</mark>` over that part, then one `<pre>` expected output |
-| `scaffold` | do it yourself | project | A completion task in the `complete` form over the reference solution |
+| `scaffold` | do it yourself | the mission's first project (not lint-checked) | A completion task in the `complete` form over the reference solution |
 | `step` | do it yourself | tool, project | One real-world action and its observable result, with the command to run when the action is one; a step with no command states its expected result, and what a mismatch means, in prose, never in a `<pre>` |
 | `connect` | say it back | concept | The terminal prompt, opening with exactly `Type your answer to Claude Code in the terminal, in a few sentences:`: say how the new term relates to two terms you already hold; the page names the terms and nothing of how they relate |
 | `sources` | sources | lesson, review, reference | The vault ids cited, with one marked `(recommended read)`; source anchors carry `href` (Citation anchors) |
@@ -71,6 +71,33 @@ Three safety rules bound the scripts; the first and third are plan rules, stated
 3. A check may wait, with a bound: a wait is a bounded poll of a read-only query, never a change.
 
 Judgment, not measured: for a Kubernetes environment, `run.sh` and the skill run `check.sh` under a read-only credential (a ServiceAccount with only read verbs), so a checker that mutates fails in the validation run rather than passing the lists.
+
+## Labs
+
+A lesson may carry one lab section, optional in any shape: an element whose `data-block` is `lab`, normally a `<section>`, with `aria-label="lab"` and `data-lab="<id>"`. It holds `<data class="lab-pin" value="<pin>"></data>`, a cited sentence or two on what the lab builds, and at least one `<pre>` of output from the author's run, cited to the experiment whose log holds that run.
+
+The id names an entry of the workspace's `labs/labs.json`, which holds exactly `"version": 1` and `labs`, a map from id to entry; a workspace with no `labs/labs.json` has no labs.
+
+- An id matches `^[a-z][a-z0-9-]{0,39}$`.
+- An entry has exactly `cost` (1 to 200 characters, none of them a control, line-separator or bidi character), `timeout` (whole seconds, 1 to 7200), `up` and `down`, and may have `env` (distinct names matching `^[A-Z_][A-Z0-9_]*$`), `checks` (at most 10, each exactly `script`, `sha256` and a `message` held to the rule of `cost`) and `verify`. `up`, `down` and `verify` are each exactly `{ "script", "sha256" }`.
+- A script path matches `^[A-Za-z0-9._/-]+$`, has no empty segment and none starting with `.`, and starts with `labs/`, `evidence/` or `lessons/files/`. That root must resolve inside the workspace, and the script inside its root, as a regular file that is not a symlink. `sha256` is the file's SHA-256 in 64 lowercase hex characters.
+
+The lab's pin, the value the section stores, is the SHA-256 hex of `JSON.stringify([id, entry])`, the entry's keys in the order `cost`, `timeout`, `env`, `checks`, `up`, `down`, `verify`, so it changes when any of them changes. The author writes the hashes and the pin by hand, from the values `teach lint` prints.
+
+`teach serve` adds to a served lesson, after the section's opening tag, when `labs/labs.json` is valid and names the id: a `<p class="lab-cost">` with the cost line, `<p>The author ran:</p>`, and one `<pre>` each for the `up` path, the `verify` path when there is one, and the `down` path. Under `teach serve --labs`, on a request without the lab cookie, it adds after them `<p class="lab-open">To run this lab from the page, open the lab address teach serve printed when it started.</p>`. No lab script runs in this version (docs/REFERENCE.md, `teach serve`).
+
+`teach lint` reads `labs/labs.json` and the scripts it names, and runs none of them:
+
+- `LAB_MANIFEST_INVALID` (`labs/labs.json`): one per problem with the manifest, the path and symlink rules included.
+- `LAB_SCRIPT_NOT_RUNNABLE` (`labs/labs.json`): a script without the owner executable bit, or whose first two bytes are not `#!`.
+- `LAB_HASH_MISMATCH` (`labs/labs.json`): `<path> changed: read the change, then copy sha256 <actual> into labs.json`, or `<path> cannot be read`.
+- `LAB_UNKNOWN` (the lesson): `lab section has no data-lab`, or `data-lab <id> is not in labs/labs.json`.
+- `LAB_PIN_STALE` (the lesson): `lab section has no lab-pin element; the lab's pin is <pin>`, or `the stored pin is <old>; the lab's pin is <new>`.
+- `LAB_SECTION_DUPLICATE` (the lesson): more than one opening tag whose `data-block` is `lab`, or one inside an HTML comment, since only the first is read, by the server and the claims gate alike, even inside a comment.
+- `LAB_OUTPUT_MISSING` (the lesson): no `<pre>` in the section, or no `experiment` entry cited in it.
+- `LAB_VERIFY_MISSING` (the lesson): a `project` lesson whose lab has no `verify`.
+
+`LAB_UNKNOWN`, `LAB_PIN_STALE` and `LAB_VERIFY_MISSING` are checked only while the manifest is valid.
 
 ## Terms
 
@@ -159,7 +186,7 @@ Before any probe or draft, write `evidence/NNNN/PLAN.md` for lesson NNNN, in six
 1. The win, one sentence. The first line names the mission criterion it serves.
 2. The fact to teach.
 3. The claims, one per line, each the sentence the probe must support.
-4. The probe: what to run and what output would support each claim, or `none: document claims` and, per claim, the entry and the passage that supports it. When the probe needs an environment, this part names where it comes from: the repo's lab tooling, an environment an earlier lesson built, or another environment with an `own environment: <reason>` line. When the binding has a `lab` block, `teach lint` reports the advisory `WARN_LAB_BYPASSED`, `line N: <string>; the binding's lab is <first docs path>`, once for each `.sh` file under the workspace's `evidence/` and `lessons/` trees that holds no non-comment, non-`echo` line containing a `uses` string and whose first non-comment line containing a `bypass` string, quoted strings read as empty, is line N. An `own environment: <reason>` line at the start of a line anywhere in `evidence/NNNN/PLAN.md` silences it for the files under `evidence/NNNN/` and `lessons/files/NNNN-`. It reads each line as written: a `bypass` string inside quotes is not seen, an unquoted `$(...)` and a heredoc body line are read like any other line, and a script a script calls is seen only when it is itself a `.sh` file under those two trees.
+4. The probe: what to run and what output would support each claim, or `none: document claims` and, per claim, the entry and the passage that supports it. When the probe needs an environment, this part names where it comes from: the repo's lab tooling, an environment an earlier lesson built, or another environment with an `own environment: <reason>` line. When the binding has a `lab` block, `teach lint` reports the advisory `WARN_LAB_BYPASSED`, `line N: <string>; the binding's lab is <first docs path>`, once for each `.sh` file under the workspace's `labs/`, `evidence/` and `lessons/` trees that holds no non-comment, non-`echo` line containing a `uses` string and whose first non-comment line containing a `bypass` string, quoted strings read as empty, is line N. An `own environment: <reason>` line at the start of a line anywhere in `evidence/NNNN/PLAN.md` silences it for the files under `evidence/NNNN/` and `lessons/files/NNNN-`. It reads each line as written: a `bypass` string inside quotes is not seen, an unquoted `$(...)` and a heredoc body line are read like any other line, and a script a script calls is seen only when it is itself a `.sh` file under those three trees.
 5. The step: the real-world action and its observable result.
 6. Elements, under an `## Elements` heading: the parts the learner must hold at once to understand this win, one per line, each marked `held` (a Floor term, an earlier lesson's term or tool, a learning record) or `new`. A lesson adds one `new` structure.
 

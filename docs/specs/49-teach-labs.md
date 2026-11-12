@@ -104,11 +104,13 @@ This spec reads the issue's lint line as `LAB_UNKNOWN`, `LAB_HASH_MISMATCH` and 
 **The lab address.** Two random values, each from `randomBytes(32)` (256 bits, 64 hex characters):
 - At start, `teach serve --labs` makes the address value `t` and prints `labs: open http://127.0.0.1:<port>/labs/open?t=<t>` once in its terminal. `t` is never written to `.teach-serve.json`, a page, a log line or a file.
 - `GET /labs/open?t=<t>[&next=/lessons/<id>.html]` compares `t` in constant time: lengths first, then `crypto.timingSafeEqual`.
-  - On a match, while `t` is unused, it makes the session value, voids `t`, and answers 303 to `next` (when `next` matches `^/lessons/<LESSON_ID_RE>\.html$`, else `/`), with `Set-Cookie: rv-labs-<port>=<session value>; HttpOnly; SameSite=Strict; Path=/`.
-  - A reused or wrong `t` is 403 and sets no cookie (F10, items X1 to X4).
+  - On a match it answers 303 to `next` (when `next` matches `^/lessons/<LESSON_ID_RE>\.html$`, else `/`), with `Set-Cookie: rv-labs-<port>=<session value>; HttpOnly; SameSite=Strict; Path=/`. The session value is made at the first match and kept for the life of the server, and nothing is voided: `t` stays valid while that server runs, so the learner opens the same address again after a browser restart or in a second browser.
+  - A wrong or missing `t` is 403 and sets no cookie (the first labs commit's runs: a wrong and an empty `t` each gave 403 with no `Set-Cookie`).
 - The lab routes compare the cookie with the session value, never with `t`. The cookie has no expiry and lasted only while the browser ran (F10).
-- After a browser restart, in a second browser, or when someone else used `t` first (the learner's open is then 403), the learner restarts `teach serve --labs`, which prints a new `t`. This spec does not offer a new `t` on request: a restart is the smaller design.
+- The address is reusable by the user's choice (2026-11-11). The token is the only thing that stops another local account; making it single-use only added protection against someone who reads `t` later, from `ps` or the browser's history (neither checked by a run) or a transcript, at the cost of a restart of `teach serve --labs` after every browser restart. A new `t` comes only with a restart.
 - Opened at the plain address, a lesson shows its lab with D3's steps and the `lab-open` line, and no buttons.
+
+**Framing.** Under `--labs` every response carries `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'`. A page on another `127.0.0.1` port is same-site, the browser sent the `SameSite=Strict` lab cookie to another `127.0.0.1` port the lab page fetched or framed, and on a POST from a frame on that port (F10); a page on another port framing a lesson was not run, and the headers are there in case it carries the cookie too, since once a lesson has buttons such a page could frame a live lesson and trick a click. Without `--labs` no response carries either header.
 
 **Routes.** `POST /lab/run`, `/lab/stop`, `/lab/reset` and `/lab/verify`. The body is exactly `{"lab": "<id>"}`. No route takes a path, a command, an argument or an environment value. No `GET` starts anything.
 
@@ -203,26 +205,26 @@ Rejected: inlining script text (open question 1).
   A new section, "Lab runs (`teach serve --labs`)", states the lab address and cookie, D4's checks, D5's process rules, D6 with what is not promised, and the threat model below.
 - **`docs/REFERENCE.md`.** The `teach` row (REFERENCE.md 193): `serve [--labs]`, the lab address, the routes and replies, the `LAB_*` codes, and the export's two refusals.
 - **The research-teach skill.**
-  - Section 3: a lab is `labs/labs.json` plus its scripts, the three roots, pinning by hand, and wrappers for scripts that take arguments or call `sudo`.
+  - Section 3: a lab is `labs/labs.json` plus its scripts, the three roots, pinning by hand, and wrappers for scripts that take arguments.
   - Section 4: the lab section, and deleting the workspace's `assets/quiz.js` after the upgrade so `cp -n` delivers the widget (SKILL.md 84 to 88).
-  - Section 5: start `teach serve --labs` only for a lab lesson on a single-user machine, and open it through the lab address with `next`. The skill starts a new `teach serve --labs` rather than reuse one found through `.teach-serve.json`, for which it has no `t`.
-- **`LESSON-FORMAT.md`.** The `lab` row in Blocks, and a Labs section: markup, manifest, lint codes.
-- **`README-FORMAT.md` and `teach readme`.** A manifest lab gets its own `## Labs` row. `teach readme` prints, after the directory rows, one row per manifest lab: `| <ids of lessons whose lab section names it> | labs/labs.json: <id> | <cost>; env: <names or none> |  |`. The rule text says such a lab also runs from the page under `teach serve --labs`.
+  - Section 5: start `teach serve --labs` only for a lab lesson on a single-user machine, and open it through the lab address with `next`. The skill may reuse a running `teach serve --labs` only while it still has that server's address; otherwise it restarts it, since `.teach-serve.json` does not hold `t`.
+- **`LESSON-FORMAT.md`.** A `## Labs` section (markup, manifest, lint codes) and no row in the Blocks table: a row would need a `lesson.css` rule and a `reading.html` entry, which the existing tests of the Blocks labels require of every row.
+- **`README-FORMAT.md` and `teach readme`.** A manifest lab gets its own `## Labs` row. `teach readme` prints, after the directory rows, one row per manifest lab: `| <ids of lessons whose lab section names it> | labs/labs.json: <id> | <cost>; env: <names or none> |  |`.
 - **`scripts/deps.mjs` COUPLINGS** (deps.mjs 28).
   - quiz.js and teach.mjs: the paths, the body, the `lab: ` lines, `data-lab-live`, `data-lab-verify`;
   - `LESSON-FORMAT.md` and `bin/lib/labs.mjs`: the manifest keys, limits, roots and patterns;
   - `README-FORMAT.md` and teach.mjs: the manifest row;
   - `SECURITY.md` and `bin/lib/labs.mjs`: the constants, the env allowlist, the cookie name.
-- **One new file**, `bin/lib/labs.mjs`, holds the reader, the pin, the redactor and the runner.
+- **One new module**, `bin/lib/labs.mjs`, holds the reader, the pin, the redactor and the runner.
 
 ## Threat model
 
 Who can reach the server, what each can make it do, and what stops them:
 
 1. **The learner's browser, after the lab address.** It holds the cookie, so it can Run, Stop, Reset and Check my work on any lab some lesson stores the current pin for, naming only an id. That includes a lesson with no verdict: the server does not read the ledger, so an author can run an ungated lesson's lab from the page.
-2. **A page from another origin in the same browser** (another site, another `127.0.0.1` port, or a rebound name). A JSON `POST` is preflighted and gets 405. A `text/plain` or `no-cors` `POST` carries its own `Origin` and fails check 3, even when the browser attaches the lab cookie, as it did for a page on another port (F4, F10). A rebound name fails check 1. Nothing runs, and no reply can be read. Only headless Chrome 157 was run.
-3. **Another local process or account.** It can set `Host` and `Origin` (F3), but without the session value it fails check 4: it can neither run a lab nor read a run's output, which reaches only the requester. It can read the served pages. This spec assumes, without a run, that another account can open a `127.0.0.1` port. The single-use address does not stop:
-   - anyone who reads `t` before the learner uses it and opens it first: from the terminal where `teach serve` printed it, the command line of an `open` call that passed it (likely visible in `ps`; not checked by a run), a background task's output file, or an agent's transcript. They get the session, and the learner's open is then 403, after which the learner restarts `teach serve --labs` (F10, item X4);
+2. **A page from another origin in the same browser** (another site, another `127.0.0.1` port, or a rebound name). A JSON `POST` is preflighted and gets 405. A `text/plain` or `no-cors` `POST` carries its own `Origin` and fails check 3, even when the browser attaches the lab cookie, as it did for a page on another port (F4, F10). A rebound name fails check 1. Nothing runs, and no reply can be read. Only headless Chrome 157 was run. A page on another `127.0.0.1` port is same-site, and the browser sent the lab cookie across ports in the F10 runs; under `--labs` every response carries the two headers meant to forbid framing (D4), though no browser was run against them (Not established).
+3. **Another local process or account.** It can set `Host` and `Origin` (F3), but without the session value it fails check 4: it can neither run a lab nor read a run's output, which reaches only the requester. It can read the served pages. This spec assumes, without a run, that another account can open a `127.0.0.1` port. The address does not stop:
+   - anyone who reads `t` from the terminal where `teach serve` printed it, the command line of an `open` call that passed it (likely visible in `ps`; not checked by a run), a background task's output file, an agent's transcript or the browser's history (not checked): they can open the address, and get the session, while that server runs;
    - a process that can read the browser's cookie store;
    - a server on another `127.0.0.1` port that the browser requests while the cookie is set, because the browser sent the cookie there (F10).
 
@@ -241,7 +243,7 @@ Who can reach the server, what each can make it do, and what stops them:
 - **A stopped or timed-out `up` leaves part of an environment**; `down` must handle that.
 - **Leaving the page stops `up`**, even in the middle of a long step (F1).
 - **A workspace's copied `quiz.js` has no widget** until it is copied again (D9).
-- **`t` is readable until it is used**: in the terminal, an `open` command line, a background output file or a transcript, and probably the browser's history (not checked). Whoever uses it first gets the session (F10). The browser sent the cookie to another `127.0.0.1` port the lab page fetched or framed (F10).
+- **`t` is readable while the server runs**: in the terminal, an `open` command line, a background output file or a transcript, and probably the browser's history (not checked). Whoever reads it can open the address until that server stops. The browser sent the cookie to another `127.0.0.1` port the lab page fetched or framed (F10).
 - **Redaction has holes** (D6), and a declared value under 8 characters cannot be used.
 
 ## Not established
@@ -253,6 +255,7 @@ Who can reach the server, what each can make it do, and what stops them:
 - The real lab scripts under `SIGTERM` (none was run).
 - A process that `SIGKILL` cannot end, which `KILL_WAIT` is for.
 - Another account opening a `127.0.0.1` port.
+- How a browser treats `X-Frame-Options: DENY` and `frame-ancestors 'none'` on these pages; no browser was run against them.
 - `bash -c` as a way to run hashed bytes.
 
 ## Open questions
@@ -278,7 +281,7 @@ The tests run on workspaces built in a temp directory per test. Each has `MISSIO
    - Stop gives `lab: stopped`, and `process.kill(-pid, 0)` throws `ESRCH`.
    - Reset while `up` runs is 409; after Stop, Reset runs `down`, which removes `up`'s file, and ends `lab: exit 0`.
    - A client that aborts during `up` leaves no process of the group; one that aborts during `down` does not stop it.
-   - Browser side, with `renderLab` in the document test/quiz.test.mjs builds for its widget tests and a stub `fetch` on `globalThis` (quiz.test.mjs 159 to 166) returning a reply whose body yields three chunks:
+   - Browser side, with `renderLab` and a stub `fetch` on `globalThis`, as test/quiz.test.mjs's widget tests use (quiz.test.mjs 159 to 166), returning a reply whose body yields three chunks:
      - the output `<pre>` gains each chunk through `textContent`;
      - Run and Reset are disabled and Stop is enabled while the reply is open, and the reverse after; Stop is disabled while a Reset reply is open;
      - the status line becomes the final line, not an earlier `> lab: verify pass` line; a reply whose body ends without a final `lab: ` line gives the ended-early status.
@@ -289,7 +292,8 @@ The tests run on workspaces built in a temp directory per test. Each has `MISSIO
 
    In each, the file `up.sh` would write does not exist. Also:
    - another `Host`: 403; no `--labs`: 404;
-   - no cookie, `t` as the cookie, a wrong `t`, or `t` used a second time at `/labs/open`: 403;
+   - no cookie, `t` as the cookie, or a wrong `t` at `/labs/open`: 403; `t` a second time: 303 with the same cookie;
+   - under `--labs` every response carries the two framing headers; without it, none;
    - no lesson storing the pin: 409; a short env value: 409, naming the variable and not the value;
    - an extra body key: 400;
    - a symlinked root, a symlinked script, or a path outside the pattern: `LAB_MANIFEST_INVALID`, and 500 at the route.

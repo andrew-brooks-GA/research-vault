@@ -181,6 +181,14 @@ export const COUPLINGS = [
   ['.gitattributes', 'scripts/check-encoding.mjs', 'eol=lf keeps the CR gate green on Windows'],
   ['bin/commands/teach.mjs', 'docs/REFERENCE.md', "the teach row states next's readme: line, its three values and when each is printed, and teach attempt import's exit 2 lines, cannot read and over 1 MiB, and teach export's exit 2 lines (no vault, inside the vault or a workspace directory, not an empty directory), its stderr refusal line, its cannot write line and its wrote line", 'readme: ungated'],
   ['bin/commands/teach.mjs', 'skills/research-teach/README-FORMAT.md', "the Gated like a lesson rule states next's readme: line and its three values", 'readme: ungated'],
+  ['bin/lib/labs.mjs', 'skills/research-teach/LESSON-FORMAT.md', "the Labs section states readLabs's manifest keys, limits (cost 200, timeout 7200, checks 10), LAB_TEXT_BAD_RE as words, the three roots, the id, env and path patterns, and labPin's key order", '^[A-Za-z0-9._/-]+$'],
+  ['bin/lib/lesson.mjs', 'skills/research-teach/LESSON-FORMAT.md', 'the Labs section names the eight LAB_* codes and quotes their messages', 'read the change, then copy sha256'],
+  ['bin/lib/teach.mjs', 'skills/research-teach/LESSON-FORMAT.md', "the Labs section quotes labStepsHtml's elements and LAB_OPEN_LINE", 'To run this lab from the page, open the lab address teach serve printed when it started.'],
+  ['bin/lib/teach.mjs', 'skills/research-teach/README-FORMAT.md', "readmeDraft's manifest row (labs/labs.json: <id>, <cost>; env: <names or none>, an escaped |) is stated", 'labs/labs.json: '],
+  ['bin/lib/labs.mjs', 'SECURITY.md', 'the Lab runs section states LAB_BODY_MAX, the cookie name, LAB_ID_RE, the scripts each action hashes and every labRefusal body', 'rv-labs-'],
+  ['bin/lib/labs.mjs', 'docs/REFERENCE.md', "the teach row quotes labRefusal's 501 and stop bodies", 'lab runs are not built yet'],
+  ['bin/lib/teach.mjs', 'SECURITY.md', "createServer's lab address flow (303, the Set-Cookie attributes, next, reusable for the life of the server), the two framing headers under --labs and the lab POST checks 1 to 5 are stated", 'HttpOnly; SameSite=Strict; Path=/'],
+  ['bin/commands/teach.mjs', 'SECURITY.md', 'the labs: open line and the exit 2 on an invalid labs.json are quoted', '/labs/open?t='],
 ];
 
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

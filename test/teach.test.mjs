@@ -15,7 +15,7 @@ const BIN = join(ROOT, 'bin', 'research-vault.mjs');
 const FIX = join(ROOT, 'test', 'fixtures', 'teach');
 const VAULT = fixtureVault();
 const TODAY = new Date().toISOString().slice(0, 10);
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [workspace]\n';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [--labs] [workspace]\n';
 
 const copyFixture = () => {
   const dir = mkdtempSync(join(tmpdir(), 'rv-teach-'));

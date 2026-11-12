@@ -12,6 +12,7 @@ import {
   extractQuizJson, extractCites, serveFile, validateEntry, ENUM_CODES, LESSON_ID_RE, RECORD_ID_RE,
 } from './teach.mjs';
 import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
+import { readLabs, labPin, lessonLab, sha256, LAB_MANIFEST } from './labs.mjs';
 
 export const QUIZ_MIN_ITEMS = 3;
 export const QUIZ_SPREAD_MAX = 1.6;
@@ -70,7 +71,7 @@ export function parseBlocks(html) {
       depth += t[1] ? -1 : 1;
       if (depth === 0) { end = t.index; break; }
     }
-    if (!blocks.has(name)) blocks.set(name, { attrs, html: html.slice(start, end) });
+    if (!blocks.has(name)) blocks.set(name, { attrs, html: html.slice(start, end), start });
   }
   return blocks;
 }
@@ -436,15 +437,15 @@ function checkMutates(line) {
   }
 }
 
-// Issue 60: with the binding's `lab` block, each `.sh` under evidence/ and lessons/ is on the lab when a
+// Issue 60: with the binding's `lab` block, each `.sh` under labs/, evidence/ and lessons/ is on the lab when a
 // non-comment, non-echo line holds a `uses` string (raw line, since a library is sourced through a quoted path);
 // else the first non-comment line holding a `bypass` string (quoted strings read as empty) is one advisory finding,
 // unless evidence/NNNN/PLAN.md (NNNN from evidence/NNNN/ or lessons/files/NNNN-) has an `own environment: <reason>` line.
 // Reads each line as written: a quoted `bypass` string is blanked, an unquoted $(...) and a heredoc body are
-// read as lines, and a called script counts only when it is itself a .sh under the two trees.
+// read as lines, and a called script counts only when it is itself a .sh under the three trees.
 function lintLab(ws, lab) {
   const findings = [];
-  for (const d of ['evidence', 'lessons']) {
+  for (const d of ['labs', 'evidence', 'lessons']) {
     if (!existsSync(join(ws, d))) continue;
     for (const rel of readdirSync(join(ws, d), { recursive: true }).filter((f) => f.endsWith('.sh') && statSync(join(ws, d, f), { throwIfNoEntry: false })?.isFile()).sort()) {
       const file = `${d}/${rel.split(/[\\/]/).join('/')}`;
@@ -459,6 +460,51 @@ function lintLab(ws, lab) {
     }
   }
   return findings;
+}
+
+// Spec 49 D3: labs/labs.json, never run. LAB_MANIFEST_INVALID per problem readLabs reports; else for each script the
+// manifest names, LAB_SCRIPT_NOT_RUNNABLE (no owner executable bit, or no #! first line) and LAB_HASH_MISMATCH.
+function lintLabManifest(ws) {
+  const findings = [];
+  const add = (code, message) => findings.push({ code, file: LAB_MANIFEST, message, warning: false });
+  let labs;
+  try { ({ labs } = readLabs(ws)); } catch (e) { for (const p of e.problems ?? [e.message]) add('LAB_MANIFEST_INVALID', p); return findings; }
+  const seen = new Set();
+  for (const lab of Object.values(labs)) {
+    for (const c of [...(lab.checks ?? []), lab.up, lab.down, ...(lab.verify ? [lab.verify] : [])]) {
+      if (seen.has(`${c.script}\0${c.sha256}`)) continue;
+      seen.add(`${c.script}\0${c.sha256}`);
+      let bytes;
+      try { bytes = readFileSync(join(ws, c.script)); } catch { add('LAB_HASH_MISMATCH', `${c.script} cannot be read`); continue; }
+      if (!(statSync(join(ws, c.script)).mode & 0o100)) add('LAB_SCRIPT_NOT_RUNNABLE', `${c.script} has no owner executable bit`);
+      if (bytes.subarray(0, 2).toString('latin1') !== '#!') add('LAB_SCRIPT_NOT_RUNNABLE', `${c.script} does not start with #!`);
+      const actual = sha256(bytes);
+      if (actual !== c.sha256) add('LAB_HASH_MISMATCH', `${c.script} changed: read the change, then copy sha256 ${actual} into labs.json`);
+    }
+  }
+  return findings;
+}
+
+// Spec 49 D3: a lesson's lab section. LAB_SECTION_DUPLICATE and LAB_OUTPUT_MISSING always; with a valid manifest,
+// LAB_UNKNOWN, LAB_PIN_STALE and, for a project lesson, LAB_VERIFY_MISSING.
+const LAB_OPEN_RE = /<[a-z][a-z0-9]*\b[^>]*\bdata-block\s*=\s*(["'])lab\1[^>]*>/i;
+function labSectionFindings(ws, raw, blocks, shape, entries, add) {
+  const opens = (raw.match(new RegExp(LAB_OPEN_RE.source, 'gi')) ?? []).length;
+  if (opens > 1) add('LAB_SECTION_DUPLICATE', `${opens} opening tags whose data-block is lab; a lesson has one lab section`);
+  if ([...raw.matchAll(/<!--[\s\S]*?-->/g)].some((m) => LAB_OPEN_RE.test(m[0]))) add('LAB_SECTION_DUPLICATE', 'a lab section inside an HTML comment');
+  const section = blocks.get('lab');
+  if (!section) return;
+  if (!/<pre\b/i.test(section.html)) add('LAB_OUTPUT_MISSING', "lab section has no <pre> of the author's run");
+  if (!extractCites(section.html).some((c) => entries.find((e) => e.id === c)?.type === 'experiment')) add('LAB_OUTPUT_MISSING', 'lab section cites no experiment entry');
+  let labs;
+  try { ({ labs } = readLabs(ws)); } catch { return; } // LAB_MANIFEST_INVALID says why
+  const l = lessonLab(raw);
+  if (!l.id) return add('LAB_UNKNOWN', 'lab section has no data-lab');
+  if (!Object.hasOwn(labs, l.id)) return add('LAB_UNKNOWN', `data-lab ${l.id} is not in ${LAB_MANIFEST}`);
+  const pin = labPin(l.id, labs[l.id]);
+  if (l.pin === null) add('LAB_PIN_STALE', `lab section has no lab-pin element; the lab's pin is ${pin}`);
+  else if (l.pin !== pin) add('LAB_PIN_STALE', `the stored pin is ${l.pin}; the lab's pin is ${pin}`);
+  if (shape === 'project' && !labs[l.id].verify) add('LAB_VERIFY_MISSING', `lab ${l.id} has no verify; a project lesson's lab needs one`);
 }
 
 export function lintLesson(filePath, ctx) {
@@ -528,6 +574,7 @@ export function lintLesson(filePath, ctx) {
   }
 
   if (cls !== 'reference' && blocks.has('quiz')) quizFindings(quiz, cls, ws, add);
+  if (cls !== 'reference' && LAB_OPEN_RE.test(raw)) labSectionFindings(ws, raw, blocks, shape, ctx.entries, add);
 
   if (cls === 'lesson') {
     const html = raw;
@@ -868,6 +915,7 @@ export function lintWorkspace(workspaceDir, ctx) {
   const findings = ['lessons', 'reference'].flatMap((d) =>
     listDir(join(workspaceDir, d), '.html').flatMap((f) => lintLesson(join(workspaceDir, d, f), c)));
   findings.push(...lintStore(workspaceDir, c));
+  findings.push(...lintLabManifest(workspaceDir));
   if (c.lab) findings.push(...lintLab(workspaceDir, c.lab));
   if (statSync(join(workspaceDir, 'README.md'), { throwIfNoEntry: false })?.isFile()) findings.push(...lintReadme(workspaceDir, c));
   const path = readPath(workspaceDir);
