@@ -1,6 +1,6 @@
 /* Lesson and reference doc styles. Plain CSS, loaded by lessons as ../assets/lesson.css.
    Light and dark follow the OS (prefers-color-scheme); <html data-theme="light|dark"> forces one.
-   Wide screens get two columns (fact beside example, quiz beside step); narrow screens stack. */
+   Wide screens get two columns (quiz beside step; everything else spans, fact above example); narrow screens stack. */
 :root {
   color-scheme: light dark;
   --bg: #f6f7fa; --card: #ffffff; --ink: #1d1d1f; --muted: #5b6270; --rule: #e3e5ea;
@@ -63,7 +63,7 @@ table.progress th { color: var(--muted); font-size: 0.78rem; text-transform: upp
 .timeline { padding-left: 1.5rem; } .timeline li { margin: 0.35rem 0; }
 
 /* Blocks: one labelled card per data-block. */
-[data-block] { position: relative; margin: 0; padding: 2rem 1.4rem 1.2rem; background: var(--card); border: 1px solid var(--rule); border-left: 5px solid #ccc; border-radius: 10px; min-width: 0; }
+[data-block] { position: relative; margin: 0; padding: 2rem 1.4rem 1.2rem; background: var(--card); border: 1px solid var(--rule); border-left: 5px solid var(--rule); border-radius: 10px; min-width: 0; }
 /* Prose fills its block at every width (the learner's call, 2026-11-03, over the measure spec 22 set). */
 [data-block]::before { content: attr(data-block); position: absolute; top: 0.65rem; left: 1.4rem; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 [data-block="mission"] { border-left-color: var(--c-mission); font-size: 1.08em; }

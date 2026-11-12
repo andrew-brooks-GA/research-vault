@@ -38,3 +38,19 @@ test('gate fixtures carry a gold verdict per draft', () => {
   assert.ok(drafts.length >= 2, `found ${drafts.length} drafts`);
   for (const d of drafts) assert.ok(VERDICTS.includes(gold[d]), `${d}: gold ${gold[d]}`);
 });
+
+test('claims-reviewer may open the image files the evidence lists, and only those (issue 58)', () => {
+  const printed = readFileSync(join(ROOT, 'bin', 'lib', 'gate.mjs'), 'utf8').match(/`(image:) \$\{/)[1];
+  const { body } = agent();
+  assert.ok(body.includes(`\`${printed} <path> sha256:<hash>\``), 'agent body lacks the image line format');
+  assert.match(body, /open only those image files with Read/);
+  assert.match(body, /alt text, caption and nearest citing paragraph/);
+});
+
+test('claims-reviewer description names the image files and the body defines the img: unit (issue 58)', () => {
+  const { data, body } = agent();
+  assert.match(data.description, /Reads only the draft, the vault and the image files its evidence lists/);
+  assert.match(body, /An `img:<src>` unit is one `<img>`/);
+  assert.match(body, /those claims are `unsupported`/);
+  assert.match(body, /Match the unit's `<src>`.*a trailing `#` on the unit name marks a repeated `src`/);
+});

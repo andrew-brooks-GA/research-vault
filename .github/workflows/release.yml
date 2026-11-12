@@ -1,0 +1,23 @@
+name: release
+# When a push to master changes package.json, tag v<version> and create the GitHub release
+# from that version's CHANGELOG.md section, unless the release exists. Main repo only.
+on:
+  push:
+    branches: [master]
+    paths: [package.json]
+permissions:
+  contents: write
+jobs:
+  release:
+    if: github.repository == 'andrew-brooks-GA/research-vault'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if gh release view "v$v" >/dev/null 2>&1; then echo "v$v exists"; exit 0; fi
+          awk -v v="$v" 'index($0, "## [" v "]") == 1 { on = 1; next } /^## \[/ { on = 0 } on' CHANGELOG.md > notes.md
+          test -s notes.md
+          gh release create "v$v" --target "$GITHUB_SHA" --title "v$v" --notes-file notes.md

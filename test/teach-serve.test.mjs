@@ -1,16 +1,17 @@
 // `teach serve`: host, origin, content-type, body-size and path limits (spec 12 "Serving and recording").
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, existsSync, writeFileSync, chmodSync, renameSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { request } from 'node:http';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { fixtureVault } from './helpers.mjs';
 import { createServer, ATTEMPT_BODY_MAX } from '../bin/lib/teach.mjs';
-import { footnoteCitations } from '../bin/lib/teach.mjs';
+import { resultsFile } from '../skills/research-teach/assets/quiz.js';
+import { footnoteCitations, markdownHtml } from '../bin/lib/teach.mjs';
 import { loadTeachSchema } from '../bin/lib/schema.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -231,6 +232,131 @@ test('POST /attempt rejects foreign Origin, wrong Content-Type, oversized body (
   }
 });
 
+// Spec 48 Tests item 2, on a workspace built here: two lessons with quizzes, the directory named learn-ws (its key).
+const quizLesson = (ws, id, correct) => writeFileSync(join(ws, 'lessons', `${id}.html`),
+  `<!doctype html><html><head><title>${id}</title></head><body><h1>${id}</h1>\n<section data-block="quiz"><script type="application/json" data-quiz>${
+    JSON.stringify({ items: correct.map((c, i) => ({ q: `q${i}`, options: ['a', 'b', 'c'], correct: c, why: ['1', '2', '3'] })) })}</script></section></body></html>\n`);
+function importWorkspace() {
+  const ws = join(mkdtempSync(join(tmpdir(), 'rv-teach-import-')), 'learn-ws');
+  mkdirSync(join(ws, 'lessons'), { recursive: true });
+  writeFileSync(join(ws, 'MISSION.md'), '# Mission\n\n## Success looks like\n\n- One\n');
+  quizLesson(ws, '0001-one', [0, 1]);
+  quizLesson(ws, '0002-two', [2, 2, 0]);
+  return ws;
+}
+const AT = '2026-10-26T20:57:00.690Z';
+const importCli = (file, ws) => spawnSync(process.execPath, [BIN, 'teach', 'attempt', 'import', file, ws], { encoding: 'utf8' });
+const files = (ws) => (existsSync(join(ws, 'attempts')) ? readdirSync(join(ws, 'attempts')).sort() : []);
+const resultsAt = (ws, name, text) => { const f = join(dirname(ws), name); writeFileSync(f, text); return f; };
+
+test('teach attempt import writes what POST /attempt writes at the same clock, skips a second import, and reports changed lessons (spec 48)', async () => {
+  const ws = importWorkspace();
+  const one = { lesson: '0001-one', answers: [0, 0], at: AT, total: 2, wrong: [1] };
+  const two = { lesson: '0002-two', answers: [2, 2, 1], at: '2026-10-26T21:00:05.001Z', total: 3, wrong: [2] };
+  const r = importCli(resultsAt(ws, 'r.json', resultsFile('learn-ws', [one, two])), ws);
+  console.log(r.stdout);
+  assert.equal(r.stderr, '');
+  assert.equal(r.stdout, 'recorded a-20261026-205700-0001: 1/2\nrecorded a-20261026-210005-0002: 2/3\n');
+  assert.equal(r.status, 0);
+
+  // The same answers posted to teach serve with its clock fixed at `at` write the same bytes.
+  const ws2 = importWorkspace();
+  const server = createServer(ws2, { schema: SCHEMA, now: () => new Date(AT) });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const p = await json(server.address().port, JSON.stringify({ lesson: one.lesson, answers: one.answers }));
+    assert.equal(p.status, 200);
+  } finally { server.close(); }
+  assert.deepEqual(files(ws2), ['a-20261026-205700-0001.md']);
+  assert.equal(readFileSync(join(ws, 'attempts', 'a-20261026-205700-0001.md'), 'utf8'), readFileSync(join(ws2, 'attempts', 'a-20261026-205700-0001.md'), 'utf8'));
+
+  // A second import of the same file writes nothing.
+  const again = importCli(join(dirname(ws), 'r.json'), ws);
+  assert.equal(again.stdout, 'skipped a-20261026-205700-0001: already recorded\nskipped a-20261026-210005-0002: already recorded\n');
+  assert.equal(again.status, 0);
+  assert.equal(files(ws).length, 2);
+
+  // atSecond(a, s): a copy of the attempt at second s of 2026-10-25T22:00. An answer out of range for the current lesson: changed, the other attempt written, exit 1.
+  const atSecond = (a, s) => ({ ...a, at: `2026-10-25T22:00:0${s}.000Z` });
+  const out = importCli(resultsAt(ws, 'out.json', resultsFile('learn-ws', [atSecond({ ...one, answers: [0, 9] }, 1), atSecond(two, 2)])), ws);
+  assert.equal(out.stdout, 'changed 0001-one: browser 1/2, now -/2\nrecorded a-20261025-220002-0002: 2/3\n');
+  assert.equal(out.status, 1);
+
+  // A changed quiz (item 1's answer is now 0): changed with both scores, the other attempt written, exit 1.
+  quizLesson(ws, '0001-one', [0, 0]);
+  const ch = importCli(resultsAt(ws, 'ch.json', resultsFile('learn-ws', [atSecond(one, 3), atSecond(two, 4)])), ws);
+  assert.equal(ch.stdout, 'changed 0001-one: browser 1/2, now 2/2\nrecorded a-20261025-220004-0002: 2/3\n');
+  assert.equal(ch.status, 1);
+  assert.equal(files(ws).length, 4);
+
+  // Structural errors write nothing: a non-integer answer, another workspace, a later `at`, extra keys, not JSON.
+  const n = files(ws).length;
+  const refused = [
+    [resultsFile('learn-ws', [atSecond(two, 5), atSecond({ ...one, answers: [0, 1.5] }, 6)]), 'attempt 2: answers is not an array of non-negative integers\n'],
+    [resultsFile('other-ws', [atSecond(two, 7)]), 'file: workspace "other-ws" is not this workspace\'s "learn-ws"\n'],
+    [resultsFile('learn-ws', [{ ...two, at: '2999-01-01T00:00:00.000Z' }]), 'attempt 1: at "2999-01-01T00:00:00.000Z" is later than this machine\'s clock\n'],
+    [JSON.stringify({ format: 'research-vault-attempts', version: 1, workspace: 'learn-ws', attempts: [{ ...atSecond(two, 8), x: 1 }], note: '' }),
+      'file: keys must be exactly format, version, workspace, attempts\nattempt 1: keys must be exactly lesson, answers, at, total, wrong\n'],
+    [JSON.stringify({ format: 'research-vault-attempts', version: 2, workspace: 'learn-ws', attempts: [] }),
+      'file: version 2 is not 1\nfile: attempts is not a non-empty array\n'],
+    [resultsFile('learn-ws', [{ ...atSecond(two, 9), lesson: '0009-gone' }, { ...atSecond(two, 9), lesson: '<b>', at: 'yesterday' }]),
+      'attempt 1: no lesson "0009-gone"\nattempt 2: lesson "<b>" is not a lesson id\nattempt 2: at "yesterday" is not a toISOString time\n'],
+    ['{"format": ', 'file: not JSON\n'],
+  ];
+  for (const [text, want] of refused) {
+    const x = importCli(resultsAt(ws, 'bad.json', text), ws);
+    assert.equal(x.stdout, want);
+    assert.equal(x.status, 1);
+  }
+  assert.equal(files(ws).length, n);
+
+  // Exit 2: no file argument, a file that cannot be read, a file over 1 MiB.
+  assert.equal(spawnSync(process.execPath, [BIN, 'teach', 'attempt', 'import'], { encoding: 'utf8', cwd: ws }).status, 2);
+  const missing = importCli(join(dirname(ws), 'nope.json'), ws);
+  assert.equal(missing.status, 2);
+  assert.match(missing.stderr, /^teach attempt import: cannot read .*nope\.json \(ENOENT\)\n$/);
+  const big = importCli(resultsAt(ws, 'big.json', ' '.repeat(1024 * 1024 + 1)), ws);
+  assert.equal(big.status, 2);
+  assert.match(big.stderr, /is over 1 MiB\n$/);
+  assert.equal(files(ws).length, n);
+});
+
+// Review of spec 48 commit 1: every attempt is decided before the first write, a value too deep to print is named,
+// a lesson with no quiz that parses is a changed lesson, and characters JSON.stringify leaves raw are escaped.
+test('teach attempt import: a deeply nested value, a lesson with no quiz that parses, and escaped characters (spec 48)', () => {
+  const ws = importWorkspace();
+  const good = { lesson: '0001-one', answers: [0, 1], at: '2026-10-25T10:00:00.000Z', total: 2, wrong: [] };
+  const deep = '['.repeat(200000) + ']'.repeat(200000);
+  const head = '{"format":"research-vault-attempts","version":1,"workspace":';
+  const deepWrong = `${head}"learn-ws","attempts":[${JSON.stringify(good)},{"lesson":"0002-two","answers":[2,2,0],"at":"2026-10-25T10:00:01.000Z","total":3,"wrong":${deep}}]}`;
+  const r = importCli(resultsAt(ws, 'deep.json', deepWrong), ws);
+  assert.equal(r.stderr, '');
+  assert.equal(r.stdout, 'recorded a-20261025-100000-0001: 2/2\nchanged 0002-two: browser 2/3, now 3/3\n');
+  assert.equal(r.status, 1);
+  assert.deepEqual(files(ws), ['a-20261025-100000-0001.md']);
+  const deepWs = importCli(resultsAt(ws, 'deepws.json', `${head}${deep},"attempts":[]}`), ws);
+  assert.equal(deepWs.stdout, 'file: workspace an array is not this workspace\'s "learn-ws"\nfile: attempts is not a non-empty array\n');
+  assert.equal(deepWs.status, 1);
+
+  // A lesson whose quiz block is gone, and one whose quiz JSON no longer parses: changed, now -/0, the rest written.
+  writeFileSync(join(ws, 'lessons', '0003-gone.html'), '<!doctype html><html><body><p>No quiz now.</p></body></html>\n');
+  writeFileSync(join(ws, 'lessons', '0004-broken.html'), '<html><body><section data-block="quiz"><script type="application/json" data-quiz>{nope</script></section></body></html>\n');
+  const noQuiz = importCli(resultsAt(ws, 'noquiz.json', resultsFile('learn-ws', [
+    { lesson: '0003-gone', answers: [0], at: '2026-10-25T10:00:02.000Z', total: 1, wrong: [] },
+    { lesson: '0004-broken', answers: [0], at: '2026-10-25T10:00:03.000Z', total: 1, wrong: [0] },
+    { ...good, at: '2026-10-25T10:00:04.000Z' },
+  ])), ws);
+  assert.equal(noQuiz.stdout, 'changed 0003-gone: browser 1/1, now -/0\nchanged 0004-broken: browser 0/1, now -/0\nrecorded a-20261025-100004-0001: 2/2\n');
+  assert.equal(noQuiz.status, 1);
+  assert.equal(files(ws).length, 2);
+
+  // JSON.stringify escapes the quote and ESC; DEL, C1 controls, bidi marks and U+2028 come out as \uXXXX too.
+  const esc = importCli(resultsAt(ws, 'esc.json', resultsFile('ws\u001b"\u007f\u009b\u200e\u202e\u2028\u2066x', [good])), ws);
+  assert.equal(esc.stdout, 'file: workspace "ws\\u001b\\"\\u007f\\u009b\\u200e\\u202e\\u2028\\u2066x" is not this workspace\'s "learn-ws"\n');
+  assert.equal(files(ws).length, 2);
+});
+
 test('serve writes and removes .teach-serve.json', async () => {
   const ws = copyFixture();
   const file = join(ws, '.teach-serve.json');
@@ -289,4 +415,89 @@ test('every html page teach serve returns carries the navigation bar or loads qu
       assert.equal(bars, /<script[^>]*quiz\.js/.test(r.text) ? 0 : 1, path);
     }
   } finally { server.close(); }
+});
+
+// Issue 66 part 2: GET / shows the workspace README above the lesson index, escaped, and is unchanged without one.
+test('GET / renders README.md above the lesson index with its HTML escaped, and is unchanged without one (issue 66)', async () => {
+  const ws = copyFixture();
+  const { server, port } = await start(ws);
+  try {
+    const before = (await req(port, { path: '/' })).text;
+    assert.ok(!before.includes('data-block="readme"'));
+    writeFileSync(join(ws, 'README.md'), [
+      '# Reading the fixture function', '', '## Lesson map', '| Group | Lessons | What it builds |', '|---|---|---|',
+      '| Project: Predict, then run | 0001-good, 0003-review-good (review) | Predicting what a function prints |', '',
+      'A <script>alert(1)</script> tag, [a bad link](javascript:alert(1)) and [the index](#top).', '',
+    ].join('\n'));
+    const r = await req(port, { path: '/' });
+    assert.equal(r.status, 200);
+    const at = (s) => { const i = r.text.indexOf(s); assert.ok(i !== -1, s); return i; };
+    assert.ok(at('<h1>Reading the fixture function</h1>') < at('<td>0001-good, 0003-review-good (review)</td>'));
+    assert.ok(at('<td>0001-good, 0003-review-good (review)</td>') < at('<h1>Lessons</h1>'));
+    assert.ok(at('<h1>Lessons</h1>') < at('<section data-block="index">'));
+    at('A &lt;script&gt;alert(1)&lt;/script&gt; tag');
+    at('<a href="#top">the index</a>');
+    assert.ok(!r.text.includes('<script>alert') && !r.text.includes('href="javascript'));
+    assert.equal(r.text.replace(/<section data-block="readme">[\s\S]*?<\/section>\n/, ''), before, 'only the README section is added');
+    // A symlinked README.md is not followed, and an unreadable one gives the page with no README.
+    renameSync(join(ws, 'README.md'), join(ws, 'target.md'));
+    symlinkSync(join(ws, 'target.md'), join(ws, 'README.md'));
+    assert.equal((await req(port, { path: '/' })).text, before, 'symlink');
+    if (process.getuid?.() !== 0) {
+      renameSync(join(ws, 'target.md'), join(ws, 'README.md'));
+      chmodSync(join(ws, 'README.md'), 0);
+      const u = await req(port, { path: '/' });
+      assert.equal(u.status, 200);
+      assert.equal(u.text, before, 'unreadable');
+    }
+  } finally { server.close(); }
+});
+
+test('markdownHtml: headings, lists, fenced and inline code, tables and links, every character escaped (issue 66)', () => {
+  assert.equal(markdownHtml([
+    '### Small', 'one', 'two', '', '- a `<b>`', '- [x](https://example.com/?a=1&b=2)', '', '```sh', '<i>raw</i>', '```',
+    '| h | i |', '|---|---|', '| [r](lessons/0001-good.html) | [m](mailto:a@b.c) |', '[d](data:text/html,x) [c](\x01javascript:alert(1))',
+  ].join('\n')), [
+    '<h3>Small</h3>', '<p>one two</p>',
+    '<ul><li>a <code>&lt;b&gt;</code></li><li><a href="https://example.com/?a=1&amp;b=2">x</a></li></ul>',
+    '<pre><code>&lt;i&gt;raw&lt;/i&gt;</code></pre>',
+    '<table><thead><tr><th>h</th><th>i</th></tr></thead><tbody><tr><td><a href="lessons/0001-good.html">r</a></td><td>[m](mailto:a@b.c)</td></tr></tbody></table>',
+    '<p>[d](data:text/html,x) [c](\x01javascript:alert(1))</p>',
+  ].join('\n'));
+});
+
+// Spec 49 D4: `teach serve --labs` prints the lab address once, after the serving line, and nowhere else.
+test('teach serve --labs prints the lab address once, reusable; .teach-serve.json and pages never hold t; an invalid labs.json exits 2', async () => {
+  const ws = copyFixture();
+  const file = join(ws, '.teach-serve.json');
+  const env = { ...process.env, RESEARCH_VAULT_PATH: fixtureVault() };
+  const child = spawn(process.execPath, [BIN, 'teach', 'serve', '--labs', ws], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout = '';
+  child.stdout.setEncoding('utf8');
+  await new Promise((resolve, reject) => {
+    child.stdout.on('data', (c) => { stdout += c; if (stdout.split('\n').length > 2) resolve(); });
+    child.on('exit', (code) => reject(new Error(`serve exited ${code} before serving`)));
+  });
+  try {
+    const m = /^serving .+ at http:\/\/127\.0\.0\.1:(\d+)\/\nlabs: open http:\/\/127\.0\.0\.1:\1\/labs\/open\?t=([0-9a-f]{64})\n$/.exec(stdout);
+    console.log(stdout.replace(/t=[0-9a-f]{64}/, 't=<64 hex>').trim());
+    assert.ok(m, stdout);
+    const [, port, t] = m;
+    const saved = readFileSync(file, 'utf8');
+    assert.deepEqual(JSON.parse(saved), { port: Number(port), pid: child.pid });
+    assert.ok(!saved.includes(t));
+    for (const p of ['/', '/lessons/0001-good.html', '/lessons.json', '/progress']) assert.ok(!(await req(Number(port), { path: p })).text.includes(t), p);
+    const first = await req(Number(port), { path: `/labs/open?t=${t}` });
+    const second = await req(Number(port), { path: `/labs/open?t=${t}` });
+    assert.deepEqual([first.status, second.status, second.headers['set-cookie']], [303, 303, first.headers['set-cookie']]);
+  } finally {
+    child.kill('SIGTERM');
+    await once(child, 'exit');
+  }
+  mkdirSync(join(ws, 'labs'));
+  writeFileSync(join(ws, 'labs', 'labs.json'), '{"version": 2}');
+  const bad = spawnSync(process.execPath, [BIN, 'teach', 'serve', '--labs', ws], { env, encoding: 'utf8', timeout: 10000 });
+  console.log(`invalid labs.json: exit ${bad.status} ${JSON.stringify(bad.stderr)}`);
+  assert.deepEqual([bad.status, bad.stdout, bad.stderr], [2, '', 'teach serve: labs/labs.json is invalid; run teach lint\n']);
+  assert.equal(existsSync(file), false);
 });

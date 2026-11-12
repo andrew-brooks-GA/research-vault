@@ -1,7 +1,7 @@
 // Lesson parser and lint: lessons, reference docs and the workspace store (spec 12 "Lesson lint").
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, renameSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, renameSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fixtureVault, tmpVault, put } from './helpers.mjs';
@@ -389,6 +389,7 @@ test('figure warnings: each fires on its own svg, once per figure, and not on th
     WARN_FIGURE_LABEL_LONG: (h) => h.replace('>6n</text>', '>6n<tspan>, which is the input value scaled by a factor of six</tspan></text>'),
     WARN_FIGURE_COLOR: (h) => h.replace('fill="none" stroke="currentColor"', 'fill="none" stroke="#c00"'),
     WARN_FIGURE_NO_ALT: (h) => h.replace(' role="img"', ''),
+    WARN_FIGURE_TEXT_NO_FILL: (h) => h.replace(/ fill="currentColor"(?= x=)/g, ''),
     // Spec issue #55: 'the function fx' is 15 characters at 14 units, about 105 wide centred at x=100 in a 60-wide rect.
     WARN_FIGURE_TEXT_OVERFLOW: (h) => h.replace('>fx</text>', '>the function fx</text>'),
   };
@@ -746,9 +747,19 @@ test('WARN_LAB_BYPASSED: a bypass string inside quotes, a comment or an escaped 
   assert.deepEqual(labFindings(dir), []);
 });
 
+test('WARN_LAB_BYPASSED: a bypass string in a # comment above a real bypass line warns once and names the later line', () => {
+  const dir = labWs({ 'evidence/0003/run.sh': '#!/usr/bin/env bash\n# kind create cluster\nkind create cluster --name t\n' });
+  assert.deepEqual(labFindings(dir).map((f) => f.message), ["line 3: kind create cluster; the binding's lab is docs/lab.md"]);
+});
+
 test('WARN_LAB_BYPASSED: only .sh files under evidence/ and lessons/ are read', () => {
   const dir = labWs({ 'evidence/0003/run.txt': BYPASS, 'notes/run.sh': BYPASS });
   assert.deepEqual(labFindings(dir), []);
+});
+
+test('WARN_LAB_BYPASSED: a directory named x.sh is skipped, not read', () => {
+  const dir = labWs({ 'evidence/0003/x.sh/run.sh': BYPASS });
+  assert.deepEqual(labFindings(dir).map((f) => f.file), ['evidence/0003/x.sh/run.sh']);
 });
 
 test('a workspace whose binding has no lab block produces exactly the findings it produces today', () => {
@@ -758,4 +769,100 @@ test('a workspace whose binding has no lab block produces exactly the findings i
   writeFileSync(join(dir, 'evidence/0003/run.sh'), BYPASS);
   assert.deepEqual(lintWorkspace(dir, ctxFor(dir)), before);
   assert.equal(lintWorkspace(dir, ctxFor(dir, { lab: LAB })).length, before.length + 1);
+});
+
+// Issue #58: image lint. A lesson built in a temp workspace from the good lesson, its figure replaced by an <img> case.
+const imgLesson = (dir, fig, { fact = '', png = true } = {}) => {
+  const good = readFileSync(join(FIX, 'lessons', '0001-good.html'), 'utf8');
+  mkdirSync(join(dir, 'assets'), { recursive: true });
+  for (const d of ['lessons', 'reference', 'assets']) if (png) writeFileSync(join(dir, d, 'shot.png'), 'x');
+  writeFileSync(join(dir, 'lessons', '0001-good.html'), good.replace(/<figure>[\s\S]*?<\/figure>/, fig).replace('<p>The body of fx', `${fact}<p>The body of fx`));
+  return lintFile(dir, 'lessons/0001-good.html');
+};
+const FIG = (src = 'shot.png', alt = 'the fx page', cap = '<figcaption>fx page.</figcaption>') => `<figure><img src="${src}" alt="${alt}">${cap}</figure>`;
+const CITE = ' <a data-cite="2026-01-01-fx-doc">[1]</a>';
+
+test('LESSON_IMG_NO_ALT: an img with an empty or missing alt is an error, one with alt is silent', () => {
+  const dir = copyFixture();
+  assert.deepEqual(codes(imgLesson(dir, FIG())), []);
+  const f = imgLesson(dir, FIG('shot.png', ''));
+  assert.deepEqual(codes(f), ['LESSON_IMG_NO_ALT']);
+  assert.ok(!f[0].warning);
+  assert.deepEqual(codes(imgLesson(dir, '<figure><img src="shot.png"><figcaption>c</figcaption></figure>')), ['LESSON_IMG_NO_ALT']);
+});
+
+test('LESSON_IMG_NO_CAPTION: no figcaption in the enclosing figure, or no figure, is an error', () => {
+  const dir = copyFixture();
+  assert.deepEqual(codes(imgLesson(dir, FIG('shot.png', 'a', ''))), ['LESSON_IMG_NO_CAPTION']);
+  assert.deepEqual(codes(imgLesson(dir, '<figure></figure><img src="shot.png" alt="a">')), ['LESSON_IMG_NO_CAPTION']);
+  assert.deepEqual(codes(imgLesson(dir, FIG())), []);
+});
+
+test('LESSON_IMG_MISSING: a src that does not resolve to a file under lessons, reference or assets is an error', () => {
+  const dir = copyFixture();
+  assert.deepEqual(codes(imgLesson(dir, FIG('nope.png'))), ['LESSON_IMG_MISSING']);
+  assert.deepEqual(codes(imgLesson(dir, FIG('https://example.org/a.png'))), ['LESSON_IMG_MISSING']);
+  assert.deepEqual(codes(imgLesson(dir, FIG('../GLOSSARY.md'))), ['LESSON_IMG_MISSING']);
+  // As teach serve: the path is percent-decoded, an undecodable one is missing, and a segment starting with a dot is refused.
+  imgLesson(dir, FIG());
+  writeFileSync(join(dir, 'assets', 'my shot.png'), 'x');
+  mkdirSync(join(dir, 'assets', '.hid'), { recursive: true });
+  writeFileSync(join(dir, 'assets', '.hid', 'shot.png'), 'x');
+  assert.deepEqual(codes(imgLesson(dir, FIG('../assets/my%20shot.png'), { png: false })), []);
+  assert.deepEqual(codes(imgLesson(dir, FIG('../assets/.hid/shot.png'), { png: false })), ['LESSON_IMG_MISSING']);
+  assert.deepEqual(codes(imgLesson(dir, FIG('../assets/%E0%A4%A.png'), { png: false })), ['LESSON_IMG_MISSING']);
+  for (const src of ['shot.png', '../reference/shot.png', '../assets/shot.png', '/assets/shot.png', 'shot.png?v=2']) assert.deepEqual(codes(imgLesson(dir, FIG(src))), [], src);
+});
+
+test('an image outside any data-block is WARN_IMG_UNCITED', () => {
+  const dir = copyFixture();
+  const good = readFileSync(join(FIX, 'lessons', '0001-good.html'), 'utf8');
+  mkdirSync(join(dir, 'assets'), { recursive: true });
+  writeFileSync(join(dir, 'assets', 'shot.png'), 'x');
+  writeFileSync(join(dir, 'lessons', '0001-good.html'), good.replace('<h1>', `${FIG('../assets/shot.png')}<h1>`));
+  assert.deepEqual(codes(lintFile(dir, 'lessons/0001-good.html')), ['WARN_IMG_UNCITED']);
+});
+
+test('WARN_IMG_UNCITED: advisory when the data-block holding the img has no data-cite; a citation in the same block silences it', () => {
+  const dir = copyFixture();
+  const f = imgLesson(dir, FIG(), { fact: '' });
+  assert.deepEqual(codes(f), []); // the model block of the good lesson cites
+  const model = readFileSync(join(FIX, 'lessons', '0001-good.html'), 'utf8');
+  writeFileSync(join(dir, 'lessons', '0001-good.html'), model.replace('<section data-block="fact"', `<section data-block="mission2"><p>x</p>${FIG()}</section>\n<section data-block="fact"`));
+  const g = lintFile(dir, 'lessons/0001-good.html');
+  assert.deepEqual(codes(g), ['WARN_IMG_UNCITED']);
+  assert.ok(g[0].warning);
+  writeFileSync(join(dir, 'lessons', '0001-good.html'), readFileSync(join(dir, 'lessons', '0001-good.html'), 'utf8').replace('<p>x</p>', `<p>x${CITE}</p>`));
+  assert.deepEqual(codes(lintFile(dir, 'lessons/0001-good.html')), []);
+});
+
+test('WARN_FIGURE_TEXT_NO_FILL: a fill on the text, an ancestor g or the svg silences it', () => {
+  const dir = copyFixture();
+  const good = readFileSync(join(dir, 'lessons', '0001-good.html'), 'utf8');
+  const bare = good.replace(/ fill="currentColor"(?= x=)/g, '');
+  const run = (h) => { writeFileSync(join(dir, 'lessons', '0001-good.html'), h); return lintFile(dir, 'lessons/0001-good.html'); };
+  const f = run(bare);
+  assert.deepEqual(codes(f), ['WARN_FIGURE_TEXT_NO_FILL']);
+  assert.ok(f[0].warning);
+  assert.deepEqual(codes(run(good)), []);
+  assert.deepEqual(codes(run(bare.replace('<text ', '<g fill="currentColor"><text ').replace('<line ', '</g><line '))), []);
+  assert.deepEqual(codes(run(bare.replace('<svg ', '<svg fill="currentColor" '))), []);
+});
+
+test('a lesson with no image and no svg text draws the findings it drew before (the good review lesson and a text-free figure)', () => {
+  const dir = copyFixture();
+  assert.deepEqual(lintFile(dir, 'lessons/0003-review-good.html'), []);
+  const good = readFileSync(join(dir, 'lessons', '0001-good.html'), 'utf8');
+  writeFileSync(join(dir, 'lessons', '0001-good.html'), good.replace(/<text[^]*?<\/text>/g, ''));
+  assert.deepEqual(lintFile(dir, 'lessons/0001-good.html'), []);
+});
+
+test('LESSON_IMG_MISSING: an image file teach serve cannot read is missing too', (t) => {
+  if (process.getuid?.() === 0) return t.skip('root ignores mode bits');
+  const dir = copyFixture();
+  imgLesson(dir, FIG());
+  writeFileSync(join(dir, 'assets', 'locked.png'), 'x');
+  chmodSync(join(dir, 'assets', 'locked.png'), 0o000);
+  t.after(() => chmodSync(join(dir, 'assets', 'locked.png'), 0o644));
+  assert.deepEqual(codes(imgLesson(dir, FIG('../assets/locked.png'), { png: false })), ['LESSON_IMG_MISSING']);
 });

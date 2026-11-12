@@ -14,14 +14,16 @@
 
 <section data-block="model" aria-label="the model">
 <p>fxctl is a command-line wrapper around fx: <code>fxctl run</code> takes one number, calls fx on it and prints the result.</p>
-<figure><svg viewBox="0 0 200 60" role="img" aria-label="fxctl run n prints fx of n"><rect x="70" y="15" width="60" height="30" fill="none" stroke="currentColor"/><text x="100" y="35" text-anchor="middle" font-size="14">fxctl</text><text x="30" y="35" text-anchor="middle" font-size="14">n</text><text x="170" y="35" text-anchor="middle" font-size="14">6n</text><line x1="45" y1="30" x2="70" y2="30" stroke="currentColor"/><line x1="130" y1="30" x2="155" y2="30" stroke="currentColor"/></svg><figcaption>fxctl run n prints fx(n).</figcaption></figure>
+<figure><svg viewBox="0 0 200 60" role="img" aria-label="fxctl run n prints fx of n"><rect x="70" y="15" width="60" height="30" fill="none" stroke="currentColor"/><text fill="currentColor" x="100" y="35" text-anchor="middle" font-size="14">fxctl</text><text fill="currentColor" x="30" y="35" text-anchor="middle" font-size="14">n</text><text fill="currentColor" x="170" y="35" text-anchor="middle" font-size="14">6n</text><line x1="45" y1="30" x2="70" y2="30" stroke="currentColor"/><line x1="130" y1="30" x2="155" y2="30" stroke="currentColor"/></svg><figcaption>fxctl run n prints fx(n).</figcaption></figure>
 <p>What it prints is what fx returns. <a data-cite="2026-01-01-fx-doc">[1]</a></p>
 </section>
 
 <section data-block="example" aria-label="the output, read with me">
 <p>Run fx on 7 through fxctl:</p>
-<pre><code>$ fxctl run 7
-42</code></pre>
+<div data-cast="../assets/fxctl.cast"></div>
+<pre>$ fxctl run 7
+42
+</pre>
 <p>The one line of output is fx(7), from the experiment <a data-cite="2026-01-01-fx-experiment">[3]</a>.</p>
 </section>
 

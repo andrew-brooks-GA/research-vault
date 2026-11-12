@@ -1,5 +1,6 @@
 // research-teach workspace verbs: record, attempt, lint and next (spec 12 "Workspace store").
-import { existsSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync, rmSync, statSync, lstatSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../lib/resolve.mjs';
@@ -8,11 +9,16 @@ import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
 import { TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
-import { writeRecord, supersedeRecord, writeAttempt, fixRecordFrontmatter, teachIndex, createServer, progress, progressText } from '../lib/teach.mjs';
+import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft, exportWorkspace, writeExport, lessonIndex, escapeHtml } from '../lib/teach.mjs';
+import { scanCast, castTranscript } from '../lib/cast.mjs';
+import { hasVerdict } from '../lib/gate.mjs';
+import { readLabs, secretHits } from '../lib/labs.mjs';
+import { readBrand } from '../lib/brand.mjs';
+import { isInsideVault } from '../lib/containment.mjs';
 import { lintWorkspace, proseMetrics, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | serve [workspace]';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | cast check <file> [--needle <value>]... | cast transcript <file> | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [--labs] [workspace]';
 
 const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
 const out = (s) => process.stdout.write(s + '\n');
@@ -62,17 +68,69 @@ function lint(ws, args) {
 const fmt = (l) => `${l.n}. ${l.title}` + [['terms', l.terms.join(', ')], ['tool', l.tool], ['after', l.after.join(', ')], ['lesson', l.lesson]]
   .filter(([, v]) => v).map(([k, v]) => ` | ${k}: ${v}`).join('');
 
-function pathLines(ws) {
+// Issue 66: after `fringe: complete`, the README's state: missing (no regular file), ok (a PASS or MERIT for its
+// current content, by gate status's own rule and ledger) or ungated (none, or no ledger resolves).
+function readmeLine(ws, args) {
+  const file = join(ws, 'README.md');
+  if (!statSync(file, { throwIfNoEntry: false })?.isFile()) return 'readme: missing';
+  try {
+    return hasVerdict(file, resolveVault({ flag: args.vault ?? null, cwd: ws }).path) ? 'readme: ok' : 'readme: ungated';
+  } catch { return 'readme: ungated'; }
+}
+
+// Spec 48: `teach export`. Exit 2 before any work on a bad --out or no vault; every check runs before the first
+// write, so a refusal (exit 1) leaves nothing behind.
+function exportCopy(ws, args) {
+  if (typeof args.out !== 'string') return usage();
+  const dir = resolve(args.out);
+  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws });
+  const refuse = (why) => { process.stderr.write(`teach export: ${why}\n`); return 2; };
+  if (!existsSync(vaultPath)) return refuse(`no vault at ${vaultPath}`);
+  if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) return refuse(`--out ${dir} is a symlink`);
+  if (isInsideVault(vaultPath, dir)) return refuse(`--out ${dir} is inside the vault`);
+  for (const d of ['lessons', 'reference', 'assets', 'brand']) if (isInsideVault(join(ws, d), dir)) return refuse(`--out ${dir} is inside the workspace's ${d}/`);
+  const st = statSync(dir, { throwIfNoEntry: false });
+  if (st && !(st.isDirectory() && readdirSync(dir).length === 0)) return refuse(`--out ${dir} exists and is not an empty directory`);
+  const r = exportWorkspace(ws, { vaultPath, entries: buildManifest(vaultPath).entries, skipUngated: args['skip-ungated'] === true });
+  if (r.lines.length) out(r.lines.join('\n'));
+  if (r.error) process.stderr.write(r.error + '\n');
+  if (r.code) return r.code;
+  try { writeExport(dir, r.files); } catch (e) {
+    return refuse(`cannot write under ${dir} (${e.code ?? e.message}); removed what this run wrote`);
+  }
+  out(`wrote ${r.files.size} files to ${dir}`);
+  return 0;
+}
+
+// Issue 65 (spec 47 D2): `teach cast check` exits 0 when the cast is clean and 1 with one line per hit, naming the
+// needle's kind and the event, never the value; `teach cast transcript` prints the output events, HTML-escaped, for the
+// replay's <pre>. Exit 2 on usage, or a file that cannot be read or is no asciicast (no parser message: it may quote the file).
+function cast(sub, file, args) {
+  const needles = args.needle ?? [];
+  if (!['check', 'transcript'].includes(sub) || !file || needles.some((n) => !n)) return usage();
+  try {
+    const text = readFileSync(file, 'utf8');
+    if (sub === 'transcript') { process.stdout.write(escapeHtml(castTranscript(text))); return 0; }
+    const hits = scanCast(text, needles);
+    out(hits.length ? hits.map((h) => `secret ${file}: ${h.kind} at ${h.at === 'header' ? 'the header' : `event ${h.at}`}`).join('\n') : 'cast: clean');
+    return hits.length ? 1 : 0;
+  } catch (e) {
+    process.stderr.write(`teach cast: ${file}: ${e.code ? `cannot read (${e.code})` : 'not an asciicast v2 or v3 file'}\n`);
+    return 2;
+  }
+}
+
+function pathLines(ws, args) {
   const path = readPath(ws);
   if (path === null) return ['fringe: none (write PATH.md)'];
   const { fringe, inner } = pathFringe(path);
-  const head = path.every((l) => l.lesson) ? ['fringe: complete']
+  const head = path.every((l) => l.lesson) ? ['fringe: complete', readmeLine(ws, args)]
     : fringe.length ? fringe.map((l) => `fringe: ${fmt(l)}`)
       : ['fringe: none (every untaken line waits on an untaken or unknown line; run teach lint)'];
   return [...head, ...(inner.length ? inner.map((l) => `inner: ${fmt(l)}`) : ['inner: none'])];
 }
 
-function next(ws) {
+function next(ws, args) {
   const idx = teachIndex(ws, { now: new Date() });
   if (!idx.criteria.length) {
     process.stderr.write('teach next: MISSION.md has no "Success looks like" section\n');
@@ -90,7 +148,7 @@ function next(ws) {
     '',
     `review-due: ${ids(active.filter((r) => r.reviewDue))}`,
     `review-failed: ${ids(active.filter((r) => r.reviewFailed))}`,
-    ...pathLines(ws),
+    ...pathLines(ws, args),
   ].join('\n'));
   return 0;
 }
@@ -155,16 +213,45 @@ function edges(ws) {
   return 0;
 }
 
-// Runs until killed: the returned promise settles only when the server closes.
-async function serve(ws, teachSchema, titles) {
-  const server = createServer(ws, { schema: teachSchema, titles });
+// Runs until killed: the returned promise settles only when the server closes. Spec 49 D4: with --labs, an invalid
+// labs/labs.json exits 2, and the lab address is printed once, here, and nowhere else. D6: a lesson or reference page
+// that holds a declared env value gets one warning line. D5: with --labs, SIGINT, SIGTERM and SIGHUP run the Stop
+// sequence on every running lab group before exiting (a second signal exits at once), and exit sends each SIGKILL.
+// Spec 50 D4: an invalid brand/brand.json gets one line at start, and the pages are served unbranded.
+async function serve(ws, teachSchema, titles, labs) {
+  if (readBrand(ws).problems.length) process.stderr.write('brand: brand/brand.json is invalid; run teach lint\n');
+  if (labs) {
+    let manifest;
+    try { ({ labs: manifest } = readLabs(ws)); } catch {
+      process.stderr.write('teach serve: labs/labs.json is invalid; run teach lint\n');
+      return 2;
+    }
+    const { lessons, reference } = lessonIndex(ws);
+    const pages = [...lessons, ...reference].map((p) => [p.path.slice(1), readFileSync(join(ws, p.path), 'utf8')]);
+    for (const [p, name] of secretHits(pages, manifest, process.env)) process.stderr.write(`warning: ${p} holds the value of ${name}\n`);
+  }
+  const t = labs ? randomBytes(32).toString('hex') : undefined;
+  const server = createServer(ws, { schema: teachSchema, titles, labs, t, log: out });
   await new Promise((ok, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', ok); });
   const { port } = server.address();
   const file = join(ws, '.teach-serve.json');
   writeFileSync(file, JSON.stringify({ port, pid: process.pid }) + '\n');
   process.on('exit', () => rmSync(file, { force: true }));
-  for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0)); // exit handler removes the file
+  if (labs) {
+    let stopping = false;
+    for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+      process.on(sig, () => {
+        if (stopping) process.exit(0);
+        stopping = true;
+        server.stopLabs().finally(() => process.exit(0));
+      });
+    }
+    process.on('exit', () => server.killLabs());
+  } else {
+    for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0)); // exit handler removes the file
+  }
   out(`serving ${ws} at http://127.0.0.1:${port}/`);
+  if (labs) out(`labs: open http://127.0.0.1:${port}/labs/open?t=${t}`);
   await new Promise((ok) => server.on('close', ok));
   return 0;
 }
@@ -180,10 +267,17 @@ export async function run(args) {
     process.stdout.write(progressText(progress(ws, { now: new Date() })));
     return 0;
   }
+  // Issue 66: the README's lesson map and lab list on stdout; nothing is written.
+  if (verb === 'readme') {
+    const ws = workspace(sub);
+    if (!ws) return usage();
+    process.stdout.write(readmeDraft(ws));
+    return 0;
+  }
   if (verb === 'lint' || verb === 'next') {
     const ws = workspace(sub);
     if (!ws) return usage();
-    return verb === 'lint' ? lint(ws, args) : next(ws);
+    return verb === 'lint' ? lint(ws, args) : next(ws, args);
   }
   if (verb === 'path' && (sub === 'candidates' || sub === 'edges')) {
     const ws = workspace(rest[0]);
@@ -212,6 +306,32 @@ export async function run(args) {
     out(`recorded ${r.id}: ${r.result ?? `${r.score}/${r.total}`}`);
     return 0;
   }
+  // Spec 48 D4: the results file of an exported copy; exit 2 before any read of its content.
+  if (verb === 'attempt' && sub === 'import') {
+    const [file, pos] = rest;
+    const ws = workspace(pos);
+    if (!file || !ws) return usage();
+    let text;
+    try {
+      if (statSync(file).size > RESULTS_MAX) {
+        process.stderr.write(`teach attempt import: ${file} is over 1 MiB\n`);
+        return 2;
+      }
+      text = readFileSync(file, 'utf8');
+    } catch (e) {
+      process.stderr.write(`teach attempt import: cannot read ${file} (${e.code ?? e.message})\n`);
+      return 2;
+    }
+    const { code, lines } = importAttempts(ws, text, { schema: teachSchema, now });
+    if (lines.length) out(lines.join('\n'));
+    return code;
+  }
+  if (verb === 'cast') return cast(sub, rest[0], args);
+  if (verb === 'export') {
+    const ws = workspace(sub);
+    if (!ws) return usage();
+    return exportCopy(ws, args);
+  }
   if (verb === 'serve') {
     const ws = workspace(sub);
     if (!ws) return usage();
@@ -221,7 +341,7 @@ export async function run(args) {
       const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws });
       if (existsSync(vaultPath)) titles = Object.fromEntries(buildManifest(vaultPath).entries.map((e) => [e.id, e.title ?? e.id]));
     } catch { /* serve without titles */ }
-    return serve(ws, teachSchema, titles);
+    return serve(ws, teachSchema, titles, args.labs === true);
   }
   return usage();
 }

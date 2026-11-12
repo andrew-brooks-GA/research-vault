@@ -1,4 +1,6 @@
-const BOOL = new Set(['json', 'check', 'fix', 'force', 'stale', 'rebuild', 'succession', 'tested', 'set-default', 'scaffold', 'stdout', 'store-body', 'ack-data-egress', 'dry-run', 'include-bodies', 'report', 'project', 'refresh-docs', 'include-superseded', 'changed', 'continue', 'fresh-only', 'prose']);
+const BOOL = new Set(['json', 'check', 'fix', 'force', 'stale', 'rebuild', 'succession', 'tested', 'set-default', 'scaffold', 'stdout', 'store-body', 'ack-data-egress', 'dry-run', 'include-bodies', 'report', 'project', 'refresh-docs', 'include-superseded', 'changed', 'continue', 'fresh-only', 'prose', 'skip-ungated', 'labs']);
+// A flag given more than once whose values all count: an array, in order.
+const REPEAT = new Set(['needle']);
 export const csvList = s => String(s ?? '').split(',').map(t => t.trim()).filter(Boolean);
 
 export function parseArgs(argv) {
@@ -10,8 +12,8 @@ export function parseArgs(argv) {
       if (BOOL.has(key)) out[key] = true;
       else {
         const next = argv[i + 1];
-        if (next === undefined || next.startsWith('--')) out[key] = undefined;
-        else out[key] = argv[++i];
+        const v = next === undefined || next.startsWith('--') ? undefined : argv[++i];
+        out[key] = REPEAT.has(key) ? [...(out[key] ?? []), v] : v;
       }
     } else out._.push(tok);
   }

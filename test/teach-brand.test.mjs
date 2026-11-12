@@ -1,0 +1,595 @@
+// Spec 50 commit 1: a workspace's brand/ on every served and exported page, on workspaces built here (nothing under
+// test/fixtures/teach/); each test removes the directories it makes.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, cpSync, rmSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { request } from 'node:http';
+import { once } from 'node:events';
+import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { fixtureVault, put } from './helpers.mjs';
+import { recordVerdict } from '../bin/lib/gate.mjs';
+import { createServer, exportWorkspace } from '../bin/lib/teach.mjs';
+import { readBrand, BRAND_TOKENS } from '../bin/lib/brand.mjs';
+import { buildManifest } from '../bin/lib/manifest.mjs';
+import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
+import { lintWorkspace } from '../bin/lib/lesson.mjs';
+import { neighbours, pathPosition } from '../skills/research-teach/assets/quiz.js';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const BIN = join(ROOT, 'bin', 'research-vault.mjs');
+const FIX = join(ROOT, 'test', 'fixtures', 'teach');
+const ASSETS = join(ROOT, 'skills', 'research-teach', 'assets');
+const NOW = new Date('2026-10-26T09:00:00Z');
+const sha = (b) => createHash('sha256').update(b).digest('hex');
+
+// A bound repo holding learn-ws: the fixture lessons with the plugin's three assets, every lesson and reference page
+// passed by the gate, and, when `brand` is given, brand/brand.json (an object, or a string written as it is) and `files`.
+function brandRepo(brand, files = {}) {
+  const repo = mkdtempSync(join(tmpdir(), 'rv-teach-brand-'));
+  const vault = fixtureVault(join(repo, 'research'));
+  put(vault, 'source', '2026-01-01-nope', { source_type: 'article', source_url: 'https://example.org/nope' });
+  writeFileSync(join(repo, '.research-vault.json'), JSON.stringify({ vault: 'research' }) + '\n');
+  const ws = join(repo, 'learn-ws');
+  cpSync(FIX, ws, { recursive: true });
+  mkdirSync(join(ws, 'assets'), { recursive: true });
+  for (const f of ['lesson.css', 'quiz.js', 'reading.html']) cpSync(join(ASSETS, f), join(ws, 'assets', f));
+  for (const f of [...readdirSync(join(ws, 'lessons')).map((f) => `lessons/${f}`), 'reference/good.html']) recordVerdict(repo, join(ws, f), 'PASS');
+  if (brand !== undefined) setBrand(ws, brand, files);
+  return { repo, vault, ws };
+}
+function setBrand(ws, brand, files = {}) {
+  rmSync(join(ws, 'brand'), { recursive: true, force: true });
+  mkdirSync(join(ws, 'brand'));
+  writeFileSync(join(ws, 'brand', 'brand.json'), typeof brand === 'string' ? brand : JSON.stringify(brand, null, 2));
+  for (const [p, body] of Object.entries(files)) {
+    mkdirSync(dirname(join(ws, 'brand', p)), { recursive: true });
+    writeFileSync(join(ws, 'brand', p), body);
+  }
+}
+const LESSONS = ['0001-good', '0002-bad', '0003-review-good', '0004-tool-fxctl', '0005-diagnose-fx', '0006-project-fx'].map((id) => `/lessons/${id}.html`);
+const HTML_PATHS = ['/', '/progress', ...LESSONS, '/reference/good.html', '/assets/reading.html'];
+const get = (port, path) => new Promise((res) => request({ host: '127.0.0.1', port, path, headers: { Host: `127.0.0.1:${port}` }, setHost: false }, (r) => {
+  const c = [];
+  r.on('data', (d) => c.push(d));
+  r.on('end', () => res({ status: r.statusCode, body: Buffer.concat(c) }));
+}).end());
+// Each path's reply from a server on `ws` at NOW: { path: text }.
+async function served(ws, paths = HTML_PATHS) {
+  const server = createServer(ws, { schema: loadTeachSchema(ROOT), now: () => NOW });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const out = {};
+    for (const p of paths) {
+      const r = await get(server.address().port, p);
+      assert.equal(r.status, 200, p);
+      out[p] = r.body.toString('utf8');
+    }
+    return out;
+  } finally { server.close(); }
+}
+const exported = (repo) => exportWorkspace(join(repo.repo, 'learn-ws'), { vaultPath: repo.vault, entries: buildManifest(repo.vault).entries, env: {} });
+const styleOf = (html) => /<style>\n([\s\S]*?)<\/style><\/head>/.exec(html)?.[1];
+// teach lint's lines for the workspace, as the CLI prints them.
+const lintLines = (repo) => lintWorkspace(repo.ws, {
+  workspaceDir: repo.ws, vaultPath: repo.vault, entries: buildManifest(repo.vault).entries, schema: loadSchema(ROOT, { vaultPath: repo.vault }),
+  teachSchema: loadTeachSchema(ROOT), now: NOW,
+}).map((f) => `${f.warning ? 'warning ' : ''}${f.code}  ${f.file}: ${f.message}`);
+// Replace `from`, which must occur once in the workspace file `rel`, with `to`.
+const edit = (ws, rel, from, to) => {
+  const t = readFileSync(join(ws, rel), 'utf8');
+  assert.equal(t.split(from).length, 2, from);
+  writeFileSync(join(ws, rel), t.replace(from, to));
+};
+const treeHash = (dir) => readdirSync(dir, { recursive: true }).sort().map((p) => { try { return `${p} ${sha(readFileSync(join(dir, p)))}`; } catch { return p; } }).join('\n');
+
+// Computed at dffe549, the parent commit, by this file's brandRepo with no brand/ (scratch t11b/base-hashes.mjs); lesson 0004's two
+// values taken again, and assets/fxctl.cast added, when the fixture lesson gained its replay (#65).
+const BASE_SERVED = {
+  '/': 'c111d4926863e9ca09f35e69a57aac4547f3ee0b57ee648a81e6d5195e3245f2',
+  '/progress': 'f637a583e3766f32883b8983e92a55845f246cab93c50582aca7bfb554652dc8',
+  '/lessons.json': '062c18d9a1f28ee43ae29a952950a5ae199d69806f71ecdb278569b12b026f52',
+  '/lessons/0001-good.html': '4dbd823d9927d5de1fc4074c6ca0dc6f921178480e7fbd5b1f5e49a44dca51b2',
+  '/lessons/0002-bad.html': '6d016155a2fb4b0cdfac5d02b5d5c385a5ae9d9d81a6474aaf14d82cd7ba4b7e',
+  '/lessons/0003-review-good.html': '16fab265248a5c7a1faad1cfabc5859fb7b219a4ba8ce61a33da12d6e89a87fa',
+  '/lessons/0004-tool-fxctl.html': 'a50015f8d7b71bac5a48573341d55864a97ab5464265ff017e82e27fd7657a34',
+  '/lessons/0005-diagnose-fx.html': 'af262c45ebeb079578a48df2157d41d9344012d163d4160a9550da459a9bc6f2',
+  '/lessons/0006-project-fx.html': '47cf09e698eb9a107e2688745faa845bd809cbf45c75125846819544b690523c',
+  '/reference/good.html': '0dcec77cfe8fe264f8c6ab0d67a1dc4997733f6b8aee98e1f544326310b287dd',
+  '/assets/reading.html': 'aca943f8815f66d03d8b2e3cb35faee92aac427636effedae9019d4b2ce97a1e',
+};
+const BASE_EXPORTED = {
+  'lessons/0001-good.html': '9d12d40a12a086869ecfc2dd450c8a0cac96568c97bb4088e3e7c5ef51432295',
+  'lessons/0002-bad.html': 'bfdbeafc0ebe1a80f001a4411dadbbfbe8c702748f77b89419abff08d86a21e9',
+  'lessons/0003-review-good.html': '4185234629aa33e94196e99fc9d1eeac53b94a9b20125f6fffcb63b7de3f4b32',
+  'lessons/0004-tool-fxctl.html': '87ebe4185b48364873eadb19cb692e46418c0f542b585c165c8ac77a574b7a55',
+  'lessons/0005-diagnose-fx.html': '2eac32fa2425c7c769f5bed8de6a8135949a90433421aae4d9a500b7784ed27f',
+  'lessons/0006-project-fx.html': '03fec945b3fa74ba0bca441c614c9d81da5ce075b3af57d6cef48748388d3978',
+  'reference/good.html': '93759de0f2042134079b0c91b073a35d71762572fa5a005730448eea056b1c2c',
+  'index.html': '6b4966adf46d9d0a5bc8e34e7bc9655a8588f99753198924502ff56753f31f5e',
+  'progress.html': 'f8685389274ac9669710265d851e66beeb002ca5a1bef6329cedf05a92c30603',
+  'assets/reading.html': '52fd319a6d394e5524f362404f97f919633fe46a8a7b00003437ab9a9eed0b4a',
+  'assets/quiz.js': 'eda7aa95b6cd79d14cc9eb0cfd2e28a217c118d6677049a15b60c0719f4d0e60',
+  'assets/lesson.css': '87df4742d8ec6d84251e0f7a199e41826b9692aa13c949fb2352b6cc5ee7802e',
+  'assets/fxctl.cast': 'f4a49620ad4cbf2e69a6035bcd756da2946cf4b4db27e1ac9d080bcebbc0894f',
+  'GLOSSARY.md': 'efcfcb71409f5fb07a868cbf663d9d284bfd66c61fa96d4592b2976277edf920',
+  'sources.html': 'e4fabb4e2cab93fcd5e939bf5937c49e4df93f6aea816269f43f14e5c700c6d2',
+};
+
+const SVG = (fill) => `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="${fill}"/></svg>`;
+const LOGO_FILES = { 'logo.svg': SVG('#c2410c'), 'img/logo-dark.svg': SVG('#fdba74'), 'favicon.png': 'png' };
+const TWO_COLOURS = {
+  name: 'Acme <A&B> "Co"', favicon: 'favicon.png',
+  logo: { light: 'logo.svg', dark: 'img/logo-dark.svg', alt: 'Acme <logo> & "mark"' },
+  color: { light: { '--link': '#c2410c', '--bg': '#fafaf0' } },
+};
+
+test('with no brand/ folder every served reply and every exported file has its bytes at the parent commit (spec 50 test 1)', async () => {
+  const repo = brandRepo();
+  try {
+    const s = await served(repo.ws, Object.keys(BASE_SERVED));
+    assert.deepEqual(Object.fromEntries(Object.entries(s).map(([p, t]) => [p, sha(t)])), BASE_SERVED);
+    const ex = exported(repo);
+    assert.equal(ex.code, 0, ex.lines.join('\n'));
+    assert.deepEqual(Object.fromEntries([...ex.files].map(([p, b]) => [p, sha(b)])), BASE_EXPORTED);
+    assert.deepEqual(readBrand(repo.ws), { brand: null, problems: [] });
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('a logo and two colours reach every served page and every exported page, logo and favicon relative, nothing fetched; lessons/ and assets/ unchanged (spec 50 test 2)', async () => {
+  const repo = brandRepo(TWO_COLOURS, LOGO_FILES);
+  try {
+    const before = treeHash(join(repo.ws, 'lessons')) + treeHash(join(repo.ws, 'assets'));
+    const s = await served(repo.ws);
+    const header = '<header class="brand-header"><a href="/"><img class="brand-logo-light" src="/brand/logo.svg" alt="Acme &lt;logo&gt; &amp; &quot;mark&quot;">' +
+      '<img class="brand-logo-dark" src="/brand/img/logo-dark.svg" alt="Acme &lt;logo&gt; &amp; &quot;mark&quot;"></a><span class="brand-name">Acme &lt;A&amp;B&gt; &quot;Co&quot;</span></header>';
+    for (const [p, html] of Object.entries(s)) {
+      assert.match(styleOf(html), /^:root \{ --link: #c2410c; --bg: #fafaf0; \}$/m, p);
+      assert.ok(html.includes('<link rel="icon" href="/brand/favicon.png"><style>'), p);
+      assert.equal(html.split(header).length, 2, `${p}: one header`);
+      assert.ok(!html.includes('<A&B>'), p);
+      // After the nav bar the server put there, or right after <body> on a page that loads quiz.js (which prepends its bar).
+      if (/<script[^>]*quiz\.js/.test(html)) assert.match(html, /<body\b[^>]*>(<header class="brand-header">)/, p);
+      else assert.ok(html.includes(`</nav>${header}`), p);
+    }
+    const files = await served(repo.ws, ['/brand/logo.svg', '/brand/img/logo-dark.svg', '/brand/brand.json']);
+    assert.equal(files['/brand/logo.svg'], LOGO_FILES['logo.svg']);
+    const ex = exported(repo);
+    assert.equal(ex.code, 0, ex.lines.join('\n'));
+    for (const p of ['brand/brand.json', 'brand/logo.svg', 'brand/img/logo-dark.svg', 'brand/favicon.png']) assert.ok(ex.files.has(p), p);
+    for (const [p, body] of ex.files) {
+      if (!p.endsWith('.html')) continue;
+      const html = body.toString('utf8');
+      const up = '../'.repeat(p.split('/').length - 1);
+      assert.match(styleOf(html), /^:root \{ --link: #c2410c; --bg: #fafaf0; \}$/m, p);
+      assert.ok(html.includes(`<link rel="icon" href="${up}brand/favicon.png">`), p);
+      assert.ok(html.includes(`<a href="${up}index.html"><img class="brand-logo-light" src="${up}brand/logo.svg"`), p);
+      assert.ok(html.includes(`src="${up}brand/img/logo-dark.svg"`), p);
+      assert.match(html, /<\/nav><header class="brand-header">/, `${p}: the bar first`);
+      const brandParts = styleOf(html) + /<header class="brand-header">[\s\S]*?<\/header>/.exec(html)[0];
+      assert.doesNotMatch(brandParts, /url\(|\/\/|src="\/|href="\//, p);
+    }
+    assert.equal(treeHash(join(repo.ws, 'lessons')) + treeHash(join(repo.ws, 'assets')), before);
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('light values under :root, dark values under both dark selectors, a light-only token in no dark rule; lesson.css names colours in the quiz, progress-table and figure rules only through var(-- (spec 50 test 3)', async () => {
+  const repo = brandRepo({ color: { light: { '--link': '#c2410c', '--c-quiz': '#0f766e' }, dark: { '--link': '#fdba74', '--bg': '#101010' } } });
+  try {
+    const style = styleOf((await served(repo.ws, ['/']))['/']);
+    const dark = '--link: #fdba74; --bg: #101010;';
+    assert.ok(style.startsWith(`:root { --link: #c2410c; --c-quiz: #0f766e; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { ${dark} } }
+:root[data-theme="dark"] { ${dark} }
+`), style);
+    assert.equal(style.split('--c-quiz').length, 2, 'set for light only: in the :root rule only');
+    assert.equal(BRAND_TOKENS.length, 23);
+    const css = readFileSync(join(ASSETS, 'lesson.css'), 'utf8');
+    const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, sel]) => /quiz|table\.progress|figure/.test(sel) && !sel.includes(':root'));
+    assert.ok(rules.length > 10, `${rules.length} rules`);
+    for (const [, sel, body] of rules) assert.doesNotMatch(body, /#[0-9a-f]{3}|rgb\(|hsl\(/i, sel.trim());
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('the footer: the audience\'s classification, the copyright with the server\'s year, and lesson N of M on a lesson; a new audience changes the classification only (spec 50 test 4)', async () => {
+  const footer = { classification: { internal: 'Internal <only>', customer: 'Customer copy' }, copyright: '(c) {year} Acme & Co' };
+  const repo = brandRepo({ footer, audience: 'internal' });
+  try {
+    const one = await served(repo.ws);
+    for (const [p, html] of Object.entries(one)) {
+      const i = LESSONS.indexOf(p);
+      const pos = i === -1 ? '' : `<span>lesson ${i + 1} of ${LESSONS.length}</span>`;
+      assert.ok(html.includes(`<footer class="brand-footer"><span>Internal &lt;only&gt;</span> <span>(c) 2026 Acme &amp; Co</span>${pos && ` ${pos}`}</footer></body>`), p);
+      assert.equal(html.split('brand-footer').length, 3, `${p}: one footer element (the class is also in the style)`);
+    }
+    assert.doesNotMatch(one['/'], /<header/, 'no name and no logo: no header');
+    setBrand(repo.ws, { footer, audience: 'customer' });
+    const two = await served(repo.ws);
+    for (const p of HTML_PATHS) assert.equal(two[p], one[p].replace('<span>Internal &lt;only&gt;</span>', '<span>Customer copy</span>'), p);
+    const ex = exported(repo);
+    assert.equal(ex.code, 0, ex.lines.join('\n'));
+    assert.ok(ex.files.get('lessons/0002-bad.html').includes(`<span>(c) ${new Date().getFullYear()} Acme &amp; Co</span> <span>lesson 2 of 6</span></footer></body>`));
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('colours and families written as references into a design-tokens file, one through two aliases, serve the same bytes as written by hand; a cycle is BRAND_INVALID (spec 50 test 6)', async () => {
+  const tokens = {
+    color: { orange: { $type: 'color', $value: '#ff6600' }, primary: { $value: '{color.orange}' }, link: { $value: '{color.primary}' }, night: { $value: { hex: '#101010' } } },
+    font: { body: { $value: ['Georgia', 'serif'] }, code: { $value: 'Menlo, monospace' } },
+  };
+  const byRef = { tokens: 'tokens.json', color: { light: { '--link': '{color.link}' }, dark: { '--bg': '{color.night}' } }, font: { body: '{font.body}', code: '{font.code}' } };
+  const byHand = { color: { light: { '--link': '#ff6600' }, dark: { '--bg': '#101010' } }, font: { body: 'Georgia, serif', code: 'Menlo, monospace' } };
+  const repo = brandRepo(byRef, { 'tokens.json': JSON.stringify(tokens) });
+  try {
+    const a = await served(repo.ws);
+    setBrand(repo.ws, byHand);
+    const b = await served(repo.ws);
+    assert.deepEqual(a, b);
+    assert.match(styleOf(a['/']), /^body, a\.cite, a\[data-cite\]:not\(\.cite\):not\(\[href\]\) \{ font-family: Georgia, serif; \}$/m);
+    assert.match(styleOf(a['/']), /^code, pre \{ font-family: Menlo, monospace; \}$/m);
+    setBrand(repo.ws, { tokens: 'tokens.json', color: { light: { '--link': '{a}' } } }, { 'tokens.json': JSON.stringify({ a: { $value: '{b}' }, b: { $value: '{a}' } }) });
+    const { brand, problems } = readBrand(repo.ws);
+    assert.equal(brand, null);
+    assert.deepEqual(problems, [{ code: 'BRAND_INVALID', message: 'color.light.--link: {a}: more than eight aliases' }]);
+    // Eight aliases are followed; a ninth is too many.
+    const chain = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`t${i}`, { $value: i === 9 ? '#123456' : `{t${i + 1}}` }]));
+    setBrand(repo.ws, { tokens: 'tokens.json', color: { light: { '--link': '{t1}' } } }, { 'tokens.json': JSON.stringify(chain) });
+    assert.equal(readBrand(repo.ws).brand.color.light['--link'], '#123456');
+    setBrand(repo.ws, { tokens: 'tokens.json', color: { light: { '--link': '{t0}' } } }, { 'tokens.json': JSON.stringify(chain) });
+    assert.equal(readBrand(repo.ws).problems[0].message, 'color.light.--link: {t0}: more than eight aliases');
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('brand lint: each BRAND_ code an error naming the path, token, colour or term; a term in <code> or <pre> is not reported; without brand/ the findings are as before and a figure colour is WARN_FIGURE_COLOR (spec 50 test 7)', () => {
+  const repo = brandRepo();
+  const L = 'lessons/0001-good.html';
+  try {
+    edit(repo.ws, L, '<p>The body of fx is <code>return n * 6;</code>.', '<p>The Zorblax body of fx is <code>Quuxly n * 6;</code>.');
+    edit(repo.ws, L, 'export function fx(n)', 'export function Quuxly(n)');
+    edit(repo.ws, L, '<rect x="70" y="15" width="60" height="30" fill="none"', '<rect x="70" y="15" width="60" height="30" fill="#ff0000"');
+    edit(repo.ws, L, '</head>', '<style>#abc { color: rgb(1, 2, 3); }\n@media print { p { background: #ABCDEF; } }</style></head>');
+    edit(repo.ws, 'reference/good.html', '<h1>The fixture note</h1>', '<h1 style="color: hsl(10, 50%, 50%); content: \'&#160;\'; background: #123456">The fixture note</h1>');
+    const base = lintLines(repo);
+    const figure = `${L}: figure 1: fill or stroke #ff0000; use currentColor, none or var(--muted)`;
+    assert.ok(base.includes(`warning WARN_FIGURE_COLOR  ${figure}`), base.join('\n'));
+    assert.ok(!base.some((l) => l.includes('BRAND_')));
+    const offPalette = [
+      `BRAND_OFF_PALETTE  ${figure}`,
+      `BRAND_OFF_PALETTE  ${L}: colour rgb(1, 2, 3) in a style attribute or <style> element; use a var(--token) the brand sets`,
+      `BRAND_OFF_PALETTE  ${L}: colour #ABCDEF in a style attribute or <style> element; use a var(--token) the brand sets`,
+      'BRAND_OFF_PALETTE  reference/good.html: colour hsl(10, 50%, 50%) in a style attribute or <style> element; use a var(--token) the brand sets',
+      // A numeric entity (&#160;) in the same attribute is not a colour; #123456 is.
+      'BRAND_OFF_PALETTE  reference/good.html: colour #123456 in a style attribute or <style> element; use a var(--token) the brand sets',
+    ];
+    // The lines a brand adds to the base, and the base lines it takes away.
+    const diff = (brand, files) => {
+      setBrand(repo.ws, brand, files);
+      const got = lintLines(repo);
+      return { added: got.filter((l) => !base.includes(l)), removed: base.filter((l) => !got.includes(l)) };
+    };
+    const brandOnly = (brand, files) => {
+      const { added, removed } = diff(brand, files);
+      assert.deepEqual(removed, [`warning WARN_FIGURE_COLOR  ${figure}`]);
+      assert.deepEqual(added.filter((l) => l.startsWith('BRAND_OFF_PALETTE')).sort(), offPalette.slice().sort());
+      assert.ok(added.every((l) => l.startsWith('BRAND_')), added.join('\n'));
+      return added.filter((l) => !l.startsWith('BRAND_OFF_PALETTE'));
+    };
+    const J = 'brand/brand.json';
+    assert.deepEqual(brandOnly({}), []);
+    assert.deepEqual(brandOnly({ logo: { light: 'img/logo.svg', alt: 'Logo' } }), [`BRAND_FILE_MISSING  ${J}: logo.light: brand/img/logo.svg is not a regular file`]);
+    assert.deepEqual(brandOnly({ name: 'X', colour: {} }), [`BRAND_INVALID  ${J}: brand.json: unknown key colour`]);
+    assert.deepEqual(brandOnly({ color: { light: { '--brand-primary': '#ff6600' } } }), [`BRAND_TOKEN_UNKNOWN  ${J}: color.light: --brand-primary is not a token of lesson.css`]);
+    assert.deepEqual(brandOnly({ logo: { light: 'logo.svg' } }, { 'logo.svg': SVG('#000') }), [`BRAND_ALT_MISSING  ${J}: logo has no non-empty alt; set logo.alt to the text the logo shows`]);
+    const contrast = brandOnly({ color: { light: { '--ink': '#f6f7fa' } } });
+    assert.equal(contrast.length, 6, contrast.join('\n'));
+    assert.ok(contrast.includes(`BRAND_CONTRAST  ${J}: light: --ink #f6f7fa on --bg #f6f7fa is 1.00:1, under 4.5:1`), contrast.join('\n'));
+    assert.ok(contrast.every((l) => l.startsWith(`BRAND_CONTRAST  ${J}: light: --ink #f6f7fa on --`)));
+    assert.deepEqual(brandOnly({ color: { light: { '--link': '#777777' } } }), [
+      `BRAND_CONTRAST  ${J}: light: --link #777777 on --bg #f6f7fa is 4.18:1, under 4.5:1`,
+      `BRAND_CONTRAST  ${J}: light: --link #777777 on --card #ffffff is 4.48:1, under 4.5:1`,
+    ]);
+    assert.deepEqual(brandOnly({ color: { dark: { '--link': '#333' } } }), [
+      `BRAND_CONTRAST  ${J}: dark: --link #333 on --bg #0b1020 is 1.50:1, under 4.5:1`,
+      `BRAND_CONTRAST  ${J}: dark: --link #333 on --card #131a33 is 1.36:1, under 4.5:1`,
+    ]);
+    // Case-sensitive and whole-word; Quuxly is only in a <code> and a <pre>.
+    assert.deepEqual(brandOnly({ voice: { avoid: [{ term: 'Zorblax', use: 'the' }, { term: 'Quuxly' }, { term: 'ZORBLAX' }, { term: 'Zorbla' }] } }),
+      [`BRAND_VOICE  ${L}: uses "Zorblax"; use "the" (brand voice.avoid)`]);
+    // teach lint exits 1 on an invalid brand.json and prints the code.
+    setBrand(repo.ws, '{');
+    const r = spawnSync(process.execPath, [BIN, 'teach', 'lint', repo.ws], { encoding: 'utf8' });
+    assert.equal(r.status, 1);
+    assert.ok(r.stdout.split('\n').includes(`BRAND_INVALID  ${J}: brand/brand.json is not JSON`), r.stdout);
+    rmSync(join(repo.ws, 'brand'), { recursive: true });
+    assert.deepEqual(lintLines(repo), base);
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('two unrelated brands serve, export and lint through the same code; neither brand\'s name, colours or terms are in bin/ or the plugin\'s assets (spec 50 test 8)', async () => {
+  const brands = [
+    { name: 'Quillfeather Guild', color: { light: { '--ink': '#1a2b3c' }, dark: { '--ink': '#d4e5f6' } }, font: { body: 'Gill Sans, sans-serif' }, voice: { avoid: [{ term: 'Frobnicator', use: 'tool' }] } },
+    { name: 'Brightmoor Assembly', color: { light: { '--mark': '#f1e2d3' } }, font: { code: 'Courier New' }, voice: { avoid: [{ term: 'Wibblewidget' }] } },
+  ];
+  const repo = brandRepo();
+  try {
+    for (const b of brands) {
+      setBrand(repo.ws, b);
+      const s = await served(repo.ws, ['/', LESSONS[0]]);
+      for (const html of Object.values(s)) assert.ok(html.includes(`<span class="brand-name">${b.name}</span>`) && styleOf(html).includes(Object.values(b.color.light)[0]));
+      const ex = exported(repo);
+      assert.equal(ex.code, 0, ex.lines.join('\n'));
+      assert.ok(ex.files.get('index.html').toString().includes(b.name));
+    }
+    // Lint: each brand's own term, and its own colour on lesson.css's background, through the same code.
+    edit(repo.ws, 'lessons/0001-good.html', '<p>The body of fx is', '<p>The Frobnicator and the Wibblewidget: the body of fx is');
+    brands[0].color.light['--muted'] = '#c9d8e7';
+    brands[1].color.dark = { '--link': '#0a1b2c' };
+    const linted = brands.map((b) => { setBrand(repo.ws, b); return lintLines(repo).filter((l) => l.startsWith('BRAND_')); });
+    assert.deepEqual(linted, [
+      ['BRAND_CONTRAST  brand/brand.json: light: --muted #c9d8e7 on --bg #f6f7fa is 1.36:1, under 4.5:1',
+        'BRAND_CONTRAST  brand/brand.json: light: --muted #c9d8e7 on --card #ffffff is 1.45:1, under 4.5:1',
+        'BRAND_VOICE  lessons/0001-good.html: uses "Frobnicator"; use "tool" (brand voice.avoid)'],
+      ['BRAND_CONTRAST  brand/brand.json: dark: --link #0a1b2c on --bg #0b1020 is 1.09:1, under 4.5:1',
+        'BRAND_CONTRAST  brand/brand.json: dark: --link #0a1b2c on --card #131a33 is 1.01:1, under 4.5:1',
+        'BRAND_VOICE  lessons/0001-good.html: uses "Wibblewidget" (brand voice.avoid)'],
+    ]);
+    const needles = ['Quillfeather', 'Brightmoor', '1a2b3c', 'd4e5f6', 'f1e2d3', 'Frobnicator', 'Wibblewidget', 'Gill Sans', 'Courier New', 'c9d8e7', '0a1b2c'];
+    for (const dir of [join(ROOT, 'bin'), ASSETS]) {
+      for (const f of readdirSync(dir, { recursive: true })) {
+        let text;
+        try { text = readFileSync(join(dir, f), 'utf8').toLowerCase(); } catch { continue; }
+        for (const n of needles) assert.ok(!text.includes(n.toLowerCase()), `${n} in ${f}`);
+      }
+    }
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('an invalid brand.json: pages served unbranded with one start line from teach serve; teach export refuses and writes nothing', async () => {
+  const repo = brandRepo({ name: 'X', colour: {} });
+  const out = join(repo.repo, 'site');
+  try {
+    assert.deepEqual(readBrand(repo.ws).problems, [{ code: 'BRAND_INVALID', message: 'brand.json: unknown key colour' }]);
+    const s = await served(repo.ws, Object.keys(BASE_SERVED));
+    assert.deepEqual(Object.fromEntries(Object.entries(s).map(([p, t]) => [p, sha(t)])), BASE_SERVED);
+    const ex = exported(repo);
+    assert.deepEqual([ex.code, ex.lines.filter((l) => l.startsWith('brand'))], [1, ['brand brand/brand.json: invalid; run teach lint']]);
+    const r = spawnSync(process.execPath, [BIN, 'teach', 'export', repo.ws, '--out', out], { encoding: 'utf8' });
+    assert.deepEqual([r.status, r.stdout.split('\n').filter((l) => l.startsWith('brand')), existsSync(out)], [1, ['brand brand/brand.json: invalid; run teach lint'], false]);
+    const child = spawn(process.execPath, [BIN, 'teach', 'serve', repo.ws], { env: { ...process.env, RESEARCH_VAULT_PATH: repo.vault }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '', stderr = '';
+    child.stderr.setEncoding('utf8').on('data', (c) => { stderr += c; });
+    child.stdout.setEncoding('utf8');
+    await new Promise((ok, fail) => {
+      child.stdout.on('data', (c) => { stdout += c; if (stdout.includes('\n')) ok(); });
+      child.on('exit', (code) => fail(new Error(`serve exited ${code}`)));
+    });
+    child.kill('SIGTERM');
+    await once(child, 'exit');
+    assert.equal(stderr, 'brand: brand/brand.json is invalid; run teach lint\n');
+    assert.match(stdout, /^serving /);
+    // Each kind of problem readBrand reports.
+    const cases = [
+      ['{', 'brand/brand.json is not JSON'],
+      [{ logo: { light: '../x.svg' } }, 'logo.light must be a path under brand/ whose segments are [A-Za-z0-9._-], none starting with .'],
+      [{ color: { light: { '--nope': '#fff' } } }, 'color.light: --nope is not a token of lesson.css'],
+      [{ color: { dark: { '--bg': 'red' } } }, 'color.dark.--bg must be #rgb, #rrggbb or a {reference}'],
+      [{ font: { body: '"Inter", serif' } }, 'font.body must be comma-separated names of letters, digits, spaces and hyphens, or a {reference}'],
+      [{ footer: { classification: { a: 'A' } }, audience: 'b' }, 'audience "b" is not a key of footer.classification'],
+      [{ audience: 'b' }, 'audience needs a footer.classification by audience'],
+      [{ color: { light: { '--bg': '{x.y}' } } }, 'color.light.--bg: {x.y}: no tokens file'],
+    ];
+    for (const [b, message] of cases) {
+      setBrand(repo.ws, b);
+      assert.equal(readBrand(repo.ws).problems[0]?.message, message, JSON.stringify(b));
+    }
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('brand text in the header and footer is read by the export\'s phrase check (spec 50 D8)', () => {
+  const repo = brandRepo({ footer: { classification: 'Ask in the terminal' } });
+  try {
+    const ex = exported(repo);
+    assert.equal(ex.code, 1);
+    for (const p of ['index.html', 'progress.html', 'lessons/0001-good.html', 'reference/good.html']) assert.ok(ex.lines.some((l) => l.startsWith(`mention ${p}: Ask in the terminal`)), ex.lines.join('\n'));
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+// Spec 51: section divider pages. groupRepo is brandRepo's workspace with PATH.md given a second Project: line after line 3
+// (so 0001 to 0003 close on it and 0004 to 0006 on line 9) and a seventh lesson, 0007-extra, on no PATH.md line, gated PASS.
+function groupRepo(brand, files) {
+  const r = brandRepo();
+  edit(r.ws, 'PATH.md', '| lesson: 0003-review-good\n', '| lesson: 0003-review-good\n10. Project: Use fx on <one> & "two" | after: 3\n');
+  const l1 = readFileSync(join(r.ws, 'lessons/0001-good.html'), 'utf8');
+  writeFileSync(join(r.ws, 'lessons/0007-extra.html'), l1.replace(/<title>[\s\S]*?<\/title>/, '<title>An extra lesson</title>'));
+  recordVerdict(r.repo, join(r.ws, 'lessons/0007-extra.html'), 'PASS');
+  if (brand !== undefined) setBrand(r.ws, brand, files);
+  return r;
+}
+const GROUP_LESSONS = [...LESSONS, '/lessons/0007-extra.html'];
+const DIVIDED = { ...TWO_COLOURS, footer: { copyright: '(c) {year} Acme' }, dividers: { image: 'divider.svg', alt: 'Section <art> & "co"' } };
+const DIVIDER_FILES = { ...LOGO_FILES, 'divider.svg': SVG('#fdba74') };
+const TITLE_1 = 'Project: Use fx on &lt;one&gt; &amp; &quot;two&quot;';
+const hashes = (o) => Object.fromEntries(Object.entries(o).map(([p, t]) => [p, sha(t)]));
+// Each path's status from a server on `ws`.
+async function statuses(ws, paths) {
+  const server = createServer(ws, { schema: loadTeachSchema(ROOT), now: () => NOW });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const out = [];
+    for (const p of paths) out.push((await get(server.address().port, p)).status);
+    return out;
+  } finally { server.close(); }
+}
+const bar = (html) => /<nav class="lesson-nav">[\s\S]*?<\/nav>/.exec(html)[0];
+const hrefOf = (html, cls) => new RegExp(`<a class="${cls}" href="([^"]*)"`).exec(html)?.[1] ?? null;
+
+// Computed at 0c508f9 (the code as at 07f3974) by groupRepo(TWO_COLOURS, LOGO_FILES), a brand with no dividers key (scratch t15b/base-hashes.mjs);
+// lesson 0004's two values taken again, and assets/fxctl.cast added, when the fixture lesson gained its replay (#65).
+const GROUP_SERVED = {
+  '/': '64786b10c7e7525d8a516961bbd6c401a3c0d9f78484308dc738824c7acafac8',
+  '/progress': 'e6c8ed4de6f1d5de215eecccbe73d0a4ecfc549cabcf1e094023dd4e718a3a0a',
+  '/lessons.json': 'd0415d78ac15c4c77f5fcb96b39620e87ebd8d2aa217a151db0b4d99834d63ad',
+  '/lessons/0001-good.html': '2ad921aadcbc8f38444e3dcee1dbd3ace82e30db760fb165174b698147c3f81e',
+  '/lessons/0002-bad.html': '24c7e2a22eb9cdf8c5f4e5044ed7abb6a7e676ed8465ab70d7a24cd1765e1ce2',
+  '/lessons/0003-review-good.html': '2effe215225a0f581e82e2296d69ff195ba20cff7153361ae8a3d616729e1727',
+  '/lessons/0004-tool-fxctl.html': '3715954603faea03b52b56b63dde0753a4767beb5eebebc6235f3531a7e701bf',
+  '/lessons/0005-diagnose-fx.html': '1049876dade61d8969771d3f92fd610d8137d70dcbbdb49961b29656bf6a0740',
+  '/lessons/0006-project-fx.html': '6cc3aa798f780f319aa1018b37699aea89e2df1db5a57871a2b187aaf8c7f461',
+  '/lessons/0007-extra.html': '488cea2d7fafd92b8d345acbfb7b95b64c5c73ae4bd926e0ea9611d36c09b199',
+  '/reference/good.html': '32962fc65d7ddac46a4d79512cbdb2914774bc1d5cf686b23c0c252516704f51',
+  '/assets/reading.html': 'cb0a1ec538d40b30be0a1233bd09596a19b28ebd4ed88662988f005a60f1d126',
+};
+const GROUP_EXPORTED = {
+  'lessons/0001-good.html': '1f81dd1af172050c066d363ec88ae1d4e9591f9fd3515e0c2d4df94dd75a1b5e',
+  'lessons/0002-bad.html': 'bf5242bd4b2cb84c8df817a10444d487c82ebdc0188134daab67cfd48542a423',
+  'lessons/0003-review-good.html': '6c0f208a5bbed685f5882ea076edc165cf257ffb02cfb6bd4149df7bca414bb4',
+  'lessons/0004-tool-fxctl.html': '80856d9203d1e217b69525951f831f54f33dd16d35fb2d8a89927d116b126f0a',
+  'lessons/0005-diagnose-fx.html': '78fa68f073e6fcf00ebc14aea6e5064eeff155f38bdf2c666bb543ff506b196f',
+  'lessons/0006-project-fx.html': '99db7df25d4a5ab0d8725f9a0e91c8cd82caa15045c7097a4bd9d3c0ec51ab1a',
+  'lessons/0007-extra.html': 'b79ac37d7fc9c854778a9a0f801a56bfe86a7532780c155c8182c2dec9db1530',
+  'reference/good.html': '774f257500febf4568513c60e0f546225b643724fd36641e598ceb730bcdec88',
+  'index.html': '7c2afa487b3d6945c33ae75962af464f3dc67c7e392dad0e8ff2a21f3cb0f9fb',
+  'progress.html': '026b4ea2582b0e4ca7342029695387ecc36b7098537ed87b16c22993cf0c392f',
+  'assets/reading.html': '87cd8cfc8b3e828aeb2af506efdbc6aa4d9f0e7b3f64d7dc879ffa78ee114ed8',
+  'assets/quiz.js': 'eda7aa95b6cd79d14cc9eb0cfd2e28a217c118d6677049a15b60c0719f4d0e60',
+  'assets/lesson.css': '87df4742d8ec6d84251e0f7a199e41826b9692aa13c949fb2352b6cc5ee7802e',
+  'assets/fxctl.cast': 'f4a49620ad4cbf2e69a6035bcd756da2946cf4b4db27e1ac9d080bcebbc0894f',
+  'brand/brand.json': '9efa3996b6a9671035070f1eee6393c01d0ad1664dac375247ef8138b22d7da1',
+  'brand/favicon.png': '8f8cbb7dcf46e0bc7d53265749a6c17d116093a6ba95e442764060c76fd4a86c',
+  'brand/img/logo-dark.svg': 'f25ed9604a4c2fb1c962ec373c1aaf9ef7939d724aa6dc41873224e610143834',
+  'brand/logo.svg': 'e2154c8869c410e8eeb158de8a6d76da1d18f3fa4be730b61aca85916b303be0',
+  'GLOSSARY.md': 'efcfcb71409f5fb07a868cbf663d9d284bfd66c61fa96d4592b2976277edf920',
+  'sources.html': '267ab2e88a94e968e6547469cfbe28dc22cb49619212794e1afcd095a888bc24',
+};
+
+test('a brand with no dividers key: every served reply and exported file has its bytes at the parent commit, and /dividers/1.html is 404 (spec 51 test 1)', async () => {
+  const repo = groupRepo(TWO_COLOURS, LOGO_FILES);
+  try {
+    assert.deepEqual(hashes(await served(repo.ws, Object.keys(GROUP_SERVED))), GROUP_SERVED);
+    const ex = exported(repo);
+    assert.equal(ex.code, 0, ex.lines.join('\n'));
+    assert.deepEqual(Object.fromEntries([...ex.files].map(([p, b]) => [p, sha(b)])), GROUP_EXPORTED);
+    assert.deepEqual(await statuses(repo.ws, ['/dividers/1.html']), [404]);
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('with dividers, /lessons.json lists a divider entry of id, title and path before each group with a Project: line; an unknown or non-canonical number is 404 (spec 51 test 2)', async () => {
+  const repo = groupRepo(DIVIDED, DIVIDER_FILES);
+  try {
+    const index = JSON.parse((await served(repo.ws, ['/lessons.json']))['/lessons.json']);
+    assert.deepEqual(index.lessons.map((e) => e.id), ['divider-1', '0001-good', '0002-bad', '0003-review-good', 'divider-2', '0004-tool-fxctl', '0005-diagnose-fx', '0006-project-fx', '0007-extra']);
+    assert.deepEqual(index.lessons[0], { id: 'divider-1', title: 'Project: Use fx on <one> & "two"', path: '/dividers/1.html' });
+    assert.deepEqual(Object.keys(index.lessons[4]), ['id', 'title', 'path']);
+    assert.deepEqual(Object.keys(index), ['lines', 'lessons', 'reference']);
+    assert.deepEqual(await statuses(repo.ws, ['/dividers/1.html', '/dividers/2.html', '/dividers/3.html', '/dividers/0.html', '/dividers/01.html']), [200, 200, 404, 404, 404]);
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('served, previous and next pass through a divider page; line N of M is unchanged and a divider page has none (spec 51 test 3)', async () => {
+  const repo = groupRepo(DIVIDED, DIVIDER_FILES);
+  try {
+    const s = await served(repo.ws, ['/lessons.json', '/dividers/1.html', '/dividers/2.html']);
+    const index = JSON.parse(s['/lessons.json']);
+    assert.equal(neighbours(index.lessons, '0003-review-good').next.path, '/dividers/2.html');
+    assert.equal(neighbours(index.lessons, '0004-tool-fxctl').prev.path, '/dividers/2.html');
+    assert.equal(pathPosition(index, '0003-review-good'), 'line 3 of 10');
+    const two = bar(s['/dividers/2.html']);
+    assert.deepEqual([hrefOf(two, 'lesson-nav-prev'), hrefOf(two, 'lesson-nav-next')], ['/lessons/0003-review-good.html', '/lessons/0004-tool-fxctl.html']);
+    assert.ok(!two.includes('lesson-nav-line'), two);
+    assert.deepEqual([hrefOf(bar(s['/dividers/1.html']), 'lesson-nav-prev'), hrefOf(bar(s['/dividers/1.html']), 'lesson-nav-next')], [null, '/lessons/0001-good.html']);
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('exported, previous and next pass through a divider page with relative links (spec 51 test 4)', () => {
+  const repo = groupRepo(DIVIDED, DIVIDER_FILES);
+  try {
+    const ex = exported(repo);
+    assert.equal(ex.code, 0, ex.lines.join('\n'));
+    const f = (p) => ex.files.get(p).toString('utf8');
+    assert.equal(hrefOf(f('lessons/0003-review-good.html'), 'lesson-nav-next'), '../dividers/2.html');
+    assert.equal(hrefOf(f('lessons/0004-tool-fxctl.html'), 'lesson-nav-prev'), '../dividers/2.html');
+    assert.deepEqual([hrefOf(f('dividers/2.html'), 'lesson-nav-prev'), hrefOf(f('dividers/2.html'), 'lesson-nav-next')], ['../lessons/0003-review-good.html', '../lessons/0004-tool-fxctl.html']);
+    // The footer's lesson N of M counts the lessons only, as served.
+    assert.ok(f('lessons/0004-tool-fxctl.html').includes(`<span>lesson 4 of 7</span></footer>`));
+    assert.ok(!f('dividers/2.html').includes('<span>lesson'));
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('a divider page carries the brand: the two divider rules, the header after the bar, the footer without lesson N of M; the image, the escaped title and the group\'s lessons; each lesson still lesson N of 7 (spec 51 test 5)', async () => {
+  const repo = groupRepo(DIVIDED, DIVIDER_FILES);
+  try {
+    const s = await served(repo.ws, ['/dividers/1.html', ...GROUP_LESSONS]);
+    const d = s['/dividers/1.html'];
+    assert.match(styleOf(d), /^\.brand-divider \{ grid-column: 1 \/ -1; margin: 0; \}\n\.brand-divider img \{ width: 100%; height: auto; \}$/m);
+    assert.match(d, /<\/nav><header class="brand-header">/);
+    assert.ok(d.includes('<footer class="brand-footer"><span>(c) 2026 Acme</span></footer></body>'), d);
+    assert.ok(d.includes(`<figure class="brand-divider"><img src="/brand/divider.svg" alt="Section &lt;art&gt; &amp; &quot;co&quot;"></figure><h1>${TITLE_1}</h1>`), d);
+    assert.ok(d.includes(`<title>${TITLE_1}</title>`));
+    const list = /<section data-block="index">([\s\S]*?)<\/section>/.exec(d)[1];
+    assert.deepEqual([...list.matchAll(/<li><a href="([^"]*)"/g)].map((m) => m[1]), ['/lessons/0001-good.html', '/lessons/0002-bad.html', '/lessons/0003-review-good.html']);
+    GROUP_LESSONS.forEach((p, i) => assert.ok(s[p].includes(`<span>lesson ${i + 1} of 7</span></footer>`), p));
+    // Without dividers the style has neither rule.
+    setBrand(repo.ws, TWO_COLOURS, LOGO_FILES);
+    assert.doesNotMatch(styleOf((await served(repo.ws, ['/']))['/']), /brand-divider/);
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('the index links each group heading to its divider page, served and exported (spec 51 test 6)', async () => {
+  const repo = groupRepo(DIVIDED, DIVIDER_FILES);
+  try {
+    const headings = (html) => [...html.matchAll(/<h2>(.*?)<\/h2>/g)].map((m) => m[1]);
+    assert.deepEqual(headings((await served(repo.ws, ['/']))['/']), [`<a href="/dividers/1.html">${TITLE_1}</a>`, '<a href="/dividers/2.html">Project: Predict, then run</a>']);
+    const ex = exported(repo);
+    assert.deepEqual(headings(ex.files.get('index.html').toString('utf8')), [`<a href="dividers/1.html">${TITLE_1}</a>`, '<a href="dividers/2.html">Project: Predict, then run</a>']);
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('the export holds the divider pages with relative links; --skip-ungated drops the page of a group with no exported lesson (spec 51 test 7)', () => {
+  const repo = groupRepo(DIVIDED, DIVIDER_FILES);
+  try {
+    const ex = exported(repo);
+    assert.equal(ex.code, 0, ex.lines.join('\n'));
+    for (const p of ['dividers/1.html', 'dividers/2.html', 'brand/divider.svg']) assert.ok(ex.files.has(p), p);
+    for (const p of ['dividers/1.html', 'dividers/2.html']) assert.doesNotMatch(ex.files.get(p).toString('utf8'), /\s(?:href|src)\s*=\s*["']\//, p);
+    for (const id of ['0004-tool-fxctl', '0005-diagnose-fx', '0006-project-fx']) edit(repo.ws, `lessons/${id}.html`, 'aria-label="why this lesson">\n<p>', 'aria-label="why this lesson">\n<p>Changed after the verdict. ');
+    const sk = exportWorkspace(repo.ws, { vaultPath: repo.vault, entries: buildManifest(repo.vault).entries, skipUngated: true, env: {} });
+    assert.equal(sk.code, 0, sk.lines.join('\n'));
+    assert.deepEqual([...sk.files.keys()].filter((p) => p.startsWith('dividers/')), ['dividers/1.html']);
+    assert.equal(sk.files.get('index.html').toString('utf8').split('<h2><a href=').length, 2);
+    assert.equal(hrefOf(sk.files.get('lessons/0003-review-good.html').toString('utf8'), 'lesson-nav-next'), '../lessons/0007-extra.html');
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('the export\'s phrase check reads a divider page (spec 51 test 8)', () => {
+  const repo = groupRepo(DIVIDED, DIVIDER_FILES);
+  try {
+    edit(repo.ws, 'PATH.md', 'Project: Use fx on <one> & "two"', 'Project: Use fx with teach serve');
+    const ex = exported(repo);
+    assert.equal(ex.code, 1);
+    assert.ok(ex.lines.some((l) => l.startsWith('mention dividers/1.html:')), ex.lines.join('\n'));
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('dividers lint: no image or an unknown key BRAND_INVALID, a missing file BRAND_FILE_MISSING, no alt BRAND_ALT_MISSING, each an error; a valid dividers no BRAND_ finding (spec 51 test 9)', () => {
+  const repo = groupRepo();
+  const J = 'brand/brand.json';
+  try {
+    const brandLines = (b, files) => { setBrand(repo.ws, b, files); return lintLines(repo).filter((l) => l.includes('BRAND_')); };
+    const svg = { 'divider.svg': SVG('#000') };
+    assert.deepEqual(brandLines({ dividers: { alt: 'Art' } }, svg), [`BRAND_INVALID  ${J}: dividers.image must be a path under brand/ whose segments are [A-Za-z0-9._-], none starting with .`]);
+    assert.deepEqual(brandLines({ dividers: { image: 'divider.svg', alt: 'Art', size: 2 } }, svg), [`BRAND_INVALID  ${J}: dividers: unknown key size`]);
+    assert.deepEqual(brandLines({ dividers: { image: 'img/none.svg', alt: 'Art' } }, svg), [`BRAND_FILE_MISSING  ${J}: dividers.image: brand/img/none.svg is not a regular file`]);
+    assert.deepEqual(brandLines({ dividers: { image: 'divider.svg' } }, svg), [`BRAND_ALT_MISSING  ${J}: dividers has no non-empty alt; set dividers.alt to the text the image shows`]);
+    assert.deepEqual(brandLines({ dividers: { image: 'divider.svg', alt: 'Art' } }, svg), []);
+    // readBrand's other two shapes.
+    for (const [dividers, message] of [['divider.svg', 'dividers must be an object'], [{ image: 'divider.svg', alt: 3 }, 'dividers.alt must be a string']]) {
+      setBrand(repo.ws, { dividers });
+      assert.deepEqual(readBrand(repo.ws).problems, [{ code: 'BRAND_INVALID', message }]);
+    }
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});

@@ -1,15 +1,20 @@
 // research-teach lesson parser and the `teach lint` checks for lessons, reference docs and the
 // workspace store (spec 12 "Lesson lint"). Pure over files; the verb lives in bin/commands/teach.mjs.
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { parseFrontmatter } from './frontmatter.mjs';
 import { checkCitations } from '../commands/check.mjs';
 import { matchRows } from '../commands/search.mjs';
+import { extractCitations, SPAN_RE } from './citations.mjs';
+import { isInsideVault } from './containment.mjs';
 import { traverse } from './graph.mjs';
 import {
-  extractQuizJson, extractCites, validateEntry, ENUM_CODES, LESSON_ID_RE, RECORD_ID_RE,
+  extractQuizJson, extractCites, serveFile, validateEntry, ENUM_CODES, LESSON_ID_RE, RECORD_ID_RE,
 } from './teach.mjs';
 import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
+import { readLabs, labPin, lessonLab, sha256, LAB_MANIFEST } from './labs.mjs';
+import { scanCast, PLAYER_FILES, PLAYER_VERSION } from './cast.mjs';
+import { readBrand, BRAND_DEFAULTS, contrast } from './brand.mjs';
 
 export const QUIZ_MIN_ITEMS = 3;
 export const QUIZ_SPREAD_MAX = 1.6;
@@ -17,7 +22,9 @@ export const QUIZ_SPREAD_MAX = 1.6;
 export const FIGURE_VIEWBOX_MAX = 440;
 export const FIGURE_LABEL_MIN = 14;
 export const FIGURE_LABEL_MAX = 40;
-const FOLLOWUP = 'You can ask follow-up questions in the terminal.';
+export const FOLLOWUP = 'You can ask follow-up questions in the terminal.';
+// Spec 48 D7: the connect block's opening sentence; `teach export` replaces it, and WARN_CONNECT_LEAD flags another.
+export const CONNECT_LEAD = 'Type your answer to Claude Code in the terminal, in a few sentences:';
 // Spec 22 D1: a lesson is the frame (prereq optional) around its shape's middle, in this one table.
 // D3: a project's scaffold is optional (the mission's first project carries one), so it is not listed.
 const FRAME = ['mission', 'sources', 'followup'];
@@ -66,7 +73,7 @@ export function parseBlocks(html) {
       depth += t[1] ? -1 : 1;
       if (depth === 0) { end = t.index; break; }
     }
-    if (!blocks.has(name)) blocks.set(name, { attrs, html: html.slice(start, end) });
+    if (!blocks.has(name)) blocks.set(name, { attrs, html: html.slice(start, end), start });
   }
   return blocks;
 }
@@ -227,18 +234,20 @@ export function trackedTerms(workspaceDir) {
 
 // The prose a term rule reads: every block except sources and followup, with <pre> blocks removed
 // (output and YAML name things before the lesson defines them) and the predict and quiz items included.
-function proseOf(blocks, quiz) {
+// With `noCode` (BRAND_VOICE, spec 50 D7) <code> elements are removed too.
+function proseOf(blocks, quiz, noCode = false) {
   let text = '';
   for (const [name, b] of blocks) {
     if (name === 'sources' || name === 'followup') continue;
-    text += ' ' + textOf(b.html.replace(/<pre\b[\s\S]*?<\/pre>/gi, ' ').replace(/<script\b[\s\S]*?<\/script>/gi, ' '));
+    const html = b.html.replace(/<pre\b[\s\S]*?<\/pre>/gi, ' ').replace(/<script\b[\s\S]*?<\/script>/gi, ' ');
+    text += ' ' + textOf(noCode ? html.replace(/<code\b[\s\S]*?<\/code>/gi, ' ') : html);
   }
   const predict = blocks.has('predict') ? parseQuiz(blocks.get('predict').html).items ?? [] : [];
   for (const it of [...predict, ...(quiz.items ?? [])]) text += ' ' + [it.q, ...(it.options ?? []), ...(it.why ?? [])].join(' ');
   return text;
 }
 
-const termRe = (t) => new RegExp(`(^|[^\\p{L}\\p{N}_-])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_-])`, 'iu');
+const termRe = (t, flags = 'iu') => new RegExp(`(^|[^\\p{L}\\p{N}_-])${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_-])`, flags);
 
 const unescapeHtml = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
 
@@ -314,7 +323,8 @@ function pairFindings(html, add) {
   if (late) add('WARN_PAIR_FIGURE_LAST', `${late} pair(s) put the paragraph before the figure; put the figure first so the text wraps around it on a wide screen`);
 }
 
-function figureFindings(html, add) {
+// With a brand/ folder (spec 50 D7) a figure colour is the error BRAND_OFF_PALETTE in place of WARN_FIGURE_COLOR.
+function figureFindings(html, add, branded) {
   [...html.matchAll(/<figure\b[\s\S]*?<\/figure>/gi)].flatMap((f) => [...f[0].matchAll(/<svg\b([^>]*)>([\s\S]*?)<\/svg>/gi)]).forEach((svg, i) => {
     const [, attrs, inner] = svg;
     const at = (a, name) => new RegExp(`\\s${name}\\s*=\\s*(["'])(.*?)\\1`, 'i').exec(a)?.[2];
@@ -327,6 +337,7 @@ function figureFindings(html, add) {
     const small = [];
     const long = [];
     const overflow = [];
+    let nofill = 0;
     // ponytail: text width is estimated as characters x font size x 0.5 (an average sans-serif advance; 0.55 flagged a label that fits), no font metrics; a real measure needs a renderer.
     const rects = [...inner.matchAll(/<rect\b([^>]*)>/gi)].map((r) => ({ x: parseFloat(at(r[1], 'x')) || 0, y: parseFloat(at(r[1], 'y')) || 0, w: parseFloat(at(r[1], 'width')), h: parseFloat(at(r[1], 'height')) })).filter((r) => r.w > 0 && r.h > 0);
     const stack = [attrs];
@@ -335,6 +346,7 @@ function figureFindings(html, add) {
       if (close) { stack.pop(); continue; }
       for (const c of a.matchAll(/\s(?:fill|stroke)\s*=\s*(["'])(.*?)\1/gi)) colors.add(c[2]);
       if (tag.toLowerCase() === 'text') {
+        if (![a, ...stack].some((x) => at(x, 'fill') !== undefined)) nofill++;
         const size = [a, ...stack.slice().reverse()].map((x) => at(x, 'font-size')).find((x) => x !== undefined);
         if (size === undefined || !(parseFloat(size) >= FIGURE_LABEL_MIN)) small.push(size ?? 'unknown');
         const end = inner.indexOf('</text>', t.index);
@@ -356,10 +368,60 @@ function figureFindings(html, add) {
     }
     for (const c of [at(attrs, 'fill'), at(attrs, 'stroke')]) if (c !== undefined) colors.add(c);
     const bad = [...colors].filter((c) => !/^\s*(currentColor|none|var\(--muted\))\s*$/i.test(c));
-    if (bad.length) add('WARN_FIGURE_COLOR', `${n}: fill or stroke ${bad.join(', ')}; use currentColor, none or var(--muted)`);
+    if (bad.length) add(branded ? 'BRAND_OFF_PALETTE' : 'WARN_FIGURE_COLOR', `${n}: fill or stroke ${bad.join(', ')}; use currentColor, none or var(--muted)`);
+    if (nofill) add('WARN_FIGURE_TEXT_NO_FILL', `${n}: ${nofill} label(s) with no fill on the <text> or an ancestor in the <svg>; set fill="currentColor" so the label follows the theme`);
     if (small.length) add('WARN_FIGURE_LABEL_SMALL', `${n}: ${small.length} label(s) under ${FIGURE_LABEL_MIN} units or of unknown size (${[...new Set(small)].join(', ')})`);
     if (overflow.length) add('WARN_FIGURE_TEXT_OVERFLOW', `${n}: ${overflow.length} label(s) estimated wider than the shape holding them (${overflow.map((l) => `"${l}"`).join(', ')}); widen the box, shorten the label or break the line`);
     if (long.length) add('WARN_FIGURE_LABEL_LONG', `${n}: ${long.length} label(s) over ${FIGURE_LABEL_MAX} characters (longest ${Math.max(...long)}); a label names, the paragraph explains`);
+  });
+}
+
+// An attribute's value in an <img> tag's attribute text, or undefined.
+export const imgAttr = (attrs, name) => new RegExp(`\\s${name}\\s*=\\s*(["'])(.*?)\\1`, 'i').exec(attrs)?.[2];
+
+// The file `teach serve` returns for the URL of an <img> src on a page in fromDir, and under lessons/, reference/ or assets/
+// (serveFile decodes, refuses a dot segment and a non-file): its workspace-relative path, ok, and the bytes (body null when
+// there is no such file; with bytes false the file is only stat-ed and body is undefined).
+export function imageTarget(ws, fromDir, src, { bytes = true } = {}) {
+  const raw = relative(ws, src.startsWith('/') ? join(ws, src.split(/[?#]/)[0]) : resolve(fromDir, src.split(/[?#]/)[0])).replace(/\\/g, '/');
+  const served = !raw.startsWith('..') && ['lessons', 'reference', 'assets'].includes(raw.split('/')[0]) ? serveFile(ws, `/${raw}`, { bytes }) : { status: 404 };
+  return served.status === 200 ? { path: decodeURIComponent(raw), ok: true, body: served.body } : { path: raw, ok: false, body: null };
+}
+
+// Issue #58: each <img>, in page order. An error when alt is empty or missing, when no <figcaption> sits in its
+// enclosing <figure> (none at all counts), or when src (resolved as `teach serve` does) is no file under lessons/, reference/ or assets/;
+// advisory when the data-block holding it has no data-cite (an image in no block warns).
+// ponytail: the block is found by its html containing the tag text, so an identical <img> tag in a cited and an uncited block is silent;
+// a commented-out <figcaption> counts as a caption. Upgrade to offsets from parseBlocks and a comment strip if either bites.
+function imageFindings(html, blocks, ws, fromDir, add) {
+  const figures = [...html.matchAll(/<figure\b[\s\S]*?<\/figure>/gi)].map((f) => ({ at: f.index, end: f.index + f[0].length, cap: /<figcaption\b/i.test(f[0]) }));
+  [...html.matchAll(/<img\b([^>]*)>/gi)].forEach((m, i) => {
+    const at = (name) => imgAttr(m[1], name);
+    const n = `image ${i + 1}`;
+    if (!at('alt')?.trim()) add('LESSON_IMG_NO_ALT', `${n}: <img> has an empty or missing alt; describe what is visible`);
+    if (!figures.some((f) => f.at < m.index && m.index < f.end && f.cap)) add('LESSON_IMG_NO_CAPTION', `${n}: no <figcaption> in the <figure> holding the <img>`);
+    const src = at('src') ?? '';
+    const t = imageTarget(ws, fromDir, src, { bytes: false });
+    let served = t.ok;
+    if (served) try { accessSync(join(ws, t.path), constants.R_OK); } catch { served = false; } // teach serve answers 404 for a file it cannot read
+    if (!served) add('LESSON_IMG_MISSING', `${n}: src ${src} is no file under lessons/, reference/ or assets/ that teach serve returns`);
+    if (![...blocks.values()].some((b) => b.html.includes(m[0]) && /\bdata-cite\s*=/i.test(b.html))) add('WARN_IMG_UNCITED', `${n}: no data-cite in the block holding the <img>`);
+  });
+}
+
+// Issue 65: each element carrying data-cast (a replay). Its cast must be a file under assets/ that teach serve returns
+// (LESSON_CAST_MISSING), parse (LESSON_CAST_INVALID) and match none of the scan's token shapes (LESSON_CAST_SECRET), and
+// the element must be followed, after whitespace only, by its transcript in a <pre> (LESSON_CAST_TRANSCRIPT_MISSING).
+const CAST_RE = /<([a-z][a-z0-9]*)\b[^>]*\bdata-cast\s*=\s*(["'])(.*?)\2[^>]*>[\s\S]*?<\/\1>\s*(<pre\b)?/gi;
+function castFindings(html, ws, fromDir, add) {
+  [...html.matchAll(CAST_RE)].forEach((m, i) => {
+    const n = `replay ${i + 1}`;
+    if (!m[4]) add('LESSON_CAST_TRANSCRIPT_MISSING', `${n}: no <pre> transcript right after the element naming ${m[3]}`);
+    const t = imageTarget(ws, fromDir, m[3]);
+    if (!t.ok || !t.path.startsWith('assets/')) return add('LESSON_CAST_MISSING', `${n}: data-cast ${m[3]} is no file under assets/ that teach serve returns`);
+    let hits;
+    try { hits = scanCast(t.body.toString('utf8')); } catch { return add('LESSON_CAST_INVALID', `${n}: ${t.path} is not an asciicast v2 or v3 file`); }
+    for (const h of hits) add('LESSON_CAST_SECRET', `${n}: ${t.path} matches ${h.kind} at ${h.at === 'header' ? 'the header' : `event ${h.at}`}; record it again with the value masked`);
   });
 }
 
@@ -396,17 +458,17 @@ function checkMutates(line) {
   }
 }
 
-// Issue 60: with the binding's `lab` block, each `.sh` under evidence/ and lessons/ is on the lab when a
+// Issue 60: with the binding's `lab` block, each `.sh` under labs/, evidence/ and lessons/ is on the lab when a
 // non-comment, non-echo line holds a `uses` string (raw line, since a library is sourced through a quoted path);
 // else the first non-comment line holding a `bypass` string (quoted strings read as empty) is one advisory finding,
 // unless evidence/NNNN/PLAN.md (NNNN from evidence/NNNN/ or lessons/files/NNNN-) has an `own environment: <reason>` line.
 // Reads each line as written: a quoted `bypass` string is blanked, an unquoted $(...) and a heredoc body are
-// read as lines, and a called script counts only when it is itself a .sh under the two trees.
+// read as lines, and a called script counts only when it is itself a .sh under the three trees.
 function lintLab(ws, lab) {
   const findings = [];
-  for (const d of ['evidence', 'lessons']) {
+  for (const d of ['labs', 'evidence', 'lessons']) {
     if (!existsSync(join(ws, d))) continue;
-    for (const rel of readdirSync(join(ws, d), { recursive: true }).filter((f) => f.endsWith('.sh')).sort()) {
+    for (const rel of readdirSync(join(ws, d), { recursive: true }).filter((f) => f.endsWith('.sh') && statSync(join(ws, d, f), { throwIfNoEntry: false })?.isFile()).sort()) {
       const file = `${d}/${rel.split(/[\\/]/).join('/')}`;
       const lines = readFileSync(join(ws, file), 'utf8').split(/\r?\n/).map((l, i) => [i + 1, l]).filter(([, l]) => l.trim() && !l.trim().startsWith('#'));
       if (lines.some(([, l]) => !/^\s*echo\b/.test(l) && lab.uses.some((u) => l.includes(u)))) continue;
@@ -419,6 +481,51 @@ function lintLab(ws, lab) {
     }
   }
   return findings;
+}
+
+// Spec 49 D3: labs/labs.json, never run. LAB_MANIFEST_INVALID per problem readLabs reports; else for each script the
+// manifest names, LAB_SCRIPT_NOT_RUNNABLE (no owner executable bit, or no #! first line) and LAB_HASH_MISMATCH.
+function lintLabManifest(ws) {
+  const findings = [];
+  const add = (code, message) => findings.push({ code, file: LAB_MANIFEST, message, warning: false });
+  let labs;
+  try { ({ labs } = readLabs(ws)); } catch (e) { for (const p of e.problems ?? [e.message]) add('LAB_MANIFEST_INVALID', p); return findings; }
+  const seen = new Set();
+  for (const lab of Object.values(labs)) {
+    for (const c of [...(lab.checks ?? []), lab.up, lab.down, ...(lab.verify ? [lab.verify] : [])]) {
+      if (seen.has(`${c.script}\0${c.sha256}`)) continue;
+      seen.add(`${c.script}\0${c.sha256}`);
+      let bytes;
+      try { bytes = readFileSync(join(ws, c.script)); } catch { add('LAB_HASH_MISMATCH', `${c.script} cannot be read`); continue; }
+      if (!(statSync(join(ws, c.script)).mode & 0o100)) add('LAB_SCRIPT_NOT_RUNNABLE', `${c.script} has no owner executable bit`);
+      if (bytes.subarray(0, 2).toString('latin1') !== '#!') add('LAB_SCRIPT_NOT_RUNNABLE', `${c.script} does not start with #!`);
+      const actual = sha256(bytes);
+      if (actual !== c.sha256) add('LAB_HASH_MISMATCH', `${c.script} changed: read the change, then copy sha256 ${actual} into labs.json`);
+    }
+  }
+  return findings;
+}
+
+// Spec 49 D3: a lesson's lab section. LAB_SECTION_DUPLICATE and LAB_OUTPUT_MISSING always; with a valid manifest,
+// LAB_UNKNOWN, LAB_PIN_STALE and, for a project lesson, LAB_VERIFY_MISSING.
+const LAB_OPEN_RE = /<[a-z][a-z0-9]*\b[^>]*\bdata-block\s*=\s*(["'])lab\1[^>]*>/i;
+function labSectionFindings(ws, raw, blocks, shape, entries, add) {
+  const opens = (raw.match(new RegExp(LAB_OPEN_RE.source, 'gi')) ?? []).length;
+  if (opens > 1) add('LAB_SECTION_DUPLICATE', `${opens} opening tags whose data-block is lab; a lesson has one lab section`);
+  if ([...raw.matchAll(/<!--[\s\S]*?-->/g)].some((m) => LAB_OPEN_RE.test(m[0]))) add('LAB_SECTION_DUPLICATE', 'a lab section inside an HTML comment');
+  const section = blocks.get('lab');
+  if (!section) return;
+  if (!/<pre\b/i.test(section.html)) add('LAB_OUTPUT_MISSING', "lab section has no <pre> of the author's run");
+  if (!extractCites(section.html).some((c) => entries.find((e) => e.id === c)?.type === 'experiment')) add('LAB_OUTPUT_MISSING', 'lab section cites no experiment entry');
+  let labs;
+  try { ({ labs } = readLabs(ws)); } catch { return; } // LAB_MANIFEST_INVALID says why
+  const l = lessonLab(raw);
+  if (!l.id) return add('LAB_UNKNOWN', 'lab section has no data-lab');
+  if (!Object.hasOwn(labs, l.id)) return add('LAB_UNKNOWN', `data-lab ${l.id} is not in ${LAB_MANIFEST}`);
+  const pin = labPin(l.id, labs[l.id]);
+  if (l.pin === null) add('LAB_PIN_STALE', `lab section has no lab-pin element; the lab's pin is ${pin}`);
+  else if (l.pin !== pin) add('LAB_PIN_STALE', `the stored pin is ${l.pin}; the lab's pin is ${pin}`);
+  if (shape === 'project' && !labs[l.id].verify) add('LAB_VERIFY_MISSING', `lab ${l.id} has no verify; a project lesson's lab needs one`);
 }
 
 export function lintLesson(filePath, ctx) {
@@ -445,6 +552,8 @@ export function lintLesson(filePath, ctx) {
   }
   const followup = blocks.get('followup');
   if (followup && !textOf(followup.html).includes(FOLLOWUP)) add('LESSON_FOLLOWUP_MISSING', `followup block lacks: ${FOLLOWUP}`);
+  const connect = blocks.get('connect');
+  if (connect && !textOf(connect.html).startsWith(CONNECT_LEAD)) add('WARN_CONNECT_LEAD', `connect block does not open with: ${CONNECT_LEAD}`);
 
   const fact = blocks.get('fact');
   if (fact) {
@@ -478,13 +587,29 @@ export function lintLesson(filePath, ctx) {
       if (Number(m[3]) !== pos) add('LESSON_CITE_NUMBER', `data-cite ${m[2]} is numbered [${m[3]}] but is ${pos ? `source ${pos}` : 'not'} in the sources list`);
     }
   }
-  figureFindings(raw, add);
+  figureFindings(raw, add, !!ctx.brand);
+  if (ctx.brand) {
+    // Spec 50 D7: a colour literal in a style attribute or in a <style> element's declaration blocks (not its selectors).
+    const css = [...raw.matchAll(/\sstyle\s*=\s*(["'])(.*?)\1/gis)].map((m) => m[2])
+      .concat([...raw.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].flatMap((m) => [...m[1].matchAll(/\{([^{}]*)\}/g)].map((d) => d[1])));
+    const colours = new Set(css.flatMap((s) => s.match(/(?<!&)#[0-9a-f]{3,8}(?![\w-])|\b(?:rgb|hsl)a?\([^)]*\)/gi) ?? []));
+    for (const col of colours) add('BRAND_OFF_PALETTE', `colour ${col} in a style attribute or <style> element; use a var(--token) the brand sets`);
+    if (cls !== 'reference' && ctx.brand.brand?.voice) {
+      const prose = proseOf(blocks, quiz, true);
+      for (const { term, use } of ctx.brand.brand.voice.avoid) {
+        if (termRe(term, 'u').test(prose)) add('BRAND_VOICE', `uses "${term}"${use !== undefined ? `; use "${use}"` : ''} (brand voice.avoid)`);
+      }
+    }
+  }
+  imageFindings(raw, blocks, ws, dirname(filePath), add);
+  castFindings(raw, ws, dirname(filePath), add);
   pairFindings(raw, add);
   for (const href of new Set(links)) {
     if (!linkResolves(ws, dirname(filePath), href)) add('LESSON_LINK_DANGLING', `href ${href} does not resolve`);
   }
 
   if (cls !== 'reference' && blocks.has('quiz')) quizFindings(quiz, cls, ws, add);
+  if (cls !== 'reference' && LAB_OPEN_RE.test(raw)) labSectionFindings(ws, raw, blocks, shape, ctx.entries, add);
 
   if (cls === 'lesson') {
     const html = raw;
@@ -792,12 +917,76 @@ export function proseMetrics(workspaceDir) {
   return rows;
 }
 
+// Issue 66: the workspace README.md, read before any lesson. README_SECTIONS are README-FORMAT.md's `##` headings in
+// order; teach readme prints the last two. A New to me term or one a lesson introduces (trackedTerms) that the Floor's known terms do not
+// hold is a finding, as in a lesson; fenced code and inline link targets are not read for terms. A cited vault id, an inline
+// link into evidence/ or the vault outside code (each target once), and a missing section are advisory.
+export const README_SECTIONS = ['What this is for', 'Before you start', 'How to take it', 'Lesson map', 'Labs'];
+function lintReadme(ws, ctx) {
+  const text = readFileSync(join(ws, 'README.md'), 'utf8');
+  const findings = [];
+  const add = (code, message) => findings.push({ code, file: 'README.md', message, warning: code.startsWith('WARN_') });
+  const prose = text.replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?^ {0,3}\1/gm, ' ');
+  const known = new Set(missionFloor(ws).knownTerms ?? []);
+  const words = prose.replace(/\]\([^)]*\)/g, ']');
+  for (const t of trackedTerms(ws)) {
+    if (!known.has(t) && termRe(t).test(words)) add('README_TERM_NOT_INTRODUCED', `uses the term "${t}", which is New to me or a lesson's data-introduces and not among the Floor's known terms`);
+  }
+  const ids = new Set(ctx.entries.map((e) => e.id));
+  for (const c of extractCitations(text)) if (c.type === 'id' && ids.has(c.value)) add('WARN_README_EVIDENCE_LINK', `cites the vault entry ${c.value}, which is for the author`);
+  for (const href of new Set([...prose.replace(SPAN_RE, ' ').matchAll(/\]\(\s*<?([^)\s>]+)/g)].map((m) => m[1]))) {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('#')) continue;
+    const target = resolve(ws, href.split(/[?#]/)[0]);
+    if (isInsideVault(join(ws, 'evidence'), target)) add('WARN_README_EVIDENCE_LINK', `links ${href}, which is under evidence/ and for the author`);
+    else if (ctx.vaultPath && isInsideVault(ctx.vaultPath, target)) add('WARN_README_EVIDENCE_LINK', `links ${href}, which is in the vault and for the author`);
+  }
+  const heads = new Set([...text.matchAll(/^##\s+(.+?)\s*#*\s*$/gm)].map((m) => m[1].toLowerCase()));
+  for (const s of README_SECTIONS) if (!heads.has(s.toLowerCase())) add('WARN_README_SECTION_MISSING', `no "## ${s}" section (README-FORMAT.md)`);
+  return findings;
+}
+
+// Spec 50 D7: the pairs BRAND_CONTRAST checks, text token on background token, at 4.5:1 in each scheme.
+const CONTRAST_PAIRS = [['--ink', '--bg'], ['--ink', '--card'], ['--ink', '--chip'], ['--ink', '--ok-bg'], ['--ink', '--bad-bg'], ['--ink', '--mark'],
+  ['--muted', '--bg'], ['--muted', '--card'], ['--link', '--bg'], ['--link', '--card'], ['--code-ink', '--code-bg']];
+
+// Spec 50 D7: readBrand's problems, then for a valid brand its named files, the logo's alt and the contrast pairs.
+function lintBrand(ws, { brand, problems }) {
+  const findings = [];
+  const add = (code, message) => findings.push({ code, file: 'brand/brand.json', message, warning: false });
+  for (const p of problems) add(p.code, p.message);
+  if (!brand) return findings;
+  for (const [key, f] of [['logo.light', brand.logo?.light], ['logo.dark', brand.logo?.dark], ['favicon', brand.favicon], ['dividers.image', brand.dividers?.image]]) {
+    if (f !== undefined && !statSync(join(ws, 'brand', f), { throwIfNoEntry: false })?.isFile()) add('BRAND_FILE_MISSING', `${key}: brand/${f} is not a regular file`);
+  }
+  if (brand.logo && !brand.logo.alt) add('BRAND_ALT_MISSING', 'logo has no non-empty alt; set logo.alt to the text the logo shows');
+  if (brand.dividers && !brand.dividers.alt) add('BRAND_ALT_MISSING', 'dividers has no non-empty alt; set dividers.alt to the text the image shows');
+  for (const scheme of ['light', 'dark']) {
+    const v = { ...BRAND_DEFAULTS[scheme], ...brand.color?.[scheme] };
+    for (const [fg, bg] of CONTRAST_PAIRS) {
+      const r = contrast(v[fg], v[bg]);
+      if (r < 4.5) add('BRAND_CONTRAST', `${scheme}: ${fg} ${v[fg]} on ${bg} ${v[bg]} is ${r.toFixed(2)}:1, under 4.5:1`);
+    }
+  }
+  return findings;
+}
+
 export function lintWorkspace(workspaceDir, ctx) {
-  const c = { ...ctx, workspaceDir };
+  // Spec 50 D7: the brand is read once, and only a workspace with a brand/ folder gets the BRAND_ codes.
+  const brand = existsSync(join(workspaceDir, 'brand')) ? readBrand(workspaceDir) : null;
+  const c = { ...ctx, workspaceDir, brand };
   const findings = ['lessons', 'reference'].flatMap((d) =>
     listDir(join(workspaceDir, d), '.html').flatMap((f) => lintLesson(join(workspaceDir, d, f), c)));
+  if (brand) findings.push(...lintBrand(workspaceDir, brand));
   findings.push(...lintStore(workspaceDir, c));
+  findings.push(...lintLabManifest(workspaceDir));
+  // Issue 65 (spec 47 D1): a player file in assets/ must be the pinned release's.
+  for (const [name, want] of Object.entries(PLAYER_FILES)) {
+    const p = join(workspaceDir, 'assets', name);
+    const got = existsSync(p) ? sha256(readFileSync(p)) : want;
+    if (got !== want) findings.push({ code: 'LESSON_CAST_PLAYER_HASH', file: `assets/${name}`, message: `sha256 ${got} is not the pinned asciinema-player ${PLAYER_VERSION} value ${want}`, warning: false });
+  }
   if (c.lab) findings.push(...lintLab(workspaceDir, c.lab));
+  if (statSync(join(workspaceDir, 'README.md'), { throwIfNoEntry: false })?.isFile()) findings.push(...lintReadme(workspaceDir, c));
   const path = readPath(workspaceDir);
   if (path !== null) {
     findings.push(...lintPath(path));

@@ -1,15 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, appendFileSync, existsSync, readFileSync, mkdirSync, chmodSync, mkdtempSync } from 'node:fs';
+import { writeFileSync, appendFileSync, existsSync, readFileSync, mkdirSync, chmodSync, mkdtempSync, rmSync, utimesSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { tmpVault, put, fixtureVault } from './helpers.mjs';
+import { missingGates } from '../hooks/stop-gate.mjs';
 import {
   unitHashes, changedUnits, mdUnits,
   LEDGER_FILENAME, contentHash, ledgerKey, recordVerdict, gateStatus, reviewerHash,
-  evidenceFor, renderEvidence, findWorkspaces, gatedFiles,
+  evidenceFor, renderEvidence, findWorkspaces, gatedFiles, referencedImages,
 } from '../bin/lib/gate.mjs';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'gate');
@@ -379,7 +380,7 @@ test('unitHashes over the shared parseBlocks keeps the hashes ledger rows were k
   assert.deepEqual(unitHashes(readFileSync(f)), {
     prereq: 'a2f78466c34816b23168b1d3a8d6197e591900357ac054ade858f1f2f137b06e',
     mission: '1e495a726619cc2b3d278a380870119ef5c906d411b8aa374c949af8c4093b9d',
-    model: 'f75cbbf765f4e9563a212d9090f9f7e6b425b0abc59c6ecb6c5e3f9c470a8f23',
+    model: '829e24c9448fe39cb19782cc284912b594e307fef6f83d248dcc0e85eef744fe',
     'fact:0': 'ad47b501da76642ec606c953af1346f5bff9952302b527710a56a33a5d2de653',
     'fact:1': '3b91005be86f18c73d5e3c7a7cee5036afa1cadd975ca56c22f09632a544b6e0',
     example: '593926b55cc55250c2cae84b875476dec4cdfb6f89d8f2d14e8a60808b4f20bd',
@@ -390,6 +391,29 @@ test('unitHashes over the shared parseBlocks keeps the hashes ledger rows were k
     sources: 'a3139580587c951b4271a1b2aa488e43690dfd6917b3439b6e91a11e7a698451',
     followup: '0d56143cfcdc326c0c4dbc65b9615fc233150b86346e096865780ef9e2dcf81e',
   });
+});
+
+test('a Markdown draft is cut into its own sections whatever data-block HTML it quotes, and a lesson page is cut as before', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  const md = (rule) => `# Format\n\nWrite a note as \`<p data-block="note">\`.\n\n## Example\n\n\`\`\`html\n<section data-block="mission"><p>m</p></section>\n<section data-block="fact"><p>f</p></section>\n\`\`\`\n\n## Rules\n\n${rule}\n`;
+  const file = join(root, 'docs', 'format.md');
+  writeFileSync(file, md('One rule.'));
+  assert.deepEqual(Object.keys(unitHashes(readFileSync(file), null, file)), ['sec:format', 'sec:example', 'sec:rules']);
+  assert.equal(gateCli(root, vault, 'record', 'docs/format.md', 'PASS').code, 0);
+  writeFileSync(file, md('One rule, revised.'));
+  assert.deepEqual(changedUnits(root, file), ['sec:rules']);
+  const r = gateCli(root, vault, 'evidence', 'docs/format.md', '--changed');
+  assert.equal(r.out, 'changed units: sec:rules\nunit sec:rules docs/format.md:12-14 prose\n', r.err);
+  // A Markdown file with no data-block text keeps the hashes its ledger rows were keyed to.
+  assert.deepEqual(unitHashes('# A\n\ntext\n\n## B\n\n| k | v |\n|---|---|\n| x | y |\n', null, join(root, 'a.md')), {
+    'sec:a': 'd22b769515dfe6ca62b802e396c03708b2d0992608de48bbdcaf3544a31e4f12',
+    'sec:b': '5cf51c0783ce360dcec432f24b59c128437d5880a453afae3e941e0c8a26dbd8',
+    'sec:b/x': '149f958a2ac77025c943700ae54fa157052ab0a2d3ae363e2613b0bf011e7e06',
+  });
+  // An HTML lesson given its path gets the units and hashes pinned above.
+  const lesson = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'teach', 'lessons', '0001-good.html');
+  assert.deepEqual(unitHashes(readFileSync(lesson), null, lesson), unitHashes(readFileSync(lesson)));
 });
 
 // ---- code links (spec 15 D4) ----
@@ -502,4 +526,250 @@ test('a row carries the reviewer hash; a row from another reviewer counts for no
   const t = gateStatus(root, file);
   assert.equal(t.verdict, 'PASS');
   assert.ok(!('reviewerChanged' in t));
+});
+
+// ---- image units (issue 58) ----
+const PNG_A = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+const PNG_B = Buffer.from([0x89, 0x50, 0x4e, 0x47, 4, 5, 6]);
+function imageRepo({ alt = 'a terminal', cap = 'Figure caption', example = false } = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'rv-gate-img-'));
+  writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault: 'vault' }) + '\n');
+  mkdirSync(join(root, 'ws', 'lessons'), { recursive: true });
+  mkdirSync(join(root, 'ws', 'assets'));
+  writeFileSync(join(root, 'ws', 'MISSION.md'), '# m\n');
+  writeFileSync(join(root, 'ws', 'assets', 'shot.png'), PNG_A);
+  const fig = `<figure><img src="../assets/shot.png" alt="${alt}"><figcaption>${cap}</figcaption></figure>`;
+  const page = join(root, 'ws', 'lessons', '0001-x.html');
+  const write = (o = {}) => writeFileSync(page, `<!doctype html><html><body data-lesson="0001-x">
+<section data-block="mission"><p>m</p></section>
+<section data-block="fact"><p>one <a data-cite="a">a</a></p>${example ? '' : fig}<p>two <a data-cite="b">b</a></p></section>
+<section data-block="example"><p>e</p>${example ? fig : ''}</section>
+</body></html>`.replace(/alt="[^"]*"/, `alt="${o.alt ?? alt}"`).replace(/<figcaption>[^<]*/, `<figcaption>${o.cap ?? cap}`));
+  write();
+  return { root, page, write, png: join(root, 'ws', 'assets', 'shot.png') };
+}
+
+test('an <img> is its own img:<src> unit: new bytes reopen only it, as do a new caption and a new alt', () => {
+  const { root, page, write, png } = imageRepo();
+  assert.deepEqual(Object.keys(unitHashes(readFileSync(page), null, page)).sort(), ['example', 'fact:0', 'fact:1', 'img:../assets/shot.png', 'mission']);
+  recordVerdict(root, page, 'PASS');
+  assert.deepEqual(changedUnits(root, page), []);
+  writeFileSync(png, PNG_B);
+  assert.deepEqual(changedUnits(root, page), ['img:../assets/shot.png']);
+  writeFileSync(png, PNG_A);
+  write({ cap: 'A new caption' });
+  assert.deepEqual(changedUnits(root, page), ['img:../assets/shot.png']);
+  write({ alt: 'a different alt' });
+  assert.deepEqual(changedUnits(root, page), ['img:../assets/shot.png']);
+});
+
+test('a figure inside an example block reopens that block as well as its img: unit; an <img> with no <figure> hashes its own tag', () => {
+  const { root, page, write } = imageRepo({ example: true });
+  recordVerdict(root, page, 'PASS');
+  write({ cap: 'Changed' });
+  assert.deepEqual(changedUnits(root, page).sort(), ['example', 'img:../assets/shot.png']);
+  const html = readFileSync(page, 'utf8').replace(/<figure>|<\/figure>|<figcaption>[^<]*<\/figcaption>/g, '');
+  writeFileSync(page, html);
+  const before = unitHashes(html, null, page)['img:../assets/shot.png'];
+  writeFileSync(page, html.replace('alt="a terminal"', 'alt="b"'));
+  assert.notEqual(unitHashes(readFileSync(page), null, page)['img:../assets/shot.png'], before);
+});
+
+test('a missing image file is still an img: unit and changes when the file appears', () => {
+  const { root, page, png } = imageRepo();
+  rmSync(png);
+  recordVerdict(root, page, 'PASS');
+  assert.ok('img:../assets/shot.png' in unitHashes(readFileSync(page), null, page));
+  writeFileSync(png, PNG_A);
+  assert.deepEqual(changedUnits(root, page), ['img:../assets/shot.png']);
+});
+
+test('gate evidence prints one image: line with the workspace-relative path and the file sha256, and none for a lesson without an image', () => {
+  const { root, page } = imageRepo();
+  const vault = fixtureVault();
+  const r = gateCli(root, vault, 'evidence', 'ws/lessons/0001-x.html', '--changed');
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, new RegExp(`^image: assets/shot\\.png sha256:${contentHash(PNG_A)}$`, 'm'));
+  assert.match(r.out, /^changed units: .*img:\.\.\/assets\/shot\.png/m);
+  writeFileSync(page, '<section data-block="mission"><p>m</p></section>');
+  assert.doesNotMatch(gateCli(root, vault, 'evidence', 'ws/lessons/0001-x.html').out, /^image:/m);
+});
+
+test('a reference page shares the path: its images are img: units too', () => {
+  const { root } = imageRepo();
+  mkdirSync(join(root, 'ws', 'reference'));
+  const ref = join(root, 'ws', 'reference', 'r.html');
+  writeFileSync(ref, '<div data-block="note"><figure><img src="../assets/shot.png" alt="t"><figcaption>c</figcaption></figure></div>');
+  assert.deepEqual(Object.keys(unitHashes(readFileSync(ref), null, ref)), ['note', 'img:../assets/shot.png']);
+});
+
+test('a lesson with no image has the units and hashes it had before image units', () => {
+  const f = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'teach', 'lessons', '0001-good.html');
+  const u = unitHashes(readFileSync(f), null, f);
+  assert.equal(u.mission, '1e495a726619cc2b3d278a380870119ef5c906d411b8aa374c949af8c4093b9d');
+  assert.equal(u['fact:0'], 'ad47b501da76642ec606c953af1346f5bff9952302b527710a56a33a5d2de653');
+  assert.equal(u.step, 'ac86fe13d81803cbc782f402f66bffc4dba25a91e1d21505b1c0a61c38dcff30');
+  assert.ok(!Object.keys(unitHashes(readFileSync(f), null, f)).some((k) => k.startsWith('img:')));
+});
+
+test('an <img> named in prose with no src is no unit', () => {
+  const html = '<section data-block="mission"><p>Use an <img> with a <figcaption>.</p></section>';
+  assert.deepEqual(Object.keys(unitHashes(html, null, join(tmpdir(), 'ws', 'lessons', 'x.html'))), ['mission']);
+});
+
+test('gate status, gate staged and the stop hook see an image that changed or vanished, and a draft with no image keeps its exact-bytes verdict', () => {
+  const { root, page, png } = imageRepo();
+  const vault = fixtureVault();
+  const git = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  gateCli(root, vault, 'record', 'ws/lessons/0001-x.html', 'PASS');
+  git('add', 'ws/lessons/0001-x.html');
+  assert.equal(gateCli(root, vault, 'status', 'ws/lessons/0001-x.html', '--check').code, 0);
+  assert.match(gateCli(root, vault, 'status', 'ws/lessons/0001-x.html').out, /: PASS @ /);
+  writeFileSync(png, PNG_B);
+  const s = gateCli(root, vault, 'status', 'ws/lessons/0001-x.html', '--check');
+  assert.equal(s.code, 1);
+  assert.match(s.out, /\(changed units: img:\.\.\/assets\/shot\.png\)/);
+  const st = gateCli(root, vault, 'staged', '--check');
+  assert.equal(st.code, 1);
+  assert.equal(st.out, 'ws/lessons/0001-x.html: none\n');
+  writeFileSync(png, PNG_A);
+  assert.equal(gateCli(root, vault, 'staged', '--check').code, 0);
+  rmSync(png);
+  const d = gateCli(root, vault, 'status', 'ws/lessons/0001-x.html', '--check');
+  assert.equal(d.code, 1);
+  assert.match(d.out, /changed units: img:\.\.\/assets\/shot\.png/);
+  writeFileSync(png, PNG_A);
+  // Only the image is staged (the page is committed unchanged): the page is still looked at.
+  git('reset', '-q');
+  git('-c', 'user.email=a@b', '-c', 'user.name=t', 'add', '-A');
+  git('-c', 'user.email=a@b', '-c', 'user.name=t', 'commit', '-qm', 'c');
+  writeFileSync(png, PNG_B);
+  git('add', 'ws/assets/shot.png');
+  const only = gateCli(root, vault, 'staged', '--check');
+  assert.equal(only.code, 1, only.out);
+  assert.equal(only.out, 'ws/lessons/0001-x.html: none\n');
+  // The stop hook: the page is old, only the image is newer than since.
+  const old = new Date(Date.now() - 3600000);
+  utimesSync(page, old, old);
+  rmSync(join(root, '.git'), { recursive: true });
+  assert.deepEqual(missingGates(root, vault, {}, Date.now() - 60000).map((m) => m.file), ['ws/lessons/0001-x.html']);
+});
+
+test('an <img> pointing at another lesson or a .txt file is no image: no image: line, no throw, a unit hashed as a missing file; a real image prints its own sha256', () => {
+  const { root, page, write } = imageRepo();
+  const vault = fixtureVault();
+  writeFileSync(join(root, 'ws', 'lessons', '0002-y.html'), '<section data-block="mission"><p>other</p></section>');
+  writeFileSync(join(root, 'ws', 'assets', 'notes.txt'), 'text');
+  writeFileSync(join(root, 'ws', 'assets', 'a b.png'), PNG_B);
+  const html = (src) => `<section data-block="fact"><p>x</p><figure><img src="${src}" alt="a"><figcaption>c</figcaption></figure></section>`;
+  for (const src of ['0002-y.html', '../assets/notes.txt']) {
+    writeFileSync(page, html(src));
+    const r = gateCli(root, vault, 'evidence', 'ws/lessons/0001-x.html', '--changed');
+    assert.equal(r.code, 0, r.err);
+    assert.doesNotMatch(r.out, /^image:/m);
+    assert.ok(`img:${src}` in unitHashes(readFileSync(page), null, page));
+    assert.equal(gateCli(root, vault, 'record', 'ws/lessons/0001-x.html', 'PASS').code, 0);
+  }
+  writeFileSync(page, html('../assets/a%20b.png'));
+  assert.match(gateCli(root, vault, 'evidence', 'ws/lessons/0001-x.html').out, new RegExp(`^image: assets/a b\\.png sha256:${contentHash(PNG_B)}$`, 'm'));
+});
+
+test('a caption or alt change reopens the figure\'s block or fact paragraph too, a bytes-only change reopens only the img: unit', () => {
+  const lesson = (cap, where) => {
+    const fig = `<figure><img src="../assets/shot.png" alt="a"><figcaption>${cap}</figcaption></figure>`;
+    return `<section data-block="fact"><p>one ${where === 'fact' ? fig : ''}</p><p>two</p></section><section data-block="example"><p>e</p>${where === 'example' ? fig : ''}</section>`;
+  };
+  for (const [where, unit] of [['fact', 'fact:0'], ['example', 'example']]) {
+    const { root, page, png } = imageRepo();
+    writeFileSync(page, lesson('c', where));
+    recordVerdict(root, page, 'PASS');
+    writeFileSync(page, lesson('d', where));
+    assert.deepEqual(changedUnits(root, page).sort(), [unit, 'img:../assets/shot.png'].sort(), where);
+    writeFileSync(page, lesson('c', where));
+    writeFileSync(png, PNG_B);
+    assert.deepEqual(changedUnits(root, page), ['img:../assets/shot.png'], where);
+  }
+});
+
+test('referencedImages lists an image by existence without reading it, and no image for a page it cannot read', (t) => {
+  const { root, page, png } = imageRepo();
+  chmodSync(png, 0o000);
+  t.after(() => { chmodSync(png, 0o644); chmodSync(page, 0o644); });
+  assert.deepEqual(referencedImages(page), [png]);
+  chmodSync(page, 0o000);
+  assert.deepEqual(referencedImages(page), []);
+});
+
+test('an unreadable gated page that is not staged does not stop gate staged, and a staged deletion of its image alone selects nothing', (t) => {
+  const { root, page, png } = imageRepo();
+  const vault = fixtureVault();
+  const git = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  gateCli(root, vault, 'record', 'ws/lessons/0001-x.html', 'PASS');
+  git('-c', 'user.email=a@b', '-c', 'user.name=t', 'add', '-A');
+  git('-c', 'user.email=a@b', '-c', 'user.name=t', 'commit', '-qm', 'c');
+  git('rm', '-q', 'ws/assets/shot.png');
+  assert.equal(gateStatus(root, page).verdict, null, 'gate status sees the deletion');
+  const d = gateCli(root, vault, 'staged', '--check');
+  assert.deepEqual([d.code, d.out], [0, 'staged gated files: none\n']);
+  git('reset', '-q');
+  writeFileSync(join(root, 'ws', 'lessons', '0002-z.html'), '<section data-block="mission"><p>z</p></section>');
+  git('add', 'ws/lessons/0002-z.html');
+  t.after(() => chmodSync(page, 0o644));
+  chmodSync(page, 0o000);
+  const r = gateCli(root, vault, 'staged', '--check');
+  assert.equal(r.code, 1, r.err);
+  assert.equal(r.out, 'ws/lessons/0002-z.html: none\n');
+});
+
+test('a gates.globs HTML page outside a workspace prints its image: path relative to the page\'s grandparent', () => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-gate-nows-'));
+  const vault = fixtureVault();
+  writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault, gates: { globs: ['pages/*.html'] } }) + '\n');
+  mkdirSync(join(root, 'pages'));
+  mkdirSync(join(root, 'assets'));
+  writeFileSync(join(root, 'assets', 's.png'), PNG_A);
+  writeFileSync(join(root, 'pages', 'p.html'), '<section data-block="note"><figure><img src="../assets/s.png" alt="a"><figcaption>c</figcaption></figure></section>');
+  assert.match(gateCli(root, vault, 'evidence', 'pages/p.html').out, /^image: assets\/s\.png sha256:/m);
+});
+
+test('an image the gate cannot read is a missing image: status names its img: unit, nothing throws, no image: line, and the verdict counts again once it is readable', (t) => {
+  if (process.getuid?.() === 0) return t.skip('root ignores mode bits');
+  const { root, page, png } = imageRepo();
+  const vault = fixtureVault();
+  const git = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' });
+  t.after(() => chmodSync(png, 0o644));
+  git('init', '-q');
+  gateCli(root, vault, 'record', 'ws/lessons/0001-x.html', 'PASS');
+  chmodSync(png, 0o000);
+  const s = gateCli(root, vault, 'status', 'ws/lessons/0001-x.html', '--check');
+  assert.equal(s.code, 1, s.err);
+  assert.match(s.out, /changed units: img:\.\.\/assets\/shot\.png/);
+  const c = gateCli(root, vault, 'changed', 'ws/lessons/0001-x.html');
+  assert.equal(c.code, 1, c.err);
+  const e = gateCli(root, vault, 'evidence', 'ws/lessons/0001-x.html', '--changed');
+  assert.equal(e.code, 0, e.err);
+  assert.doesNotMatch(e.out, /^image:/m);
+  git('add', 'ws/lessons/0001-x.html');
+  const st = gateCli(root, vault, 'staged', '--check');
+  assert.deepEqual([st.code, st.out], [1, 'ws/lessons/0001-x.html: none\n']);
+  chmodSync(png, 0o644);
+  assert.equal(gateCli(root, vault, 'status', 'ws/lessons/0001-x.html', '--check').code, 0);
+  chmodSync(png, 0o000);
+  utimesSync(page, new Date(Date.now() - 3600000), new Date(Date.now() - 3600000));
+  assert.deepEqual(missingGates(root, vault, {}, Date.now() - 60000).map((m) => m.file), ['ws/lessons/0001-x.html']);
+});
+
+test('a workspace README.md is gated: an edit after its verdict shows in gate changed and the Stop hook check; no README adds nothing (issue 66)', () => {
+  const { root, vault } = workspaceRepo();
+  const without = gatedFiles(root, vault, {});
+  const readme = join(root, 'learn/k8s/README.md');
+  writeFileSync(readme, '# Fx\n\n## Lesson map\n\nOne group.\n');
+  assert.deepEqual(gatedFiles(root, vault, {}).sort(), [...without, readme].sort());
+  for (const f of [...without, readme]) recordVerdict(root, f, 'PASS');
+  assert.deepEqual(missingGates(root, vault, {}, 0), []);
+  appendFileSync(readme, 'Edited.\n');
+  assert.deepEqual(changedUnits(root, readme), ['sec:lesson-map']);
+  assert.deepEqual(missingGates(root, vault, {}, 0).map((m) => m.file), ['learn/k8s/README.md']);
 });
