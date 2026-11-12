@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- Plan (`docs/specs/plan-2026-11-12-claims-gate-scope.md`): a faster claims gate. Split the `teach` row of `docs/REFERENCE.md` into one section per subcommand, each naming its evidence in a comment; `gate evidence --changed` lists only the citations inside the changed units; `teach serve --labs` refuses a script with no `#!` line before it starts; a `gates.exclude` list in the binding. A diff-scoped review is not built, by the user's decision after an adversarial review. No code in this commit.
 
 ## [0.11.0] - 2026-11-12
 - Tests: the lab test for a script that cannot start now uses a missing interpreter (`ENOENT` on macOS and Linux). A script with no interpreter line is `ENOEXEC` on macOS only; Linux runs it with `/bin/sh`, which failed the test in CI.
