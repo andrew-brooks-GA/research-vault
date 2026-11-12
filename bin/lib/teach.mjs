@@ -16,7 +16,7 @@ import { grade, neighbours, pathPosition } from '../../skills/research-teach/ass
 import { lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWUP, CONNECT_LEAD, imageTarget } from './lesson.mjs';
 import { HEADING_RE, TABLE_SEP_RE, WORKSPACE_GATES, hasVerdict } from './gate.mjs';
 import { readLabs, lessonLab, labRunner, secretHits, labCookie, LAB_ACTIONS, LAB_BODY_MAX, LAB_ID_RE } from './labs.mjs';
-import { readBrand, withBrand } from './brand.mjs';
+import { readBrand, withBrand, brandUrl } from './brand.mjs';
 
 export const SPACING_DAYS = 21;
 export const ATTEMPT_BODY_MAX = 4096;
@@ -374,11 +374,12 @@ export function progressText(p) {
 
 // The navigation bar of a page that does not load quiz.js; renderNav in quiz.js builds the same links
 // (plus previous, next and the path position) on a lesson page. Spec 48 D3: given lessonIndex's index and a
-// lesson id, it adds those three as renderNav does, for an exported lesson that fetches nothing.
+// lesson id, it adds those three as renderNav does, for an exported lesson that fetches nothing. Spec 51 D4: previous
+// and next follow index.pages, the reading order with the divider pages, when withDividers set it.
 export function navHtml(index = null, id = null) {
   const links = '<nav class="lesson-nav"><a class="lesson-nav-index" href="/">All lessons</a><a class="lesson-nav-progress" href="/progress">Progress</a><a class="lesson-nav-reading" href="/assets/reading.html">How to read</a>';
   if (!index) return links + '</nav>';
-  const { prev, next } = neighbours(index.lessons ?? [], id);
+  const { prev, next } = neighbours(index.pages ?? index.lessons ?? [], id);
   const pos = pathPosition(index, id);
   const a = (e, text, cls) => `<a class="${cls}" href="${escapeHtml(e.path)}">${text}</a>`;
   return links + (prev ? a(prev, `&#8592; ${escapeHtml(prev.title)}`, 'lesson-nav-prev') : '') +
@@ -607,22 +608,50 @@ function readmeText(ws) {
   } catch { /* absent or unreadable: the page has no README */ }
   return null;
 }
-export function indexHtml(ws, { index = lessonIndex(ws), readme = readmeText(ws) } = {}) {
-  const { lessons, reference } = index;
-  const readmeHtml = readme === null ? '' : `<section data-block="readme">${markdownHtml(readme)}</section>\n`;
-  const li = (e) => `<li><a href="${escapeHtml(e.path)}">${escapeHtml(e.title)}</a>${e.shape ? ` <span class="lesson-shape">${escapeHtml(e.shape)}</span>` : ''} <small>${escapeHtml(e.id)}</small></li>`;
+// Spec 51 D1: the index's groups, each run of consecutive lessons with the same project.
+export function lessonRuns(lessons) {
   const runs = [];
   for (const l of lessons) {
     if (runs.at(-1)?.project !== l.project) runs.push({ project: l.project, lessons: [] });
     runs.at(-1).lessons.push(l);
   }
-  const lessonHtml = runs.map((r) => `${r.project ? `<h2>${escapeHtml(r.project)}</h2>` : ''}<ol class="lesson-index">${r.lessons.map(li).join('')}</ol>`).join('');
+  return runs;
+}
+// D4: with the brand's dividers, the index plus `pages`, the reading order: each run with a project after its divider
+// entry, k counted from 1 over those runs. index.lessons is untouched. Without dividers, the index itself.
+export function withDividers(index, brand) {
+  if (!brand?.dividers) return index;
+  let k = 0;
+  const pages = lessonRuns(index.lessons).flatMap((r) => (r.project === null ? r.lessons
+    : [{ id: `divider-${++k}`, title: r.project, path: `/dividers/${k}.html` }, ...r.lessons]));
+  return { ...index, pages };
+}
+const indexItem = (e) => `<li><a href="${escapeHtml(e.path)}">${escapeHtml(e.title)}</a>${e.shape ? ` <span class="lesson-shape">${escapeHtml(e.shape)}</span>` : ''} <small>${escapeHtml(e.id)}</small></li>`;
+// D2: divider k's page over withDividers' index, or null when there is none: the bar, the image, the group's title, its lessons.
+export function dividerHtml(index, k, brand) {
+  const r = index.pages && lessonRuns(index.lessons).filter((x) => x.project !== null)[k - 1];
+  if (!r) return null;
+  const title = escapeHtml(r.project);
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>${title}</title><link rel="stylesheet" href="/assets/lesson.css"></head>
+<body>${navHtml(index, `divider-${k}`)}<figure class="brand-divider"><img src="${escapeHtml(brandUrl(brand.dividers.image))}" alt="${escapeHtml(brand.dividers.alt ?? '')}"></figure><h1>${title}</h1>
+<section data-block="index"><ol class="lesson-index">${r.lessons.map(indexItem).join('')}</ol></section>
+</body></html>
+`;
+}
+// Spec 51 D5: with index.pages, each heading links to its divider page.
+export function indexHtml(ws, { index = lessonIndex(ws), readme = readmeText(ws) } = {}) {
+  const { lessons, reference } = index;
+  const readmeHtml = readme === null ? '' : `<section data-block="readme">${markdownHtml(readme)}</section>\n`;
+  let k = 0;
+  const heading = (p) => (index.pages ? `<h2><a href="/dividers/${++k}.html">${escapeHtml(p)}</a></h2>` : `<h2>${escapeHtml(p)}</h2>`);
+  const lessonHtml = lessonRuns(lessons).map((r) => `${r.project ? heading(r.project) : ''}<ol class="lesson-index">${r.lessons.map(indexItem).join('')}</ol>`).join('');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Lessons</title><link rel="stylesheet" href="/assets/lesson.css"></head>
 <body>${navHtml()}${readmeHtml}<h1>Lessons</h1>
 <p class="reading-link"><a href="/assets/reading.html">How to read a lesson</a></p>
 <section data-block="index">${lessonHtml || '<ol class="lesson-index"></ol>'}</section>
-${reference.length ? `<section data-block="reference-index"><ul class="lesson-index">${reference.map(li).join('')}</ul></section>` : ''}
+${reference.length ? `<section data-block="reference-index"><ul class="lesson-index">${reference.map(indexItem).join('')}</ul></section>` : ''}
 </body></html>
 `;
 }
@@ -773,12 +802,14 @@ export function exportWorkspace(ws, { vaultPath, entries, skipUngated = false, e
   const full = lessonIndex(ws);
   const index = { ...full, lessons: full.lessons.filter((e) => kept.has(e.path.slice(1))), reference: full.reference.filter((e) => kept.has(e.path.slice(1))) };
   const { brand, problems: brandProblems } = readBrand(ws);
-  const ctx = { key, index, brand, year: new Date().getFullYear() };
+  const ctx = { key, index: withDividers(index, brand), brand, year: new Date().getFullYear() };
   const titles = Object.fromEntries(entries.map((e) => [e.id, e.title ?? e.id]));
   const sourceHref = (id) => `/sources.html#${encodeURIComponent(id)}`;
   const files = new Map();
   for (const p of pages) files.set(p, exportPage(withCastText(ws, p, serveFile(ws, urlOf(p), { titles, sourceHref }).body.toString('utf8')), p, ctx));
-  files.set('index.html', exportPage(indexHtml(ws, { index, readme: readme === null ? null : exportReadme(readme) }), 'index.html', ctx));
+  files.set('index.html', exportPage(indexHtml(ws, { index: ctx.index, readme: readme === null ? null : exportReadme(readme) }), 'index.html', ctx));
+  // Spec 51 D3, D6: the divider pages, generated, so no verdict is asked; the phrase check below reads them.
+  for (let k = 1, d; (d = dividerHtml(ctx.index, k, brand)); k++) files.set(`dividers/${k}.html`, exportPage(d, `dividers/${k}.html`, ctx));
   files.set('progress.html', exportPage(localProgressHtml(), 'progress.html', ctx));
   files.set('assets/reading.html', exportPage(withNav(readFileSync(join(PLUGIN_ASSETS, 'reading.html'), 'utf8')), 'assets/reading.html', ctx));
   files.set('assets/quiz.js', readFileSync(join(PLUGIN_ASSETS, 'quiz.js'), 'utf8').replace(/^export /gm, ''));
@@ -955,10 +986,19 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
       const { brand } = readBrand(ws);
       return withBrand(html, brand, { position: brand && lessonPosition(lessonIndex(ws), path), year: clock().getFullYear() });
     };
-    if (path === '/') return send(req, res, 200, branded(indexHtml(ws)), 'text/html; charset=utf-8');
-    if (path === '/lessons.json') return send(req, res, 200, JSON.stringify(lessonIndex(ws)), 'application/json');
+    // Spec 51 D4: with the brand's dividers, /lessons.json's lessons is the reading order, divider pages included.
+    const divided = () => { const { brand } = readBrand(ws); return { brand, index: withDividers(lessonIndex(ws), brand) }; };
+    if (path === '/') return send(req, res, 200, branded(indexHtml(ws, { index: divided().index })), 'text/html; charset=utf-8');
+    if (path === '/lessons.json') {
+      const { pages, ...index } = divided().index;
+      return send(req, res, 200, JSON.stringify(pages ? { ...index, lessons: pages } : index), 'application/json');
+    }
     if (path === '/progress') return send(req, res, 200, branded(progressHtml(progress(ws, { now: clock() }))), 'text/html; charset=utf-8');
     if (path === '/progress.json') return send(req, res, 200, JSON.stringify(progress(ws, { now: clock() })), 'application/json');
+    const k = /^\/dividers\/([1-9]\d*)\.html$/.exec(path)?.[1];
+    const d = k && divided();
+    const divider = d && dividerHtml(d.index, Number(k), d.brand);
+    if (divider) return send(req, res, 200, branded(divider), 'text/html; charset=utf-8');
     const f = serveFile(ws, path, { titles, lab: labs ? (hasCookie(req, port) ? 'live' : 'open') : undefined });
     if (f.status !== 200) return send(req, res, f.status, f.status === 400 ? 'bad request\n' : 'not found\n');
     send(req, res, 200, f.type.startsWith('text/html') ? branded(f.body) : f.body, f.type); // HEAD: node:http drops the body itself

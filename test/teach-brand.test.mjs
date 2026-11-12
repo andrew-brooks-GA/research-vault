@@ -17,6 +17,7 @@ import { readBrand, BRAND_TOKENS } from '../bin/lib/brand.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
 import { lintWorkspace } from '../bin/lib/lesson.mjs';
+import { neighbours, pathPosition } from '../skills/research-teach/assets/quiz.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'research-vault.mjs');
@@ -392,5 +393,199 @@ test('brand text in the header and footer is read by the export\'s phrase check 
     const ex = exported(repo);
     assert.equal(ex.code, 1);
     for (const p of ['index.html', 'progress.html', 'lessons/0001-good.html', 'reference/good.html']) assert.ok(ex.lines.some((l) => l.startsWith(`mention ${p}: Ask in the terminal`)), ex.lines.join('\n'));
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+// Spec 51: section divider pages. groupRepo is brandRepo's workspace with PATH.md given a second Project: line after line 3
+// (so 0001 to 0003 close on it and 0004 to 0006 on line 9) and a seventh lesson, 0007-extra, on no PATH.md line, gated PASS.
+function groupRepo(brand, files) {
+  const r = brandRepo();
+  edit(r.ws, 'PATH.md', '| lesson: 0003-review-good\n', '| lesson: 0003-review-good\n10. Project: Use fx on <one> & "two" | after: 3\n');
+  const l1 = readFileSync(join(r.ws, 'lessons/0001-good.html'), 'utf8');
+  writeFileSync(join(r.ws, 'lessons/0007-extra.html'), l1.replace(/<title>[\s\S]*?<\/title>/, '<title>An extra lesson</title>'));
+  recordVerdict(r.repo, join(r.ws, 'lessons/0007-extra.html'), 'PASS');
+  if (brand !== undefined) setBrand(r.ws, brand, files);
+  return r;
+}
+const GROUP_LESSONS = [...LESSONS, '/lessons/0007-extra.html'];
+const DIVIDED = { ...TWO_COLOURS, footer: { copyright: '(c) {year} Acme' }, dividers: { image: 'divider.svg', alt: 'Section <art> & "co"' } };
+const DIVIDER_FILES = { ...LOGO_FILES, 'divider.svg': SVG('#fdba74') };
+const TITLE_1 = 'Project: Use fx on &lt;one&gt; &amp; &quot;two&quot;';
+const hashes = (o) => Object.fromEntries(Object.entries(o).map(([p, t]) => [p, sha(t)]));
+// Each path's status from a server on `ws`.
+async function statuses(ws, paths) {
+  const server = createServer(ws, { schema: loadTeachSchema(ROOT), now: () => NOW });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  try {
+    const out = [];
+    for (const p of paths) out.push((await get(server.address().port, p)).status);
+    return out;
+  } finally { server.close(); }
+}
+const bar = (html) => /<nav class="lesson-nav">[\s\S]*?<\/nav>/.exec(html)[0];
+const hrefOf = (html, cls) => new RegExp(`<a class="${cls}" href="([^"]*)"`).exec(html)?.[1] ?? null;
+
+// Computed at 0c508f9 (the code as at 07f3974) by groupRepo(TWO_COLOURS, LOGO_FILES), a brand with no dividers key (scratch t15b/base-hashes.mjs).
+const GROUP_SERVED = {
+  '/': '64786b10c7e7525d8a516961bbd6c401a3c0d9f78484308dc738824c7acafac8',
+  '/progress': 'e6c8ed4de6f1d5de215eecccbe73d0a4ecfc549cabcf1e094023dd4e718a3a0a',
+  '/lessons.json': 'd0415d78ac15c4c77f5fcb96b39620e87ebd8d2aa217a151db0b4d99834d63ad',
+  '/lessons/0001-good.html': '2ad921aadcbc8f38444e3dcee1dbd3ace82e30db760fb165174b698147c3f81e',
+  '/lessons/0002-bad.html': '24c7e2a22eb9cdf8c5f4e5044ed7abb6a7e676ed8465ab70d7a24cd1765e1ce2',
+  '/lessons/0003-review-good.html': '2effe215225a0f581e82e2296d69ff195ba20cff7153361ae8a3d616729e1727',
+  '/lessons/0004-tool-fxctl.html': 'bddfb16e4572d38fed547028031d7d1aee40b21bc73f2f7cd8a1416e09f4be4f',
+  '/lessons/0005-diagnose-fx.html': '1049876dade61d8969771d3f92fd610d8137d70dcbbdb49961b29656bf6a0740',
+  '/lessons/0006-project-fx.html': '6cc3aa798f780f319aa1018b37699aea89e2df1db5a57871a2b187aaf8c7f461',
+  '/lessons/0007-extra.html': '488cea2d7fafd92b8d345acbfb7b95b64c5c73ae4bd926e0ea9611d36c09b199',
+  '/reference/good.html': '32962fc65d7ddac46a4d79512cbdb2914774bc1d5cf686b23c0c252516704f51',
+  '/assets/reading.html': 'cb0a1ec538d40b30be0a1233bd09596a19b28ebd4ed88662988f005a60f1d126',
+};
+const GROUP_EXPORTED = {
+  'lessons/0001-good.html': '1f81dd1af172050c066d363ec88ae1d4e9591f9fd3515e0c2d4df94dd75a1b5e',
+  'lessons/0002-bad.html': 'bf5242bd4b2cb84c8df817a10444d487c82ebdc0188134daab67cfd48542a423',
+  'lessons/0003-review-good.html': '6c0f208a5bbed685f5882ea076edc165cf257ffb02cfb6bd4149df7bca414bb4',
+  'lessons/0004-tool-fxctl.html': 'f78e183c454f081276e2d77782b02274c4b4b18f610e0ba4bc7defd6af851a4d',
+  'lessons/0005-diagnose-fx.html': '78fa68f073e6fcf00ebc14aea6e5064eeff155f38bdf2c666bb543ff506b196f',
+  'lessons/0006-project-fx.html': '99db7df25d4a5ab0d8725f9a0e91c8cd82caa15045c7097a4bd9d3c0ec51ab1a',
+  'lessons/0007-extra.html': 'b79ac37d7fc9c854778a9a0f801a56bfe86a7532780c155c8182c2dec9db1530',
+  'reference/good.html': '774f257500febf4568513c60e0f546225b643724fd36641e598ceb730bcdec88',
+  'index.html': '7c2afa487b3d6945c33ae75962af464f3dc67c7e392dad0e8ff2a21f3cb0f9fb',
+  'progress.html': '026b4ea2582b0e4ca7342029695387ecc36b7098537ed87b16c22993cf0c392f',
+  'assets/reading.html': '87cd8cfc8b3e828aeb2af506efdbc6aa4d9f0e7b3f64d7dc879ffa78ee114ed8',
+  'assets/quiz.js': 'eda7aa95b6cd79d14cc9eb0cfd2e28a217c118d6677049a15b60c0719f4d0e60',
+  'assets/lesson.css': '87df4742d8ec6d84251e0f7a199e41826b9692aa13c949fb2352b6cc5ee7802e',
+  'brand/brand.json': '9efa3996b6a9671035070f1eee6393c01d0ad1664dac375247ef8138b22d7da1',
+  'brand/favicon.png': '8f8cbb7dcf46e0bc7d53265749a6c17d116093a6ba95e442764060c76fd4a86c',
+  'brand/img/logo-dark.svg': 'f25ed9604a4c2fb1c962ec373c1aaf9ef7939d724aa6dc41873224e610143834',
+  'brand/logo.svg': 'e2154c8869c410e8eeb158de8a6d76da1d18f3fa4be730b61aca85916b303be0',
+  'GLOSSARY.md': 'efcfcb71409f5fb07a868cbf663d9d284bfd66c61fa96d4592b2976277edf920',
+  'sources.html': '267ab2e88a94e968e6547469cfbe28dc22cb49619212794e1afcd095a888bc24',
+};
+
+test('a brand with no dividers key: every served reply and exported file has its bytes at the parent commit, and /dividers/1.html is 404 (spec 51 test 1)', async () => {
+  const repo = groupRepo(TWO_COLOURS, LOGO_FILES);
+  try {
+    assert.deepEqual(hashes(await served(repo.ws, Object.keys(GROUP_SERVED))), GROUP_SERVED);
+    const ex = exported(repo);
+    assert.equal(ex.code, 0, ex.lines.join('\n'));
+    assert.deepEqual(Object.fromEntries([...ex.files].map(([p, b]) => [p, sha(b)])), GROUP_EXPORTED);
+    assert.deepEqual(await statuses(repo.ws, ['/dividers/1.html']), [404]);
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('with dividers, /lessons.json lists a divider entry of id, title and path before each group with a Project: line; an unknown or non-canonical number is 404 (spec 51 test 2)', async () => {
+  const repo = groupRepo(DIVIDED, DIVIDER_FILES);
+  try {
+    const index = JSON.parse((await served(repo.ws, ['/lessons.json']))['/lessons.json']);
+    assert.deepEqual(index.lessons.map((e) => e.id), ['divider-1', '0001-good', '0002-bad', '0003-review-good', 'divider-2', '0004-tool-fxctl', '0005-diagnose-fx', '0006-project-fx', '0007-extra']);
+    assert.deepEqual(index.lessons[0], { id: 'divider-1', title: 'Project: Use fx on <one> & "two"', path: '/dividers/1.html' });
+    assert.deepEqual(Object.keys(index.lessons[4]), ['id', 'title', 'path']);
+    assert.deepEqual(Object.keys(index), ['lines', 'lessons', 'reference']);
+    assert.deepEqual(await statuses(repo.ws, ['/dividers/1.html', '/dividers/2.html', '/dividers/3.html', '/dividers/0.html', '/dividers/01.html']), [200, 200, 404, 404, 404]);
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('served, previous and next pass through a divider page; line N of M is unchanged and a divider page has none (spec 51 test 3)', async () => {
+  const repo = groupRepo(DIVIDED, DIVIDER_FILES);
+  try {
+    const s = await served(repo.ws, ['/lessons.json', '/dividers/1.html', '/dividers/2.html']);
+    const index = JSON.parse(s['/lessons.json']);
+    assert.equal(neighbours(index.lessons, '0003-review-good').next.path, '/dividers/2.html');
+    assert.equal(neighbours(index.lessons, '0004-tool-fxctl').prev.path, '/dividers/2.html');
+    assert.equal(pathPosition(index, '0003-review-good'), 'line 3 of 10');
+    const two = bar(s['/dividers/2.html']);
+    assert.deepEqual([hrefOf(two, 'lesson-nav-prev'), hrefOf(two, 'lesson-nav-next')], ['/lessons/0003-review-good.html', '/lessons/0004-tool-fxctl.html']);
+    assert.ok(!two.includes('lesson-nav-line'), two);
+    assert.deepEqual([hrefOf(bar(s['/dividers/1.html']), 'lesson-nav-prev'), hrefOf(bar(s['/dividers/1.html']), 'lesson-nav-next')], [null, '/lessons/0001-good.html']);
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('exported, previous and next pass through a divider page with relative links (spec 51 test 4)', () => {
+  const repo = groupRepo(DIVIDED, DIVIDER_FILES);
+  try {
+    const ex = exported(repo);
+    assert.equal(ex.code, 0, ex.lines.join('\n'));
+    const f = (p) => ex.files.get(p).toString('utf8');
+    assert.equal(hrefOf(f('lessons/0003-review-good.html'), 'lesson-nav-next'), '../dividers/2.html');
+    assert.equal(hrefOf(f('lessons/0004-tool-fxctl.html'), 'lesson-nav-prev'), '../dividers/2.html');
+    assert.deepEqual([hrefOf(f('dividers/2.html'), 'lesson-nav-prev'), hrefOf(f('dividers/2.html'), 'lesson-nav-next')], ['../lessons/0003-review-good.html', '../lessons/0004-tool-fxctl.html']);
+    // The footer's lesson N of M counts the lessons only, as served.
+    assert.ok(f('lessons/0004-tool-fxctl.html').includes(`<span>lesson 4 of 7</span></footer>`));
+    assert.ok(!f('dividers/2.html').includes('<span>lesson'));
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('a divider page carries the brand: the two divider rules, the header after the bar, the footer without lesson N of M; the image, the escaped title and the group\'s lessons; each lesson still lesson N of 7 (spec 51 test 5)', async () => {
+  const repo = groupRepo(DIVIDED, DIVIDER_FILES);
+  try {
+    const s = await served(repo.ws, ['/dividers/1.html', ...GROUP_LESSONS]);
+    const d = s['/dividers/1.html'];
+    assert.match(styleOf(d), /^\.brand-divider \{ grid-column: 1 \/ -1; margin: 0; \}\n\.brand-divider img \{ width: 100%; height: auto; \}$/m);
+    assert.match(d, /<\/nav><header class="brand-header">/);
+    assert.ok(d.includes('<footer class="brand-footer"><span>(c) 2026 Acme</span></footer></body>'), d);
+    assert.ok(d.includes(`<figure class="brand-divider"><img src="/brand/divider.svg" alt="Section &lt;art&gt; &amp; &quot;co&quot;"></figure><h1>${TITLE_1}</h1>`), d);
+    assert.ok(d.includes(`<title>${TITLE_1}</title>`));
+    const list = /<section data-block="index">([\s\S]*?)<\/section>/.exec(d)[1];
+    assert.deepEqual([...list.matchAll(/<li><a href="([^"]*)"/g)].map((m) => m[1]), ['/lessons/0001-good.html', '/lessons/0002-bad.html', '/lessons/0003-review-good.html']);
+    GROUP_LESSONS.forEach((p, i) => assert.ok(s[p].includes(`<span>lesson ${i + 1} of 7</span></footer>`), p));
+    // Without dividers the style has neither rule.
+    setBrand(repo.ws, TWO_COLOURS, LOGO_FILES);
+    assert.doesNotMatch(styleOf((await served(repo.ws, ['/']))['/']), /brand-divider/);
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('the index links each group heading to its divider page, served and exported (spec 51 test 6)', async () => {
+  const repo = groupRepo(DIVIDED, DIVIDER_FILES);
+  try {
+    const headings = (html) => [...html.matchAll(/<h2>(.*?)<\/h2>/g)].map((m) => m[1]);
+    assert.deepEqual(headings((await served(repo.ws, ['/']))['/']), [`<a href="/dividers/1.html">${TITLE_1}</a>`, '<a href="/dividers/2.html">Project: Predict, then run</a>']);
+    const ex = exported(repo);
+    assert.deepEqual(headings(ex.files.get('index.html').toString('utf8')), [`<a href="dividers/1.html">${TITLE_1}</a>`, '<a href="dividers/2.html">Project: Predict, then run</a>']);
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('the export holds the divider pages with relative links; --skip-ungated drops the page of a group with no exported lesson (spec 51 test 7)', () => {
+  const repo = groupRepo(DIVIDED, DIVIDER_FILES);
+  try {
+    const ex = exported(repo);
+    assert.equal(ex.code, 0, ex.lines.join('\n'));
+    for (const p of ['dividers/1.html', 'dividers/2.html', 'brand/divider.svg']) assert.ok(ex.files.has(p), p);
+    for (const p of ['dividers/1.html', 'dividers/2.html']) assert.doesNotMatch(ex.files.get(p).toString('utf8'), /\s(?:href|src)\s*=\s*["']\//, p);
+    for (const id of ['0004-tool-fxctl', '0005-diagnose-fx', '0006-project-fx']) edit(repo.ws, `lessons/${id}.html`, 'aria-label="why this lesson">\n<p>', 'aria-label="why this lesson">\n<p>Changed after the verdict. ');
+    const sk = exportWorkspace(repo.ws, { vaultPath: repo.vault, entries: buildManifest(repo.vault).entries, skipUngated: true, env: {} });
+    assert.equal(sk.code, 0, sk.lines.join('\n'));
+    assert.deepEqual([...sk.files.keys()].filter((p) => p.startsWith('dividers/')), ['dividers/1.html']);
+    assert.equal(sk.files.get('index.html').toString('utf8').split('<h2><a href=').length, 2);
+    assert.equal(hrefOf(sk.files.get('lessons/0003-review-good.html').toString('utf8'), 'lesson-nav-next'), '../lessons/0007-extra.html');
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('the export\'s phrase check reads a divider page (spec 51 test 8)', () => {
+  const repo = groupRepo(DIVIDED, DIVIDER_FILES);
+  try {
+    edit(repo.ws, 'PATH.md', 'Project: Use fx on <one> & "two"', 'Project: Use fx with teach serve');
+    const ex = exported(repo);
+    assert.equal(ex.code, 1);
+    assert.ok(ex.lines.some((l) => l.startsWith('mention dividers/1.html:')), ex.lines.join('\n'));
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('dividers lint: no image or an unknown key BRAND_INVALID, a missing file BRAND_FILE_MISSING, no alt BRAND_ALT_MISSING, each an error; a valid dividers no BRAND_ finding (spec 51 test 9)', () => {
+  const repo = groupRepo();
+  const J = 'brand/brand.json';
+  try {
+    const brandLines = (b, files) => { setBrand(repo.ws, b, files); return lintLines(repo).filter((l) => l.includes('BRAND_')); };
+    const svg = { 'divider.svg': SVG('#000') };
+    assert.deepEqual(brandLines({ dividers: { alt: 'Art' } }, svg), [`BRAND_INVALID  ${J}: dividers.image must be a path under brand/ whose segments are [A-Za-z0-9._-], none starting with .`]);
+    assert.deepEqual(brandLines({ dividers: { image: 'divider.svg', alt: 'Art', size: 2 } }, svg), [`BRAND_INVALID  ${J}: dividers: unknown key size`]);
+    assert.deepEqual(brandLines({ dividers: { image: 'img/none.svg', alt: 'Art' } }, svg), [`BRAND_FILE_MISSING  ${J}: dividers.image: brand/img/none.svg is not a regular file`]);
+    assert.deepEqual(brandLines({ dividers: { image: 'divider.svg' } }, svg), [`BRAND_ALT_MISSING  ${J}: dividers has no non-empty alt; set dividers.alt to the text the image shows`]);
+    assert.deepEqual(brandLines({ dividers: { image: 'divider.svg', alt: 'Art' } }, svg), []);
+    // readBrand's other two shapes.
+    for (const [dividers, message] of [['divider.svg', 'dividers must be an object'], [{ image: 'divider.svg', alt: 3 }, 'dividers.alt must be a string']]) {
+      setBrand(repo.ws, { dividers });
+      assert.deepEqual(readBrand(repo.ws).problems, [{ code: 'BRAND_INVALID', message }]);
+    }
   } finally { rmSync(repo.repo, { recursive: true, force: true }); }
 });

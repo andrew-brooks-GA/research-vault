@@ -19,7 +19,7 @@ const luminance = (hex) => {
 };
 export const contrast = (a, b) => { const [l1, l2] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (l1 + 0.05) / (l2 + 0.05); };
 
-const KEYS = ['name', 'logo', 'favicon', 'color', 'font', 'footer', 'audience', 'tokens', 'voice'];
+const KEYS = ['name', 'logo', 'favicon', 'color', 'font', 'footer', 'audience', 'tokens', 'voice', 'dividers'];
 const HEX_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 const REF_RE = /^\{([^{}]+)\}$/;
 const NAME_RE = /^[A-Za-z0-9 -]*[A-Za-z0-9][A-Za-z0-9 -]*$/;
@@ -84,6 +84,11 @@ export function readBrand(ws) {
     if (b.logo.dark !== undefined) path(b.logo.dark, 'logo.dark');
     if (b.logo.alt !== undefined) str(b.logo.alt, 'logo.alt');
   }
+  // Spec 51 D2: one image for every divider page; its alt is optional here and lint's BRAND_ALT_MISSING.
+  if (b.dividers !== undefined && keys(b.dividers, 'dividers', ['image', 'alt'])) {
+    path(b.dividers.image, 'dividers.image');
+    if (b.dividers.alt !== undefined) str(b.dividers.alt, 'dividers.alt');
+  }
   if (b.color !== undefined && keys(b.color, 'color', ['light', 'dark'])) {
     out.color = {};
     for (const scheme of ['light', 'dark']) {
@@ -134,6 +139,7 @@ export function brandCss(b) {
   if (b.font?.code) css += `code, pre { font-family: ${b.font.code}; }\n`;
   css += '.brand-header, .brand-footer { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; color: var(--muted); font-size: 0.85rem; }\n';
   css += '.brand-header img { max-height: 3rem; width: auto; }\n';
+  if (b.dividers) css += '.brand-divider { grid-column: 1 / -1; margin: 0; }\n.brand-divider img { width: 100%; height: auto; }\n'; // spec 51 D2
   if (b.logo?.dark) css += '.brand-logo-dark { display: none; }\n' + darkRule(' .brand-logo-light', 'display: none;') + darkRule(' .brand-logo-dark', 'display: inline;');
   return css;
 }

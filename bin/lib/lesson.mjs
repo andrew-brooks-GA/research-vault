@@ -955,10 +955,11 @@ function lintBrand(ws, { brand, problems }) {
   const add = (code, message) => findings.push({ code, file: 'brand/brand.json', message, warning: false });
   for (const p of problems) add(p.code, p.message);
   if (!brand) return findings;
-  for (const [key, f] of [['logo.light', brand.logo?.light], ['logo.dark', brand.logo?.dark], ['favicon', brand.favicon]]) {
+  for (const [key, f] of [['logo.light', brand.logo?.light], ['logo.dark', brand.logo?.dark], ['favicon', brand.favicon], ['dividers.image', brand.dividers?.image]]) {
     if (f !== undefined && !statSync(join(ws, 'brand', f), { throwIfNoEntry: false })?.isFile()) add('BRAND_FILE_MISSING', `${key}: brand/${f} is not a regular file`);
   }
   if (brand.logo && !brand.logo.alt) add('BRAND_ALT_MISSING', 'logo has no non-empty alt; set logo.alt to the text the logo shows');
+  if (brand.dividers && !brand.dividers.alt) add('BRAND_ALT_MISSING', 'dividers has no non-empty alt; set dividers.alt to the text the image shows');
   for (const scheme of ['light', 'dark']) {
     const v = { ...BRAND_DEFAULTS[scheme], ...brand.color?.[scheme] };
     for (const [fg, bg] of CONTRAST_PAIRS) {
