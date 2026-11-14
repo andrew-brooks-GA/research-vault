@@ -144,7 +144,7 @@ If `WARN_SYNTHESIS_NO_NOTE_COVERAGE` or `WARN_SYNTHESIS_MONOLITHIC` fires after 
 These are the controller's completion checks. Keep four results apart when you report: what the evidence supports, what was persisted, the lint result, and the claims verdict.
 
 1. Confirm each id the workflow returned is a file in the vault, then run `lint` with the explicit vault — clean, or explain every warning.
-2. Run the `research-claims-gate` skill on the synthesis entry file (evidence derives from its `contributing_ids` and `sources`), then present it to the user the way you would tell a colleague: the answer, why, how confident, and what is still open (question ids).
+2. Run the `research-claims-gate` skill on the synthesis entry file (evidence derives from its `contributing_ids` and `sources`; that skill lists the sources behind the notes and asks before it stores page text for those that hold none), then present it to the user the way you would tell a colleague: the answer, why, how confident, and what is still open (question ids).
 3. Only after the gate records `PASS` or `MERIT`, close each question the synthesis actually resolves: `verify --id <question> --answered-by <synthesis id>`. If the gate does not pass, show its verdict and leave the questions open. List the ids created and reused.
 4. Offline or fetch-blocked? Do not fabricate: answer from the vault, record what could not be verified as open `question` entries, and say so.
 
