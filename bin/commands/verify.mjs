@@ -6,6 +6,8 @@ import { writeManifest, CONFIRMING_RESULTS } from '../lib/manifest.mjs';
 import { resolveVault, reportFallback } from '../lib/resolve.mjs';
 import { assertControlledValues } from '../lib/validate.mjs';
 import { listStale } from '../lib/stale.mjs';
+import { readFileSync } from 'node:fs';
+import { checkQuotes } from '../lib/quotes.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -89,6 +91,13 @@ export async function run(args) {
     return 0;
   }
   reportFallback(resolved);
+  if (args.quotes) {
+    const out = await checkQuotes(vaultPath, args.id, JSON.parse(readFileSync(args.quotes, 'utf8')), {
+      byId: args['by-id'], allowNetwork: process.env.RESEARCH_VAULT_ALLOW_NETWORK === '1', fetch: typeof args.fetch === 'function' ? args.fetch : undefined,
+    });
+    process.stdout.write(JSON.stringify(out, null, 1) + '\n');
+    return 0;
+  }
   if (args['answered-by']) {
     const r = answerQuestion(vaultPath, { id: args.id, answeredBy: args['answered-by'], answerSummary: args['answer-summary'] });
     process.stdout.write(`verify: ${r.action}\n`);

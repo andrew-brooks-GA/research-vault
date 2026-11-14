@@ -89,13 +89,14 @@ A third local write is the usage log, `_index/usage.jsonl` in the vault, appende
 
 ## Network refresh (`refresh`)
 
-`refresh`, `capture --batch` over a URL list, `capture --fill` and the embedding endpoint (`embed`, `search --semantic`) are the only features that open an outbound network connection, and all are off by default.
+`refresh`, `capture --batch` over a URL list, `capture --fill`, `verify --quotes` and the embedding endpoint (`embed`, `search --semantic`) are the only features that open an outbound network connection, and all are off by default.
 
 - **Double-gated.** It refuses — non-zero exit, including under `--dry-run` — unless you both invoke the `refresh` subcommand *and* set `RESEARCH_VAULT_ALLOW_NETWORK=1`. Either alone does nothing.
 - **Hash-only.** It fetches the source URL and buffers the response solely to hash it: it computes the SHA-256 of the raw bytes and compares that to the entry's stored `content_hash`. It never parses, stores, or writes back the fetched bytes, and does no HTML-to-text conversion.
 - **Never mutates.** It reports `confirmed`, `changed`, or `unreachable` and defers every edit to `verify`. Entries and the manifest are left byte-identical.
 - **A file view on a code host is read as the raw file.** For `https://github.com/<owner>/<repo>/blob/<ref>/<path>` the fetcher requests the same path on `raw.githubusercontent.com`, for `refresh`, the URL-list ingest and `capture --fill` alike, so the hash is of the file and not of the site's page around it. The rewritten address passes the same checks below.
 - **`capture --fill <id>` does store text.** It is the one command that fetches a page and writes its text into an existing source entry, and only for an entry that holds under 200 characters of text. It needs `RESEARCH_VAULT_ALLOW_NETWORK=1` and `--ack-data-egress`, refuses a blocklisted or non-https address, and uses the same fetcher and checks as `refresh`. With `--content-file <file>` it reads a saved `.html`, `.htm`, `.txt` or `.md` file in place of the network; that form copies a local file's text into the vault, so it is for a person to run and no skill gives it to an agent. `--discard` removes a text a fill stored.
+- **`verify --id <source> --quotes <file>` may fetch and stores nothing.** It looks for each quote on one line of the source's stored text. With `RESEARCH_VAULT_ALLOW_NETWORK=1` it fetches the source's page once, through the same fetcher and checks, when the entry holds no stored text or the stored text lacks a quote, and compares against the page's text in memory. It writes verification rows only: the body and `content_hash` are never changed. Without the variable it opens no connection, and refuses a source that holds no stored text. A blocklisted or non-https address is not fetched.
 - **SSRF-hardened:**
   - HTTPS only. Plaintext URLs and `https`-to-`http` redirect downgrades are refused.
   - Every resolved address must be public global-unicast. RFC 6890 private, loopback, link-local, CGNAT, ULA, documentation, multicast, and reserved ranges are rejected — including IPv4-mapped IPv6, alt-encoded numeric hosts, and the cloud metadata address `169.254.169.254`.
