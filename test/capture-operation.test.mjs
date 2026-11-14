@@ -183,3 +183,20 @@ test('unwritable receipt directory reports receipt I/O and creates no artifacts'
   const f = fixture(); fs.writeFileSync(join(f.vault, '.capture-operations'), 'obstruction');
   const result = f.run(); assert.equal(result.errors[0].code, 'RECEIPT_IO'); assert.equal(result.recoveryStateCreated, false); assert.deepEqual(bytes(f.vault), []);
 });
+test('every failing entry is reported, an unresolved reference is INPUT_INVALID, nothing is written', () => {
+  const f = fixture([{ type: 'question', title: 'Good' }, { type: 'question', title: 'Bad A', state: 'nonsense' }, { type: 'question', title: 'Bad B', state: 'alsobad' }, { type: 'note', title: 'Dangling', sources: ['2026-01-01-invented'], body: 'x' }]);
+  const r = f.run();
+  assert.deepEqual(r.errors.map(e => [e.index, e.code]), [[1, 'INPUT_INVALID'], [2, 'INPUT_INVALID'], [3, 'INPUT_INVALID']]);
+  assert.match(r.errors[2].error, /^unresolved reference: 2026-01-01-invented/);
+  assert.equal(r.recoveryStateCreated, false); assert.deepEqual(bytes(f.vault), []); assert.equal(r.results.length, 1);
+  const g = fixture([{ type: 'question', title: 'Bad', state: 'nonsense' }, { type: 'question', title: 'Same' }, { type: 'question', title: 'Same' }]);
+  assert.deepEqual(g.run().results.map(x => [x.index, x.reuseOf]), [[1, undefined], [2, 1]]);
+});
+test('a lock whose owner file could not be written is removed, not left to block later writers', { skip: process.platform === 'win32' || process.getuid?.() === 0 }, () => {
+  const f = fixture(); fs.mkdirSync(join(f.vault, '.capture-operations'));
+  // ponytail: umask is process-wide; fine while this file's tests run one after another.
+  const old = process.umask(0o300);
+  let blocked; try { blocked = f.run(); } finally { process.umask(old); }
+  assert.equal(blocked.errors[0].code, 'RECEIPT_IO'); assert.equal(blocked.errors[0].phase, 'lock'); assert.equal(fs.existsSync(join(f.vault, '.capture-operations/writer.lock')), false);
+  assert.equal(f.run().errors.length, 0);
+});

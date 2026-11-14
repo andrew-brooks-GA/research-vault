@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `capture --batch <plan> --operation-id <key>` reports one error for each entry that fails on its own, where it reported only the first; an entry that names a failed entry is reported as an unresolved reference, and nothing is written when any entry fails. A reference to an id that is not in the vault now has the code `INPUT_INVALID` (it was `DESTINATION_CONFLICT`), with the message `unresolved reference: <id>`; `ambiguous reference: <id>` keeps `DESTINATION_CONFLICT`. A `reuseOf` in the failure output is the input index of the entry reused. When the lock directory is made but its `owner.json` cannot be written, the lock is removed and the error is `RECEIPT_IO` with phase `lock`, where an empty lock was left behind and the error was `LOCK_BUSY` (plan 2026-11-14, commit 1).
+
 - Plan (`docs/specs/plan-2026-11-14-orchestrate-skill-repair.md`): repair the research-orchestrate skill after pull request 71, whose reference script is not a script the Workflow tool accepts. Recommends a script of agents that call the CLI, sources captured one call each, the authored plan captured with `--operation-id`, the claims gate and question closures in the session, and deleting `bin/lib/research-controller.mjs`. Revised after an adversarial review; claims-gated (MERIT after two rounds, decisions in GATE-LOG.md). No code in this commit.
 
 - Docs: distinguish instructed agent workflows from observed host acceptance, qualify Codex installation and hook guarantees, and clarify migration guidance after claims review.

@@ -60,7 +60,7 @@ function entries(vault) {
   return walkEntries(vault).map(path => ({ ...readEntry(path), path, text: fs.readFileSync(path, 'utf8') }));
 }
 function prepare(vault, inputs, date, opts) {
-  const existing = entries(vault), available = [...existing], results = [], rendered = [];
+  const existing = entries(vault), available = [...existing], results = [], rendered = [], failures = [];
   for (const [index, item] of inputs.entries()) {
     try {
       const p = render(vault, item, date, opts);
@@ -75,16 +75,21 @@ function prepare(vault, inputs, date, opts) {
       }
       const chosen = reused || p;
       const refs = [...(p.data.sources || []), ...(p.data.contributing_ids || []), ...(p.data.related || [])];
-      for (const ref of refs) if (available.filter(e => e.id === ref).length !== 1) throw new Error(`unresolved or ambiguous reference: ${ref}; use actual reused IDs when replanning`);
-      results.push({ index, id: chosen.id, path: relative(vault, chosen.path), fingerprint: sha256(chosen.text), state: reused ? 'reused' : 'pending', ...(reused ? { reason: 'existing suitable entry', actualId: chosen.id, ...(results.some(r => r.path === relative(vault, chosen.path)) ? { reuseOf: results.findIndex(r => r.path === relative(vault, chosen.path)) } : {}) } : {}) });
+      for (const ref of refs) {
+        const found = available.filter(e => e.id === ref).length;
+        if (found !== 1) throw new Error(`${found ? 'ambiguous' : 'unresolved'} reference: ${ref}; use actual reused IDs when replanning`);
+      }
+      results.push({ index, id: chosen.id, path: relative(vault, chosen.path), fingerprint: sha256(chosen.text), state: reused ? 'reused' : 'pending', ...(reused ? { reason: 'existing suitable entry', actualId: chosen.id, ...(results.some(r => r.path === relative(vault, chosen.path)) ? { reuseOf: results.find(r => r.path === relative(vault, chosen.path)).index } : {}) } : {}) });
       rendered.push(p);
       if (!reused) available.push(p);
     } catch (e) {
+      // One error per failing entry, as legacy --batch reports. A failed entry is not in `available`, so an
+      // entry that names it fails too and one that shares its id is not compared with it.
       e.index = index;
-      e.results = results;
-      throw e;
+      failures.push(e);
     }
   }
+  if (failures.length) throw Object.assign(failures[0], { failures, results });
   return { results, rendered };
 }
 export function validReceipt(r, key, vault, count) {
@@ -130,8 +135,10 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
     lock = join(dir, 'writer.lock');
     try {
       fs.mkdirSync(lock, { mode: 0o700 }); owned = true;
-      atomicJson(join(lock, 'owner.json'), { operationId: key, pid: process.pid, vault, started: new Date().toISOString() });
     } catch (e) { errors.push({ ...fault('LOCK_BUSY', 'lock', e), retryable: false, error: `exclusive writer lock unavailable: ${lock}; inspect owner.json and confirm the original process is gone before explicitly removing this lock` }); return output(); }
+    // The lock is ours from here; without its owner diagnostic we give it back rather than hold it unnamed.
+    try { atomicJson(join(lock, 'owner.json'), { operationId: key, pid: process.pid, vault, started: new Date().toISOString() }); }
+    catch (e) { errors.push(fault('RECEIPT_IO', 'lock', e)); return output(); }
     // Another writer may have finished between our initial read and lock acquisition.
     // Never prepare from that stale observation or replace its receipt.
     if (fs.existsSync(receiptPath)) {
@@ -148,7 +155,10 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
       const date = opts.now || new Date().toISOString().slice(0, 10);
       let prepared;
       try { prepared = prepare(vault, loaded.inputs, date, opts); }
-      catch (e) { errors.push(fault(/conflict|ambiguous|unsuitable/.test(e.message) ? 'DESTINATION_CONFLICT' : 'INPUT_INVALID', e.index ?? -1, e)); return output({ results: e.results || [] }); }
+      catch (e) {
+        for (const f of e.failures || [e]) errors.push(fault(/conflict|ambiguous|unsuitable/.test(f.message) ? 'DESTINATION_CONFLICT' : 'INPUT_INVALID', f.index ?? -1, f));
+        return output({ results: e.results || [] });
+      }
       rendered = prepared.rendered;
       receipt = { schemaVersion: 1, operationId: key, vault, inputDigest: loaded.inputDigest, schemaDigest, created: date, phase: 'prepared', manifest: 'pending', results: prepared.results, errors: [] };
       try { save(); } catch (e) { errors.push(fault('RECEIPT_IO', 'prepared', e)); return output(); }
@@ -222,5 +232,5 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
     try { save(); } catch (e) { receipt.phase = 'needs-repair'; errors.push(fault('RECEIPT_IO', 'finalization', e)); }
     return output();
   } catch (e) { errors.push(fault(receipt ? 'ARTIFACT_IO' : 'INPUT_INVALID', e.index ?? -1, e)); return output(); }
-  finally { if (owned) { try { fs.unlinkSync(join(lock, 'owner.json')); fs.rmdirSync(lock); } catch {} } }
+  finally { if (owned) { try { fs.unlinkSync(join(lock, 'owner.json')); } catch {} try { fs.rmdirSync(lock); } catch {} } }
 }
