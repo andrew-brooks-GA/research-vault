@@ -19,7 +19,7 @@ const page = html => async () => { const body = Buffer.from(html); return { stat
 
 test('verify --quotes: a quote on one line of a stored body adds one inconclusive row with its line and body hash, and a second call adds none', async () => {
   const dir = tmpVault(); src(dir, BODY);
-  const q = 'The flag reads one file - and it\'s "stable"   today.'; // straight marks, a plain dash, extra white space
+  const q = 'The `flag` reads one file - and it\'s "stable"   today.'; // code marks, straight marks, a plain dash, extra white space
   const [r] = await checkQuotes(dir, ID, [{ n: 7, quote: q }], NOW);
   assert.deepEqual({ n: r.n, found: r.found, foundIn: r.foundIn, lines: r.lines, rowAdded: r.rowAdded }, { n: 7, found: true, foundIn: 'body', lines: [3], rowAdded: true });
   assert.match(r.context, /The flag reads one file/);

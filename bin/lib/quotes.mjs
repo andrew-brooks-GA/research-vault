@@ -13,8 +13,10 @@ import { RUN_KEY } from './packet.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const h8 = s => createHash('sha256').update(s).digest('hex').slice(0, 8);
-// The only differences a match ignores: white space, quote marks and dash forms.
-const soft = s => String(s).replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim();
+// The only differences a match ignores: white space, quote marks, dash forms and code marks. A lane
+// that read a raw Markdown file quotes `flag` with its backticks; the text stored for that file has
+// none (spec 52 stores Markdown as a reader sees it), and a rendered page has none either.
+const soft = s => String(s).replace(/`/g, '').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim();
 const hitsIn = (lines, q) => lines.map((l, i) => (l.includes(q) ? i + 1 : 0)).filter(Boolean);
 const around = (lines, at) => lines.slice(Math.max(0, at - 3), at + 2).filter(l => l.trim()).join(' / ').slice(0, 900);
 
