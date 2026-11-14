@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Plan (`docs/specs/plan-2026-11-14-orchestrate-skill-repair.md`): repair the research-orchestrate skill after pull request 71, whose reference script is not a script the Workflow tool accepts. Recommends a script of agents that call the CLI, sources captured one call each, the authored plan captured with `--operation-id`, the claims gate and question closures in the session, and deleting `bin/lib/research-controller.mjs`. Revised after an adversarial review; claims-gated (MERIT after two rounds, decisions in GATE-LOG.md). No code in this commit.
+
 - Docs: distinguish instructed agent workflows from observed host acceptance, qualify Codex installation and hook guarantees, and clarify migration guidance after claims review.
 
 - Reliability: add opt-in immutable capture receipts, exclusive publication and recovery; explicit controller paths, validated source/claim handoffs, serialized intents and reconciled lifecycle completion. Preserve legacy capture and research routing/artifact policy; deterministic isolated-vault tests added, real-host acceptance remains open.
