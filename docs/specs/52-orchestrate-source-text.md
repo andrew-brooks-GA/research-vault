@@ -1,90 +1,129 @@
-# Spec 52: page text in the sources the orchestrate skill captures (2026-11-14)
+# Spec 52: page text for the sources behind a gated draft (third revision, 2026-11-14)
 
-The research-orchestrate skill captures each source by URL with no text. In the one gate round run on a synthesis resting on such a source, the gate failed, and the skill closes questions only after the gate passes. This spec proposes how a run stores page text when the user allows it. Nothing in it is built. This is the spec as revised after an adversarial review of its first draft.
+In the gate rounds run so far on a synthesis that states what a page says, the gate failed when the source held no page text. This revision replaces the design pushed as a4ace68 and the second revision that followed it. It gives an answer, with its measurement, to each point those drafts left open, and proposes three changes: the gate lists the sources behind the notes a draft cites; one command fills a source that has no text; and the claims-gate skill asks before it runs that command. Nothing in it is built. One decision is left to the user, at the end. Three adversarial reviews shaped it.
 
-The spec rests on seven vault entries:
+The spec rests on eleven vault entries:
 
-- The snippet 2026-11-14-spec-52-lines ("the lines snippet") quotes the skill and code at commit c342f09.
-- The experiment 2026-11-14-orchestrate-source-text-probes ("the experiment") holds probes T1 to T7.
-- The experiment 2026-11-14-spec-52-second-probes ("the second experiment") holds probes U1 to U5, made for this revision.
-- The experiment 2026-11-14-orchestrate-skill-live-runs ("the live runs") holds two runs of the skill and the gate on the first run's synthesis.
-- The snippet 2026-11-14-spec-52-adversarial-review ("the review") holds the report of the adversarial review. It is a report; where this spec relies on a point of it that no probe here repeats, it says "by the review".
-- The snippet 2026-11-14-orchestrate-repair-session-record-part-three ("the session record") holds the question put to the user about this spec and the user's answer.
-- The experiment 2026-11-14-reliability-doc-further-probes holds the run behind the sentence on repeated URLs under "Not built".
+- The experiment 2026-11-14-source-text-gate-b ("the A/B experiment") holds three gate rounds on one test synthesis, with and without stored page text.
+- The experiment 2026-11-14-source-text-decision-probes ("the probes") holds Q1 to Q4: quote survival under extraction, a survey of this vault's sources with no text, the hashes they carry, and how much research rests on them.
+- The experiment 2026-11-14-source-text-revision-three-probes ("the later probes") holds V1 to V5 and two gate rounds, G1 and G2, on one real synthesis in copies of the vault.
+- The experiment 2026-11-14-source-text-software-synthesis-gate ("the software gate") holds two more rounds, G3 and G4, on a second real synthesis.
+- The snippet 2026-11-14-spec-52-revision-three-lines ("the lines snippet") and the snippet 2026-11-14-spec-52-revision-two-lines ("the earlier lines snippet") quote the code and docs at a4ace68.
+- The snippet 2026-11-14-spec-52-revision-two-adversarial-review ("the second review") and the snippet 2026-11-14-spec-52-revision-three-adversarial-review ("the third review") hold the review of the second revision and the review of an earlier text of this one.
+- The snippet 2026-11-14-orchestrate-repair-session-record-part-four ("the session record") holds the user's messages and an earlier review of which path to take ("the path review").
+- The experiment 2026-11-14-orchestrate-skill-live-runs ("the live runs") holds the gate on a live run's synthesis.
+- The experiment 2026-11-14-spec-52-second-probes ("the earlier probes") holds U1, on a known URL captured again.
 
-A sentence about the code cites a snippet or a grep in an experiment. A sentence about behaviour cites an experiment. A sentence marked "Judgment" is this spec's choice.
+A sentence about the code or docs cites a snippet. A sentence about behaviour cites an experiment. A sentence marked "Judgment" is this spec's choice. The reviews are reports; a point taken from one that no probe here repeats is marked as theirs.
 
 ## What exists
 
-**The skill.** At c342f09 the Seed agent captures each source with `capture --type source --title ... --url ...` and no `--content-file` or `--store-body` (`skills/research-orchestrate/SKILL.md` line 75). Its prompt reads two results beginning "duplicate of" and has no line for one beginning "ambiguous of" (lines 77 to 82). The Fetch prompt says "Do NOT run capture, verify or any command that writes to the vault" (line 70). The script's `args` are `question`, `cli`, `vault`, `today` and `runKey` (line 46). Section 4 closes a question "Only after the gate records `PASS` or `MERIT`", and says that if the gate does not pass the session shows the verdict and leaves the questions open. All of this is in the lines snippet.
+**The reviewer's rule.** `agents/claims-reviewer.md` tells the reviewer to read "only the draft and those entries" on its list (line 10). It says an entry flagged `no-body` "supports only the claim that the document exists and concerns the subject" (line 18), and that an entry "whose only verification is `captured`, supports only a hedged claim" (line 14). All three are in the lines snippet.
 
-**Storing text.** `capture` appends the given content to a source's body only when `storeBody` is set, and refuses `storeBody` without `ackDataEgress`, with the message "storing source text is a data-egress / copyright surface" (`bin/commands/capture.mjs` lines 30, 31 and 118, in the lines snippet). The content hash is the hash of the content file's bytes when one is given (line 41; the experiment, T1).
+**The evidence list.** `gate evidence` builds its list from the ids found in the draft's text plus any passed as `--extra` (`bin/lib/gate.mjs` lines 259 and 283, in the lines snippet). It does not add the sources a listed note names (the later probes, G1).
 
-**What the gate sees.** `gate evidence` marks a source or a note whose body is shorter than 200 characters as `no-body` (`bin/lib/gate.mjs` lines 245, 246 and 300, in the lines snippet). The page of T1, captured with a content file and no `--store-body`, is marked `no-body`; captured with `--store-body --ack-data-egress`, it is not (the experiment, T1 and T2). A stored body under 200 characters would still be marked (line 300).
+**The skills.** Step 1 of the research-claims-gate skill runs `gate evidence` for every gated draft, step 0 names `--store-body --ack-data-egress` as the way to keep a source's text, and step 3 says to "capture the missing source with a body" (lines 20, 21 and 34). Section 4 of the orchestrate skill runs that skill on the synthesis and closes a question "Only after the gate records `PASS` or `MERIT`" (lines 147 and 148). Both are in the lines snippet.
 
-**What `refresh` compares.** `refresh` fetches the source's URL and reports `confirmed` when the hash of what it fetched equals the entry's `content_hash`, `changed` when it differs, and `unreachable` on an HTTP status of 400 or above or a fetch error (`bin/commands/refresh.mjs` lines 41 to 47, in the lines snippet).
+**Storing text.** `docs/REFERENCE.md` line 184 says `--store-body` "needs `--ack-data-egress`" and that "a single capture never fetches the URL itself" (the lines snippet). `capture` refuses `storeBody` without `ackDataEgress` and appends content to the body only with `storeBody` (`bin/commands/capture.mjs` lines 30, 31 and 118, in the earlier lines snippet). `capture --batch` over a URL list does fetch, and stores the fetched text as it came (lines 176 to 179, in the lines snippet). A single `capture` of a URL already in the vault under the same subject version is refused (the earlier probes, U1).
 
-**A changed page at a known URL.** When a URL already in the vault is captured again under the same subject version with content of different bytes, `capture` exits 1 with a line that begins "ambiguous of" and names the existing id. With the same bytes, or with no content, the line begins "duplicate of" (the second experiment, U1).
+**`refresh`.** `SECURITY.md` says of it: "Hash-only", it "computes the SHA-256 of the raw bytes", and "Never mutates" (lines 95 and 96). It reports `changed` when that hash differs from `content_hash` (`bin/commands/refresh.mjs` lines 43 and 45). Both are in the lines snippet. For a `changed` result with `storedBody` true the research-verify skill says to compare the page's text with the stored body (line 8, in the earlier lines snippet).
 
-**The reviewer hash.** A ledger row counts only when its `reviewer` field is absent or equals the hash of `agents/claims-reviewer.md` as it stands (`bin/lib/gate.mjs` lines 27, 31 and 35; the second experiment, U3).
+**`verify`.** It appends a verification row; it refuses the method `captured`, and the function quoted never writes `content_hash` (`bin/commands/verify.mjs` lines 25 and 36). A row resets an entry's freshness only when its result is `confirmed` or `changed-trivially` (`bin/lib/manifest.mjs` line 16). Both are in the lines snippet.
 
-## Findings
+**The reviewer hash.** A ledger row counts only when its `reviewer` is absent or equals the hash of `agents/claims-reviewer.md` (`bin/lib/gate.mjs`, quoted by grep in the lines snippet).
 
-**F1. The gate failed on a source with no text.** In the first live run the one source was listed `[source, active, no-body]` and the reviewer's verdict was FAIL-as-sent, with 19 of 32 claim rows marked `exceeds-evidence`. Its first fix reads "The draft's wording already matches the refetched verification lines exactly. Fix: re-capture the source with `--store-body --ack-data-egress`. No rewording is needed." No question was closed (the live runs).
+## What was settled
 
-**F2. On the one page probed, raw HTML was poor evidence and heavy.** One documentation page is 277,237 bytes of HTML, and the entry that stores it is 277,806 bytes. A sentence the reviewer would look for, "recursive option will be ignored", is on no line of that entry, because the word `recursive` sits inside a `code` element. The same page as extracted text is 108,211 bytes and holds the sentence on one line (the experiment, T1, T4 and T6).
+**S1. Does stored text make the gate pass?** It makes statements about a page checkable; it does not make a draft pass. Three cases:
 
-**F3. The hash must stay the hash of the page's bytes.** With extracted text as the content file, the entry's `content_hash` is the hash of the text, and `refresh` reports `changed` for a page that has not changed. With the raw bytes as the content file, `refresh` reports `confirmed` (the experiment, T3 and T4). By the review, curl's bytes hashed the same as the CLI fetcher's on 8 of 10 real pages, and the other two pages differed between two fetches by the same client.
+- A test synthesis of verbatim quotes: without the text, FAIL-as-sent with 12 of 14 rows `exceeds-evidence`; with it, 11 of 12 `supported` and one sentence `contradicted` by the page; with that sentence corrected, PASS (the A/B experiment).
+- A real synthesis in software-engineering: as the gate lists it today, 2 of 16 rows `supported` and 14 `exceeds-evidence`, each because a note is captured-only. With its notes' sources listed and 6 of 8 filled, 10 of 21 `supported`; of the 10 `exceeds-evidence` rows, 4 rest on the two pages the fill could not read and 4 find that a stored page says less than the draft (the software gate, G3 and G4).
+- A real synthesis in learning: with its notes' sources listed and 3 of 10 filled, 15 of 21 `supported` and 6 `exceeds-evidence`; as listed today, 7 fixes, none about a source's text (the later probes, G1 and G2).
 
-**F4. By the review, text written out by a worker may not be the page.** By the review, and inferred there: a worker that read the page through a fetch tool saw that tool's rendering, and a model copying 100,000 bytes drifts into summary, which a reviewer cannot tell from the page. In the two live runs, two worker results say they fetched "with curl" (the experiment, T7). The repo already turns HTML into text with regular expressions, in `bin/lib/lesson.mjs` (the second experiment, U4).
+All four real rounds returned FAIL-as-sent.
 
-**F5. Most sources already in this vault have under 200 characters of body.** Of the 610 source entries in the bound vault, 345 have under 200 characters after the frontmatter (the second experiment, U2). A repeated URL under the same subject version is refused, with a line beginning `duplicate of` or `ambiguous of`, and keeps the entry it has (U1; the experiment 2026-11-14-reliability-doc-further-probes, R7).
+**S2. Do the gate's lists reach the sources at all?** Mostly not. `gate evidence` lists a source for 10 of this vault's 36 syntheses, and a no-body source for 7. 26 list notes and no source. With the sources of each listed note added, 31 reach a no-body source; the median number of sources reached is 12, and the median number of no-body sources reached is 8 (the later probes, V1).
+
+**S3. Can the CLI's fetcher get the text?** For 78% of the 343 active no-body sources overall: 267 gave 500 bytes of text or more (the probes, Q2). Among the domains with more than two such sources it runs from 97% in llm-assisted-dev (32 of 33) to 68% in learning (88 of 129) (the later probes).
+
+**S4. Is extracted text good evidence?** On the two pages tested, all 12 sentences the live runs' workers quoted are on one line of the extracted text, and 8 of them cannot be found in the raw HTML (the probes, Q1). The prototype left named entities such as `&rsquo;` undecoded on other pages (the later probes, V5).
+
+**S5. Which hash?** The bytes'. Two fetches a few seconds apart gave different bytes for 19 of 62 sampled sources and the same extracted text for 61 (the later probes, V2). The second review proposes hashing the text and teaching `refresh` to do the same. Judgment: `SECURITY.md` promises that `refresh` hashes raw bytes and nothing else, so the fill stores the text and the bytes' hash and `refresh` is not changed. The cost, by the third review: on a host whose bytes differ at every fetch, `refresh` reports a filled source as `changed` each time it comes due, and the user's step is the research-verify skill's, compare the text and record `changed-trivially`.
+
+**S6. What of a source that already carries a different hash?** Replace it when the entry has no text. 24 of the 26 hashed no-body sources hash differently today, 22 of them captured through a fetch tool (the probes, Q3). By the second review, read from the code, `verify` cannot replace a hash and a second capture is refused, so reporting such a source as changed would strand it. Judgment: with no stored text there is nothing to compare, so the fill stores the text and the new hash and keeps the old hash in its row's note.
+
+**S7. What of a source pinned to a version?** Refuse when its URL floats. 130 of the 267 carry a subject version, and 30 of those have `master`, `latest`, `main` or `stable` as a path segment (the later probes, V3). Judgment: the page fetched today may be another version's.
+
+**S8. What row does the fill leave?** Method `refetched-source`, result `inconclusive`. Judgment: the page was fetched again and no claim was checked. The result does not count toward freshness (the lines snippet, `manifest.mjs` line 16). The method matters because, by the third review, a filled source whose only rows are `captured` would still support only a hedged claim under the reviewer's line 14.
+
+**S9. What ceiling?** 300,000 bytes of text. For the 267: median 8,057, 95th percentile 62,459; 4 are over (the probes, Q2).
+
+**S10. What does it cost a gate round?** On the test synthesis, 2,100 to 2,800 more reviewer tokens against a 264,049-byte body (the A/B experiment). On the two real syntheses, 83,517 tokens with 17 entries listed against 31,335 with 5, and 94,006 with 12 against 24,740 with 4 (the later probes; the software gate). The survey fetched 343 URLs in 51 seconds (the probes, Q2).
+
+**S11. Which command, and where is the question asked?** `capture`, since `refresh` is promised never to change an entry. The question belongs in the research-claims-gate skill, which runs `gate evidence` for every gated draft (the second review, A7). Judgment: `agents/claims-reviewer.md` is not edited, because that changes the hash under which ledger rows count.
+
+**S12. Is the gate itself consistent?** Not fully. On claims resting on the same two notes, G1 marked two sentences `supported` that G2 marked `exceeds-evidence`, and G1 marked three details `unsupported` that G2 did not list (the later probes). This spec does not address it.
+
+**S13. Is the full build worth it against the smaller option?** The third review ranks a smaller option first, the listing step plus an instruction to the orchestrate Plan step to cite source ids, with no fill, and names the fact that would change its ranking: how many failing rows rest on a source that could have been filled. Judgment: G3 and G4 answer it for software research. Listing alone would have put eight no-body sources on that list; with six filled, eight more rows were supported and four failures became comparisons with a page.
+
+**S14. May a command change an existing source entry?** The user has not answered (the session record). This spec proposes yes, under three conditions: an explicit flag, `--ack-data-egress`, and only an entry whose text after the title line is under the gate's 200 characters.
 
 ## Design
 
-All judgments, resting on the findings named.
+All judgments, resting on the settled points named.
 
-1. **Ask once per run, default no.** Section 1 of the skill gains one question: may this run store the text of the pages it reads in the vault? The question says what that means: the text is copied into source entries, which travel wherever the vault goes: if the vault is kept in git, to its remote. The answer is passed to the script as `args.storeText`. It is not saved anywhere, so the next run asks again (F1; the refusal message quoted under "What exists").
-2. **The worker saves bytes; the CLI makes the text** (F2, F3, F4). When `storeText` is true, each Fetch agent runs `curl -sL --max-filesize 5000000 -o <run directory>/page-<i>.html <url>` and returns the file's path, or nothing if curl fails. That file is the one write a Fetch agent may make. The session creates the run directory before the workflow starts.
-3. **One new flag on `capture`: `--extract-text`.** With `--content-file`, `--store-body` and `--ack-data-egress`, it stores the content as text: `script` and `style` elements dropped, tags replaced by spaces, entities decoded, runs of blank lines collapsed. `content_hash` is still the hash of the file's bytes, as it is today, so `refresh` keeps working. If the extracted text is over 300,000 bytes the command refuses and names the size; no text is cut short, since a truncated page would make "the page does not say X" look checkable when it is not.
-4. **The Seed agent** captures a source that has a page file with `--content-file <file> --store-body --ack-data-egress --extract-text`. Its prompt gains two readings:
-   - a line beginning "ambiguous of `<id>`": the page is in the vault and its bytes have changed since. Reuse that id, store nothing, and report the source as changed;
-   - a refusal for size: capture again without the four flags, and report the source as having no text.
+1. **`gate evidence` lists the sources behind listed notes** (S2). For each note on the list it adds the entries the note's `sources` field names, once each, marked as it marks any entry. One step only. Where a note names another note, as 8 of 746 such values in this vault do by the third review, that note is listed and its own sources are not followed.
+2. **`capture --fill <id> --ack-data-egress`** (S3 to S9, S14). One id per call. It needs `RESEARCH_VAULT_ALLOW_NETWORK=1`. It prints one result, and with `--json` one object; it exits 0 on `filled` or `kept` and 1 otherwise.
+   - `kept`: the text after the title line is 200 characters or more. Nothing is changed.
+   - `refused`, with the reason: the entry is not a source, is not active, is blocked by the vault's blocklist, or its URL is not https.
+   - `version-floating`: the entry carries a subject version and its URL has `latest`, `master`, `main`, `stable`, `current`, `head`, `nightly`, `dev` or `trunk` as a path segment (S7).
+   - `unreachable`: an HTTP status of 400 or above, or a fetch error.
+   - `no-text`: the bytes are binary, or the text is under 200 characters.
+   - `too-large`: the text is over 300,000 bytes (S9).
+   - `filled`: the body becomes the title line and the text; `content_hash` becomes the hash of the fetched bytes; `updated` is set; and one verification row is added as in S8, with a note that begins `filled:` and gives the date, the text's size and any hash it replaced (S5, S6).
+3. **`--replace`, for a fill that stored the wrong thing.** By the third review, a login wall or an error page served with status 200 is stored as `filled`, and afterwards every fill answers `kept`. With `--replace`, an entry whose last `filled:` row is its newest verification row is filled again. It never touches a body that no fill wrote.
+4. **One extractor**, used by the fill and by `capture --batch` over a URL list, which today stores the text as it came (S4). It folds line breaks outside `pre` and keeps `pre` as it is, drops `script`, `style`, `template`, `svg` and `noscript`, turns block tags into line breaks, drops other tags, decodes numeric references and a table of common named entities, decodes the bytes by the page's declared charset, and decompresses a gzip body before any of that. Plain text is stored as it is. The hash is always of the bytes as fetched; 4 of the 10 sources the survey counted as binary were gzip (the later probes, V4).
+5. **The research-claims-gate skill, after step 1** (S11). If the list holds a `no-body` source and a user is present, the session asks once for that gate: may it fetch those pages and store their text in the vault? The question gives the count and the hosts, and says the text is copied into source entries, which go wherever the vault goes. In a subagent, a Workflow agent or a headless run it does not ask and the answer is no. On yes it runs the fill for each such source, one command at a time, runs `gate evidence` again, and reports each source's result. It does not ask again for the gate's second round. On no it says which claims are likely to fail for want of text and continues. Section 4 of the orchestrate skill needs no step of its own.
 
-   When it has finished, it deletes every page file of the run, captured or not, so no second copy of any page stays on disk.
-5. **When the answer is no,** nothing changes in the run, and section 4 tells the user before the gate that the sources hold no text and the gate is likely to fail for that reason (F1).
-6. **What this does not reach** (F5). A source already in the vault keeps the body it has. On a topic researched before, the gate can fail as in F1 for those sources, and section 4 names them.
+## What this buys, and what it does not
+
+Judgment, from S1, S3, S12 and S13. Statements of what a page says become checkable against the page, for sources the fetcher can read: most of the software and tooling research in this vault, about two thirds of the rest. A failing row then names a gap between the draft and a page, where today it names a note's missing verification. A draft whose sources are papers behind a 403 gains little. No draft is made to pass, and two reviewer runs can still disagree.
 
 ## What gets built
 
 Each commit passes the repo's checks and carries a changelog line.
 
-**Commit 1. `--extract-text` in `bin/commands/capture.mjs`,** with the size refusal. Tests: a page whose sentence spans a `code` element is stored with the sentence on one line; the entry's `content_hash` is the hash of the HTML bytes; text over the ceiling is refused and nothing is written. The reference doc gains the flag.
+**Commit 1. The extractor, `capture --fill` with `--replace`, and the URL-list path.** Tests with an injected fetch and no network: every result of point 2; an entry with 200 characters of text is byte-identical after `kept`; a replaced hash is in the row's note; the row does not change the entry's last-verified date; `--replace` refills an entry a fill wrote and refuses one it did not; a sentence spanning a `code` element lands on one line; `pre` is kept; a named entity from the table is decoded; a gzip body is read; a URL-list capture with `--store-body` stores text. By the third review a test in `test/batch.test.mjs` asserts the raw form today and must change with it. `SECURITY.md` names the new network use.
 
-**Commit 2. The skill.** `args.storeText`; the question in section 1 and the run directory in section 0; the Fetch prompt's curl line and its one permitted write; the Seed prompt's flags, its two new readings and the deletion; the sentences of points 5 and 6 in section 4. The script builds the four flags in one constant that is empty when `storeText` is false, and the script test asserts that `--store-body` occurs once in the script, in that constant. `docs/RELIABILITY.md` gains a sentence on the page files.
+**Commit 2. `gate evidence` and its sources-of-notes step.** Tests: a draft citing only a note lists the note's sources; a source listed twice appears once; a note named by a note is listed and not followed; `--changed` keeps working.
 
-**After the commits: one live run** with `storeText` true on a throwaway vault, then `gate evidence` on its synthesis and one gate round, recorded as an experiment.
+**Commit 3. The skills and `docs/RELIABILITY.md`.** The step of point 5 in the research-claims-gate skill, with its steps 0 and 3 pointing to the fill for a source already in the vault; one sentence in section 4 of the orchestrate skill; one sentence in the research-verify skill on a filled source that `refresh` reports as changed (S5); two sentences in `docs/RELIABILITY.md`.
+
+**Commit 4. `docs/REFERENCE.md`.** Line 184's sentence that a single capture never fetches is rewritten, and the flags are added. By the second review this commit can be made separately, on the machine that holds that file's ledger rows; by the third, nothing in the first three commits fails the repo's checks without it.
+
+**After the commits: one run.** In a copy of this vault, gate the two syntheses of G1 to G4 through the changed skill, and record each fill result and each verdict as an experiment.
 
 ## Not built, and why
 
 All judgments.
 
-- **Letting the reviewer take a verification row's quoted line as evidence.** The review proposes it: the Persist step already writes each confirmed observation into the source's verification notes, so the reviewer could accept those lines with no stored text at all, and it would cover sources already in the vault. Two reasons against. Changing `agents/claims-reviewer.md` changes the reviewer hash, and every ledger row recorded under the old hash stops counting (the second experiment, U3), so every file whose counting rows carry that hash would need a new verdict. And the quotes would be chosen by the run that wrote the draft, so a claim would be checked against the lines its own workers picked rather than against the page.
-- **Text for sources already in the vault** (F5). It needs a way to add a body to an existing source with a record of the consent, which `capture` refuses for a known URL under the same subject version (the experiment 2026-11-14-reliability-doc-further-probes, R7); by the review, nothing else offers one but a hand edit. It is the larger half of the problem in this vault and deserves its own spec.
-- **A fetcher inside `capture --type source`.** The CLI fetches for `refresh` and for bulk ingest and could fetch here, sparing the worker the curl line. It is a second change to the same command; the curl line costs nothing and, by the review, the bytes hashed the same on 8 of the 10 pages it tried (F3).
-- **A vault setting that remembers the answer.** Consent to copy text out of a page is per run and per topic; a remembered yes would apply to pages the user has not thought about.
-- **Keeping the page files when the answer is no,** so text could be stored later without fetching again. A file of page text on disk is the copy the question asks about.
+- **A text hash in `refresh`** (S5), for the promise in `SECURITY.md`. The third review argues for changing that promise; it is the first thing to revisit if `changed` on filled sources becomes a nuisance.
+- **A request header asking for an uncompressed response.** By the third review it would change what `refresh` fetches for every source, and a hash taken from a gzip response would stop matching.
+- **A form of the fill that takes a saved file,** for the pages the fetcher cannot read (S3).
+- **A sweep that fills every source.** The fill is per source on a gate's list.
+- **Changing what the reviewer accepts,** such as a verification row's quoted line. By the path review, the run would then grade its own quotes; and the reviewer file's hash would change (S11).
+- **Anything for S12.** Reviewer runs disagreeing is a property of the gate, not of the sources.
+- **The design pushed as a4ace68.** By the path review it depends on a worker having curl and leaves sources already in the vault untouched.
 
 ## Done when
 
-1. `npm test` passes with the new tests and the changed script test, and the repo's other checks pass.
-2. In the live run with `storeText` true, `gate evidence` lists no source that the run created as `no-body`; `refresh --id` reports `confirmed` for each created source whose page hashes the same on two curl fetches; no `page-*.html` file is left in the run directory; and the gate's verdict, whatever it is, is recorded with its table.
+1. `npm test` passes with the new tests, and the repo's other checks pass.
+2. In the copy, every source on each gate's list has one of the seven results; `gate evidence` afterwards flags `no-body` only for sources whose result was not `filled` or `kept`; no entry outside those lists has changed; and each verdict is recorded with its table.
 
-## Open questions for the user
+## The decision left to the user
 
-1. Is 300,000 bytes of text the right ceiling? It is a guess from one page of 108,211 bytes (F2). By the review, ten such bodies are about a megabyte for the reviewer to read, and `search --body` would match them on almost any word.
-2. Should the spec for sources already in the vault (F5) come before this one is built? It covers more than half of this vault's sources.
+**S14: may `capture --fill` change an existing source entry**, under the three conditions given? This spec is written for yes. On no, points 2, 3 and 5 fall away, text can be stored only when a source is first captured, and the 345 sources of this vault with under 200 characters of body stay as they are (the probes, Q2).
 
 ## Limits of this spec
 
-One page was probed for size and for the `code` element problem. The text in T4 was made by a few lines of Python, not by the flag this spec proposes. The 8 of 10 figure is the review's, not a run recorded here. Whether a Workflow worker always has a shell with curl is not shown; two worker results in two runs say they used it. The user's go-ahead for writing this spec is the orchestrator's reading of the session record.
+The pass in S1 is one page and one synthesis written for the test. G1 to G4 are two real syntheses, one reviewer run each; the host attached a security warning to G1's report, and the vault was unchanged after it. The extractor is a prototype tried for quotes on two pages. The survey is one fetch per URL on one day from one network, and its 500-byte line is not the design's 200-character one. By the third review, adding notes' sources makes the Codex review runner refuse more drafts, since it refuses a list holding a stale entry. By the second review, the same source filled on two machines on different days can hold different text and a different hash, and the ledger does not record which evidence a verdict saw.
