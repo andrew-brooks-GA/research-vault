@@ -13,6 +13,8 @@ import { fetchSource } from '../lib/fetchsource.mjs';
 import { parseFrontmatter } from '../lib/frontmatter.mjs';
 import { loadBlocklist, matchBlock } from '../lib/blocklist.mjs';
 import { captureOperation } from '../lib/capture-operation.mjs';
+import { extractText } from '../lib/extract.mjs';
+import { fillSource } from '../lib/fill.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -173,10 +175,11 @@ export async function ingest(vaultPath, path, cliOpts = {}) {
     const urls = readFileSync(path, 'utf8').split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
     for (const [index, url] of urls.entries()) {
       try {
-        const { status, body } = await fetch(url, {});
+        const { status, body, url: read } = await fetch(url, {});
         if (status >= 400) throw new Error(`http ${status}`);
-        const text = body.toString('utf8');
-        specs[index] = { type: 'source', title: titleOf(text, url), url, contentBytes: body, content: text, storeBody: cliOpts.storeBody };
+        // The body stored is the page's text, by the extractor `capture --fill` uses (spec 52); the hash is the bytes'.
+        const content = cliOpts.storeBody ? extractText(body, new URL(read || url).pathname) ?? '' : '';
+        specs[index] = { type: 'source', title: titleOf(body.toString('utf8'), url), url, contentBytes: body, content, storeBody: cliOpts.storeBody };
       } catch (e) { errors.push({ index, error: `fetch failed: ${e.message}` }); }
     }
   }
@@ -266,6 +269,14 @@ export async function run(args) {
     const r = (existsSync(args.batch) && statSync(args.batch).isDirectory()) || !args.batch.endsWith('.json') ? await ingest(vaultPath, args.batch, o) : runBatch(vaultPath, args.batch, o);
     process.stdout.write(JSON.stringify(r, null, 2) + '\n');
     return r.errors.length ? 1 : 0;
+  }
+  if (args.fill) {
+    const r = await fillSource(vaultPath, args.fill, {
+      ackDataEgress: !!args['ack-data-egress'], replace: !!args.replace, discard: !!args.discard, contentFile: args['content-file'],
+      byId: args['by-id'], allowNetwork: process.env.RESEARCH_VAULT_ALLOW_NETWORK === '1', fetch: typeof args.fetch === 'function' ? args.fetch : undefined,
+    });
+    process.stdout.write(args.json ? JSON.stringify(r) + '\n' : `${r.result}  ${r.id}${r.reason ? `  (${r.reason})` : ''}${r.fetchedFrom ? `  (read from ${r.fetchedFrom})` : ''}\n`);
+    return ['filled', 'kept', 'discarded'].includes(r.result) ? 0 : 1;
   }
   const defaults = captureDefaults(cwd);
   const cfBuf = args['content-file'] ? readFileSync(args['content-file']) : null;

@@ -246,7 +246,7 @@ export const MIN_BODY_CHARS = 200;
 const BODY_TYPES = new Set(['source', 'note']);
 
 // Body text after the first `# ` title line, trimmed.
-function bodyText(body) {
+export function bodyText(body) {
   const lines = body.split('\n');
   const i = lines.findIndex((l) => l.startsWith('# '));
   return lines.slice(i + 1).join('\n').trim();

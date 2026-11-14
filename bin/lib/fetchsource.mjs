@@ -74,14 +74,25 @@ function once(url, { request, lookup }) {
   });
 }
 
+// A file view on a code host is read as the raw file (spec 52 S15): the page as addressed is the
+// site's frame, not the file. One host; add a row when a run meets another.
+export function rawFileUrl(url) {
+  let u;
+  try { u = new URL(url); } catch { return url; }
+  // The parsed path has its `..` segments resolved, so the file read is in the repo the address names.
+  const m = u.protocol === 'https:' && u.hostname === 'github.com' && !u.port && !u.username && /^\/([^/]+)\/([^/]+)\/blob\/(.+)$/.exec(u.pathname);
+  return m ? `https://raw.githubusercontent.com/${m[1]}/${m[2]}/${m[3]}` : url;
+}
+
+// The result's `url` is the address read: the last redirect's, or the raw file's for a file view.
 export async function fetchSource(url, opts = {}) {
   const request = opts.request || https.request;
   const lookup = opts.lookup;
   let maxRedirects = opts.maxRedirects ?? 3;
-  let current = url;
+  let current = rawFileUrl(url);
   for (;;) {
     const r = await once(current, { request, lookup });
-    if (!r.redirect) return r;
+    if (!r.redirect) return { ...r, url: current };
     if (maxRedirects-- <= 0) throw new Error('too many redirects');
     const next = new URL(r.redirect);
     if (next.protocol !== 'https:') throw new Error(`refused redirect scheme downgrade: ${next.protocol}`);

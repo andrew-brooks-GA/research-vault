@@ -225,7 +225,8 @@ test('ingest: a URL list fetches each line, fails the item on a thrown fetch, wr
   const dir2 = freshVault();
   const s = await ingest(dir2, file, { ...NOW, fetch: fakeFetch, continue: true, storeBody: true, ackDataEgress: true });
   assert.equal(s.created.length, 2);
-  assert.ok(readFileSync(join(dir2, 'sources', '2026-06-12-one-page.md'), 'utf8').includes('<title>'));
+  const stored = readFileSync(join(dir2, 'sources', '2026-06-12-one-page.md'), 'utf8');
+  assert.ok(stored.includes('\nOne Page\n') && !stored.includes('<title>'), 'the body is the page\'s text, by the extractor of capture --fill (spec 52)');
   const noAck = await ingest(freshVault(), file, { ...NOW, fetch: fakeFetch, continue: true, storeBody: true });
   assert.equal(noAck.errors.length, 3, 'every kept line is an error');
   assert.equal(noAck.created.length, 0);
