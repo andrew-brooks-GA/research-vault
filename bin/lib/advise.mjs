@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
-import { buildManifest } from './manifest.mjs';
+import { buildManifest, isUnverifiedSource } from './manifest.mjs';
 import { listStale, staleness } from './stale.mjs';
 import { traverse, DEPENDENCY_RELS } from './graph.mjs';
 import { loadSchema } from './schema.mjs';
@@ -31,7 +31,7 @@ function listUnverifiedSources(vaultPath) {
   for (const abs of walkEntries(vaultPath)) {
     try {
       const { id, data } = readEntry(abs);
-      if (data.type === 'source' && !(data.verifications || []).some(v => v.method && v.method !== 'captured')) out.push(id);
+      if (isUnverifiedSource(data)) out.push(id);
     } catch { /* parse errors surface via lint */ }
   }
   return out;

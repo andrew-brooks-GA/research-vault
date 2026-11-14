@@ -5,6 +5,7 @@ import { loadSchema, stageAllowedInFolder, fieldOrder } from './schema.mjs';
 import { serializeFrontmatter } from './frontmatter.mjs';
 import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, allowedValues } from './validate.mjs';
 import { BLOCKLIST, loadBlocklist, matchBlock } from './blocklist.mjs';
+import { isUnverifiedSource } from './manifest.mjs';
 
 const MONOLITHIC_SYNTHESIS_WORDS = 1500;
 
@@ -150,7 +151,7 @@ export function lintVault(vaultPath, repoRoot) {
     // provenance, never an independent check) is not authoritative — its only basis is
     // that someone asserted it. Verify by fetch (refetched-source / cross-referenced) or
     // human-spot-check before relying on it. See AGENTS.md §7.
-    if (data.type === 'source' && !(data.verifications || []).some(v => v.method && v.method !== 'captured'))
+    if (isUnverifiedSource(data))
       warn(abs, 'WARN_SOURCE_UNVERIFIED', 'source has only capture-time provenance and was never independently verified; verify by refetched-source / cross-referenced / human-spot-check before treating it as authoritative');
 
     // A note/synthesis without a one-line summary is opaque to the manifest: retrieval,

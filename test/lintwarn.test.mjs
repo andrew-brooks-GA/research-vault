@@ -5,6 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { lintVault } from '../bin/lib/lintrules.mjs';
+import { advise } from '../bin/lib/advise.mjs';
 
 const WARN = fileURLToPath(new URL('./fixtures/warn', import.meta.url));
 const GOOD = fileURLToPath(new URL('./fixtures/vault', import.meta.url));
@@ -50,10 +51,14 @@ test('warns on a source whose only provenance is capture (never independently ve
     `source_type: article\nsource_url: https://e.com/${slug}\n---\n# ${slug}\n`;
   writeFileSync(join(dir, 'sources', '2026-01-01-cap.md'), entry('cap', 'captured'), 'utf8');
   writeFileSync(join(dir, 'sources', '2026-01-01-ver.md'), entry('ver', 'refetched-source'), 'utf8');
+  // spec 53 point 4: a quote found on the page by a program is not an independent check either
+  const row = m => `  - date: 2026-01-01\n    by_type: agent\n    by_id: ""\n    method: ${m}\n    result: confirmed\n    notes: ""\n`;
+  writeFileSync(join(dir, 'sources', '2026-01-01-quo.md'), entry('quo', 'captured').replace('source_type:', row('quote-matched') + 'source_type:'), 'utf8');
   const { warnings } = lintVault(dir, process.cwd());
-  const flagged = warnings.filter(w => w.code === 'WARN_SOURCE_UNVERIFIED').map(w => w.file);
-  assert.equal(flagged.length, 1, 'exactly one unverified-source warning: ' + JSON.stringify(warnings));
-  assert.ok(flagged[0].includes('2026-01-01-cap'), 'warning is on the captured-only source, not the refetched one');
+  const flagged = warnings.filter(w => w.code === 'WARN_SOURCE_UNVERIFIED').map(w => w.file).sort();
+  assert.equal(flagged.length, 2, 'two unverified-source warnings: ' + JSON.stringify(warnings));
+  assert.ok(flagged[0].includes('2026-01-01-cap') && flagged[1].includes('2026-01-01-quo'), 'the captured-only source and the captured plus quote-matched one, not the refetched one');
+  assert.deepEqual(advise(dir, process.cwd()).unverifiedSources.sort(), ['2026-01-01-cap', '2026-01-01-quo']);
 });
 
 test('warns on note/synthesis without a one-line summary', () => {

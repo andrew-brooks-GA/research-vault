@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Verification method `quote-matched` (spec 53, commit 1): the taxonomy value for a row that records only that a quoted sentence is on a source's page. `lint` warns `WARN_SOURCE_UNVERIFIED` on a source whose rows are all `captured` or `quote-matched`, `advise` lists it as unverified, and the generated vault instructions say so. `verify --method quote-matched` is refused: the row is written by `verify --quotes`, which the next commit adds.
+
 - The research-claims-gate skill gains step 1a (spec 52, commit 3): when the evidence list flags a source `no-body` and the user is present, it asks once whether to fetch those pages and store their text, runs `capture --fill` for each on yes, and never asks from a subagent, a Workflow agent or a headless run. Its steps 0 and 3 point to that step for a source already in the vault. The orchestrate skill's close-out and the research-verify skill each gain a sentence, `docs/RELIABILITY.md` describes the step under research task recovery (regated, MERIT), and `scripts/deps.mjs` has three coupling rows for `bin/lib/fill.mjs`.
 
 - `gate evidence` lists the sources behind each note on its list, once each (spec 52, commit 2). One step: a note that a listed note names is listed and its own sources are not followed. A draft that cites only notes now puts their sources, and any `no-body` flag on them, in front of the reviewer.

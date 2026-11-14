@@ -14,6 +14,10 @@ const EDGE_FIELDS = [...BACKLINK_FIELDS, ...REFERENCE_ONLY_FIELDS];
 // Only these results attest freshness. `captured`-method seeds carry `confirmed`, so
 // capture-time freshness counts; `outdated`/`unreachable`/`inconclusive` must not reset the clock.
 export const CONFIRMING_RESULTS = ['confirmed', 'changed-trivially'];
+// Rows that are not an independent check of a source: the capture-time seed, and a quote found on
+// its page by a program (spec 53 point 4: the words are on the page and no more).
+const UNCHECKED_METHODS = ['captured', 'quote-matched'];
+export const isUnverifiedSource = data => data.type === 'source' && !(data.verifications || []).some(v => v.method && !UNCHECKED_METHODS.includes(v.method));
 
 export function lastVerified(verifications) {
   return (verifications || [])
