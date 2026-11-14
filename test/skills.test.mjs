@@ -126,5 +126,7 @@ test('the orchestrate skill\'s reference script is a Workflow script', () => {
   const used = [...script.matchAll(/phase\('([^']+)'\)|phase: '([^']+)'/g)].map((m) => m[1] || m[2]);
   assert.ok(titles.length > 0);
   assert.deepEqual([...new Set(used)].filter((t) => !titles.includes(t)), []);
-  for (const flag of ['--operation-id', '--vault', 'recoveryStateCreated']) assert.ok(script.includes(flag), flag);
+  for (const flag of ['--operation-id', '--vault', 'recoveryStateCreated', '--quotes']) assert.ok(script.includes(flag), flag);
+  // Spec 53: three phases, so two agents plus one per lane, and no agent that reads a page a second time.
+  assert.deepEqual(titles, ['Recon', 'Research', 'Write']);
 });
