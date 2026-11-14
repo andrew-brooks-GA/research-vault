@@ -252,6 +252,19 @@ test('CLI gate record rejects a bad verdict with exit 2 and no ledger', () => {
   assert.equal(gateCli(root, vault).code, 2);
 });
 
+test('evidenceFor lists the sources of a listed note once each, and does not follow a note named by a note (spec 52 point 1)', () => {
+  const dir = fixtureVault();
+  put(dir, 'source', '2026-01-02-deep', { source_type: 'article', source_url: 'https://example.org/deep' });
+  put(dir, 'note', '2026-01-02-inner', { sources: ['2026-01-02-deep'], confidence: 'medium' });
+  put(dir, 'note', '2026-01-02-n', { sources: ['2026-01-01-fx-doc-nobody', '2026-01-01-fx-doc', '2026-01-02-inner', '2026-01-02-missing'], confidence: 'medium' });
+  const draft = join(tmpVault('rv-draft-'), 'd.md');
+  writeFileSync(draft, '# D\n\nPer 2026-01-02-n and 2026-01-01-fx-doc, it prints.\n\n## Two\n\nNothing cited here.\n');
+  const ids = (o) => evidenceFor(draft, dir, o).entries.map((e) => e.id);
+  assert.deepEqual(ids(), ['2026-01-01-fx-doc', '2026-01-01-fx-doc-nobody', '2026-01-02-inner', '2026-01-02-n']);
+  assert.equal(evidenceFor(draft, dir).entries.find((e) => e.id === '2026-01-01-fx-doc-nobody').noBody, true);
+  assert.deepEqual(ids({ changed: ['sec:d'] }), ['2026-01-01-fx-doc', '2026-01-01-fx-doc-nobody', '2026-01-02-inner', '2026-01-02-n'], '--changed keeps working');
+});
+
 test('CLI gate evidence prints the entry lines and uncovered lines', () => {
   const vault = fixtureVault();
   const root = boundRepo(vault);

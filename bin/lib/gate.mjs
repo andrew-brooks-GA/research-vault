@@ -289,6 +289,8 @@ export function evidenceFor(draftPath, vaultPath, { extra = [], code = null, cha
     if (r.status !== 'uncovered') hit.set(r.id, byId.get(r.id));
     else if (!uncovered.some((u) => u.type === r.type && u.value === r.value)) uncovered.push({ type: r.type, value: r.value });
   }
+  // The sources behind a listed note (spec 52 point 1). One step: a note named by a note is listed and not followed.
+  for (const e of [...hit.values()]) if (e.type === 'note') for (const id of e.sources || []) if (byId.has(id)) hit.set(id, byId.get(id));
   const stale = new Set(listStale(vaultPath, { manifest }).map((s) => s.id));
   const bodies = new Map();
   for (const abs of walkEntries(vaultPath)) {
