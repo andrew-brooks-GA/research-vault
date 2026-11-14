@@ -11,15 +11,15 @@ import { sha256, normalizeUrl, verKey } from './ids.mjs';
 import { buildManifest, danglingEdges, writeManifest } from './manifest.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-export const operationKey = key => typeof key === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(key);
-export function canonical(value) {
+const operationKey = key => typeof key === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(key);
+function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
   if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])]));
   return value;
 }
-export const digest = value => sha256(JSON.stringify(canonical(value)));
-export const retryableIO = e => ['EINTR', 'EBUSY', 'EAGAIN'].includes(e.code);
-export function atomicJson(path, value) {
+const digest = value => sha256(JSON.stringify(canonical(value)));
+const retryableIO = e => ['EINTR', 'EBUSY', 'EAGAIN'].includes(e.code);
+function atomicJson(path, value) {
   const tmp = `${path}.${randomUUID()}.tmp`;
   try {
     fs.writeFileSync(tmp, JSON.stringify(value, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
@@ -92,7 +92,7 @@ function prepare(vault, inputs, date, opts) {
   if (failures.length) throw Object.assign(failures[0], { failures, results });
   return { results, rendered };
 }
-export function validReceipt(r, key, vault, count) {
+function validReceipt(r, key, vault, count) {
   if (r.schemaVersion !== 1 || r.operationId !== key || r.vault !== vault || !/^\d{4}-\d{2}-\d{2}$/.test(r.created) ||
     !['prepared', 'writing', 'needs-repair', 'complete'].includes(r.phase) || !['pending', 'complete', 'failed'].includes(r.manifest) || !Array.isArray(r.results) || r.results.length !== count) throw new Error('invalid receipt identity or structure');
   if (!Array.isArray(r.errors) || !/^sha256:[a-f0-9]{64}$/.test(r.inputDigest || '') || !/^sha256:[a-f0-9]{64}$/.test(r.schemaDigest || '') || r.phase === 'complete' && (r.manifest !== 'complete' || r.results.some(row => !['created', 'reused'].includes(row.state)))) throw new Error('inconsistent receipt state');
@@ -100,11 +100,6 @@ export function validReceipt(r, key, vault, count) {
     if (row.index !== i || !['pending', 'created', 'reused', 'conflict', 'failed'].includes(row.state) || typeof row.id !== 'string' || !Object.values(TYPE_FOLDER).some(f => row.path === `${f}/${row.id}.md`) || /[/\\]/.test(row.id) || !/^sha256:[a-f0-9]{64}$/.test(row.fingerprint)) throw new Error('invalid receipt result');
     if (row.reuseOf !== undefined && (!Number.isInteger(row.reuseOf) || row.reuseOf >= i || row.reuseOf < 0 || r.results[row.reuseOf].path !== row.path || r.results[row.reuseOf].fingerprint !== row.fingerprint)) throw new Error('invalid receipt reuse');
   }
-}
-
-export function operationIdentity(vault, planPath, opts = {}) {
-  const loaded = input(planPath, opts);
-  return { inputDigest: loaded.inputDigest, count: loaded.inputs.length, schemaDigest: digest(loadSchema(opts.repoRoot || ROOT, { vaultPath: vault })) };
 }
 
 export function captureOperation(vaultPath, planPath, key, opts = {}) {

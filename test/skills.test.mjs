@@ -103,3 +103,28 @@ test('research-vault-usage tells the agent to take search terms from manifest --
   assert.ok(skill.includes('`manifest --topics`'));
   assert.ok(skill.includes('rather than inventing a synonym'));
 });
+
+// Pull request 71 shipped a reference script the Workflow tool cannot take; this is the smallest check that fails on it.
+test('the orchestrate skill\'s reference script is a Workflow script', () => {
+  const skill = read('skills/research-orchestrate/SKILL.md');
+  const script = skill.slice(skill.indexOf('## 2. Run the workflow')).match(/```javascript\n([\s\S]*?)\n```/)[1];
+  assert.match(script, /^export const meta = \{/);
+  assert.doesNotMatch(script, /\bagent\(\s*\{/, 'agent takes a prompt string');
+  assert.doesNotMatch(script, /\bimport\b|\brequire\(|Date\.now\(|Math\.random\(|new Date\(\)/);
+  // It parses as the body of an async function once `export` is dropped (never run here).
+  const AsyncFunction = (async () => {}).constructor;
+  assert.doesNotThrow(() => new AsyncFunction('agent', 'parallel', 'pipeline', 'phase', 'log', 'args', 'budget', 'workflow', script.replace(/^export /, '')));
+  // Every bare call outside the prompts is to a Workflow hook, a keyword or a name the script defines;
+  // the prompts are template literals and are cut out first.
+  const code = script.replace(/`(?:\\[\s\S]|[^`\\])*`/g, '``');
+  const defined = [...code.matchAll(/\b(?:const|let|function)\s+([A-Za-z_$][\w$]*)/g)].map((m) => m[1]);
+  const allowed = new Set(['agent', 'parallel', 'pipeline', 'phase', 'log', 'workflow', 'if', 'for', 'while', 'switch', 'catch', 'Map', 'Set', 'String', 'Number', 'Boolean', ...defined]);
+  const calls = [...code.matchAll(/(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(calls)].filter((c) => !allowed.has(c)), []);
+  // Every phase the script enters or assigns is one meta declares.
+  const titles = [...script.slice(0, script.indexOf('\n}\n')).matchAll(/title: '([^']+)'/g)].map((m) => m[1]);
+  const used = [...script.matchAll(/phase\('([^']+)'\)|phase: '([^']+)'/g)].map((m) => m[1] || m[2]);
+  assert.ok(titles.length > 0);
+  assert.deepEqual([...new Set(used)].filter((t) => !titles.includes(t)), []);
+  for (const flag of ['--operation-id', '--vault', 'recoveryStateCreated']) assert.ok(script.includes(flag), flag);
+});

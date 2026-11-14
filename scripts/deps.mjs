@@ -27,11 +27,13 @@ const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.m
 // literal really is in both files; a row about two values being equal stays prose.
 export const COUPLINGS = [
   ['bin/lib/capture-operation.mjs', 'bin/commands/capture.mjs', 'opt-in key syntax and structured validation error protocol', 'INPUT_INVALID'],
-  ['bin/lib/capture-operation.mjs', 'bin/lib/research-controller.mjs', 'receipt phases, operation identity and retryable error codes', 'complete'],
   ['bin/lib/capture-operation.mjs', 'docs/RELIABILITY.md', 'receipt v1, replay and lock recovery protocol', 'historical'],
   ['bin/commands/capture.mjs', 'docs/REFERENCE.md', 'opt-in operation-id and receipt output contract', 'operation-id'],
-  ['bin/lib/research-controller.mjs', 'skills/research-orchestrate/SKILL.md', 'shared reference controller callbacks, intent and recovery protocol', 'persistBatch'],
-  ['bin/lib/research-controller.mjs', 'docs/RELIABILITY.md', 'task recovery and scoped mutation reconciliation', 'research-orchestrate'],
+  ['bin/lib/capture-operation.mjs', 'skills/research-orchestrate/SKILL.md', 'the Persist step runs capture --batch with --operation-id and branches on recoveryStateCreated, LOCK_BUSY, RECEIPT_IO and INPUT_CHANGED', 'recoveryStateCreated'],
+  ['bin/lib/ids.mjs', 'skills/research-orchestrate/SKILL.md', 'the Plan prompt restates slugify: the stopword list and the six-word limit'],
+  ['bin/commands/verify.mjs', 'skills/research-orchestrate/SKILL.md', 'the Persist step passes --by-id so a verification is recorded as an agent\'s, and closes questions with --answered-by', 'by-id'],
+  ['bin/commands/capture.mjs', 'skills/research-orchestrate/SKILL.md', 'the Seed step tells a repeated URL from a title clash by the duplicate message', 'existing entry with same url'],
+  ['skills/research-orchestrate/SKILL.md', 'docs/RELIABILITY.md', 'the run directory, the retry rule and the verification marker are restated', 'research-run:'],
 
   ['bin/lib/codex-review.mjs', 'agents/claims-reviewer.md', 'the shared policy and PASS/FAIL-as-sent review protocol'],
   ['bin/lib/codex-review.mjs', 'agents/lesson-reader.md', 'the shared reader policy and READS/REVISE protocol'],
@@ -95,6 +97,8 @@ export const COUPLINGS = [
   ['bin/lib/projectconfig.mjs', 'commands/research-init.md', "the config keys and 'volatility defaults to fast'"],
   ['bin/commands/obsidian.mjs', 'commands/research-obsidian.md', "the '_obsidian' default", '_obsidian'],
   ['bin/lib/files.mjs', 'vault-template/.gitignore', 'SKIP_DIRS and the ignore list both name _index and _obsidian', '_obsidian'],
+  ['bin/lib/capture-operation.mjs', 'vault-template/.gitignore', 'the receipt and lock directory the opt-in path writes is ignored', '.capture-operations'],
+  ['skills/research-orchestrate/SKILL.md', 'vault-template/.gitignore', 'the run directory the Persist step writes plans to is ignored', '.research-tasks'],
   ['bin/lib/files.mjs', '.gitignore', 'SKIP_DIRS and the ignore list both name _index and _obsidian', '_obsidian'],
   ['bin/commands/check.mjs', 'bin/lib/gate.mjs', "checkCitations status values 'ok', 'stale', 'uncovered'"],
   ['bin/lib/gate.mjs', 'skills/research-claims-gate/SKILL.md', 'VERDICTS, LEDGER_FILENAME and the fact:N/quiz:N unit names', '.research-vault-ledger.jsonl'],
