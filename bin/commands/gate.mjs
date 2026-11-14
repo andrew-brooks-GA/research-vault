@@ -8,11 +8,12 @@ import { loadSchema } from '../lib/schema.mjs';
 import { csvList } from '../lib/args.mjs';
 import { VERDICTS, recordVerdict, gateStatus, evidenceFor, renderEvidence, changedUnits, codeLang, ledgerKey, ledgerRoot, stagedGates } from '../lib/gate.mjs';
 import { readVersions } from '../lib/codelinks.mjs';
+import { buildPacket } from '../lib/packet.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // `none (reviewer changed)`: the file's passing rows were given by another version of the reviewer.
 const label = (s) => s.verdict ?? (s.reviewerChanged ? 'none (reviewer changed)' : 'none');
-const USAGE = `usage: research-vault gate evidence <draft> [--extra ids] [--changed] [--json] | changed <draft> | record <file> <${VERDICTS.join('|')}> [note] | status <file> [--check] | staged [--check]`;
+const USAGE = `usage: research-vault gate evidence <draft> [--extra ids] [--changed] [--json] [--packet <dir> --run <key>] | changed <draft> | record <file> <${VERDICTS.join('|')}> [note] | status <file> [--check] | staged [--check]`;
 
 export async function run(args) {
   const cwd = args.cwd ?? process.cwd();
@@ -48,6 +49,12 @@ export async function run(args) {
     const changed = args.changed ? changedUnits(repoRoot, abs) : null;
     const r = evidenceFor(abs, vaultPath, { extra, changed, code: c && { lang: c.lang, versions: readVersions(c.cfg, repoRoot) } });
     if (changed) r.changed = changed;
+    // An evidence packet for a run's own synthesis (spec 54 item 5): built before anything is printed, or not at all.
+    let packet = null;
+    if (args.packet) {
+      try { packet = buildPacket(vaultPath, r.entries, resolve(cwd, String(args.packet)), args.run, REPO_ROOT); } catch (err) { process.stderr.write(`gate: ${err.message}\n`); return 1; }
+      r.packet = packet;
+    }
     if (args.json) { process.stdout.write(JSON.stringify(r, null, 2) + '\n'); return 0; }
     let out = renderEvidence(r);
     if (args.changed) {
@@ -55,6 +62,7 @@ export async function run(args) {
       // One line per changed code unit: its range and the worst status of its links, for the reviewer.
       for (const u of r.units ?? []) if (r.changed.includes(u.unit)) out += `unit ${u.unit} ${ledgerKey(repoRoot, abs)}:${u.start}-${u.end} ${u.status}\n`;
     }
+    if (packet) out += `packet: ${packet.dir} (${packet.excerpted} of ${packet.entries} entries cut to the lines around this run's quotes; a round on it can fail the draft and cannot pass it)\n`;
     process.stdout.write(out);
     return 0;
   }

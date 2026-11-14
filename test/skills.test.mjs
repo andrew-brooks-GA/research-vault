@@ -104,6 +104,12 @@ test('research-vault-usage tells the agent to take search terms from manifest --
   assert.ok(skill.includes('rather than inventing a synonym'));
 });
 
+test('the claims-gate skill holds the packet rules and the rule for edits after round two (spec 54 items 5 and 7)', () => {
+  const skill = read('skills/research-claims-gate/SKILL.md');
+  for (const s of ['--packet', '--run <run key>', 'can fail a draft and cannot pass one', 'After round two change only the sentences a finding names', 'record `MERIT`, never `PASS`']) assert.ok(skill.includes(s), s);
+  assert.ok(read('skills/research-orchestrate/SKILL.md').includes('--run ${args.runKey}'), 'the Write step puts the run key in its quote rows');
+});
+
 // Pull request 71 shipped a reference script the Workflow tool cannot take; this is the smallest check that fails on it.
 test('the orchestrate skill\'s reference script is a Workflow script', () => {
   const skill = read('skills/research-orchestrate/SKILL.md');

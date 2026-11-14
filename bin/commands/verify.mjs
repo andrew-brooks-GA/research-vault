@@ -93,7 +93,7 @@ export async function run(args) {
   reportFallback(resolved);
   if (args.quotes) {
     const out = await checkQuotes(vaultPath, args.id, JSON.parse(readFileSync(args.quotes, 'utf8')), {
-      byId: args['by-id'], allowNetwork: process.env.RESEARCH_VAULT_ALLOW_NETWORK === '1', fetch: typeof args.fetch === 'function' ? args.fetch : undefined,
+      byId: args['by-id'], runKey: args.run, allowNetwork: process.env.RESEARCH_VAULT_ALLOW_NETWORK === '1', fetch: typeof args.fetch === 'function' ? args.fetch : undefined,
     });
     process.stdout.write(JSON.stringify(out, null, 1) + '\n');
     return 0;

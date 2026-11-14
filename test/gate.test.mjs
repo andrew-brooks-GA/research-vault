@@ -246,7 +246,7 @@ test('CLI gate record rejects a bad verdict with exit 2 and no ledger', () => {
   const root = boundRepo(vault);
   const r = gateCli(root, vault, 'record', 'docs/reply.md', 'pass');
   assert.equal(r.code, 2);
-  assert.match(r.err, /^usage: research-vault gate evidence <draft> \[--extra ids\] \[--changed\] \[--json\] \| changed <draft> \| record <file> <PASS\|FAIL-as-sent\|MERIT> \[note\] \| status <file> \[--check\] \| staged \[--check\]$/m);
+  assert.match(r.err, /^usage: research-vault gate evidence <draft> \[--extra ids\] \[--changed\] \[--json\] \[--packet <dir> --run <key>\] \| changed <draft> \| record <file> <PASS\|FAIL-as-sent\|MERIT> \[note\] \| status <file> \[--check\] \| staged \[--check\]$/m);
   assert.equal(existsSync(join(root, LEDGER_FILENAME)), false);
   assert.equal(gateCli(root, vault, 'bogus').code, 2);
   assert.equal(gateCli(root, vault).code, 2);

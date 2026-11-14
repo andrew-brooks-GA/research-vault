@@ -9,6 +9,7 @@ import { loadBlocklist, matchBlock } from './blocklist.mjs';
 import { fetchSource, rawFileUrl } from './fetchsource.mjs';
 import { extractText } from './extract.mjs';
 import { bodyText, MIN_BODY_CHARS } from './gate.mjs';
+import { RUN_KEY } from './packet.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const h8 = s => createHash('sha256').update(s).digest('hex').slice(0, 8);
@@ -18,7 +19,7 @@ const hitsIn = (lines, q) => lines.map((l, i) => (l.includes(q) ? i + 1 : 0)).fi
 const around = (lines, at) => lines.slice(Math.max(0, at - 3), at + 2).filter(l => l.trim()).join(' / ').slice(0, 900);
 
 // Is each quote on one line of a source's text (spec 53 point 3)? A quote found adds one
-// `quote-matched` row. Note form, stated once: `<quote hash 8> L<body line>@<body hash 8>: <quote>`
+// `quote-matched` row. Note form, stated once: `<quote hash 8> L<body line>@<body hash 8>[ <run key>]: <quote>`
 // for a quote found in the stored body (the line counts lines of the entry's body), and
 // `<quote hash 8>: <quote>` for one found on the fetched page (spec 54 item 5). The body and
 // `content_hash` are never changed.
@@ -28,6 +29,8 @@ export async function checkQuotes(vaultPath, id, quotes, opts = {}) {
   const e = readEntry(path);
   if (e.data.type !== 'source') throw new Error(`not a source entry of this vault: ${id}`);
   if (!Array.isArray(quotes)) throw new Error('--quotes takes a file holding a JSON array of quotes');
+  // A run's key in a body row lets `gate evidence --packet` tell this run's quotes from another's.
+  if (opts.runKey != null && !RUN_KEY.test(String(opts.runKey))) throw new Error('--run takes a run key: run- and six or more letters or digits');
   const now = opts.now || new Date().toISOString().slice(0, 10);
   const stored = bodyText(e.body).length >= MIN_BODY_CHARS;
   const bodyLines = e.body.split('\n');
@@ -77,7 +80,7 @@ export async function checkQuotes(vaultPath, id, quotes, opts = {}) {
       have.add(qh);
       added.push({ date: now, by_type: opts.byId ? 'agent' : 'human', by_id: opts.byId || '', method: 'quote-matched',
         result: foundIn === 'body' ? 'inconclusive' : 'confirmed',
-        notes: `${qh}${foundIn === 'body' ? ` L${lines[0]}@${bodyHash}` : ''}: ${quote.slice(0, 300)}` });
+        notes: `${qh}${foundIn === 'body' ? ` L${lines[0]}@${bodyHash}${opts.runKey ? ` ${opts.runKey}` : ''}` : ''}: ${quote.slice(0, 300)}` });
     }
     out.push({ ...base, found: true, foundIn, lines, occurrences: lines.length, rowAdded, context: around(src, lines[0]) });
   }
