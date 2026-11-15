@@ -20,7 +20,12 @@ You, the session running this skill, are the controller: the Recon and Research 
 
 1. If the question is underspecified (no version, environment, or success criterion), ask 2–3 narrowing questions before researching.
 2. Search the vault (`search --topic`, `--text`, `--body`). If fresh entries (per §2 of research-vault-usage) already cover the question, answer from the vault and stop. If coverage is partial, note the gap — it becomes a `question` entry or the workflow's focus.
-3. Ask the user once: may this run store the text of the pages it reads in their source entries? Stored text lets the claims gate read the page, and it is a copy of someone else's page in the vault. Pass the answer as `args.storeText`. With no user to ask (a subagent, a headless run), pass `false`.
+3. Interview the user once, before any agent starts, in one set of questions:
+   - **Kinds of source** (`args.lanes`, any number; each kind chosen is one lane). Offer every kind that could bear on the question and recommend the widest set that fits it: official documentation and standards; published style guides, books and long-form writing by recognised practitioners; community posts, practitioner writeups and critiques; release notes and changelogs; issue trackers and bug reports; peer-reviewed empirical studies. Add a kind the question calls for that is not in this list.
+   - **Breadth** (`args.pagesPerLane`): two pages a lane, or four. Say that the wider run costs more: every further page is read by a lane agent and its quotes are checked and judged by the Write agent.
+   - **Page text** (`args.storeText`): may this run store the text of the pages it reads in their source entries? Stored text lets the claims gate read the page, and it is a copy of someone else's page in the vault.
+
+   Word `args.question` to ask what those kinds of source say. Do not add a requirement the user did not state, such as that a practice must rest on a measurement: what a style guide, a book or a tool's documentation recommends is a finding, reported with who makes it. With no user to ask (a subagent, a headless run), pass every kind listed above, two pages a lane, and `storeText` `false`.
 
 ## 2. Run the workflow
 
@@ -31,7 +36,7 @@ A run starts two agents plus one per lane. Every `agent()` call in the script na
 | Phase | Does |
 |---|---|
 | Recon | Map existing vault coverage, gaps and open questions |
-| Research | One agent per lane (official docs, release notes, issue trackers, community): search, read up to two pages of the lane's own kind, and return each page's fields and up to eight claims, each with one whole sentence quoted exactly from the page. No writes |
+| Research | One agent per lane, a lane being one kind of source the user chose in section 1: search, read up to `args.pagesPerLane` pages of the lane's own kind, and return each page's fields and up to eight claims, each with one whole sentence quoted exactly from the page. No writes |
 | Write | One agent, one command at a time: capture each `source`; store its page text if the user agreed; check every quote with `verify --quotes`; judge each claim against the lines around its quote; search the stored text for a sentence that answers each question it would leave open, and add it as a quoted claim; walk the §2.6 four prompts; `capture --batch` the plan with `--operation-id`; `lint` |
 
 A program, not an agent, confirms that each quoted sentence is on its page. A quote found is recorded on the source as a `quote-matched` row, which says the words are on the page and no more: the Write agent is the one reader that judges whether a claim says what its quote says there.
@@ -42,7 +47,7 @@ export const meta = {
   description: 'Vault-conformant research: one reader per lane, quotes checked by a program, one writer',
   phases: [{ title: 'Recon' }, { title: 'Research' }, { title: 'Write' }],
 }
-// args: { question, cli, vault, today, runKey, storeText } — cli = absolute path to research-vault.mjs, vault absolute.
+// args: { question, cli, vault, today, runKey, storeText, lanes, pagesPerLane } — lanes = the kinds of source chosen in section 1; cli = absolute path to research-vault.mjs, vault absolute.
 const CLI = `node "${args.cli}" `
 const V = ` --vault "${args.vault}"`
 const RUN = `${args.vault}/.research-tasks/${args.runKey}`
@@ -55,9 +60,12 @@ phase('Recon')
 const recon = await agent(`Search the research vault for coverage of: ${args.question}. Read only. Every command you run ends with${V}: a command without it reads another vault, so run none without it, --help included. Run ${CLI}search with relevant --topic/--text facets and${V}, then for each source found run ${CLI}related <id> --depth 2 --direction in --rel sources,contributing_ids${V} so existing notes and syntheses count as coverage. Also list open question entries on the topic (${CLI}search --type question${V}) with their ids. Return the coverage, the gaps needing web research and those question ids.`, { phase: 'Recon', model: 'opus' })
 
 phase('Research')
-const lanes = ['official documentation', 'release notes and changelogs', 'issue trackers and bug reports', 'community posts and practitioner writeups']
+// The lanes are the user's choice, made in section 1, step 3: the script holds no list of its own to fall back on.
+const lanes = args.lanes || []
+if (!lanes.length) { log('args.lanes is empty: ask which kinds of source to read, as section 1 step 3 says, and pass them'); return { recon, pages: [], written: null, runDirectory: RUN } }
+const PER_LANE = Number(args.pagesPerLane) || 2
 const researched = (await parallel(lanes.map(l => () =>
-  agent(`Web-search ${l} for: ${args.question}. Known gaps: ${recon}. Pick up to two of the most authoritative URLs of that kind, fetch each with your fetch tool and read it; do NOT use curl, wget or any shell command to fetch or process a page. For a file on a code host give the address of the raw file. The official reference pages belong to the official documentation lane only; in any other lane return pages of your lane's own kind, or no page if there is none. Run no command that writes to the vault. Return one page object per URL: its url, a concise title specific to this page, domain and topics (comma-separated), authorityTier and authorityBasis, each a value from the matching list in ${args.vault}/taxonomy.json (domain, authority_tier, authority_basis), summary (the one load-bearing claim), subjectName and subjectVersion if the page is about one version of a tool; and claims: the claims on the page that bear on the question, eight at most. For each claim give claim (one sentence, in your words or the page's) and quote: one whole sentence (never a fragment) copied from the page EXACTLY, character for character, with no markup, that the claim rests on. The claim must say no more than its quote says. The quote will be checked by a program against the page text; a quote that is not on the page makes the claim unverified.`, { phase: 'Research', model: 'opus', schema: PAGES, label: `lane:${l}` })
+  agent(`Web-search ${l} for: ${args.question}. Known gaps: ${recon}. Pick up to ${PER_LANE} of the most authoritative URLs of that kind, fetch each with your fetch tool and read it; do NOT use curl, wget or any shell command to fetch or process a page. For a file on a code host give the address of the raw file. The official reference pages belong to the official documentation lane only; in any other lane return pages of your lane's own kind, or no page if there is none. Run no command that writes to the vault. Return one page object per URL: its url, a concise title specific to this page, domain and topics (comma-separated), authorityTier and authorityBasis, each a value from the matching list in ${args.vault}/taxonomy.json (domain, authority_tier, authority_basis), summary (the one load-bearing claim), subjectName and subjectVersion if the page is about one version of a tool; and claims: the claims on the page that bear on the question, eight at most. For each claim give claim (one sentence, in your words or the page's) and quote: one whole sentence (never a fragment) copied from the page EXACTLY, character for character, with no markup, that the claim rests on. The claim must say no more than its quote says. The quote will be checked by a program against the page text; a quote that is not on the page makes the claim unverified.`, { phase: 'Research', model: 'opus', schema: PAGES, label: `lane:${l}` })
 ))).filter(Boolean).flatMap(r => r.pages)
 // A page two lanes both read is kept once, with both lanes' claims.
 const byUrl = new Map()

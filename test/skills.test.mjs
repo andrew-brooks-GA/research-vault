@@ -135,6 +135,10 @@ test('the orchestrate skill\'s reference script is a Workflow script', () => {
   for (const flag of ['--operation-id', '--vault', 'recoveryStateCreated', '--quotes']) assert.ok(script.includes(flag), flag);
   // Spec 53: three phases, so two agents plus one per lane, and no agent that reads a page a second time.
   assert.deepEqual(titles, ['Recon', 'Research', 'Write']);
+  // The lanes are the user's choice: the script reads them from args and holds no list of its own.
+  assert.ok(script.includes('const lanes = args.lanes') && !/const lanes = \[/.test(script), 'lanes come from args.lanes');
+  assert.ok(script.includes('args.pagesPerLane') && script.includes('up to ${PER_LANE} of the most authoritative URLs'), 'pages a lane come from args');
+  for (const s of ['Interview the user once', '`args.lanes`', '`args.pagesPerLane`', 'Do not add a requirement the user did not state']) assert.ok(skill.includes(s), s);
   // Every agent names its model: one with none runs on the session's model, whatever that is.
   const agents = code.match(/(?<![.\w$])agent\(/g).length;
   assert.ok(agents >= 3);

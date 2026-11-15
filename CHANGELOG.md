@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- research-orchestrate interviews the user before a run: which kinds of source to read (each is one lane, `args.lanes`), two or four pages a lane (`args.pagesPerLane`), and whether page text may be stored. The reference script holds no lane list of its own and stops when `args.lanes` is empty, and the skill tells the controller not to add a requirement the user did not state, such as that a practice must rest on a measurement. Three runs on 2026-11-15 read eight pages each, in lanes and under a question wording the controller had chosen, and the user found them narrow. A test pins the interview and the two arguments.
+
 - research-orchestrate: every `agent()` call in the reference script names `model: 'opus'`, and a test fails if one does not. The script named no model, so its Recon, lane and Write agents ran on the session's model; two runs on 2026-11-15 ran on a costlier model than intended for that reason.
 
 ## [0.12.0] - 2026-11-14
