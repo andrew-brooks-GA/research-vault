@@ -135,4 +135,8 @@ test('the orchestrate skill\'s reference script is a Workflow script', () => {
   for (const flag of ['--operation-id', '--vault', 'recoveryStateCreated', '--quotes']) assert.ok(script.includes(flag), flag);
   // Spec 53: three phases, so two agents plus one per lane, and no agent that reads a page a second time.
   assert.deepEqual(titles, ['Recon', 'Research', 'Write']);
+  // Every agent names its model: one with none runs on the session's model, whatever that is.
+  const agents = code.match(/(?<![.\w$])agent\(/g).length;
+  assert.ok(agents >= 3);
+  assert.equal(code.match(/\bmodel: 'opus'/g)?.length, agents, 'every agent() call in the script carries model: opus');
 });

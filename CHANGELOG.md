@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- research-orchestrate: every `agent()` call in the reference script names `model: 'opus'`, and a test fails if one does not. The script named no model, so its Recon, lane and Write agents ran on the session's model; two runs on 2026-11-15 ran on a costlier model than intended for that reason.
+
 ## [0.12.0] - 2026-11-14
 
 - research-orchestrate: the Recon prompt says every command ends with the run's `--vault`. In the four-lane run of the built skill the Recon agent ran `search --help` without it, which the CLI answered by listing the default vault.
