@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-14
+
 - research-orchestrate: the Recon prompt says every command ends with the run's `--vault`. In the four-lane run of the built skill the Recon agent ran `search --help` without it, which the CLI answered by listing the default vault.
 
 - `docs/REFERENCE.md` catches up with specs 52 and 53 and the evidence packet (the commit spec 52 set aside for this file). The `capture` row gains the `--fill` forms and their results; the `verify` row gains `--quotes`, `--run` and the method `quote-matched`; the `gate` row gains `--packet`; the safety section names the fill and the quote check among the commands that fetch, and the packet as a copy written outside the vault, and no longer gives a count of such features. Earlier lines here say this file could not be gated on this machine: the 76 vault entries it cites from 2026-11-11 and 2026-11-12 are in another machine's vault. On the user's instruction the four edited units were gated here, on evidence that exists here plus a new probe (vault experiment 2026-11-14-reference-doc-probe-capture-verify-gate), `MERIT` after two rounds; the file's other 59 units were not reviewed in that gate (`GATE-LOG.md`). The evidence packet was also tried on a real gate round (vault experiment 2026-11-14-evidence-packet-trial-two-lane-synthesis): it failed the three sentences the whole-source round failed and one more that the whole source does not bear out, for 43,312 host tokens against 48,693.
