@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-11-15
+
 - Spec 55's measurement is recorded and closed (2026-11-15): on three run syntheses a second first-round reviewer made three sound findings the first did not, round two caught one and two slight ones survived, for 327,831 tokens. Under the spec's thresholds that is neither adopt nor drop but three more drafts; the user chose to stop there. A second first-round reviewer is not adopted, partial records are not built, and the claims gate keeps one reviewer and two full rounds. The record and the decision are in the vault experiment `2026-11-15-spec-55-measurement-second-first-round`; the spec file is not changed.
 
 - research-orchestrate interviews the user before a run: which kinds of source to read (each is one lane, `args.lanes`), two or four pages a lane (`args.pagesPerLane`), and whether page text may be stored. The reference script holds no lane list of its own and stops when `args.lanes` is empty, and the skill tells the controller not to add a requirement the user did not state, such as that a practice must rest on a measurement. Three runs on 2026-11-15 read eight pages each, in lanes and under a question wording the controller had chosen, and the user found them narrow. A test pins the interview and the two arguments.
