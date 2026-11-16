@@ -25,7 +25,7 @@ Plain Markdown. Nothing to install beyond Node. Source ingest and embedding have
 
 ## What it looks like
 
-The dialogue and transcript below are illustrative, not captured acceptance runs.
+The dialogue below is illustrative, not a captured acceptance run. The terminal transcript after it is captured output.
 
 ```text
 You:    digging into vcluster sleep mode — capture https://docs.vcluster.com/sleep-mode
@@ -39,16 +39,20 @@ Claude: From your vault (vcluster 0.20 · last verified 4 months ago):
         ⚠ fast-moving and past its 90-day window — want me to re-verify against the live docs first?
 ```
 
-And from code, in a repo whose vault lives inside it:
+And from code, in a repo whose vault lives inside it. This transcript is the output of one run in a throwaway repo; `research-vault` stands for `node <plugin>/bin/research-vault.mjs`:
 
 ```text
--- sleep call order per 2026-03-03-sleep-mode-api@sdk=0.20.4
+$ cat src/sleep.lua
+-- sleep call order per 2026-11-16-sleep-mode-api@sdk=0.20.4
 local function sleep(client)
-  ...
+  client:pause()
+  client:scale(0)
+end
 
-$ research-vault check          # after package-lock.json moves the sdk to 0.21.0
-STALE     src/sleep.lua:1 sleep  2026-03-03-sleep-mode-api  (sdk 0.20.4 -> 0.21.0)
-check: 4 file(s); 2 ok, 1 stale, 0 uncovered, 0 unattached, 3 code link(s)
+return sleep
+$ research-vault check   # package-lock.json now declares sdk 0.21.0
+STALE     src/sleep.lua:1 sleep  2026-11-16-sleep-mode-api  (sdk 0.20.4 -> 0.21.0)
+check: 1 file(s); 0 ok, 1 stale, 0 uncovered, 0 unattached, 1 code link(s)
 versions: sdk=0.21.0
 ```
 
