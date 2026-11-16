@@ -173,7 +173,7 @@ test('search logs a queried event with its facets and the ids returned, no text 
   captureEntry(dir, { type: 'source', title: 'Z last', url: 'https://example.com/z', now: '2026-01-04' });
   const { run } = await import('../bin/commands/search.mjs');
   const so = process.stdout.write; process.stdout.write = () => true;
-  try { await run({ _: ['search'], vault: dir, type: 'source', text: 'first' }); } finally { process.stdout.write = so; }
+  try { await run({ _: ['search'], vault: dir, cwd: dir, type: 'source', text: 'first' }); } finally { process.stdout.write = so; }
   const e = readUsage(dir).at(-1);
   assert.deepEqual([e.kind, e.via, e.type, e.outcome, e.ids, 'text' in e], ['queried', 'search', 'source', 'hits', ['2026-01-01-first'], false]);
 });

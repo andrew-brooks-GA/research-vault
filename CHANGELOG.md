@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `search` reads the usage setting from `args.cwd` when given, as `search --semantic` already did, and the usage-log test passes its own temporary directory. The test read the binding of the directory the suite ran in, so it failed in a checkout whose binding sets `usage.text`.
 - README, "What it looks like": the terminal transcript of a stale code link is now the output of a real run in a throwaway repo, in place of an illustrative one (vault experiment `2026-11-16-check-reports-stale-code-link-after`). The dialogue above it stays illustrative and says so.
 - README, "Learning something": the `RESEARCH_VAULT_PATH` line that `init` prints now reads as optional on a first install. `init` records the vault as the default when no default exists, and a later process outside a bound repo, with the variable unset, resolves it from that pointer (checked on macOS; vault experiment `2026-11-16-vault-resolution-after-init-without-research`). The old sentence could be read as a required step.
 - A plan is added, `docs/specs/plan-2026-11-16-outside-review-response.md`: the work chosen in answer to an outside review, in five steps. It corrects one README sentence, turns on query text in the usage log, and holds a change to `search --text` until a week of logged queries shows a need; a replay of 134 recovered queries found 4 that an all-terms rule would recover (vault experiment `2026-11-16-search-no-match-counts-transcript-query`).
