@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A plan is added, `docs/specs/plan-2026-11-16-outside-review-response.md`: the work chosen in answer to an outside review, in five steps. It corrects one README sentence, turns on query text in the usage log, and holds a change to `search --text` until a week of logged queries shows a need; a replay of 134 recovered queries found 4 that an all-terms rule would recover (vault experiment `2026-11-16-search-no-match-counts-transcript-query`).
 ## [0.12.1] - 2026-11-15
 
 - Spec 55's measurement is recorded and closed (2026-11-15): on three run syntheses a second first-round reviewer made three sound findings the first did not, round two caught one and two slight ones survived, for 327,831 tokens. Under the spec's thresholds that is neither adopt nor drop but three more drafts; the user chose to stop there. A second first-round reviewer is not adopted, partial records are not built, and the claims gate keeps one reviewer and two full rounds. The record and the decision are in the vault experiment `2026-11-15-spec-55-measurement-second-first-round`; the spec file is not changed.
