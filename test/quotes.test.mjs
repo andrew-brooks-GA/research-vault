@@ -116,3 +116,12 @@ test('verify --quotes: a quote over adjacent lines is found in a body and on a p
   assert.equal(many.filter(r => r.found).length, 16);
   assert.ok(performance.now() - t0 < 2000, 'sixteen quotes on 15,000 lines with no blank line take under two seconds');
 });
+
+// Issue 77: a line is joined with as many next lines as the quote needs past the line's own length, so a quote
+// that starts late in a line longer than the quote, and runs onto the next line, is found.
+test('verify --quotes: a quote that starts late in a long line and ends on the next line is found at the long line', async () => {
+  const dir = tmpVault();
+  src(dir, `# ${ID}\n\n${'Filler words of a long opening line. '.repeat(4)}The quoted sentence starts here\nand ends on the next line.\n`);
+  const [r] = await checkQuotes(dir, ID, ['The quoted sentence starts here and ends on the next line.'], NOW);
+  assert.deepEqual([r.found, r.lines], [true, [3]]);
+});
