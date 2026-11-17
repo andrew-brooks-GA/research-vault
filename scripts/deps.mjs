@@ -194,6 +194,8 @@ export const COUPLINGS = [
   ['bin/lib/advise.mjs', 'hooks/post-tool-use.mjs', "the cited event's kind and id that the usage report counts", "'cited'"],
   ['bin/commands/capture.mjs', 'skills/research-orchestrate/SKILL.md', 'the --batch camelCase keys', 'contributingIds'],
   ['bin/lib/quotes.mjs', 'skills/research-orchestrate/SKILL.md', 'the Write prompt names the fields verify --quotes prints', 'foundIn'],
+  ['bin/lib/quotes.mjs', 'docs/REFERENCE.md', 'the verify row states the rule of a found quote: one line, or adjacent lines with no blank line between them', 'quote-matched'],
+  ['bin/lib/quotes.mjs', 'docs/RELIABILITY.md', 'research task recovery states the rule of a found quote: one line, or adjacent lines with no blank line between them', 'quote-matched'],
   ['bin/lib/packet.mjs', 'bin/lib/quotes.mjs', 'the note form of a quote-matched body row: quotes writes it, packet parses it; the run key pattern is shared', 'RUN_KEY'],
   ['bin/lib/packet.mjs', 'skills/research-claims-gate/SKILL.md', 'step 1b states the packet rules: lines within three of a quote, refused for another run\'s rows, cannot pass a draft', 'cannot pass'],
   ['bin/commands/gate.mjs', 'skills/research-claims-gate/SKILL.md', 'step 1b names --packet and --run and the packet: line', '--packet'],

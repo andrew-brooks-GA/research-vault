@@ -17,10 +17,22 @@ const h8 = s => createHash('sha256').update(s).digest('hex').slice(0, 8);
 // that read a raw Markdown file quotes `flag` with its backticks; the text stored for that file has
 // none (spec 52 stores Markdown as a reader sees it), and a rendered page has none either.
 const soft = s => String(s).replace(/`/g, '').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim();
-const hitsIn = (lines, q) => lines.map((l, i) => (l.includes(q) ? i + 1 : 0)).filter(Boolean);
-const around = (lines, at) => lines.slice(Math.max(0, at - 3), at + 2).filter(l => l.trim()).join(' / ').slice(0, 900);
+// A quote may run over adjacent lines with no blank line between them, joined by one space, so a
+// sentence that a hard-wrapped file breaks over lines is found (issue 77). A hit is [first line, last line].
+// Each line is tried with only as many of the next lines as the quote needs.
+const hitsIn = (lines, q) => lines.flatMap((l, i) => {
+  let t = l, j = i;
+  while (l && lines[j + 1] && t.length < l.length + q.length) t += ' ' + lines[++j];
+  const x = t.indexOf(q);
+  if (x < 0 || x >= l.length) return [];
+  let end = l.length, k = i;
+  while (end < x + q.length) end += 1 + lines[++k].length;
+  return [[i + 1, k + 1]];
+});
+const around = (lines, at, to = at) => lines.slice(Math.max(0, at - 3), to + 2).filter(l => l.trim()).join(' / ').slice(0, 900);
 
-// Is each quote on one line of a source's text (spec 53 point 3)? A quote found adds one
+// Is each quote on one line of a source's text, or over adjacent lines with no blank line between
+// them (spec 53 point 3; issue 77)? A quote found adds one
 // `quote-matched` row. Note form, stated once: `<quote hash 8> L<body line>@<body hash 8>[ <run key>]: <quote>`
 // for a quote found in the stored body (the line counts lines of the entry's body), and
 // `<quote hash 8>: <quote>` for one found on the fetched page (spec 54 item 5). The body and
@@ -68,14 +80,15 @@ export async function checkQuotes(vaultPath, id, quotes, opts = {}) {
     const base = item && typeof item === 'object' && 'n' in item ? { n: item.n } : {};
     const words = quote ? quote.split(' ').length : 0;
     if (words < 4 || quote.length < 20) { out.push({ ...base, found: false, refused: true, reason: `a quote is one whole sentence of four words and twenty characters or more; this one has ${words} words and ${quote.length} characters` }); continue; }
-    let lines = stored ? hitsIn(softBody, quote) : [];
-    let foundIn = 'body', src = bodyLines, reason = 'not on any one line of the stored text';
-    if (!lines.length && fetch) {
+    let hits = stored ? hitsIn(softBody, quote) : [];
+    let foundIn = 'body', src = bodyLines, reason = 'not on one line or over adjacent lines of the stored text';
+    if (!hits.length && fetch) {
       const p = await readPage();
       if (p.error) reason = stored ? `${reason}; ${p.error}` : p.error;
-      else { lines = hitsIn(p.soft, quote); foundIn = 'page'; src = p.lines; reason = stored ? 'not on any one line of the stored text or of the fetched page' : 'not on any one line of the fetched page'; }
+      else { hits = hitsIn(p.soft, quote); foundIn = 'page'; src = p.lines; reason = stored ? 'not on one line or over adjacent lines of the stored text or of the fetched page' : 'not on one line or over adjacent lines of the fetched page'; }
     }
-    if (!lines.length) { out.push({ ...base, found: false, reason }); continue; }
+    if (!hits.length) { out.push({ ...base, found: false, reason }); continue; }
+    const lines = hits.map(h => h[0]);
     const qh = h8(quote);
     const rowAdded = !have.has(qh);
     if (rowAdded) {
@@ -84,7 +97,7 @@ export async function checkQuotes(vaultPath, id, quotes, opts = {}) {
         result: foundIn === 'body' ? 'inconclusive' : 'confirmed',
         notes: `${qh}${foundIn === 'body' ? ` L${lines[0]}@${bodyHash}${opts.runKey ? ` ${opts.runKey}` : ''}` : ''}: ${quote.slice(0, 300)}` });
     }
-    out.push({ ...base, found: true, foundIn, lines, occurrences: lines.length, rowAdded, context: around(src, lines[0]) });
+    out.push({ ...base, found: true, foundIn, lines, occurrences: lines.length, rowAdded, context: around(src, hits[0][0], hits[0][1]) });
   }
   if (added.length) {
     e.data.verifications = [...rows, ...added];
