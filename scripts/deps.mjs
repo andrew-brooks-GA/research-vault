@@ -198,6 +198,7 @@ export const COUPLINGS = [
   ['bin/lib/packet.mjs', 'skills/research-claims-gate/SKILL.md', 'step 1b states the packet rules: lines within three of a quote, refused for another run\'s rows, cannot pass a draft', 'cannot pass'],
   ['bin/commands/gate.mjs', 'skills/research-claims-gate/SKILL.md', 'step 1b names --packet and --run and the packet: line', '--packet'],
   ['bin/lib/fill.mjs', 'skills/research-orchestrate/SKILL.md', 'the Write prompt lists the fill results and the flags it must not pass', 'version-floating'],
+  ['bin/lib/fill.mjs', 'skills/research-orchestrate/SKILL.md', 'the script\'s FLOATING regular expression and the list in section 3 copy the nine words of FLOATING in fill.mjs; test/skills.test.mjs compares the three lists', 'nightly'],
   ['bin/commands/capture.mjs', 'skills/research-capture/SKILL.md', 'the --batch camelCase keys', 'contributingIds'],
   ['bin/commands/capture.mjs', 'SECURITY.md', 'the network gate of the URL-list ingest', 'RESEARCH_VAULT_ALLOW_NETWORK'],
   ['bin/commands/capture.mjs', 'docs/REFERENCE.md', 'the three --batch inputs and --continue', 'continue'],

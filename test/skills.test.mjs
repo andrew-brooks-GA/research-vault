@@ -144,3 +144,47 @@ test('the orchestrate skill\'s reference script is a Workflow script', () => {
   assert.ok(agents >= 3);
   assert.equal(code.match(/\bmodel: 'opus'/g)?.length, agents, 'every agent() call in the script carries model: opus');
 });
+
+// Issues 74, 75 and 76: the script repairs an address before the Write step, and the prompts say the rest.
+test('the orchestrate script hands the Write step https addresses and no version on a floating address', async () => {
+  const skill = read('skills/research-orchestrate/SKILL.md');
+  const script = skill.slice(skill.indexOf('## 2. Run the workflow')).match(/```javascript\n([\s\S]*?)\n```/)[1];
+  const page = (url, extra = {}) => ({ url, title: 't', domain: 'd', topics: 'x', authorityTier: 'a', authorityBasis: 'b', summary: 's', claims: [{ claim: 'c', quote: 'q' }], ...extra });
+  const v = { subjectName: 'X', subjectVersion: '2.0' };
+  const lanePages = [
+    page('http://example.com/blog/a/'), page('https://example.com/docs/latest/r', v), page('https://example.com/x/v10.15.0/r.md', v),
+    page('https://example.com/a?ref=main', v), page('https://example.com/mainline/a', v), page('https://example.com/blog/a/'),
+    page('HTTP://Example.com/Docs/Main/x', v), page('https://example.com?next=/main/', v), page('http://example.com:8080/x'), page('http://user:pw@example.com/x'),
+    page('https://main/x', v), page('https://example.com/a#/main/', v), page('http://example.com?x=1'),
+  ];
+  let prompt = '';
+  const agent = async (text, opts) => (opts.phase === 'Recon' ? 'none' : opts.phase === 'Research' ? { pages: structuredClone(lanePages) } : ((prompt = text), { status: 'complete', lint: '' }));
+  const AsyncFunction = (async () => {}).constructor;
+  await new AsyncFunction('agent', 'parallel', 'pipeline', 'phase', 'log', 'args', 'budget', 'workflow', script.replace(/^export /, ''))(
+    agent, (fns) => Promise.all(fns.map((f) => f())), null, () => {}, () => {}, { question: 'q', cli: '/cli', vault: '/v', today: '2026-11-17', runKey: 'run-test01', storeText: true, lanes: ['one lane'], pagesPerLane: 4 });
+  const got = JSON.parse(prompt.slice(prompt.lastIndexOf('PAGES: ') + 7)).map((p) => [p.url, p.subjectName ?? null, p.subjectVersion ?? null, p.claims.length]);
+  assert.deepEqual(got, [
+    ['https://example.com/blog/a/', null, null, 2],
+    ['https://example.com/docs/latest/r', 'X', null, 1],
+    ['https://example.com/x/v10.15.0/r.md', 'X', '2.0', 1],
+    ['https://example.com/a?ref=main', 'X', '2.0', 1],
+    ['https://example.com/mainline/a', 'X', '2.0', 1],
+    ['https://Example.com/Docs/Main/x', 'X', null, 1],
+    ['https://example.com?next=/main/', 'X', '2.0', 1],
+    ['http://example.com:8080/x', null, null, 1],
+    ['http://user:pw@example.com/x', null, null, 1],
+    ['https://main/x', 'X', '2.0', 1],
+    ['https://example.com/a#/main/', 'X', '2.0', 1],
+    ['https://example.com?x=1', null, null, 1],
+  ]);
+  // The script's word list is a copy of FLOATING in bin/lib/fill.mjs.
+  const inFill = read('bin/lib/fill.mjs').match(/const FLOATING = new Set\(\[([^\]]*)\]\)/)[1].replace(/['\s]/g, '').split(',');
+  const inScript = script.match(/const FLOATING = \/\\\/\(([^)]*)\)/)[1].split('|');
+  assert.deepEqual(inScript, inFill);
+  for (const s of ['[--subject-name <subjectName>] [--subject-version <subjectVersion>]', 'Pass each of the two only when the page has that field; never make up a version.', 'A PDF cannot be checked: where a paper or a report has an HTML page of its full text, read that page and give its address; give a PDF address only when there is none, and its quotes will then stay unchecked.']) assert.ok(script.includes(s), s);
+  for (const s of ['A PDF source answers `no-text`', '`capture --fill <id> --content-file <file> --ack-data-egress`']) assert.ok(skill.includes(s), s);
+  // Section 3 gives the same nine words by hand.
+  const byHand = skill.slice(skill.indexOf("The script's address repair does not run here")).split('\n')[0];
+  assert.deepEqual([...byHand.matchAll(/`([a-z]+)`/g)].map((m) => m[1]), inFill);
+  for (const s of ['give an `http://` address with no port in its `https://` form', 'pass no `--subject-version`']) assert.ok(byHand.includes(s), s);
+});
