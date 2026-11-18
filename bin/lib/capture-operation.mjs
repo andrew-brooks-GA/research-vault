@@ -56,6 +56,10 @@ function render(vault, item, date, opts) {
   if (spec.subjectVersion && !spec.subjectName) throw new Error('subjectVersion requires subjectName');
   return { ...prep, text: serializeFrontmatter(prep.data, prep.body, prep.order) };
 }
+// A source entry at the planned source's URL and version, and whether it may stand for the planned one. prepare() reuses
+// a source by these rules, and a replay checks a reused source again by them (issue 72 item 5).
+const sameSource = (e, p) => e.data.type === 'source' && normalizeUrl(e.data.source_url) === normalizeUrl(p.data.source_url) && verKey(e.data.subject?.version) === verKey(p.data.subject?.version);
+const suitable = (e, p, spec) => e.data.status === 'active' && !(p.data.content_hash && p.data.content_hash !== e.data.content_hash) && !(spec.storeBody && p.body !== e.body);
 function entries(vault) {
   return walkEntries(vault).map(path => ({ ...readEntry(path), path, text: fs.readFileSync(path, 'utf8') }));
 }
@@ -64,10 +68,10 @@ function prepare(vault, inputs, date, opts) {
   for (const [index, item] of inputs.entries()) {
     try {
       const p = render(vault, item, date, opts);
-      const matches = p.data.type === 'source' ? available.filter(e => e.data.type === 'source' && normalizeUrl(e.data.source_url) === normalizeUrl(p.data.source_url) && verKey(e.data.subject?.version) === verKey(p.data.subject?.version)) : [];
+      const matches = p.data.type === 'source' ? available.filter(e => sameSource(e, p)) : [];
       if (matches.length > 1) throw new Error('ambiguous source URL/version');
       let reused = matches[0];
-      if (reused && (reused.data.status !== 'active' || (p.data.content_hash && p.data.content_hash !== reused.data.content_hash) || (item.spec.storeBody && p.body !== reused.body))) throw new Error(`unsuitable existing source: ${reused.id}`);
+      if (reused && !suitable(reused, p, item.spec)) throw new Error(`unsuitable existing source: ${reused.id}`);
       const collision = available.filter(e => e.id === p.id);
       if (!reused && collision.length) {
         if (collision.length !== 1 || collision[0].text !== p.text || collision[0].data.type !== p.data.type) throw new Error(`destination conflict: ${p.id}`);
@@ -204,9 +208,12 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
         try {
           const stat = fs.lstatSync(path);
           if (!stat.isFile()) throw new Error('destination is not a regular file');
-          const text = fs.readFileSync(path, 'utf8');
-          readEntry(path);
-          if (sha256(text) !== row.fingerprint) throw new Error('destination fingerprint changed');
+          const text = fs.readFileSync(path, 'utf8'), entry = readEntry(path), p = rendered[row.index];
+          // Issue 72 item 5: this operation did not write a reused source, so it is checked again by the rules prepare()
+          // reused it by, and an edit that keeps it suitable, such as a verification, is no conflict. Any other row,
+          // a question reused because its bytes were the same among them, keeps its bytes.
+          if (row.state === 'reused' && p.data.type === 'source') { if (!sameSource(entry, p) || !suitable(entry, p, loaded.inputs[row.index].spec)) throw new Error('reused source no longer suitable'); }
+          else if (sha256(text) !== row.fingerprint) throw new Error('destination fingerprint changed');
           found = true;
         } catch (e) { if (e.code !== 'ENOENT' || row.state !== 'pending') throw e; }
         if (found && row.state === 'pending') row.state = 'created';

@@ -238,3 +238,30 @@ test('issue 72 item 3: LOCK_BUSY says when the lock holds no owner.json', () => 
   let denied; try { denied = g.run().errors[0]; } finally { fs.chmodSync(ops, 0o700); }
   assert.equal(denied.code, 'LOCK_BUSY'); assert.doesNotMatch(denied.error, /holds no owner\.json/);
 });
+test('issue 72 item 5: a replay checks a reused source by the rules it was reused by, and any other reused entry by its bytes', async () => {
+  const { applyVerification } = await import('../bin/commands/verify.mjs');
+  const src = { type: 'source', title: 'A page', url: 'https://example.com/a' }, q = { type: 'question', title: 'Asked' };
+  const change = (p, from, to) => fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace(from, to));
+  const cases = [
+    ['verified', src, (p, id, v) => applyVerification(v, { id, method: 'existence-check', result: 'confirmed' }), true],
+    ['gone', src, p => fs.unlinkSync(p), false],
+    ['superseded', src, p => change(p, 'status: active', 'status: superseded'), false],
+    ['another URL', src, p => change(p, 'https://example.com/a', 'https://example.com/b'), false],
+    ['another type', src, p => change(p, 'type: source', 'type: note'), false],
+    ['a question reused for its bytes, then edited', q, p => change(p, '# Asked', '# Asked\n\nThe opposite claim.'), false],
+  ];
+  for (const [name, spec, edit, completes] of cases) {
+    const f = fixture([spec, { type: 'question', title: 'After' }]);
+    const first = join(f.root, 'first.json'); fs.writeFileSync(first, JSON.stringify([spec]));
+    assert.equal(captureOperation(f.vault, first, 'first_key', { now }).operation.phase, 'complete', name);
+    const failed = f.run({ event: (e, row) => { if (e === 'artifact' && row.index === 1) fail('EBUSY'); } });
+    assert.deepEqual(failed.operation.results.map(r => r.state), ['reused', 'pending'], name);
+    const path = join(f.vault, failed.operation.results[0].path);
+    edit(path, failed.operation.results[0].id, f.vault);
+    const edited = fs.existsSync(path) ? fs.readFileSync(path, 'utf8') : null;
+    const replay = f.run();
+    if (!completes) { assert.equal(replay.errors[0]?.code, 'DESTINATION_CONFLICT', name); assert.equal(replay.errors[0].index, 0, name); continue; }
+    assert.deepEqual(replay.errors, [], name); assert.equal(replay.operation.phase, 'complete', name);
+    assert.equal(fs.readFileSync(path, 'utf8'), edited, name);
+  }
+});
