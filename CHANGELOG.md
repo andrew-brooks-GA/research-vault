@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `capture --operation-id` (#72, item 4): the receipt stores an entry's path with `/` on every platform, the form the receipt check accepts. No test covers it: the suite does not run on Windows.
 - `capture --operation-id` (#72, item 3): `LOCK_BUSY` for a lock directory that exists and holds no `owner.json` says that it names no process and asks to confirm that no `--operation-id` capture is running before the lock is removed. Any other `LOCK_BUSY` keeps its message.
 - `capture --operation-id` (#72, item 2): an entry takes the mode the umask gives, as one written by `capture` without `--operation-id` does; it was 0600. The receipt and `owner.json` stay 0600.
 - `capture --operation-id` (#72, item 1): the writer that takes the lock removes each `<id>.md.<uuid>.tmp` file a killed writer left beside an entry, and no other `.tmp` file. A replay after a kill completes with no such file left. Plan: `docs/specs/plan-2026-11-17-capture-operation-items.md`.

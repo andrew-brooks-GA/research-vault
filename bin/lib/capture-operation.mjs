@@ -1,6 +1,6 @@
 // Opt-in publication protocol. Legacy capture deliberately remains outside this lock.
 import * as fs from 'node:fs';
-import { dirname, join, resolve, relative } from 'node:path';
+import { dirname, join, resolve, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { prepareEntry } from '../commands/capture.mjs';
@@ -79,7 +79,9 @@ function prepare(vault, inputs, date, opts) {
         const found = available.filter(e => e.id === ref).length;
         if (found !== 1) throw new Error(`${found ? 'ambiguous' : 'unresolved'} reference: ${ref}; use actual reused IDs when replanning`);
       }
-      results.push({ index, id: chosen.id, path: relative(vault, chosen.path), fingerprint: sha256(chosen.text), state: reused ? 'reused' : 'pending', ...(reused ? { reason: 'existing suitable entry', actualId: chosen.id, ...(results.some(r => r.path === relative(vault, chosen.path)) ? { reuseOf: results.find(r => r.path === relative(vault, chosen.path)).index } : {}) } : {}) });
+      // Issue 72 item 4: the receipt's path uses '/' on every platform, the form validReceipt accepts.
+      const rel = relative(vault, chosen.path).split(sep).join('/');
+      results.push({ index, id: chosen.id, path: rel, fingerprint: sha256(chosen.text), state: reused ? 'reused' : 'pending', ...(reused ? { reason: 'existing suitable entry', actualId: chosen.id, ...(results.some(r => r.path === rel) ? { reuseOf: results.find(r => r.path === rel).index } : {}) } : {}) });
       rendered.push(p);
       if (!reused) available.push(p);
     } catch (e) {
