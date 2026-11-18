@@ -38,6 +38,8 @@ A lesson with no `data-shape` needs `mission`, `model`, `fact`, `example`, `quiz
 
 In `step`, state the command exactly as the experiment's Result quotes it, so the claims gate can match it. A checked task's `./check N` line is the one exception (Checked task). When the step names the probe's path, keep that path in the captured snippet.
 
+A step whose commands need a folder names the workspace folder once, in prose. The shell of `teach serve --terminal` starts there, unless the learner's login profile changes folder, and `teach check` runs a checked task's `check.sh` from there. The step says to change to that folder when the terminal beside the page is not in it, or in a terminal of the learner's own. A step that needs another folder says to change to it from the workspace folder. `teach export` refuses a page with a sentence that says `in the terminal`, `in your terminal`, `teach serve` or `Claude Code`, in any case, outside `<pre>`, `<code>` and the page's last sources block (SKILL.md section 5). This sentence holds none of those phrases: "If the terminal beside this page is not in that folder, or you use a terminal of your own, change to it first."
+
 ## Shapes
 
 A lesson declares its shape with `data-shape` on the `<body>`. The frame is the same on every page: `prereq` (optional), `mission`, the shape's middle, `sources`, `followup`. Only the middle varies, and `bin/lib/lesson.mjs` reads it from one table, `SHAPES`:

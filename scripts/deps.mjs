@@ -302,6 +302,8 @@ export const COUPLINGS = [
   ['bin/lib/teach.mjs', 'docs/REFERENCE.md', 'the teach section states the divider address createServer serves and exportWorkspace writes', '/dividers/'],
   ['bin/commands/teach.mjs', 'docs/REFERENCE.md', 'the terminal: open line serve prints under --terminal without --labs is quoted', 'terminal: open http://127.0.0.1:'],
   ['bin/commands/teach.mjs', 'SECURITY.md', 'the terminal: open line serve prints under --terminal without --labs is quoted', 'terminal: open http://127.0.0.1:'],
+  ['bin/commands/teach.mjs', 'skills/research-teach/SKILL.md', 'section 5 quotes the terminal: open line serve prints under --terminal without --labs', 'terminal: open http://127.0.0.1:'],
+  ['bin/lib/teach.mjs', 'skills/research-teach/SKILL.md', "section 5 opens the address with next=/term/lessons/<id>.html, which createServer's /labs/open accepts under --terminal", '/term/lessons/'],
   ['bin/commands/teach.mjs', 'docs/REFERENCE.md', "serve's refusal of --terminal without python3 and its pty module is quoted", 'teach serve: --terminal needs python3 with its pty module'],
   ['bin/commands/teach.mjs', 'SECURITY.md', "serve's refusal of --terminal without python3 and its pty module is quoted", 'teach serve: --terminal needs python3 with its pty module'],
   ['bin/lib/teach.mjs', 'docs/REFERENCE.md', "the teach serve section states createServer's /term/ routes, their bodies and refusals, next=/term/lessons/ and the --terminal framing headers", '/term/stream'],
