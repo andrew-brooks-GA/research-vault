@@ -225,12 +225,12 @@ test('CLI teach next prints criteria, the records table and the review lines', (
     '| id | kind | date | lesson | last attempt |\n|---|---|---|---|---|\n';
   const r1 = cli(['next', ws]);
   assert.equal(r1.status, 0);
-  assert.equal(r1.stdout, head + '| 0001-known | understanding | 2026-01-01 | 0001-good | none |\n\nreview-due: 0001-known\nreview-failed: none\n' + PREFS + FRINGE);
+  assert.equal(r1.stdout, head + '| 0001-known | understanding | 2026-01-01 | 0001-good | none |\n\nreview-due: 0001-known\nreview-failed: none\nanswered: none\n' + PREFS + FRINGE);
   // A wrong answer on the review item today: no longer due, now failed. Run from the cwd.
   assert.equal(cli(['attempt', 'add', '--lesson', '0003-review-good', '--answers', '0,0,1', ws]).status, 0);
   const r2 = cli(['next'], ws);
   assert.equal(r2.status, 0);
-  assert.equal(r2.stdout, head + `| 0001-known | understanding | 2026-01-01 | 0001-good | 2/3 on ${TODAY} |\n\nreview-due: none\nreview-failed: 0001-known\n` + PREFS + FRINGE);
+  assert.equal(r2.stdout, head + `| 0001-known | understanding | 2026-01-01 | 0001-good | 2/3 on ${TODAY} |\n\nreview-due: none\nreview-failed: 0001-known\nanswered: none\n` + PREFS + FRINGE);
 });
 
 // Issue 79 D1 and D2: the preferences lines, and no review-due line without reminders.
@@ -247,7 +247,8 @@ test('CLI teach next prints the preferences lines and leaves out review-due with
   const at = noHints.indexOf('preferences: hints always, path reviews yes, reminders every 21 days');
   assert.ok(at > 0, noHints.join('\n'));
   assert.equal(noHints[at + 1], 'preferences-unset: hints');
-  assert.ok(noHints[at - 1].startsWith('review-failed: '));
+  assert.equal(noHints[at - 1], 'answered: none');
+  assert.ok(noHints[at - 2].startsWith('review-failed: '));
   writeFileSync(mission, text.replace('- Hints: always\n', '- Hints: on request\n').replace('- Reminders: every 21 days\n', '- Reminders: every 1 day\n'));
   assert.ok(lines(cli(['next', ws])).includes('preferences: hints on request, path reviews yes, reminders every 1 day'));
   writeFileSync(mission, text.replace(/- Hints: always\n- Path reviews: yes\n- Reminders: every 21 days\n/, ''));

@@ -144,10 +144,11 @@ function gradeAttempt(workspaceDir, lesson, answers, result) {
   return { total, wrong, records: uniq(wrong.map((i) => items[i].record).filter(Boolean)) };
 }
 
-export function writeAttempt(workspaceDir, { lesson, answers, result, now }, schema) {
+// Issue 79 D5: `task` holds a task attempt's fields ready-made (task.mjs's checkAttempt or answeredAttempt).
+export function writeAttempt(workspaceDir, { lesson, answers, result, task, now }, schema) {
   if (!LESSON_ID_RE.test(String(lesson))) throw new Error(`invalid lesson id: ${lesson}`);
   if (!existsSync(join(workspaceDir, 'lessons', `${lesson}.html`))) throw new Error(`no lesson: ${lesson}`);
-  const data = { type: 'attempt', date: isoDate(now), lesson, ...gradeAttempt(workspaceDir, lesson, answers, result) };
+  const data = { type: 'attempt', date: isoDate(now), lesson, ...(task ?? gradeAttempt(workspaceDir, lesson, answers, result)) };
   const { total, wrong } = data;
   assertValid(data, schema);
   const dir = join(workspaceDir, 'attempts');
@@ -213,6 +214,8 @@ export function importAttempts(workspaceDir, text, { schema, now }) {
   const planned = new Set();
   const plan = list.map((a) => {
     const base = attemptId(new Date(a.at), a.lesson.slice(0, 4), () => false);
+    // ponytail: a task attempt of the same second and lesson holds this base id too, so the quiz attempt is skipped
+    // (issue 79 D5, R17); the fix is to compare only with attempts that have no `tested` list.
     if (planned.has(base) || existsSync(join(workspaceDir, 'attempts', `${base}.md`))) return { line: `skipped ${base}: already recorded` };
     let items = [];
     try { ({ items } = readQuiz(workspaceDir, a.lesson)); } catch { items = []; } // no quiz that parses: now -/0
@@ -330,6 +333,16 @@ export function attemptOrder(a, b) {
   return ab < bb ? -1 : ab > bb ? 1 : an - bn;
 }
 
+// Issue 79 D5, D6: an attempt with a `tested` list is a task attempt, and every view prints it as this text.
+const listOf = (a, k) => (Array.isArray(a[k]) ? a[k] : []);
+export const isTaskAttempt = (a) => Array.isArray(a.tested);
+export function taskSummary(a) {
+  if (Array.isArray(a.answered)) return `answered ${a.answered.join(', ')}`;
+  const [passed, failed, unreached] = ['passed', 'failed', 'unreached'].map((k) => listOf(a, k));
+  if (a.certification) return `certification ${passed.length} of ${passed.length + failed.length + unreached.length}`;
+  return [['ok', passed], ['failed', failed], ['not reached', unreached]].filter(([, l]) => l.length).map(([w, l]) => `${w} ${l.join(', ')}`).join('; ');
+}
+
 export function teachIndex(workspaceDir, { now }) {
   const lessonsDir = join(workspaceDir, 'lessons');
   const lessons = (existsSync(lessonsDir) ? readdirSync(lessonsDir).sort() : [])
@@ -351,9 +364,11 @@ export function teachIndex(workspaceDir, { now }) {
   const cutoff = prefs.reminders ? isoDate(new Date(now.getTime() - prefs.reminders * DAY_MS)) : null;
   const records = parsedRows(join(workspaceDir, 'learning-records')).map((r) => {
     const wrongIn = (a) => Array.isArray(a.records) && a.records.includes(r.id);
-    const last = attempts.filter((a) => wrongIn(a) || (tests[a.lesson] || []).includes(r.id)).at(-1);
+    // A task attempt counts for a record only when its `tested` list names it, never through the lesson's quiz.
+    const last = attempts.filter((a) => (isTaskAttempt(a) ? a.tested.includes(r.id) : wrongIn(a) || (tests[a.lesson] || []).includes(r.id))).at(-1);
     const lastAttempt = last
-      ? { id: last.id, date: last.date, score: last.total - (last.wrong?.length ?? 0), total: last.total, wrongHere: wrongIn(last) }
+      ? { id: last.id, date: last.date, score: last.total - (last.wrong?.length ?? 0), total: last.total, wrongHere: wrongIn(last),
+        kind: Array.isArray(last.answered) ? 'answered' : isTaskAttempt(last) ? 'task' : 'quiz' }
       : null;
     const active = r.status === 'active';
     return {
@@ -363,6 +378,7 @@ export function teachIndex(workspaceDir, { now }) {
       // Due when written before the spacing cutoff and not attempted since that cutoff.
       reviewDue: cutoff !== null && active && String(r.date) < cutoff && !(lastAttempt && String(lastAttempt.date) >= cutoff),
       reviewFailed: active && lastAttempt?.wrongHere === true,
+      answered: active && lastAttempt?.kind === 'answered',
     };
   });
   const refDir = join(workspaceDir, 'reference');
@@ -373,23 +389,29 @@ export function teachIndex(workspaceDir, { now }) {
 
 // Learner performance over time, from the attempts on disk: every attempt per lesson in
 // chronological order with first, latest and best, plus record counts and what is due for review
-// (null when the mission asks for no reminders, issue 79 D2).
+// (null when the mission asks for no reminders, issue 79 D2). Issue 79 D6: a lesson's task attempts make a second row,
+// `kind: 'task'`, right after the lesson's own, each attempt with its summary and no score; its first and best are null.
 export function progress(workspaceDir, { now }) {
   const idx = teachIndex(workspaceDir, { now });
   const byLesson = new Map(idx.lessons.map((l) => [l.id, { id: l.id, title: l.title, class: l.class, attempts: [] }]));
+  const tasks = new Map();
   for (const a of idx.attempts) {
     const total = Number(a.total) || 0;
     const wrong = Array.isArray(a.wrong) ? a.wrong : [];
     if (!byLesson.has(a.lesson)) byLesson.set(a.lesson, { id: a.lesson, title: a.lesson, class: 'lesson', attempts: [] });
-    byLesson.get(a.lesson).attempts.push({ id: a.id, date: String(a.date), score: total - wrong.length, total, wrong, ...(a.result ? { result: String(a.result) } : {}) });
+    if (isTaskAttempt(a)) {
+      const l = byLesson.get(a.lesson);
+      if (!tasks.has(a.lesson)) tasks.set(a.lesson, { id: l.id, title: l.title, class: l.class, kind: 'task', attempts: [] });
+      tasks.get(a.lesson).attempts.push({ id: a.id, date: String(a.date), summary: taskSummary(a) });
+    } else byLesson.get(a.lesson).attempts.push({ id: a.id, date: String(a.date), score: total - wrong.length, total, wrong, ...(a.result ? { result: String(a.result) } : {}) });
   }
   const ratio = (x) => (x.total ? x.score / x.total : 0);
-  const lessons = [...byLesson.values()].map((l) => ({
+  const lessons = [...byLesson.values()].flatMap((l) => [{
     ...l,
     first: l.attempts[0] ?? null,
     latest: l.attempts.at(-1) ?? null,
     best: l.attempts.reduce((b, a) => (b === null || ratio(a) > ratio(b) ? a : b), null),
-  }));
+  }, ...(tasks.has(l.id) ? [{ ...tasks.get(l.id), first: null, latest: tasks.get(l.id).attempts.at(-1), best: null }] : [])]);
   const byKind = {};
   for (const r of idx.records) if (r.status === 'active') byKind[r.kind] = (byKind[r.kind] ?? 0) + 1;
   return {
@@ -401,12 +423,14 @@ export function progress(workspaceDir, { now }) {
   };
 }
 
-const scoreOf = (a) => a.result ?? `${a.score}/${a.total}`; // a project run shows pass or fail
+// A project run shows pass or fail, a task attempt its summary (issue 79 D6); a task row's first and best are empty.
+const scoreOf = (a) => a.summary ?? a.result ?? `${a.score}/${a.total}`;
 const fmtScore = (a) => (a ? `${scoreOf(a)} on ${a.date}` : 'none');
+const fmtCell = (l, a) => (l.kind === 'task' && !a ? '' : fmtScore(a));
 
 export function progressText(p) {
   const lines = ['| lesson | attempts | first | latest | best |', '|---|---|---|---|---|'];
-  for (const l of p.lessons) lines.push(`| ${l.id} | ${l.attempts.length} | ${fmtScore(l.first)} | ${fmtScore(l.latest)} | ${fmtScore(l.best)} |`);
+  for (const l of p.lessons) lines.push(`| ${l.id} | ${l.attempts.length} | ${fmtCell(l, l.first)} | ${fmtCell(l, l.latest)} | ${fmtCell(l, l.best)} |`);
   lines.push('', `attempts: ${p.attempts}`, `records: ${p.records.active} active (${Object.entries(p.records.byKind).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'})`,
     ...(p.reviewDue ? [`review-due: ${p.reviewDue.join(', ') || 'none'}`] : []), `review-failed: ${p.reviewFailed.join(', ') || 'none'}`);
   return lines.join('\n') + '\n';
@@ -431,11 +455,11 @@ export const withNav = (html) => (/<script[^>]*quiz\.js/i.test(html) ? html : ht
 
 export function progressHtml(p) {
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const cell = (a) => (a ? `<td><b>${esc(scoreOf(a))}</b> <small>${esc(a.date)}</small></td>` : '<td>none</td>');
-  const rows = p.lessons.map((l) => `<tr><td><a href="/lessons/${esc(l.id)}.html">${esc(l.title)}</a></td><td>${l.attempts.length}</td>${cell(l.first)}${cell(l.latest)}${cell(l.best)}</tr>`).join('');
+  const cell = (l, a) => (a ? `<td><b>${esc(scoreOf(a))}</b> <small>${esc(a.date)}</small></td>` : l.kind === 'task' ? '<td></td>' : '<td>none</td>');
+  const rows = p.lessons.map((l) => `<tr><td><a href="/lessons/${esc(l.id)}.html">${esc(l.title)}</a></td><td>${l.attempts.length}</td>${cell(l, l.first)}${cell(l, l.latest)}${cell(l, l.best)}</tr>`).join('');
   const timeline = p.lessons.flatMap((l) => l.attempts.map((a) => ({ ...a, lesson: l.title, lid: l.id })))
     .sort((a, b) => (a.id < b.id ? -1 : 1))
-    .map((a) => `<li><small>${esc(a.date)}</small> <a href="/lessons/${esc(a.lid)}.html">${esc(a.lesson)}</a>: <b>${esc(scoreOf(a))}</b>${a.wrong.length && !a.result ? ` <small>(missed item${a.wrong.length > 1 ? 's' : ''} ${a.wrong.map((i) => i + 1).join(', ')})</small>` : ''}</li>`).join('');
+    .map((a) => `<li><small>${esc(a.date)}</small> <a href="/lessons/${esc(a.lid)}.html">${esc(a.lesson)}</a>: <b>${esc(scoreOf(a))}</b>${a.summary === undefined && a.wrong.length && !a.result ? ` <small>(missed item${a.wrong.length > 1 ? 's' : ''} ${a.wrong.map((i) => i + 1).join(', ')})</small>` : ''}</li>`).join('');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Progress</title><link rel="stylesheet" href="/assets/lesson.css"></head>
 <body>${navHtml()}<h1>Progress</h1>

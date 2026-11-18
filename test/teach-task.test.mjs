@@ -3,13 +3,19 @@
 // no process of the group it started.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readRequirements, parseChecker } from '../bin/lib/task.mjs';
+import { teachIndex, progress, progressHtml, workspaceKey, attemptOrder } from '../bin/lib/teach.mjs';
+import { parseFrontmatter } from '../bin/lib/frontmatter.mjs';
+import { lintWorkspace } from '../bin/lib/lesson.mjs';
+import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
+import { buildManifest } from '../bin/lib/manifest.mjs';
+import { fixtureVault } from './helpers.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'research-vault.mjs');
@@ -186,16 +192,6 @@ test('teach check: two lessons/0001-*.html files exit 2 without --dry-run', () =
   assert.equal(check(ws, '--dry-run', '1').status, 1);
 });
 
-test('teach check writes no attempt in this commit', () => {
-  const ws = copy();
-  script(ws, 'setup.sh');
-  check(ws, '1');
-  check(ws, '--dry-run', '1');
-  script(ws, 'solution.sh');
-  check(ws, '1');
-  assert.equal(existsSync(join(ws, 'attempts')), false);
-});
-
 test('teach check: an invalid requirements.json or a checker problem exits 2 with one line and no report', () => {
   const ws = copy();
   writeReqs(ws, '{');
@@ -294,4 +290,325 @@ test('teach check arguments: no evidence folder, no number, and a flag before th
     assert.equal(r.status, 1, flag);
     assert.ok(r.stdout.startsWith(FAILED[0]), flag);
   }
+});
+
+// Issue 79 commit 4 (D5, D6, D7): a check records an attempt when its lists change, an answer is recorded, and every
+// view shows a task attempt as its summary, never as a score.
+const TODAY = new Date().toISOString().slice(0, 10);
+const teach = (ws, ...args) => spawnSync(process.execPath, [BIN, 'teach', ...args, ws], { encoding: 'utf8', timeout: 30000 });
+// In the order teachIndex reads them: a-...-0001.md before a-...-0001-2.md.
+const attemptFiles = (ws) => (existsSync(join(ws, 'attempts')) ? readdirSync(join(ws, 'attempts')).sort((x, y) => attemptOrder(x.slice(0, -3), y.slice(0, -3))) : []);
+const attemptAt = (ws, i) => parseFrontmatter(readFileSync(join(ws, 'attempts', attemptFiles(ws).at(i)), 'utf8')).data;
+const record = (ws, id = '0001-files') => teachIndex(ws, { now: new Date() }).records.find((r) => r.id === id);
+const nextLine = (ws, prefix) => teach(ws, 'next').stdout.split('\n').find((l) => l.startsWith(prefix));
+const write = (ws, rel, text) => { mkdirSync(dirname(join(ws, rel)), { recursive: true }); writeFileSync(join(ws, rel), text); };
+// a.txt made, b.txt not: a-exists ok, b-exists failed, b-text not reached.
+const half = (ws) => { script(ws, 'setup.sh'); writeFileSync(join(ws, 'teach-0001', 'a.txt'), 'one\n'); };
+const solved = (ws) => { script(ws, 'setup.sh'); script(ws, 'solution.sh'); };
+// The fixture lesson with a one-item quiz whose item tests a second record, 0002-quiz.
+const withQuiz = (ws) => {
+  write(ws, 'learning-records/0002-quiz.md', '---\ntitle: quiz\ntype: learning-record\ndate: 2026-01-01\nstatus: active\nkind: understanding\n---\n# quiz\n');
+  editFile(join(ws, 'lessons', '0001-files.html'), '<section data-block="sources"',
+    '<section data-block="quiz"><script type="application/json" data-quiz>{ "items": [ { "q": "Which command makes a folder?", "options": ["mkdir", "rm", "ls"], "correct": 0, "why": ["Right.", "That removes.", "That lists."], "record": "0002-quiz" } ] }</script></section>\n\n<section data-block="sources"');
+  return ws;
+};
+
+test('recording: a failing check writes one attempt with its lists; the same run again and --dry-run write none', () => {
+  const ws = copy();
+  script(ws, 'setup.sh');
+  assert.equal(check(ws, '1').status, 1);
+  assert.equal(attemptFiles(ws).length, 1);
+  const a = attemptAt(ws, 0);
+  assert.equal(a.lesson, '0001-files');
+  assert.deepEqual([a.passed, a.failed, a.unreached, a.total, a.wrong], [[], ['a-exists'], ['b-exists', 'b-text'], 3, [0, 1, 2]]);
+  assert.deepEqual([a.tested, a.records], [[], []]);
+  assert.equal(check(ws, '1').status, 1);
+  assert.equal(check(ws, '--dry-run', '1').status, 1);
+  assert.equal(attemptFiles(ws).length, 1);
+  // A dry run of a changed result writes nothing either.
+  script(ws, 'solution.sh');
+  assert.equal(check(ws, '--dry-run', '1').status, 0);
+  assert.equal(attemptFiles(ws).length, 1);
+});
+
+test('recording: fail, pass, then the same fail write three attempts', () => {
+  const ws = copy();
+  script(ws, 'setup.sh');
+  check(ws, '1');
+  script(ws, 'solution.sh');
+  check(ws, '1');
+  script(ws, 'setup.sh');
+  check(ws, '1');
+  assert.equal(attemptFiles(ws).length, 3);
+  assert.deepEqual(attemptAt(ws, 1).passed, ['a-exists', 'b-exists', 'b-text']);
+  assert.deepEqual(attemptAt(ws, 1).tested, ['0001-files']);
+  assert.deepEqual(attemptAt(ws, 2).failed, ['a-exists']);
+});
+
+test('recording: a quiz attempt between two equal failing checks does not make the second one written', () => {
+  const ws = withQuiz(copy());
+  script(ws, 'setup.sh');
+  check(ws, '1');
+  assert.equal(teach(ws, 'attempt', 'add', '--lesson', '0001-files', '--answers', '0').status, 0);
+  check(ws, '1');
+  assert.equal(attemptFiles(ws).length, 2);
+});
+
+test('two requirements, one record: the record counts only when the run reached both', () => {
+  const ws = copy();
+  half(ws);
+  check(ws, '1');
+  let a = attemptAt(ws, -1);
+  assert.deepEqual([a.passed, a.failed, a.unreached, a.tested, a.records], [['a-exists'], ['b-exists'], ['b-text'], ['0001-files'], ['0001-files']]);
+  assert.equal(record(ws).reviewFailed, true);
+  // a-exists failed and the run stopped before b-exists: not tested, and the record stays failed.
+  script(ws, 'setup.sh');
+  check(ws, '1');
+  a = attemptAt(ws, -1);
+  assert.deepEqual([a.failed, a.tested, a.records], [['a-exists'], [], []]);
+  assert.equal(record(ws).reviewFailed, true);
+  // From a pass, the same stopped run leaves it not failed.
+  solved(ws);
+  check(ws, '1');
+  assert.equal(record(ws).reviewFailed, false);
+  script(ws, 'setup.sh');
+  check(ws, '1');
+  assert.equal(attemptFiles(ws).length, 4);
+  assert.equal(record(ws).reviewFailed, false);
+  assert.equal(record(ws).lastAttempt.id, attemptFiles(ws).at(-2).slice(0, -3));
+});
+
+test('a failed requirement makes its record review-failed; a later run with every id ok clears it', () => {
+  const ws = copy();
+  half(ws);
+  check(ws, '1');
+  assert.equal(record(ws).reviewFailed, true);
+  assert.equal(nextLine(ws, 'review-failed:'), 'review-failed: 0001-files');
+  solved(ws);
+  check(ws, '1');
+  assert.equal(record(ws).reviewFailed, false);
+  assert.equal(nextLine(ws, 'review-failed:'), 'review-failed: none');
+});
+
+test('a lesson with a quiz and a task: a task attempt does not change the last attempt of a record only the quiz tests', () => {
+  const ws = withQuiz(copy());
+  assert.equal(teach(ws, 'attempt', 'add', '--lesson', '0001-files', '--answers', '1').status, 0);
+  const before = record(ws, '0002-quiz').lastAttempt;
+  assert.equal(before.kind, 'quiz');
+  assert.equal(record(ws, '0002-quiz').reviewFailed, true);
+  half(ws);
+  check(ws, '1');
+  solved(ws);
+  check(ws, '1');
+  assert.equal(attemptFiles(ws).length, 3);
+  assert.deepEqual(record(ws, '0002-quiz').lastAttempt, before);
+  assert.equal(record(ws, '0002-quiz').reviewFailed, true);
+  assert.equal(record(ws).lastAttempt.kind, 'task');
+});
+
+test('the answer: --answered stores answered, and sets the record answered and review-failed', () => {
+  const ws = copy();
+  const r = teach(ws, 'attempt', 'add', '--lesson', '0001-files', '--answered', 'a-exists');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^recorded a-\d{8}-\d{6}-0001: answered a-exists\n$/);
+  const a = attemptAt(ws, -1);
+  assert.deepEqual([a.answered, a.tested, a.records, a.total, a.wrong], [['a-exists'], ['0001-files'], ['0001-files'], 1, [0]]);
+  assert.equal(a.passed, undefined);
+  const rec = record(ws);
+  assert.deepEqual([rec.answered, rec.reviewFailed, rec.lastAttempt.kind], [true, true, 'answered']);
+  assert.equal(nextLine(ws, 'answered:'), 'answered: 0001-files');
+  assert.equal(nextLine(ws, '| 0001-files'), `| 0001-files | understanding | 2026-01-01 | 0001-files | answered on ${TODAY} |`);
+  // all is every id, in file order; b-text names no record.
+  assert.equal(teach(ws, 'attempt', 'add', '--lesson', '0001-files', '--answered', 'all').status, 0);
+  assert.deepEqual([attemptAt(ws, -1).answered, attemptAt(ws, -1).tested, attemptAt(ws, -1).wrong], [['a-exists', 'b-exists', 'b-text'], ['0001-files'], [0, 1, 2]]);
+  assert.equal(teach(ws, 'attempt', 'add', '--lesson', '0001-files', '--answered', 'b-text').status, 0);
+  assert.deepEqual([attemptAt(ws, -1).tested, attemptAt(ws, -1).records], [[], []]);
+});
+
+test('the answer: a passing check after it is written and clears answered and review-failed', () => {
+  const ws = copy();
+  solved(ws);
+  check(ws, '1');
+  assert.equal(nextLine(ws, 'answered:'), 'answered: none');
+  assert.equal(teach(ws, 'attempt', 'add', '--lesson', '0001-files', '--answered', 'b-exists').status, 0);
+  assert.equal(record(ws).answered, true);
+  assert.equal(check(ws, '1').status, 0);
+  assert.equal(attemptFiles(ws).length, 3);
+  assert.deepEqual([record(ws).answered, record(ws).reviewFailed], [false, false]);
+  assert.equal(nextLine(ws, 'answered:'), 'answered: none');
+});
+
+test('the answer: an unknown id, --answered with --result, and --answered with --answers exit 2 and write nothing', () => {
+  const ws = copy();
+  const nope = teach(ws, 'attempt', 'add', '--lesson', '0001-files', '--answered', 'nope');
+  assert.equal(nope.status, 2);
+  assert.match(nope.stderr, /nope/);
+  for (const other of [['--result', 'pass'], ['--answers', '0']]) {
+    const r = teach(ws, 'attempt', 'add', '--lesson', '0001-files', '--answered', 'a-exists', ...other);
+    assert.equal(r.status, 2, other.join(' '));
+    assert.match(r.stderr, /^usage: research-vault teach /);
+  }
+  assert.equal(teach(ws, 'attempt', 'add', '--lesson', '0002-none', '--answered', 'a-exists').status, 2);
+  assert.deepEqual(attemptFiles(ws), []);
+});
+
+const FRACTION = /\d+\/\d+/;
+test('the views: teach next, teach progress, the progress page and the timeline show the summaries, never a fraction', () => {
+  const ws = copy();
+  script(ws, 'setup.sh');
+  check(ws, '1');
+  const failLine = `| 0001-files | understanding | 2026-01-01 | 0001-files | failed on ${TODAY} |`;
+  // The run stopped before b-exists, so the record has no attempt yet.
+  assert.equal(nextLine(ws, '| 0001-files'), '| 0001-files | understanding | 2026-01-01 | 0001-files | none |');
+  half(ws);
+  check(ws, '1');
+  assert.equal(nextLine(ws, '| 0001-files'), failLine);
+  solved(ws);
+  check(ws, '1');
+  assert.equal(nextLine(ws, '| 0001-files'), `| 0001-files | understanding | 2026-01-01 | 0001-files | ok on ${TODAY} |`);
+  assert.doesNotMatch(teach(ws, 'next').stdout, FRACTION);
+  const text = teach(ws, 'progress');
+  assert.equal(text.status, 0);
+  const rows = text.stdout.split('\n').filter((l) => l.startsWith('| 0001-files'));
+  assert.deepEqual(rows, ['| 0001-files | 0 | none | none | none |', `| 0001-files | 3 |  | ok a-exists, b-exists, b-text on ${TODAY} |  |`]);
+  assert.doesNotMatch(text.stdout, FRACTION);
+  const p = progress(ws, { now: new Date() });
+  assert.deepEqual(p.lessons.map((l) => [l.id, l.kind ?? null, l.attempts.length]), [['0001-files', null, 0], ['0001-files', 'task', 3]]);
+  const html = progressHtml(p);
+  assert.ok(html.includes(`<td><b>ok a-exists, b-exists, b-text</b> <small>${TODAY}</small></td>`), html);
+  for (const s of ['failed a-exists; not reached b-exists, b-text', 'ok a-exists; failed b-exists; not reached b-text']) assert.ok(html.includes(`<b>${s}</b>`), s);
+  assert.ok(!html.includes('missed item'));
+  assert.doesNotMatch(html, FRACTION);
+});
+
+test('the views: the quiz row of a lesson with a quiz and a task is unchanged by task attempts', () => {
+  const ws = withQuiz(copy());
+  teach(ws, 'attempt', 'add', '--lesson', '0001-files', '--answers', '1');
+  const quizRow = (s) => s.split('\n').filter((l) => l.startsWith('| 0001-files'))[0];
+  const before = teach(ws, 'progress').stdout;
+  const beforeHtml = progressHtml(progress(ws, { now: new Date() }));
+  half(ws);
+  check(ws, '1');
+  const after = teach(ws, 'progress').stdout;
+  assert.equal(quizRow(after), quizRow(before));
+  assert.match(quizRow(before), FRACTION);
+  const rowHtml = (h) => /<tr><td><a href="\/lessons\/0001-files\.html">[^]*?<\/tr>/.exec(h)[0];
+  assert.equal(rowHtml(progressHtml(progress(ws, { now: new Date() }))), rowHtml(beforeHtml));
+  assert.equal(teach(ws, 'attempt', 'add', '--lesson', '0001-files', '--answered', 'b-exists').stdout.includes('answered b-exists'), true);
+  assert.match(teach(ws, 'progress').stdout, new RegExp(`\\| 0001-files \\| 2 \\|  \\| answered b-exists on ${TODAY} \\|  \\|`));
+});
+
+test('the views: a stored id the requirements file no longer holds is printed as it is', () => {
+  const ws = copy();
+  write(ws, 'attempts/a-20260101-120000-0001.md',
+    '---\ntype: attempt\ndate: 2026-01-01\nlesson: 0001-files\ntotal: 3\nwrong: [0]\nrecords: [0001-files]\npassed: [a-exists]\nfailed: [gone]\nunreached: []\ntested: [0001-files]\n---\n');
+  assert.equal(nextLine(ws, '| 0001-files'), '| 0001-files | understanding | 2026-01-01 | 0001-files | failed on 2026-01-01 |');
+  assert.match(teach(ws, 'progress').stdout, /\| 0001-files \| 1 \|  \| ok a-exists; failed gone on 2026-01-01 \|  \|/);
+  assert.ok(progressHtml(progress(ws, { now: new Date() })).includes('<b>ok a-exists; failed gone</b>'));
+});
+
+test('teach lint is clean on a workspace that holds a check attempt and an answered attempt', () => {
+  const ws = copy();
+  script(ws, 'setup.sh');
+  check(ws, '1');
+  assert.equal(teach(ws, 'attempt', 'add', '--lesson', '0001-files', '--answered', 'all').status, 0);
+  assert.equal(attemptFiles(ws).length, 2);
+  rmSync(join(ws, 'teach-0001'), { recursive: true });
+  const vault = fixtureVault();
+  assert.deepEqual(lintWorkspace(ws, { workspaceDir: ws, vaultPath: vault, entries: buildManifest(vault).entries, schema: loadSchema(ROOT), teachSchema: loadTeachSchema(ROOT), now: '2026-10-26' }), []);
+});
+
+// D5's import note (R17): the import skips a quiz attempt whose base id a task attempt of the same second and lesson
+// holds. Pinned as it is; the ponytail comment in importAttempts names the fix.
+test('the import skips a quiz attempt whose base id a task attempt holds', () => {
+  const ws = withQuiz(copy());
+  script(ws, 'setup.sh');
+  check(ws, '1');
+  const id = attemptFiles(ws)[0].slice(0, -3);
+  const m = /^a-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})-0001$/.exec(id);
+  const at = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}.000Z`;
+  const file = join(ws, 'results.json');
+  writeFileSync(file, JSON.stringify({ format: 'research-vault-attempts', version: 1, workspace: workspaceKey(ws),
+    attempts: [{ lesson: '0001-files', answers: [0], at, total: 1, wrong: [] }] }));
+  const r = teach(ws, 'attempt', 'import', file);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, `skipped ${id}: already recorded\n`);
+  assert.equal(attemptFiles(ws).length, 1);
+});
+
+// Fix round 1 of the commit 4 review.
+test('recording: a failed attempt write exits 2 with nothing on stdout', () => {
+  const ws = copy();
+  script(ws, 'setup.sh');
+  mkdirSync(join(ws, 'attempts'), { mode: 0o555 });
+  try {
+    const r = check(ws, '1');
+    assert.deepEqual([r.status, r.stdout], [2, '']);
+    assert.match(r.stderr, /EACCES/);
+  } finally { chmodSync(join(ws, 'attempts'), 0o755); }
+});
+
+test('the views: a hand-written task attempt with an empty summary does not break the progress page', () => {
+  const ws = copy();
+  write(ws, 'attempts/a-20260101-120000-0001.md', '---\ntype: attempt\ndate: 2026-01-01\nlesson: 0001-files\ntotal: 0\nwrong: []\nrecords: []\ntested: []\n---\n');
+  const html = progressHtml(progress(ws, { now: new Date() }));
+  assert.ok(html.includes('<b></b>'), html);
+  assert.ok(!html.includes('missed item'));
+});
+
+test('recording: the compare is per lesson; a second task with the same lists as the first is written', () => {
+  const ws = copy();
+  cpSync(join(ws, 'evidence', '0001'), join(ws, 'evidence', '0002'), { recursive: true });
+  cpSync(join(ws, 'lessons', '0001-files.html'), join(ws, 'lessons', '0002-more.html'));
+  script(ws, 'setup.sh');
+  check(ws, '1');
+  check(ws, '2');
+  assert.deepEqual(attemptFiles(ws).map((f) => attemptAt(ws, attemptFiles(ws).indexOf(f)).lesson), ['0001-files', '0002-more']);
+  assert.deepEqual(attemptAt(ws, 1).failed, attemptAt(ws, 0).failed);
+});
+
+test('recording: all three lists are compared; the same failed with another passed and unreached is written', () => {
+  const ws = copy();
+  writeChecker(ws, 'echo "FAIL a-exists: make a.txt"\necho "ok b-exists"\necho "ok b-text"\nexit 1\n');
+  check(ws, '1');
+  writeChecker(ws, 'echo "FAIL a-exists: make a.txt"\nexit 1\n');
+  check(ws, '1');
+  assert.equal(attemptFiles(ws).length, 2);
+  assert.deepEqual([attemptAt(ws, 0).failed, attemptAt(ws, 0).passed, attemptAt(ws, 1).failed, attemptAt(ws, 1).unreached],
+    [['a-exists'], ['b-exists', 'b-text'], ['a-exists'], ['b-exists', 'b-text']]);
+});
+
+test('the views: the progress page task row has empty first and best cells and the summary and date as the latest', () => {
+  const ws = copy();
+  solved(ws);
+  check(ws, '1');
+  const html = progressHtml(progress(ws, { now: new Date() }));
+  assert.ok(html.includes(`<td>1</td><td></td><td><b>ok a-exists, b-exists, b-text</b> <small>${TODAY}</small></td><td></td></tr>`), html);
+});
+
+test('the answer: --answered stores the ids in the file order', () => {
+  const ws = copy();
+  assert.equal(teach(ws, 'attempt', 'add', '--lesson', '0001-files', '--answered', 'b-text,a-exists').status, 0);
+  assert.deepEqual(attemptAt(ws, -1).answered, ['a-exists', 'b-text']);
+});
+
+// D3, changed by the owner: the id `all` is reserved, since `--answered all` means every id.
+const reserveAll = (ws) => editFile(join(ws, 'evidence', '0001', 'requirements.json'), '"id": "a-exists"', '"id": "all"');
+const RESERVED = 'requirement 1: id "all" is reserved for --answered all';
+test('readRequirements: the id all is a problem; teach check refuses with exit 2', () => {
+  const ws = copy();
+  reserveAll(ws);
+  assert.deepEqual(readRequirements(ws, '0001').problems, [RESERVED]);
+  script(ws, 'setup.sh');
+  const r = check(ws, '1');
+  assert.deepEqual([r.status, r.stdout, r.stderr], [2, '', `teach check: 0001: ${RESERVED}\n`]);
+  assert.deepEqual(attemptFiles(ws), []);
+});
+
+test('teach lint reports the id all as TASK_REQUIREMENTS_INVALID', () => {
+  const ws = copy();
+  reserveAll(ws);
+  const vault = fixtureVault();
+  const findings = lintWorkspace(ws, { workspaceDir: ws, vaultPath: vault, entries: buildManifest(vault).entries, schema: loadSchema(ROOT), teachSchema: loadTeachSchema(ROOT), now: '2026-10-26' });
+  assert.deepEqual(findings.map((f) => `${f.code} ${f.file}: ${f.message}`), [`TASK_REQUIREMENTS_INVALID evidence/0001/requirements.json: ${RESERVED}`]);
 });

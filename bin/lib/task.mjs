@@ -39,6 +39,7 @@ export function readRequirements(ws, nnnn) {
     if (KEYS.some((x) => !Object.hasOwn(r, x))) return problems.push(`${at} needs id, text, records and read`);
     const before = problems.length;
     if (typeof r.id !== 'string' || !TASK_ID_RE.test(r.id)) problems.push(`${at}: id ${show(r.id)} does not match ^[a-z][a-z0-9-]{0,39}$`);
+    else if (r.id === 'all') problems.push(`${at}: id "all" is reserved for --answered all`);
     else if (seen.has(r.id)) problems.push(`${at}: id ${r.id} is repeated`);
     seen.add(r.id);
     for (const f of ['text', 'read']) if (!text(r[f])) problems.push(`${at}: ${f} must be 1 to 300 characters with no control, line-separator or bidi character`);
@@ -115,6 +116,34 @@ export function runChecker(ws, nnnn, { timeoutMs, env = process.env, limits = {}
       done(why ? { problem: why } : { code, stdout: Buffer.concat(out.stdout).toString('utf8'), stderr: Buffer.concat(out.stderr).toString('utf8') });
     });
   });
+}
+
+// D5: the `task` object writeAttempt stores for a check. `tested` holds each record for which the run reached every
+// requirement that names it, `records` those of them with such a requirement failed; `wrong` holds the positions not ok.
+const recordsOf = (requirements) => [...new Set(requirements.flatMap((r) => r.records))];
+export function checkAttempt(requirements, parsed, certification = null) {
+  const failed = parsed.failed.map((f) => f.id);
+  const naming = (rec) => requirements.filter((r) => r.records.includes(rec));
+  const tested = recordsOf(requirements).filter((rec) => naming(rec).every((r) => !parsed.unreached.includes(r.id)));
+  return {
+    total: requirements.length,
+    wrong: requirements.flatMap((r, i) => (parsed.passed.includes(r.id) ? [] : [i])),
+    records: tested.filter((rec) => naming(rec).some((r) => failed.includes(r.id))),
+    passed: parsed.passed, failed, unreached: parsed.unreached, tested,
+    ...(certification ? { certification } : {}),
+  };
+}
+
+// D5: the `task` object for an answer to `ids` (`['all']` for every id), in file order; every record an answered
+// requirement names is tested and failed. Throws on an id the file does not hold.
+export function answeredAttempt(requirements, ids) {
+  const all = requirements.map((r) => r.id);
+  const unknown = ids.filter((id) => id !== 'all' && !all.includes(id));
+  if (unknown.length) throw new Error(`no requirement ${unknown.map(show).join(', ')} in requirements.json`);
+  if (!ids.length) throw new Error('no requirement id given');
+  const answered = requirements.filter((r) => ids.includes('all') || ids.includes(r.id));
+  const recs = recordsOf(answered);
+  return { total: answered.length, wrong: answered.map((_, i) => i), records: recs, tested: recs, answered: answered.map((r) => r.id) };
 }
 
 // D4's lines, one requirement after another in file order; with `hints` false and a failure, a last line on how to ask.

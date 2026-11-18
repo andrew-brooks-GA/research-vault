@@ -3,7 +3,7 @@
   "derived_forbidden": ["score","evidence","last_verified"],
   "by_type": {
     "learning-record": ["status","superseded_by","lesson","kind"],
-    "attempt": ["lesson","result","total","wrong","records"]
+    "attempt": ["lesson","result","total","wrong","records","passed","failed","unreached","tested","answered","certification"]
   },
   "required_by_type": {
     "learning-record": ["title","type","date","status","kind"],

@@ -16,7 +16,7 @@ import { findWorkspaces, reviewerHash, contentHash } from '../bin/lib/gate.mjs';
 import { checkCitations } from '../bin/commands/check.mjs';
 import { extractCitations } from '../bin/lib/citations.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
-import { teachIndex } from '../bin/lib/teach.mjs';
+import { teachIndex, taskSummary, isTaskAttempt } from '../bin/lib/teach.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -33,7 +33,8 @@ export function workspaceBrief(wsDir, vaultPath, now, name = basename(wsDir)) {
   }).length;
   const a = idx.attempts.at(-1);
   if (n + m === 0 && !a) return '';
-  const last = a ? `; last attempt ${a.total - (a.wrong?.length ?? 0)}/${a.total} on ${a.lesson}` : '';
+  // Issue 79 D6: a task attempt is named by its summary.
+  const last = !a ? '' : isTaskAttempt(a) ? `; last attempt on ${a.lesson}: ${taskSummary(a)}` : `; last attempt ${a.total - (a.wrong?.length ?? 0)}/${a.total} on ${a.lesson}`;
   const due = idx.prefs.reminders ? `${n} record(s) review-due; ` : '';
   return `research-teach ${name}: ${due}${m} reference doc(s) with a stale citation${last}`;
 }

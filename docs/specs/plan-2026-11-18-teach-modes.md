@@ -95,6 +95,8 @@ Three bullets under `## Constraints`, each in a fixed form:
 
 ### D3. Requirements, and a checker that names them (P2)
 
+<!-- evidence: 2026-11-18-lines-behind-plan-issue-79-at 2026-11-18-more-lines-behind-plan-issue-79 2026-11-18-issues-79-78-research-vault-as 2026-11-18-owner-s-answers-2026-11-18 2026-11-18-probe-plan-issue-79-checked-tasks 2026-11-18-adversarial-review-findings-first-draft-plan 2026-11-18-lab-tooling-lines-behind-plan-issue 2026-11-18-probe-teach-lint-warn-lab-bypassed 2026-11-18-owner-s-answer-2026-11-18 -->
+
 `evidence/NNNN/requirements.json`:
 
 ```json
@@ -105,7 +107,7 @@ Three bullets under `## Constraints`, each in a fixed form:
 ```
 
 - `version` is 1. `timeout` is optional: whole seconds from 1 to 600, 60 when absent. It guards against a script that hangs. It is not a limit on the learner.
-- `requirements` holds one or more. An `id` matches `^[a-z][a-z0-9-]{0,39}$` and is unique. `text` and `read` are strings of 1 to 300 characters with no character `LAB_TEXT_BAD_RE` matches. `read` is a file of `lessons/` or `reference/`, or a vault entry's id. `records` is a list of learning-record ids and may be empty. No other key is allowed at either level.
+- `requirements` holds one or more. An `id` matches `^[a-z][a-z0-9-]{0,39}$`, is unique and is not `all`, which D5's `--answered all` uses for every id (the owner's change of 2026-11-18, after commit 4's review). `text` and `read` are strings of 1 to 300 characters with no character `LAB_TEXT_BAD_RE` matches. `read` is a file of `lessons/` or `reference/`, or a vault entry's id. `records` is a list of learning-record ids and may be empty. No other key is allowed at either level.
 - `check.sh` prints one line on standard output for each requirement it assessed: `ok <id>` or `FAIL <id>: <hint>`. It may stop after a failure; an id it did not print is unreached. It exits 0 when every id is `ok`, and 1 otherwise. Other lines on standard output are ignored. Standard error is not shown, except its last line with a problem.
 - A **problem** is one of these:
   - any exit code other than 0 and 1, or a script that cannot start

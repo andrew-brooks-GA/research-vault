@@ -105,6 +105,12 @@ test('the teach skill and LESSON-FORMAT state the checked task form: ./check and
   for (const old of ['prints `PASS`', 'FAIL: <requirement>']) assert.ok(!s.includes(old) && !f.includes(old), `the old checker output is still stated: ${old}`);
 });
 
+test('the teach skill gives the answer and records it with --answered (issue 79 D7)', () => {
+  const s = read('skills/research-teach/SKILL.md');
+  for (const x of ['teach attempt add --lesson <id> --answered <ids>', 'answered:']) assert.ok(s.includes(x), `teach skill lacks ${x}`);
+  assert.ok(!s.includes('turns the attempt into a read'), 'reading the solution is no longer a read');
+});
+
 test('research-authoring has a Code section whose first sentence states the code block condition (spec 15 D5)', () => {
   const s = read('skills/research-authoring/SKILL.md');
   const section = s.slice(s.indexOf('## Code\n'));

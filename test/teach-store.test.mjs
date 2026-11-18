@@ -9,7 +9,7 @@ import { parseFrontmatter } from '../bin/lib/frontmatter.mjs';
 import {
   ATTEMPT_ID_RE, LESSON_ID_RE, RECORD_ID_RE, STORED_DERIVED,
   validateEntry, nextRecordId, attemptId, writeRecord, supersedeRecord, readQuiz,
-  writeAttempt, teachIndex, fixRecordFrontmatter, lessonIndex, indexHtml, missionPrefs,
+  writeAttempt, teachIndex, fixRecordFrontmatter, lessonIndex, indexHtml, missionPrefs, taskSummary,
 } from '../bin/lib/teach.mjs';
 import { footnoteCitations } from '../bin/lib/teach.mjs';
 
@@ -168,6 +168,30 @@ test('writeAttempt errors on malformed quiz JSON without writing', () => {
   assert.equal(list(join(dir, 'attempts')).length, 1);
 });
 
+// Issue 79 D5: a task attempt's fields come ready-made in `task`; no quiz is read.
+test('writeAttempt with a task object stores its fields after records, and the attempt validates', () => {
+  const dir = ws();
+  mkdirSync(join(dir, 'lessons'), { recursive: true });
+  writeFileSync(join(dir, 'lessons', '0007-task.html'), '<html><body><p>no quiz</p></body></html>\n');
+  const task = { total: 3, wrong: [1, 2], records: ['0001-a'], passed: ['x'], failed: ['y'], unreached: ['z'], tested: ['0001-a'] };
+  const r = writeAttempt(dir, { lesson: '0007-task', task, now: NOW }, schema);
+  assert.deepEqual([r.id, r.total, r.wrong], ['a-20261026-123456-0007', 3, [1, 2]]);
+  const text = readFileSync(r.path, 'utf8');
+  assert.equal(text, '---\ntype: attempt\ndate: 2026-10-26\nlesson: 0007-task\ntotal: 3\nwrong: [1, 2]\nrecords: [0001-a]\npassed: [x]\nfailed: [y]\nunreached: [z]\ntested: [0001-a]\n---\n');
+  assert.deepEqual(validateEntry(parseFrontmatter(text).data, schema), []);
+  const a = writeAttempt(dir, { lesson: '0007-task', task: { total: 1, wrong: [0], records: [], tested: [], answered: ['b-text'] }, now: NOW }, schema);
+  assert.deepEqual(parseFrontmatter(readFileSync(a.path, 'utf8')).data, { type: 'attempt', date: '2026-10-26', lesson: '0007-task', total: 1, wrong: [0], records: [], tested: [], answered: ['b-text'] });
+});
+
+// Issue 79 D6: the one text every view prints for a task attempt.
+test('taskSummary: answered, certification, and the parts of a check that are not empty', () => {
+  assert.equal(taskSummary({ answered: ['a-exists', 'b-text'], tested: [] }), 'answered a-exists, b-text');
+  assert.equal(taskSummary({ certification: 'c-20261118-120000', passed: ['a', 'b'], failed: ['c'], unreached: ['d'], tested: [] }), 'certification 2 of 4');
+  assert.equal(taskSummary({ passed: ['a', 'b'], failed: [], unreached: [], tested: [] }), 'ok a, b');
+  assert.equal(taskSummary({ passed: [], failed: ['a'], unreached: ['b', 'c'], tested: [] }), 'failed a; not reached b, c');
+  assert.equal(taskSummary({ passed: ['a'], failed: ['b'], unreached: ['c'], tested: [] }), 'ok a; failed b; not reached c');
+});
+
 test('fixRecordFrontmatter migrates LR-NNNN supersession and is idempotent', () => {
   const dir = ws();
   const lr = join(dir, 'learning-records');
@@ -246,11 +270,11 @@ test('teachIndex derives evidence, lastAttempt, reviewDue and reviewFailed', () 
   const by = Object.fromEntries(ix.records.map((r) => [r.id, r]));
   assert.deepEqual(Object.keys(by).sort(), ['0001-old-unreviewed', '0002-old-reviewed-recently', '0003-failed', '0004-old-superseded', '0005-old-reviewed-long-ago']);
   assert.deepEqual(by['0003-failed'].evidence, [recent.id]);
-  assert.deepEqual(by['0003-failed'].lastAttempt, { id: recent.id, date: iso(new Date(NOW - DAY)), score: 1, total: 2, wrongHere: true });
+  assert.deepEqual(by['0003-failed'].lastAttempt, { id: recent.id, date: iso(new Date(NOW - DAY)), score: 1, total: 2, wrongHere: true, kind: 'quiz' });
   assert.equal(by['0002-old-reviewed-recently'].lastAttempt.wrongHere, false);
   assert.deepEqual(by['0002-old-reviewed-recently'].evidence, []);
   assert.equal(by['0001-old-unreviewed'].lastAttempt, null);
-  assert.deepEqual(by['0005-old-reviewed-long-ago'].lastAttempt, { id: older.id, date: iso(new Date(NOW - 30 * DAY)), score: 1, total: 1, wrongHere: false });
+  assert.deepEqual(by['0005-old-reviewed-long-ago'].lastAttempt, { id: older.id, date: iso(new Date(NOW - 30 * DAY)), score: 1, total: 1, wrongHere: false, kind: 'quiz' });
   assert.deepEqual(ix.attempts.map((a) => a.id), [older.id, recent.id]);
 
   const due = ix.records.filter((r) => r.reviewDue).map((r) => r.id);

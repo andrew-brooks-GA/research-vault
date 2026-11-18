@@ -70,6 +70,20 @@ test('workspaceBrief without reminders leaves out the review-due count (issue 79
   assert.equal(workspaceBrief(quiet.ws, quiet.vault, NOW, 'learn/k8s'), '');
 });
 
+// Issue 79 D6: a task attempt is named by its summary, never a score.
+test('workspaceBrief names a task attempt by its summary (issue 79 D6)', () => {
+  const { vault, ws } = repo({ reminders: false, due: false });
+  mkdirSync(join(ws, 'attempts'), { recursive: true });
+  writeFileSync(join(ws, 'attempts', 'a-20260101-120000-0001.md'),
+    '---\ntype: attempt\ndate: 2026-01-01\nlesson: 0001-x\ntotal: 3\nwrong: [0, 1, 2]\nrecords: []\npassed: []\nfailed: [a-exists]\nunreached: [b-exists, b-text]\ntested: []\n---\n');
+  assert.equal(workspaceBrief(ws, vault, NOW, 'learn/k8s'),
+    'research-teach learn/k8s: 0 reference doc(s) with a stale citation; last attempt on 0001-x: failed a-exists; not reached b-exists, b-text');
+  writeFileSync(join(ws, 'attempts', 'a-20260101-120001-0001.md'),
+    '---\ntype: attempt\ndate: 2026-01-01\nlesson: 0001-x\ntotal: 1\nwrong: [0]\nrecords: []\ntested: []\nanswered: [b-text]\n---\n');
+  assert.equal(workspaceBrief(ws, vault, NOW, 'learn/k8s'),
+    'research-teach learn/k8s: 0 reference doc(s) with a stale citation; last attempt on 0001-x: answered b-text');
+});
+
 test('CLI prints the workspace line after the summary line', () => {
   const { root } = repo();
   const env = { ...process.env };
