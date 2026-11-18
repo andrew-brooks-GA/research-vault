@@ -466,13 +466,13 @@ test('teach readme prints one Labs row per manifest lab after the lessons/files/
   assert.ok(!readmeDraft(ws).includes('labs/labs.json'));
 });
 
-test('in the serve path only labs.mjs and task.mjs import child_process, and spawn is called once in each, in launch and runGroup, with no shell; no exec, execFile or eval (spec 49 D5, issue 79 D4, D8)', () => {
+test('in the serve path only labs.mjs, task.mjs and terminal.mjs import child_process, and spawn is called once in each, in launch, runGroup and startShell, with no shell; no exec, execFile or eval (spec 49 D5, issue 79 D4, D8, plan 2026-11-18 browser terminal D2)', () => {
   const serve = ['bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/teach.mjs', 'bin/lib/lesson.mjs', 'bin/commands/teach.mjs', 'bin/lib/args.mjs', 'skills/research-teach/assets/quiz.js'];
   const RUNS = /child_process|\bspawn\b|(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function/;
   for (const f of serve.slice(2)) assert.ok(!RUNS.test(readFileSync(join(ROOT, f), 'utf8')), f);
   // gate.mjs is in the serve path. The Codex installer/reviewer are separate entry points, never serve dependencies.
   const walk = (d) => readdirSync(join(ROOT, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith('.mjs') ? [join(d, e.name)] : []));
-  assert.deepEqual(walk('bin').filter((f) => readFileSync(join(ROOT, f), 'utf8').includes('child_process')).sort(), ['bin/lib/codex-review.mjs', 'bin/lib/gate.mjs', 'bin/lib/host-install.mjs', 'bin/lib/labs.mjs', 'bin/lib/task.mjs']);
+  assert.deepEqual(walk('bin').filter((f) => readFileSync(join(ROOT, f), 'utf8').includes('child_process')).sort(), ['bin/lib/codex-review.mjs', 'bin/lib/gate.mjs', 'bin/lib/host-install.mjs', 'bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/terminal.mjs']);
   for (const file of serve) assert.doesNotMatch(readFileSync(join(ROOT, file), 'utf8'), /from ['"][^'"]*(?:codex-review|host-install)\.mjs['"]/);
   assert.match(readFileSync(join(ROOT, 'bin/lib/gate.mjs'), 'utf8'), /import \{ execFileSync \} from 'node:child_process';/);
   // Issue 79 D4, D8: task.mjs starts a checked task's checker and, at a certification run's start, its setup.sh; its
@@ -485,6 +485,11 @@ test('in the serve path only labs.mjs and task.mjs import child_process, and spa
   assert.match(runGroup, /spawn\(join\(ws, 'evidence', nnnn, name\), \[\], \{ cwd: ws, env, shell: false, detached: true, stdio: \['ignore', inherit \? 'inherit' : 'pipe', inherit \? 'inherit' : 'pipe'\] \}\)/);
   assert.deepEqual([...task.matchAll(/runGroup\(/g)].length, 3);
   assert.deepEqual([...task.matchAll(/runGroup\(ws, nnnn, '([^']+)'/g)].map((m) => m[1]), ['check.sh', 'setup.sh']);
+  // Plan 2026-11-18 D2: terminal.mjs runs python3 twice: `-c "import pty"` in ptyAvailable, and the helper in startShell.
+  const term = readFileSync(join(ROOT, 'bin/lib/terminal.mjs'), 'utf8');
+  assert.deepEqual(term.match(/^import .*child_process.*$/gm), ["import { spawn, spawnSync } from 'node:child_process';"]);
+  assert.ok(!/(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function|shell:\s*true/.test(term));
+  assert.deepEqual(term.match(/\bspawn(Sync)?\([^)]*/g), ["spawnSync(python, ['-c', 'import pty'], { stdio: 'ignore' }", "spawn(python, ['-c', HELPER, ...shell], { cwd, env: shellEnv, stdio: ['pipe', 'pipe', 'ignore', 'pipe'], detached: true }"]);
   const src = readFileSync(join(ROOT, 'bin/lib/labs.mjs'), 'utf8');
   assert.deepEqual(src.match(/^import .*child_process.*$/gm), ["import { spawn } from 'node:child_process';"]);
   assert.ok(!/(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function|shell:\s*true/.test(src));
@@ -607,7 +612,7 @@ test('spec 49 test 1: two unrelated labs on the same code; no topic-specific wor
 
 test('spec 49 test 2: Run streams line by line, Stop ends the group, Reset is refused while up runs and runs down after', async () => {
   const { ws } = runWs({
-    up: '#!/bin/sh\necho "pid $$"\necho up > up-file\nwhile true; do echo tick; sleep 0.1; done\n',
+    up: '#!/bin/sh\nexec 2>/dev/null\necho "pid $$"\necho up > up-file\nwhile true; do echo tick; sleep 0.1; done\n',
     down: '#!/bin/sh\nrm -f up-file\necho removed\n',
   });
   const s = await labServer(ws);

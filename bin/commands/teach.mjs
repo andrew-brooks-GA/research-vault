@@ -15,11 +15,12 @@ import { scanCast, castTranscript } from '../lib/cast.mjs';
 import { hasVerdict } from '../lib/gate.mjs';
 import { readLabs, secretHits } from '../lib/labs.mjs';
 import { readBrand } from '../lib/brand.mjs';
+import { ptyAvailable } from '../lib/terminal.mjs';
 import { isInsideVault } from '../lib/containment.mjs';
 import { lintWorkspace, proseMetrics, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | cast check <file> [--needle <value>]... | cast transcript <file> | check [--dry-run] [--hints] <N> [workspace] | check --start <N>... [--minutes <M>] [--pass <P>] [--no-hints] [workspace] | check --certify [workspace] | check --cancel [workspace] | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [--labs] [workspace]';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | cast check <file> [--needle <value>]... | cast transcript <file> | check [--dry-run] [--hints] <N> [workspace] | check --start <N>... [--minutes <M>] [--pass <P>] [--no-hints] [workspace] | check --certify [workspace] | check --cancel [workspace] | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [--labs] [--terminal] [workspace]';
 
 const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
 const out = (s) => process.stdout.write(s + '\n');
@@ -281,8 +282,11 @@ function edges(ws) {
 // labs/labs.json exits 2, and the lab address is printed once, here, and nowhere else. D6: a lesson or reference page
 // that holds a declared env value gets one warning line. D5: with --labs, SIGINT, SIGTERM and SIGHUP run the Stop
 // sequence on every running lab group before exiting (a second signal exits at once), and exit sends each SIGKILL.
-// Spec 50 D4: an invalid brand/brand.json gets one line at start, and the pages are served unbranded.
-async function serve(ws, teachSchema, titles, labs) {
+// Spec 50 D4: an invalid brand/brand.json gets one line at start, and the pages are served unbranded. Plan 2026-11-18
+// browser terminal D1 and D2: --terminal needs python3 with its pty module, else exit 2; it makes t as --labs does and,
+// without --labs, prints the terminal: open line in place of the labs: open one; SIGINT, SIGTERM and SIGHUP send SIGHUP
+// to the shell's helper group before exiting, and exit sends it SIGKILL.
+async function serve(ws, teachSchema, titles, labs, terminal) {
   if (readBrand(ws).problems.length) process.stderr.write('brand: brand/brand.json is invalid; run teach lint\n');
   if (labs) {
     let manifest;
@@ -294,28 +298,34 @@ async function serve(ws, teachSchema, titles, labs) {
     const pages = [...lessons, ...reference].map((p) => [p.path.slice(1), readFileSync(join(ws, p.path), 'utf8')]);
     for (const [p, name] of secretHits(pages, manifest, process.env)) process.stderr.write(`warning: ${p} holds the value of ${name}\n`);
   }
-  const t = labs ? randomBytes(32).toString('hex') : undefined;
-  const server = createServer(ws, { schema: teachSchema, titles, labs, t, log: out });
+  if (terminal && !ptyAvailable('python3')) {
+    process.stderr.write('teach serve: --terminal needs python3 with its pty module\n');
+    return 2;
+  }
+  const t = labs || terminal ? randomBytes(32).toString('hex') : undefined;
+  const server = createServer(ws, { schema: teachSchema, titles, labs, terminal, t, log: out });
   await new Promise((ok, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', ok); });
   const { port } = server.address();
   const file = join(ws, '.teach-serve.json');
   writeFileSync(file, JSON.stringify({ port, pid: process.pid }) + '\n');
   process.on('exit', () => rmSync(file, { force: true }));
-  if (labs) {
+  if (labs || terminal) {
     let stopping = false;
     for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
       process.on(sig, () => {
         if (stopping) process.exit(0);
         stopping = true;
-        server.stopLabs().finally(() => process.exit(0));
+        server.stopShell?.();
+        Promise.resolve(server.stopLabs?.()).finally(() => process.exit(0));
       });
     }
-    process.on('exit', () => server.killLabs());
+    process.on('exit', () => { server.killLabs?.(); server.killShell?.(); });
   } else {
     for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(0)); // exit handler removes the file
   }
   out(`serving ${ws} at http://127.0.0.1:${port}/`);
   if (labs) out(`labs: open http://127.0.0.1:${port}/labs/open?t=${t}`);
+  else if (terminal) out(`terminal: open http://127.0.0.1:${port}/labs/open?t=${t}`);
   await new Promise((ok) => server.on('close', ok));
   return 0;
 }
@@ -414,7 +424,7 @@ export async function run(args) {
       const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws });
       if (existsSync(vaultPath)) titles = Object.fromEntries(buildManifest(vaultPath).entries.map((e) => [e.id, e.title ?? e.id]));
     } catch { /* serve without titles */ }
-    return serve(ws, teachSchema, titles, args.labs === true);
+    return serve(ws, teachSchema, titles, args.labs === true, args.terminal === true);
   }
   return usage();
 }

@@ -300,6 +300,14 @@ export const COUPLINGS = [
   ['bin/lib/lesson.mjs', 'skills/research-teach/BRAND-FORMAT.md', "the Lint section names lintWorkspace's BRAND_ codes (dividers.image under BRAND_FILE_MISSING, dividers under BRAND_ALT_MISSING), the contrast pairs and threshold, the style-colour forms and BRAND_VOICE's prose", 'BRAND_OFF_PALETTE'],
   ['bin/lib/teach.mjs', 'skills/research-teach/BRAND-FORMAT.md', "the Dividers section states the divider address createServer serves and exportWorkspace writes, the reading order withDividers builds and the page dividerHtml writes", '/dividers/'],
   ['bin/lib/teach.mjs', 'docs/REFERENCE.md', 'the teach section states the divider address createServer serves and exportWorkspace writes', '/dividers/'],
+  ['bin/commands/teach.mjs', 'docs/REFERENCE.md', 'the terminal: open line serve prints under --terminal without --labs is quoted', 'terminal: open http://127.0.0.1:'],
+  ['bin/commands/teach.mjs', 'SECURITY.md', 'the terminal: open line serve prints under --terminal without --labs is quoted', 'terminal: open http://127.0.0.1:'],
+  ['bin/commands/teach.mjs', 'docs/REFERENCE.md', "serve's refusal of --terminal without python3 and its pty module is quoted", 'teach serve: --terminal needs python3 with its pty module'],
+  ['bin/commands/teach.mjs', 'SECURITY.md', "serve's refusal of --terminal without python3 and its pty module is quoted", 'teach serve: --terminal needs python3 with its pty module'],
+  ['bin/lib/teach.mjs', 'docs/REFERENCE.md', "the teach serve section states createServer's /term/ routes, their bodies and refusals, next=/term/lessons/ and the --terminal framing headers", '/term/stream'],
+  ['bin/lib/teach.mjs', 'SECURITY.md', "the Terminal section states createServer's /term/ routes, their checks, bodies and refusals, next=/term/lessons/ and the --terminal framing headers", 'no terminal cookie; open the address teach serve printed'],
+  ['bin/lib/terminal.mjs', 'SECURITY.md', "the Terminal section states the helper's pty, the shell's environment, KEPT_MAX, UNSENT_MAX and the SIGHUP and SIGKILL to the helper's group", 'xterm-256color'],
+  ['bin/lib/terminal.mjs', 'docs/REFERENCE.md', "the teach serve section states the shell's environment, KEPT_MAX, UNSENT_MAX and the SIGHUP and SIGKILL to the helper's group", 'xterm-256color'],
 ];
 
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

@@ -17,6 +17,7 @@ import { lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWU
 import { HEADING_RE, TABLE_SEP_RE, WORKSPACE_GATES, hasVerdict } from './gate.mjs';
 import { readLabs, lessonLab, labRunner, secretHits, labCookie, LAB_ACTIONS, LAB_BODY_MAX, LAB_ID_RE } from './labs.mjs';
 import { readBrand, withBrand, brandUrl } from './brand.mjs';
+import { shellTerminal } from './terminal.mjs';
 
 export const ATTEMPT_BODY_MAX = 4096;
 export const LESSON_ID_RE = /^\d{4}-[a-z][a-z0-9-]*$/;
@@ -982,6 +983,10 @@ function postAttempt(req, res, workspaceDir, origin, schema, now) {
   });
 }
 
+// Plan 2026-11-18 browser terminal D3: the largest /term/ POST body, and the refusal without the cookie.
+const TERM_BODY_MAX = 65536;
+const NO_TERM_COOKIE = 'no terminal cookie; open the address teach serve printed\n';
+
 // Spec 49 D4: equal strings, compared in constant time once their byte lengths match.
 const same = (a, b) => {
   const x = Buffer.from(String(a)), y = Buffer.from(String(b));
@@ -996,17 +1001,23 @@ const same = (a, b) => {
 // LAB_OUTPUT_MAX. t and the session value are never written to a page, a response body or a log line. Under labs
 // the server carries stopLabs (the Stop sequence on every running group) and killLabs (SIGKILL to each) for the
 // caller's signal and exit handlers.
-export function createServer(workspaceDir, { schema, now = () => new Date(), titles = {}, labs = false, t, env = process.env, log = () => {}, limits } = {}) {
+// Plan 2026-11-18 browser terminal D1 to D3, under teach serve --terminal only (`terminal`): t, the lab address and the
+// cookie as under labs; the three /term/ routes on one shell (terminal.mjs), started as `python` running `shell` from
+// the workspace root; framing only by a page of this server. The server carries stopShell and killShell.
+export function createServer(workspaceDir, { schema, now = () => new Date(), titles = {}, labs = false, terminal = false, t, env = process.env, log = () => {}, limits,
+  shell = env.SHELL ? [env.SHELL, '-l'] : ['/bin/bash', '-l'], python = 'python3' } = {}) {
   const ws = resolve(workspaceDir);
   const clock = typeof now === 'function' ? now : () => now;
-  if (labs && !/^[0-9a-f]{64}$/.test(t ?? '')) throw new Error('teach serve --labs needs a lab address value of 64 hex characters');
+  if ((labs || terminal) && !/^[0-9a-f]{64}$/.test(t ?? '')) throw new Error('teach serve --labs or --terminal needs a lab address value of 64 hex characters');
   let session = null;
   const runner = labs ? labRunner(ws, { env, log, limits }) : null;
+  const term = terminal ? shellTerminal(ws, { shell, python, env }) : null;
   const hasCookie = (req, port) => session !== null && String(req.headers.cookie ?? '').split(';').some((p) => {
     const i = p.indexOf('=');
     return i !== -1 && p.slice(0, i).trim() === labCookie(port) && same(p.slice(i + 1).trim(), session);
   });
-  // A wrong or missing t is 403 and sets no cookie; next is used only when it is /lessons/<lesson id>.html.
+  // A wrong or missing t is 403 and sets no cookie; next is used only when it is /lessons/<lesson id>.html, or under
+  // terminal /term/lessons/<lesson id>.html.
   const openLabs = (req, res, port) => {
     if (req.method !== 'GET') return send(req, res, 405, 'method not allowed\n');
     const q = new URLSearchParams(req.url.includes('?') ? req.url.slice(req.url.indexOf('?') + 1) : '');
@@ -1014,24 +1025,32 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
     if (ts.length !== 1 || !same(ts[0], t)) return send(req, res, 403, 'forbidden\n');
     session ??= randomBytes(32).toString('hex');
     const next = q.get('next') ?? '';
-    const lesson = /^\/lessons\/([^/]+)\.html$/.exec(next)?.[1];
+    const [, termPage, lesson] = /^(\/term)?\/lessons\/([^/]+)\.html$/.exec(next) ?? [];
     res.writeHead(303, {
-      Location: lesson && LESSON_ID_RE.test(lesson) ? next : '/',
+      Location: lesson && LESSON_ID_RE.test(lesson) && (terminal || !termPage) ? next : '/',
       'Set-Cookie': `${labCookie(port)}=${session}; HttpOnly; SameSite=Strict; Path=/`,
       'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=utf-8', 'X-Content-Type-Options': 'nosniff',
     });
     res.end();
   };
-  // Checks 3 to 5 of a lab POST (1 and 2 are the caller's), in order, 3 and 4 before a byte of the body is read; then the
-  // runner's checks 6 to 13 and the action.
-  const postLab = (req, res, action, port) => {
+  // Checks 3 and 4 of a lab POST, in order, before a byte of the body is read: true when it was refused.
+  const refusePost = (req, res, port, max, noCookie) => {
     const type = req.headers['content-type'];
     const length = req.headers['content-length'];
     if (req.headers.origin !== `http://127.0.0.1:${port}` || !/^application\/json(;\s*charset=utf-8)?$/i.test(type ?? '') ||
-        (length !== undefined && !(Number(length) <= LAB_BODY_MAX))) {
-      return send(req, res, 403, 'forbidden\n', undefined, true);
+        (length !== undefined && !(Number(length) <= max))) {
+      send(req, res, 403, 'forbidden\n', undefined, true);
+      return true;
     }
-    if (!hasCookie(req, port)) return send(req, res, 403, 'no lab cookie; open the lab address teach serve printed\n', undefined, true);
+    if (!hasCookie(req, port)) {
+      send(req, res, 403, noCookie, undefined, true);
+      return true;
+    }
+    return false;
+  };
+  // Checks 3 to 5 of a lab POST (1 and 2 are the caller's); then the runner's checks 6 to 13 and the action.
+  const postLab = (req, res, action, port) => {
+    if (refusePost(req, res, port, LAB_BODY_MAX, 'no lab cookie; open the lab address teach serve printed\n')) return;
     readBody(req, res, LAB_BODY_MAX, (text) => {
       let body = null;
       try { body = JSON.parse(text); } catch { /* the 400 below */ }
@@ -1042,10 +1061,31 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
       send(req, res, refused[0], `${refused[1]}\n`);
     });
   };
+  // D3: POST /term/input and /term/resize, with the lab POST checks, then their body.
+  const postTerm = (req, res, route, port) => {
+    if (refusePost(req, res, port, TERM_BODY_MAX, NO_TERM_COOKIE)) return;
+    readBody(req, res, TERM_BODY_MAX, (text) => {
+      let body = null;
+      try { body = JSON.parse(text); } catch { /* the 400 below */ }
+      if (route === 'input') {
+        if (!keysAre(body, ['data']) || typeof body.data !== 'string') return send(req, res, 400, 'body must be {"data": "<text>"}\n');
+        return term.input(body.data) ? send(req, res, 200, 'ok\n') : send(req, res, 409, 'terminal not running\n');
+      }
+      const within = (n, max) => Number.isInteger(n) && n >= 1 && n <= max;
+      if (!keysAre(body, ['rows', 'cols']) || !within(body.rows, 500) || !within(body.cols, 1000)) {
+        return send(req, res, 400, 'body must be {"rows": <1 to 500>, "cols": <1 to 1000>}\n');
+      }
+      term.resize(body.rows, body.cols);
+      send(req, res, 200, 'ok\n');
+    });
+  };
   // requireHostHeader off: a missing Host gets our 403, not node:http's own 400.
   const server = http.createServer({ requireHostHeader: false }, (req, res) => {
     const base = `127.0.0.1:${server.address().port}`;
-    if (labs) { // spec 49 D4: no page of a --labs server can be framed, so none can be clicked through a frame
+    if (terminal) { // plan 2026-11-18 D1: only a page of this server may frame one, for the terminal page
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+      res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
+    } else if (labs) { // spec 49 D4: no page of a --labs server can be framed, so none can be clicked through a frame
       res.setHeader('X-Frame-Options', 'DENY');
       res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
     }
@@ -1057,10 +1097,16 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
       if (path === '/attempt') return postAttempt(req, res, ws, `http://${base}`, schema, clock);
       const action = /^\/lab\/([a-z]+)$/.exec(path)?.[1];
       if (labs && LAB_ACTIONS.includes(action)) return postLab(req, res, action, port);
+      const route = /^\/term\/(input|resize)$/.exec(path)?.[1];
+      if (terminal && route) return postTerm(req, res, route, port);
       return send(req, res, 404, 'not found\n', undefined, true);
     }
     if (!isBodyless) return send(req, res, 405, 'method not allowed\n', undefined, true);
-    if (labs && path === '/labs/open') return openLabs(req, res, port);
+    if ((labs || terminal) && path === '/labs/open') return openLabs(req, res, port);
+    if (terminal && path === '/term/stream') {
+      if (req.method !== 'GET') return send(req, res, 405, 'method not allowed\n');
+      return hasCookie(req, port) ? term.stream(res) : send(req, res, 403, NO_TERM_COOKIE);
+    }
     // Spec 50 D4: every HTML reply carries the brand, read on each request; with none, or an invalid one, the page as it is.
     const branded = (html) => {
       const { brand } = readBrand(ws);
@@ -1086,6 +1132,10 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
   if (runner) {
     server.stopLabs = runner.stopAll;
     server.killLabs = runner.killAll;
+  }
+  if (term) {
+    server.stopShell = term.stopShell;
+    server.killShell = term.killShell;
   }
   return server;
 }
