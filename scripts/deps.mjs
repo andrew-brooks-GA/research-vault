@@ -189,6 +189,7 @@ export const COUPLINGS = [
   ['bin/lib/lintrules.mjs', 'skills/research-review/SKILL.md', 'lint codes are named in prose', 'WARN_SOURCE_UNVERIFIED'],
   ['bin/lib/lintrules.mjs', 'skills/research-orchestrate/SKILL.md', 'lint codes are named in prose', 'WARN_SYNTHESIS_MONOLITHIC'],
   ['bin/lib/advise.mjs', 'skills/research-librarian/SKILL.md', "'thirteen sections', their list and OPEN_QUESTION_DAYS as 60 days", /\b60\b/],
+  ['bin/lib/advise.mjs', 'skills/research-librarian/SKILL.md', 'the field of a pair at one source_url with one version absent', 'source_url-unversioned'],
   ['bin/lib/advise.mjs', 'docs/REFERENCE.md', 'OPEN_QUESTION_DAYS is written as 60 days in the advise row', /\b60\b/],
   ['bin/lib/advise.mjs', 'bin/commands/search.mjs', 'the queried event fields kind, ids, topic and outcome that the usage report counts', 'no-match'],
   ['skills/research-teach/LESSON-FORMAT.md', 'skills/research-teach/SKILL.md', "the mission block's sentence list (the win, the idea, the activity) is restated in step 5; the checked task's setup.sh, check.sh and solution.sh and the run.sh sequence (setup, check, solution, check, setup, check, exit 0 on 1, 0, 1) are stated in section 3 and the step form in Checked task", 'the idea'],

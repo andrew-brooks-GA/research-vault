@@ -298,3 +298,24 @@ test('advise reports usage from the log: surfaced and cited counts, topic counts
   assert.match(out, /^cold sources under a queried topic \(1\): 2026-01-01-a$/m);
   assert.match(out, /^cold sources never queried \(1\): 2026-03-01-c$/m);
 });
+
+// Issue 72 item 8: one URL captured with a subject version and without one is paired; two versions of one URL are not,
+// and an empty version counts as none.
+test('advise pairs one source_url captured with a version and without one (issue 72 item 8)', () => {
+  const dir = tmpVault();
+  const src = (id, url, extra = {}) => put(dir, 'source', id, { source_type: 'article', source_url: url, ...extra });
+  src('2026-01-01-a', 'https://example.com/docs', { subject: { name: 'tool', version: '1.0' } });
+  src('2026-02-01-b', 'https://example.com/docs');
+  src('2026-03-01-c', 'https://example.com/other', { subject: { name: 'thing', version: '2' } });
+  src('2026-04-01-d', 'https://example.com/other', { subject: { name: 'thing', version: '3' } });
+  src('2026-05-01-e', 'https://example.com/plain', { subject: { name: 'plain', version: '' } });
+  src('2026-06-01-f', 'https://example.com/plain', { subject: { name: 'plain', version: '1' }, status: 'superseded', superseded_by: '2026-05-01-e' });
+  src('2026-07-01-g', 'https://example.com/empty', { subject: { name: 'empty', version: '' } });
+  src('2026-08-01-h', 'https://example.com/empty');
+  assert.deepEqual(advise(dir, process.cwd()).supersedeSuspects, [
+    { older: '2026-01-01-a', newer: '2026-02-01-b', by: 'source_url-unversioned' },
+    { older: '2026-07-01-g', newer: '2026-08-01-h', by: 'source_url' },
+  ]);
+  const out = execFileSync('node', ['bin/research-vault.mjs', 'advise', '--vault', dir], { encoding: 'utf8' });
+  assert.match(out, /^supersede suspects \(2\): 2026-01-01-a -> 2026-02-01-b \(source_url-unversioned\), 2026-07-01-g -> 2026-08-01-h \(source_url\)$/m);
+});
