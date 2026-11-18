@@ -213,3 +213,14 @@ test('issue 72 item 1: the next lock holder removes the temporary link a killed 
   assert.equal(f.run().operation.phase, 'complete');
   assert.deepEqual(litter(), ['other.md.tmp']);
 });
+test('issue 72 item 2: an entry takes the mode capture without --operation-id gives one', { skip: process.platform === 'win32' }, async () => {
+  const { captureEntry } = await import('../bin/commands/capture.mjs');
+  const f = fixture([{ type: 'question', title: 'By the operation' }]);
+  // ponytail: umask is process-wide; fine while this file's tests run one after another.
+  const old = process.umask(0o002);
+  let op, legacy; try { op = f.run(); legacy = captureEntry(f.vault, { type: 'question', title: 'By capture', now }).path; } finally { process.umask(old); }
+  assert.equal(op.operation.phase, 'complete');
+  const mode = p => fs.statSync(p).mode & 0o777;
+  assert.equal(mode(legacy), 0o664);
+  assert.equal(mode(op.created[0].path), 0o664);
+});

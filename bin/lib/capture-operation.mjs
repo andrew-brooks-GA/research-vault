@@ -212,7 +212,8 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
       try {
         event('artifact', row);
         fs.mkdirSync(dirname(path), { recursive: true });
-        fs.writeFileSync(tmp, rendered[row.index].text, { flag: 'wx', mode: 0o600 });
+        // Issue 72 item 2: the default mode, as capture without --operation-id writes an entry.
+        fs.writeFileSync(tmp, rendered[row.index].text, { flag: 'wx' });
         // link is exclusive: EEXIST never replaces another writer's destination.
         fs.linkSync(tmp, path);
         row.state = 'created';
