@@ -83,7 +83,7 @@ export function shellTerminal(cwd, { shell, python = 'python3', env = process.en
       if (kept.length > KEPT_MAX) { const tail = kept.subarray(-KEPT_MAX); kept = tail.subarray(tail.indexOf(10) + 1); } // after a newline
       for (const res of streams) {
         res.write(d);
-        if (res.writableLength > UNSENT_MAX) { streams.delete(res); res.end(); } // the page opens it again and gets the replay
+        if (res.writableLength > UNSENT_MAX) { streams.delete(res); res.destroy(); } // cut, not ended: the page opens it again and gets the replay
       }
     });
     // 'close', not 'exit': the last output has been read.
@@ -92,7 +92,7 @@ export function shellTerminal(cwd, { shell, python = 'python3', env = process.en
       for (const res of streams) res.end();
       streams.clear();
     });
-    if (size) c.stdio[3].write(size);
+    c.stdio[3].write(size ?? '24 80\n'); // a shell no page has sized yet starts at 24 by 80, not 0 by 0
   };
   const group = (sig) => { if (child?.pid) try { process.kill(-child.pid, sig); } catch { /* gone */ } };
   return {

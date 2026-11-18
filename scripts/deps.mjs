@@ -307,6 +307,11 @@ export const COUPLINGS = [
   ['bin/lib/teach.mjs', 'docs/REFERENCE.md', "the teach serve section states createServer's /term/ routes, their bodies and refusals, next=/term/lessons/ and the --terminal framing headers", '/term/stream'],
   ['bin/lib/teach.mjs', 'SECURITY.md', "the Terminal section states createServer's /term/ routes, their checks, bodies and refusals, next=/term/lessons/ and the --terminal framing headers", 'no terminal cookie; open the address teach serve printed'],
   ['bin/lib/terminal.mjs', 'SECURITY.md', "the Terminal section states the helper's pty, the shell's environment, KEPT_MAX, UNSENT_MAX and the SIGHUP and SIGKILL to the helper's group", 'xterm-256color'],
+  ['bin/lib/teach.mjs', 'skills/research-teach/terminal/terminal.mjs', 'the page reads the shell\'s output on the route createServer answers', '/term/stream'],
+  ['bin/lib/teach.mjs', 'skills/research-teach/terminal/terminal.mjs', 'the page posts what is typed to the route createServer answers', '/term/input'],
+  ['bin/lib/teach.mjs', 'skills/research-teach/terminal/terminal.mjs', 'the page posts its size to the route createServer answers', '/term/resize'],
+  ['bin/lib/teach.mjs', 'skills/research-teach/terminal/terminal.mjs', 'INPUT_MAX, the body size the input queue splits at, is TERM_BODY_MAX', '65536'],
+  ['bin/lib/teach.mjs', 'skills/research-teach/terminal/terminal.mjs', 'the script opens the terminal in the .term-screen element and finds the frame of the page termPage builds', 'term-screen'],
   ['bin/lib/terminal.mjs', 'docs/REFERENCE.md', "the teach serve section states the shell's environment, KEPT_MAX, UNSENT_MAX and the SIGHUP and SIGKILL to the helper's group", 'xterm-256color'],
 ];
 

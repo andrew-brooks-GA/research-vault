@@ -3,16 +3,17 @@
 // its pty module. Every shell a test starts is stopped, and every connection closed, before the file ends.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, writeFileSync, realpathSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { request } from 'node:http';
 import { once } from 'node:events';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import { createServer } from '../bin/lib/teach.mjs';
 import { HELPER, ptyAvailable } from '../bin/lib/terminal.mjs';
+import { inputQueue, runText } from '../skills/research-teach/terminal/terminal.mjs';
 import { loadTeachSchema } from '../bin/lib/schema.mjs';
 import { fixtureVault } from './helpers.mjs';
 
@@ -20,6 +21,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'research-vault.mjs');
 const SCHEMA = loadTeachSchema(ROOT);
 const SHELL = ['/bin/bash', '--noprofile', '--norc', '-i'];
+const TERM_DIR = join(ROOT, 'skills', 'research-teach', 'terminal');
 const skip = spawnSync('python3', ['-c', 'import pty']).status !== 0 && 'needs python3 with its pty module';
 const newT = () => randomBytes(32).toString('hex');
 const made = [];
@@ -243,6 +245,15 @@ test('a shell that exits while a background job holds the terminal open still en
   assert.deepEqual([r.status, r.text], [409, 'terminal not running\n']);
 });
 
+test('a shell no page has sized starts at 24 by 80', { skip }, async () => {
+  const t = newT();
+  const { port } = await start(workspace(), { terminal: true, t });
+  const cookie = await openCookie(port, t);
+  const s = await openStream(port, cookie);
+  assert.equal((await post(port, 'input', { data: 'stty size\n' }, { cookie })).status, 200);
+  await waitFor(s, /\n24 80\r?\n/);
+});
+
 test('past 256 KiB of output, a new stream replays at most 262144 bytes, starting right after a newline', { skip }, async () => {
   const t = newT();
   const { port } = await start(workspace(), { terminal: true, t });
@@ -321,4 +332,96 @@ test('teach serve --terminal prints the terminal: open line; with --labs too, on
       await once(child, 'exit');
     }
   }
+});
+
+
+// Commit 2: the terminal page (D4 to D6). These start no shell, so they run without python3.
+test('the vendored xterm.js files and their licences are the npm files, pinned by SHA-256', () => {
+  for (const [f, sha] of [['xterm.mjs', 'b336ec65a086c056d4804b3d4c2347da5663d3f23c3f25be866467bd8857ad59'],
+    ['xterm.css', '854a7c0fb70e8b1a083c16797ab827299fb18744f5ad34f227b48337e33293c6'], ['addon-fit.mjs', '2d87e1bddc73be9111de8beee5370c3bb7aac9c94e18e6f245f02ca741ef1769'],
+    ['LICENSE-xterm', 'b569f629d00f2626a8100df2a1798210535621e42164dfd426a6fe5aac7b0ccd'], ['LICENSE-addon-fit', 'e256f01188af527e4d06d21d06fbf785ae9c50d4b328bf03cbe0ba7f0aa4228f']]) {
+    assert.equal(createHash('sha256').update(readFileSync(join(TERM_DIR, f))).digest('hex'), sha, f);
+  }
+});
+
+test('/terminal/<file> sends each file of the terminal folder with its type, with no cookie, under --terminal only; any other name is 404', async () => {
+  const js = 'text/javascript; charset=utf-8', css = 'text/css; charset=utf-8', txt = 'text/plain; charset=utf-8';
+  const types = { 'terminal.mjs': js, 'xterm.mjs': js, 'addon-fit.mjs': js, 'terminal.css': css, 'xterm.css': css, 'LICENSE-xterm': txt, 'LICENSE-addon-fit': txt };
+  assert.deepEqual(readdirSync(TERM_DIR).sort(), Object.keys(types).sort(), 'the folder holds these files');
+  const t = newT();
+  const on = await start(workspace(), { terminal: true, t });
+  const off = await start(workspace(), { labs: true, t, env: {} });
+  for (const [f, type] of Object.entries(types)) {
+    const r = await req(on.port, { path: `/terminal/${f}` });
+    assert.deepEqual([r.status, r.headers['content-type'], r.text === readFileSync(join(TERM_DIR, f), 'utf8')], [200, type, true], f);
+    assert.equal((await req(off.port, { path: `/terminal/${f}` })).status, 404, `${f} without --terminal`);
+  }
+  for (const p of ['/terminal/', '/terminal/nope.mjs', '/terminal/../terminal.mjs', '/terminal/%2e%2e/assets/quiz.js', '/terminal/xterm.mjs/x', '/terminal/../../bin/lib/teach.mjs']) {
+    assert.equal((await req(on.port, { path: p })).status, 404, p);
+  }
+});
+
+test('/term/lessons/<lesson id>.html: with the cookie, the page framing /lessons/<lesson id>.html beside the terminal; 403 without; 404 for no lesson file', async () => {
+  const ws = join(tempDir('rv-term-page-'), 'my <ws> & "x"');
+  mkdirSync(join(ws, 'lessons'), { recursive: true });
+  writeFileSync(join(ws, 'lessons', '0001-intro.html'), '<!doctype html><title>Intro</title>\n');
+  const t = newT();
+  const { port } = await start(ws, { terminal: true, t });
+  const cookie = await openCookie(port, t);
+  const r = await req(port, { path: '/term/lessons/0001-intro.html', headers: { Cookie: cookie } });
+  assert.deepEqual([r.status, r.headers['content-type']], [200, 'text/html; charset=utf-8']);
+  assert.match(r.text, /<iframe [^>]*src="\/lessons\/0001-intro\.html"/);
+  assert.ok(r.text.includes('>my &lt;ws&gt; &amp; &quot;x&quot;<'), 'the folder name, escaped');
+  assert.ok(!r.text.includes(dirname(ws)), 'the folder name only, not its path');
+  for (const tag of ['<link rel="stylesheet" href="/terminal/xterm.css">', '<link rel="stylesheet" href="/terminal/terminal.css">',
+    '<script type="module" src="/terminal/terminal.mjs"></script>']) assert.ok(r.text.includes(tag), tag);
+  for (const c of [undefined, `rv-labs-${port}=${newT()}`]) {
+    const no = await req(port, { path: '/term/lessons/0001-intro.html', headers: { Cookie: c } });
+    assert.deepEqual([no.status, no.text], [403, 'no terminal cookie; open the address teach serve printed\n'], String(c));
+  }
+  for (const p of ['/term/lessons/0002-none.html', '/term/lessons/x.html', '/term/lessons/0001-intro', '/term/lessons/../MISSION.md', '/term/lessons/0001-intro.html/x']) {
+    assert.equal((await req(port, { path: p, headers: { Cookie: cookie } })).status, 404, p);
+  }
+  const labs = await start(ws, { labs: true, t, env: {} });
+  const labsCookie = await openCookie(labs.port, t);
+  assert.equal((await req(labs.port, { path: '/term/lessons/0001-intro.html', headers: { Cookie: labsCookie } })).status, 404, 'without --terminal');
+});
+
+test('the input queue sends one request at a time, joins what is typed while one is out, and splits text into bodies of at most 65536 bytes', async () => {
+  const sent = [];
+  let reply;
+  const typeIn = inputQueue((data) => { sent.push(data); return new Promise((r) => { reply = r; }); });
+  typeIn('l');
+  typeIn('s');
+  typeIn('\r');
+  assert.deepEqual(sent, ['l']);
+  reply();
+  await until(() => sent.length === 2, 'the second request');
+  assert.deepEqual(sent, ['l', 's\r']);
+  reply();
+  await new Promise((r) => setImmediate(r));
+  assert.equal(sent.length, 2, 'nothing left to send');
+  const after = [];
+  let throws = true;
+  const typeAfter = inputQueue((data) => { after.push(data); if (throws) { throws = false; throw new Error('no network'); } });
+  typeAfter('a');
+  typeAfter('b');
+  await until(() => after.length === 2, 'the request after a send that threw');
+  assert.deepEqual(after, ['a', 'b']);
+  const parts = [];
+  const big = 'x'.repeat(70000) + '\u001b'.repeat(20000) + '\u20ac'.repeat(30000) + '\u{1F600}'.repeat(10000) + '"\\';
+  const typeBig = inputQueue(async (data) => { parts.push(data); });
+  typeBig(big);
+  await until(() => parts.join('').length === big.length, 'every part');
+  assert.equal(parts.join(''), big);
+  const size = (data) => Buffer.byteLength(JSON.stringify({ data }));
+  for (const [i, p] of parts.entries()) {
+    assert.ok(size(p) <= 65536 && p.isWellFormed(), `part ${i}: ${size(p)} bytes`);
+    if (i < parts.length - 1) assert.ok(size(p + [...parts[i + 1]][0]) > 65536, `part ${i} is as long as fits`);
+  }
+});
+
+test('Run sends the <pre> text lines joined by carriage returns, with one carriage return at the end', () => {
+  assert.equal(runText('evidence/0001/setup.sh'), 'evidence/0001/setup.sh\r');
+  assert.equal(runText('evidence/0001/setup.sh\n./check 1\n'), 'evidence/0001/setup.sh\r./check 1\r');
 });

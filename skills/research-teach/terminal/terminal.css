@@ -1,0 +1,15 @@
+/* Plan 2026-11-18 browser terminal D4: the lesson on the left, its edge dragged to change the split; the terminal on
+   the right, under the workspace folder's name. Below 900 px wide, the terminal goes under the lesson. */
+html, body { height: 100%; margin: 0; }
+body { display: flex; background: #000; color: #ddd; font: 14px system-ui, sans-serif; }
+.term-lesson { resize: horizontal; overflow: hidden; width: 55%; min-width: 240px; max-width: calc(100% - 240px); background: #fff; }
+.term-lesson iframe { display: block; width: 100%; height: 100%; border: 0; }
+.term-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.term-folder { margin: 0; padding: 6px 10px; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.term-screen { flex: 1; min-height: 0; padding: 0 4px; }
+.term-ended { margin: 0; padding: 6px 10px; }
+@media (max-width: 900px) {
+  body { flex-direction: column; height: auto; }
+  .term-lesson { width: auto; max-width: none; height: 60vh; resize: none; }
+  .term-pane { height: 60vh; }
+}

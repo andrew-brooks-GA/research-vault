@@ -986,6 +986,25 @@ function postAttempt(req, res, workspaceDir, origin, schema, now) {
 // Plan 2026-11-18 browser terminal D3: the largest /term/ POST body, and the refusal without the cookie.
 const TERM_BODY_MAX = 65536;
 const NO_TERM_COOKIE = 'no terminal cookie; open the address teach serve printed\n';
+// D5: GET /terminal/<file> sends these files of the plugin's terminal folder, with their types, and nothing else.
+const TERMINAL_DIR = fileURLToPath(new URL('../../skills/research-teach/terminal/', import.meta.url));
+const TERMINAL_FILES = {
+  'terminal.mjs': CONTENT_TYPES['.js'], 'xterm.mjs': CONTENT_TYPES['.js'], 'addon-fit.mjs': CONTENT_TYPES['.js'],
+  'terminal.css': CONTENT_TYPES['.css'], 'xterm.css': CONTENT_TYPES['.css'],
+  'LICENSE-xterm': 'text/plain; charset=utf-8', 'LICENSE-addon-fit': 'text/plain; charset=utf-8',
+};
+// D4: the terminal page: the lesson in a frame on the left, the terminal on the right under the workspace folder's name.
+const termPage = (ws, id) => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${id}: terminal</title>
+<link rel="stylesheet" href="/terminal/xterm.css">
+<link rel="stylesheet" href="/terminal/terminal.css">
+<script type="module" src="/terminal/terminal.mjs"></script>
+</head><body>
+<div class="term-lesson"><iframe src="/lessons/${id}.html" title="Lesson ${id}"></iframe></div>
+<section class="term-pane" aria-label="Terminal"><p class="term-folder">${escapeHtml(basename(ws))}</p><div class="term-screen"></div></section>
+</body></html>
+`;
 
 // Spec 49 D4: equal strings, compared in constant time once their byte lengths match.
 const same = (a, b) => {
@@ -1097,7 +1116,7 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
       if (path === '/attempt') return postAttempt(req, res, ws, `http://${base}`, schema, clock);
       const action = /^\/lab\/([a-z]+)$/.exec(path)?.[1];
       if (labs && LAB_ACTIONS.includes(action)) return postLab(req, res, action, port);
-      const route = /^\/term\/(input|resize)$/.exec(path)?.[1];
+      const route = { '/term/input': 'input', '/term/resize': 'resize' }[path];
       if (terminal && route) return postTerm(req, res, route, port);
       return send(req, res, 404, 'not found\n', undefined, true);
     }
@@ -1106,6 +1125,16 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
     if (terminal && path === '/term/stream') {
       if (req.method !== 'GET') return send(req, res, 405, 'method not allowed\n');
       return hasCookie(req, port) ? term.stream(res) : send(req, res, 403, NO_TERM_COOKIE);
+    }
+    if (terminal && path.startsWith('/term/lessons/')) {
+      if (!hasCookie(req, port)) return send(req, res, 403, NO_TERM_COOKIE);
+      const id = /^\/term\/lessons\/([^/]+)\.html$/.exec(path)?.[1];
+      const lesson = id && LESSON_ID_RE.test(id) && statSync(join(ws, 'lessons', `${id}.html`), { throwIfNoEntry: false });
+      return lesson && lesson.isFile() ? send(req, res, 200, termPage(ws, id), 'text/html; charset=utf-8') : send(req, res, 404, 'not found\n');
+    }
+    if (terminal && path.startsWith('/terminal/')) {
+      const name = path.slice('/terminal/'.length);
+      return Object.hasOwn(TERMINAL_FILES, name) ? send(req, res, 200, readFileSync(join(TERMINAL_DIR, name)), TERMINAL_FILES[name]) : send(req, res, 404, 'not found\n');
     }
     // Spec 50 D4: every HTML reply carries the brand, read on each request; with none, or an invalid one, the page as it is.
     const branded = (html) => {
