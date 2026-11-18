@@ -359,7 +359,26 @@ export function stagedGates(repoRoot, vaultPath, cfg, cwd = repoRoot) {
   const gated = new Set(gatedFiles(top, vaultPath, cfg));
   // A gated page is also judged when an image it references is staged.
   const pages = [...gated].filter((f) => staged.includes(f) || referencedImages(f).some((i) => staged.includes(i)));
-  return pages.map((f) => { const { file, verdict, reviewerChanged } = gateStatus(repoRoot, f); return { file, verdict, ...(reviewerChanged && { reviewerChanged }) }; });
+  const cache = {};
+  return pages.map((f) => {
+    const { file, verdict, reviewerChanged, units } = gateStatus(repoRoot, f);
+    const missing = verdict ? 0 : missingEvidence(repoRoot, f, vaultPath, units, cache);
+    return { file, verdict, ...(reviewerChanged && { reviewerChanged }), ...(missing && { missing }) };
+  });
+}
+
+// Issue 72 item 12: how many ids the changed units of a Markdown file cite that this vault does not hold. A doc gated
+// against another vault cites them, and those units cannot pass here until that evidence is rebuilt. Code files are not
+// counted. `cache` lets a caller build the vault's manifest once for many files.
+export function missingEvidence(repoRoot, filePath, vaultPath, units, cache = {}) {
+  try {
+    const abs = resolve(repoRoot, filePath);
+    if (codeLang(repoRoot, abs)) return 0;
+    const text = readFileSync(abs, 'utf8');
+    const cites = changedCites(text, !pageBlocks(text, abs).size ? mdUnits(text) : [], units?.length ? units : null);
+    const rows = checkCitations(cites, (cache.manifest ??= buildManifest(vaultPath)).entries, loadSchema(REPO_ROOT), new Date().toISOString().slice(0, 10));
+    return new Set(rows.filter((r) => r.status === 'uncovered' && r.type === 'id').map((r) => r.value)).size;
+  } catch { return 0; }
 }
 
 // The files of a teach workspace the gate covers; `teach export` gates exactly these.

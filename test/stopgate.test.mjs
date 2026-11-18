@@ -178,3 +178,15 @@ test('CLI gives no decision for a changed .lua file in a repo without a code blo
   assert.equal(r.code, 0, r.err);
   assert.equal(r.out, '');
 });
+
+// Issue 72 item 12: the Stop hook names the cited ids this vault lacks.
+test('missingGates counts the cited ids this vault lacks, and the reason line names them (issue 72 item 12)', () => {
+  const { root, vault } = repo();
+  mkdirSync(join(root, 'docs'), { recursive: true });
+  writeFileSync(join(root, 'docs', 'x.md'), '# X\n\n<!-- evidence: 2026-09-09-not-here -->\n\nA claim.\n');
+  const cfg = { gates: { globs: ['docs/*.md'] } };
+  const m = missingGates(root, vault, cfg, 0).find((r) => r.file === 'docs/x.md');
+  assert.equal(m.missing, 1);
+  assert.equal(reasonLine(m), '- docs/x.md: 1 cited id not in this vault: rebuild that evidence, then run the research-claims-gate skill, then research-vault gate record docs/x.md PASS|MERIT');
+  assert.equal(reasonLine({ file: 'docs/y.md', sha256: 'x' }), '- docs/y.md: run the research-claims-gate skill, then research-vault gate record docs/y.md PASS|MERIT');
+});

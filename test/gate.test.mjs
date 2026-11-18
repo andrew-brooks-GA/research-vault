@@ -847,3 +847,29 @@ test('gate evidence leaves the ledger file\'s bytes unchanged', () => {
   ev(); ev('--changed'); ev('--changed', '--json', '--extra', '2026-01-01-old');
   assert.deepEqual(readFileSync(join(root, LEDGER_FILENAME)), before);
 });
+
+// Issue 72 item 12: a file with no verdict counts the ids its changed units cite that this vault does not hold, and names each cause.
+test('gate staged and gate status count the cited ids of the changed units that this vault does not hold (issue 72 item 12)', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault, gates: { globs: ['docs/*.md'] } }) + '\n');
+  writeFileSync(join(root, 'docs', 'elsewhere.md'), '# Elsewhere\n\n<!-- evidence: 2026-09-09-not-here 2026-09-10-nor-here 2026-01-01-fx-experiment -->\n\nA claim.\n');
+  const git = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  git('add', 'docs/reply.md', 'docs/elsewhere.md');
+  const st = gateCli(root, vault, 'staged', '--check');
+  assert.equal(st.code, 1, st.err);
+  assert.equal(st.out, 'docs/elsewhere.md: none (2 cited ids not in this vault)\ndocs/reply.md: none\n');
+  assert.ok(gateCli(root, vault, 'status', 'docs/elsewhere.md').out.startsWith('docs/elsewhere.md: none (2 cited ids not in this vault) @ '));
+  // A row from another reviewer and the missing ids are both named.
+  const row = recordVerdict(root, join(root, 'docs', 'elsewhere.md'), 'MERIT');
+  writeFileSync(join(root, LEDGER_FILENAME), JSON.stringify({ ...row, reviewer: 'f'.repeat(64) }) + '\n');
+  assert.ok(gateCli(root, vault, 'status', 'docs/elsewhere.md').out.startsWith('docs/elsewhere.md: none (reviewer changed; 2 cited ids not in this vault) @ '));
+  gateCli(root, vault, 'record', 'docs/elsewhere.md', 'MERIT');
+  assert.ok(gateCli(root, vault, 'staged').out.startsWith('docs/elsewhere.md: MERIT\n'));
+  // Only the changed unit's ids count: section B cites an id the vault holds, section A one it does not.
+  writeFileSync(join(root, 'docs', 'split.md'), '# Split\n\n## A\n\n<!-- evidence: 2026-09-09-not-here -->\n\nOne.\n\n## B\n\n<!-- evidence: 2026-01-01-fx-experiment -->\n\nTwo.\n');
+  gateCli(root, vault, 'record', 'docs/split.md', 'PASS');
+  writeFileSync(join(root, 'docs', 'split.md'), '# Split\n\n## A\n\n<!-- evidence: 2026-09-09-not-here -->\n\nOne.\n\n## B\n\n<!-- evidence: 2026-01-01-fx-experiment -->\n\nTwo, changed.\n');
+  assert.ok(gateCli(root, vault, 'status', 'docs/split.md').out.startsWith('docs/split.md: none @ '));
+});

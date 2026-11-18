@@ -6,13 +6,18 @@ import { resolveVault } from '../lib/resolve.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { loadSchema } from '../lib/schema.mjs';
 import { csvList } from '../lib/args.mjs';
-import { VERDICTS, recordVerdict, gateStatus, evidenceFor, renderEvidence, changedUnits, codeLang, ledgerKey, ledgerRoot, stagedGates } from '../lib/gate.mjs';
+import { VERDICTS, recordVerdict, gateStatus, evidenceFor, renderEvidence, changedUnits, codeLang, ledgerKey, ledgerRoot, stagedGates, missingEvidence } from '../lib/gate.mjs';
 import { readVersions } from '../lib/codelinks.mjs';
 import { buildPacket } from '../lib/packet.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // `none (reviewer changed)`: the file's passing rows were given by another version of the reviewer.
-const label = (s) => s.verdict ?? (s.reviewerChanged ? 'none (reviewer changed)' : 'none');
+// Issue 72 item 12: a file with no verdict names each cause the gate can see: another reviewer, or cited ids this vault lacks.
+const label = (s) => {
+  if (s.verdict) return s.verdict;
+  const why = [s.reviewerChanged && 'reviewer changed', s.missing && `${s.missing} cited id${s.missing === 1 ? '' : 's'} not in this vault`].filter(Boolean);
+  return why.length ? `none (${why.join('; ')})` : 'none';
+};
 const USAGE = `usage: research-vault gate evidence <draft> [--extra ids] [--changed] [--json] [--packet <dir> --run <key>] | changed <draft> | record <file> <${VERDICTS.join('|')}> [note] | status <file> [--check] | staged [--check]`;
 
 export async function run(args) {
@@ -77,6 +82,7 @@ export async function run(args) {
     return 0;
   }
   const s = gateStatus(repoRoot, abs);
+  if (!s.verdict) s.missing = missingEvidence(repoRoot, abs, vaultPath, s.units);
   process.stdout.write(`${s.file}: ${label(s)} @ ${s.sha256.slice(0, 12)}${s.units?.length && !(s.units.length === 1 && s.units[0] === 'all') ? ` (changed units: ${s.units.join(', ')})` : ''}\n`);
   return args.check && !s.verdict ? 1 : 0;
 }
