@@ -466,15 +466,22 @@ test('teach readme prints one Labs row per manifest lab after the lessons/files/
   assert.ok(!readmeDraft(ws).includes('labs/labs.json'));
 });
 
-test('one file imports child_process and one function spawns, with no shell and no argument; no exec, execFile or eval in the serve path (spec 49 D5)', () => {
-  const serve = ['bin/lib/labs.mjs', 'bin/lib/teach.mjs', 'bin/lib/lesson.mjs', 'bin/commands/teach.mjs', 'bin/lib/args.mjs', 'skills/research-teach/assets/quiz.js'];
+test('in the serve path only labs.mjs and task.mjs import child_process, and spawn is called once in each, in launch and runChecker, with no shell; no exec, execFile or eval (spec 49 D5, issue 79 D4)', () => {
+  const serve = ['bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/teach.mjs', 'bin/lib/lesson.mjs', 'bin/commands/teach.mjs', 'bin/lib/args.mjs', 'skills/research-teach/assets/quiz.js'];
   const RUNS = /child_process|\bspawn\b|(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function/;
-  for (const f of serve.slice(1)) assert.ok(!RUNS.test(readFileSync(join(ROOT, f), 'utf8')), f);
+  for (const f of serve.slice(2)) assert.ok(!RUNS.test(readFileSync(join(ROOT, f), 'utf8')), f);
   // gate.mjs is in the serve path. The Codex installer/reviewer are separate entry points, never serve dependencies.
   const walk = (d) => readdirSync(join(ROOT, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith('.mjs') ? [join(d, e.name)] : []));
-  assert.deepEqual(walk('bin').filter((f) => readFileSync(join(ROOT, f), 'utf8').includes('child_process')).sort(), ['bin/lib/codex-review.mjs', 'bin/lib/gate.mjs', 'bin/lib/host-install.mjs', 'bin/lib/labs.mjs']);
+  assert.deepEqual(walk('bin').filter((f) => readFileSync(join(ROOT, f), 'utf8').includes('child_process')).sort(), ['bin/lib/codex-review.mjs', 'bin/lib/gate.mjs', 'bin/lib/host-install.mjs', 'bin/lib/labs.mjs', 'bin/lib/task.mjs']);
   for (const file of serve) assert.doesNotMatch(readFileSync(join(ROOT, file), 'utf8'), /from ['"][^'"]*(?:codex-review|host-install)\.mjs['"]/);
   assert.match(readFileSync(join(ROOT, 'bin/lib/gate.mjs'), 'utf8'), /import \{ execFileSync \} from 'node:child_process';/);
+  // Issue 79 D4: task.mjs starts a checked task's checker; its one spawn call is in runChecker.
+  const task = readFileSync(join(ROOT, 'bin/lib/task.mjs'), 'utf8');
+  assert.deepEqual(task.match(/^import .*child_process.*$/gm), ["import { spawn } from 'node:child_process';"]);
+  assert.ok(!/(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function|shell:\s*true/.test(task));
+  assert.equal([...task.matchAll(/\bspawn\(/g)].length, 1);
+  const runChecker = task.slice(task.indexOf('export function runChecker('), task.indexOf('\n}\n', task.indexOf('export function runChecker(')));
+  assert.match(runChecker, /spawn\(join\(ws, 'evidence', nnnn, 'check\.sh'\), \[\], \{ cwd: ws, env, shell: false, detached: true, stdio: \['ignore', 'pipe', 'pipe'\] \}\)/);
   const src = readFileSync(join(ROOT, 'bin/lib/labs.mjs'), 'utf8');
   assert.deepEqual(src.match(/^import .*child_process.*$/gm), ["import { spawn } from 'node:child_process';"]);
   assert.ok(!/(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function|shell:\s*true/.test(src));
@@ -555,7 +562,8 @@ const text = async (reply) => { const res = await reply; return [res.status, awa
 test('spec 49 test 1: two unrelated labs on the same code; no topic-specific word in the runner or the widget', async () => {
   // A: up keeps a background sleep, a stand-in service, in its foreground; verify checks it while up runs.
   const a = runWs({
-    up: '#!/bin/sh\nsleep 61 &\necho $! > service.pid\necho ready\nwait\n',
+    // The shell's own stderr goes to /dev/null: under load it can report the stopped sleep ("Terminated") before it is stopped itself.
+    up: '#!/bin/sh\nexec 2>/dev/null\nsleep 61 &\necho $! > service.pid\necho ready\nwait\n',
     verify: '#!/bin/sh\nkill -0 "$(cat service.pid)"\n',
     down: '#!/bin/sh\nrm -f service.pid\n',
   });

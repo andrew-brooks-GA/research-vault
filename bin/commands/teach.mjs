@@ -9,16 +9,17 @@ import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
 import { TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
-import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft, exportWorkspace, writeExport, lessonIndex, escapeHtml } from '../lib/teach.mjs';
+import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft, exportWorkspace, writeExport, lessonIndex, escapeHtml, missionPrefs, LESSON_ID_RE } from '../lib/teach.mjs';
+import { readRequirements, runChecker, parseChecker, reportLines } from '../lib/task.mjs';
 import { scanCast, castTranscript } from '../lib/cast.mjs';
 import { hasVerdict } from '../lib/gate.mjs';
-import { readLabs, secretHits } from '../lib/labs.mjs';
+import { readLabs, secretHits, LAB_TEXT_BAD_RE } from '../lib/labs.mjs';
 import { readBrand } from '../lib/brand.mjs';
 import { isInsideVault } from '../lib/containment.mjs';
 import { lintWorkspace, proseMetrics, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | cast check <file> [--needle <value>]... | cast transcript <file> | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [--labs] [workspace]';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | cast check <file> [--needle <value>]... | cast transcript <file> | check [--dry-run] [--hints] <N> [workspace] | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [--labs] [workspace]';
 
 const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
 const out = (s) => process.stdout.write(s + '\n');
@@ -155,6 +156,38 @@ function next(ws, args) {
     ...pathLines(ws, args),
   ].join('\n'));
   return 0;
+}
+
+// Issue 79 D3, D4: `teach check [--dry-run] [--hints] <N> [workspace]`. A word of one to four digits is the lesson
+// number; at most one other word is the workspace. Without --dry-run, N must also name one lessons/NNNN-*.html. Exit 0
+// when every requirement is ok, 1 otherwise, and 2 for a problem, with one problem line on stderr
+// (the checker's last stderr line added to a problem with its output) and no report. Nothing is recorded yet.
+async function check(words, args) {
+  const nums = words.filter((w) => /^\d{1,4}$/.test(w));
+  const other = words.filter((w) => !/^\d{1,4}$/.test(w));
+  if (nums.length !== 1 || other.length > 1) return usage();
+  const ws = workspace(other[0]);
+  if (!ws) return usage();
+  const nnnn = nums[0].padStart(4, '0');
+  const refuse = (why) => { process.stderr.write(`teach check: ${nnnn}: ${why}\n`); return 2; };
+  if (!statSync(join(ws, 'evidence', nnnn), { throwIfNoEntry: false })?.isDirectory()) return refuse(`no evidence/${nnnn}/ folder`);
+  if (args['dry-run'] !== true) {
+    const dir = join(ws, 'lessons');
+    const lessons = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.html') && f.startsWith(`${nnnn}-`) && LESSON_ID_RE.test(f.slice(0, -5))) : [];
+    if (lessons.length !== 1) return refuse(`${lessons.length ? 'more than one' : 'no'} lessons/${nnnn}-*.html`);
+  }
+  const { timeout, requirements, problems } = readRequirements(ws, nnnn);
+  if (problems.length) return refuse(problems[0]);
+  const run = await runChecker(ws, nnnn, { timeoutMs: timeout * 1000, env: process.env });
+  if (run.problem) return refuse(run.problem);
+  const parsed = parseChecker(requirements, run);
+  if (parsed.problem) {
+    const last = run.stderr.split('\n').map((l) => l.trim()).filter(Boolean).at(-1)?.replace(new RegExp(LAB_TEXT_BAD_RE, 'gu'), '?');
+    return refuse(last ? `${parsed.problem}; stderr: ${last}` : parsed.problem);
+  }
+  const hints = args.hints === true || missionPrefs(ws).hints === 'always';
+  out(reportLines(requirements, parsed, { hints, n: Number(nnnn) }).join('\n'));
+  return parsed.failed.length || parsed.unreached.length ? 1 : 0;
 }
 
 // Spec 20 D1-D3: `teach path candidates`. Reads the workspace and the vault, writes nothing, prints every
@@ -331,6 +364,7 @@ export async function run(args) {
     return code;
   }
   if (verb === 'cast') return cast(sub, rest[0], args);
+  if (verb === 'check') return check([sub, ...rest].filter((w) => w !== undefined), args);
   if (verb === 'export') {
     const ws = workspace(sub);
     if (!ws) return usage();

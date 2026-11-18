@@ -36,7 +36,7 @@ Each block is an element with `data-block="<name>"`, normally a `<section>`. Ord
 
 A lesson with no `data-shape` needs `mission`, `model`, `fact`, `example`, `quiz`, `step`, `sources` and `followup`. A missing required block is `LESSON_SHAPE_BLOCK_MISSING`.
 
-In `step`, state the command exactly as the experiment's Result quotes it, so the claims gate can match it. When the step names the probe's path, keep that path in the captured snippet.
+In `step`, state the command exactly as the experiment's Result quotes it, so the claims gate can match it. A checked task's `./check N` line is the one exception (Checked task). When the step names the probe's path, keep that path in the captured snippet.
 
 ## Shapes
 
@@ -62,7 +62,33 @@ Review lessons keep their own list (Review lessons) and ignore `data-shape`.
 
 ### Checked task
 
-A checked task is a `project` lesson graded by a script: `evidence/NNNN/` holds `setup.sh`, `check.sh` and `solution.sh` (SKILL.md section 3). `mission` states the task as the goal and `PASS` as the observable result. `step` holds the task statement in prose, every name and value the checker asserts, then two bare `<pre>` lines, `evidence/NNNN/setup.sh` and `evidence/NNNN/check.sh`, with no prompt and no output line: the command is bare because `step` states it exactly as the experiment's Result quotes it (Blocks), and `PASS` is not a line because every non-empty, non-comment `<pre>` line in `step` is a command (Commands and tools). Then, in prose, the step says the second prints `PASS`, as the experiment's Result quotes it, and carries one sentence cited to the experiment: "This check fails on a fresh setup and passes after the reference solution." `sources` lists the snippet (the reference solution) and the experiment. `teach lint` reports `LESSON_TASK_INCOMPLETE` for a `project` lesson whose `evidence/NNNN/` holds any of the three scripts, or whose `step` names `check.sh`, once for each missing part: a script, the step line ending `evidence/NNNN/check.sh`, or the experiment in `sources`.
+A checked task is a `project` lesson graded by a script: `evidence/NNNN/` holds `setup.sh`, `check.sh` and `solution.sh` (SKILL.md section 3) and `requirements.json`, the list of what the check asserts. `mission` states the task as the goal and every requirement `ok` as the observable result.
+
+`requirements.json` has this form:
+
+```json
+{ "version": 1, "timeout": 60,
+  "requirements": [
+    { "id": "svc-port", "text": "The Service web listens on port 8080.",
+      "records": ["0003-service-ports"], "read": "0007-services.html" } ] }
+```
+
+- `version` is 1. `timeout` is optional: whole seconds from 1 to 600, 60 when absent. It stops a check that hangs. It is not a limit on the learner.
+- `requirements` holds one or more. An `id` matches `^[a-z][a-z0-9-]{0,39}$` and is unique. `text` and `read` are strings of 1 to 300 characters with no control, line-separator or bidi character. `read` is the name of a file in `lessons/` or `reference/`, or a vault entry's id. `records` is a list of learning-record ids, each in `learning-records/`, and may be empty. No other key is allowed at either level.
+
+`check.sh` prints one line on standard output for each requirement it assessed: `ok <id>` or `FAIL <id>: <hint>`. It may stop after a failure; a requirement whose id it did not print is not reached. It exits 0 when every id is `ok`, and 1 otherwise. Other lines on standard output are ignored. Standard error is not shown, except its last line, which `teach check` adds to a problem with the checker's exit code or output (not to a timeout, the output cap or a checker that cannot start). The old output, a `PASS` line or `FAIL:` lines, is not read.
+
+The learner runs the check as `./check N`, N the lesson number with or without leading zeros. `./check` is the workspace's wrapper for `teach check` (SKILL.md section 1). It runs `check.sh` from the workspace root and prints one line for each requirement, in the order of the file:
+
+- `ok <id>: <text>`
+- `FAIL <id>: <text>`, then `  hint: <hint>` when the `Hints:` bullet of `MISSION.md` is `always` (the default) or `--hints` is given, then `  read: <read>`
+- `not reached <id>: <text>`
+
+With `Hints: on request`, no `--hints` and one failure or more, the last line is `hints: ./check --hints N`. No count and no fraction is printed. It exits 0 when every requirement is `ok`, and 1 otherwise. On a problem it prints one line, `teach check: NNNN: <why>`, on standard error, and exits 2. A problem is an exit code other than 0 and 1, a checker that cannot start, exit 0 without `ok` for every id, exit 1 with no `FAIL` line, an id the file does not hold or printed twice, a hint with a control, line-separator or bidi character, a run past the timeout or stopped by SIGINT, SIGTERM or SIGHUP, more than 1 MiB of output, or a `requirements.json` that is missing or invalid. With `--dry-run` it needs only `evidence/NNNN/`; without it, N must also name one `lessons/NNNN-*.html`.
+
+`step` holds the task statement in prose, with every requirement's `text` word for word, then two bare `<pre>` lines, `evidence/NNNN/setup.sh` and `./check N`, with no prompt and no output line. `./check N` is the one exception to stating a command exactly as the experiment's Result quotes it (Blocks): the Result quotes `./check --dry-run --hints N`, the form `run.sh` runs. The step carries no output line because every non-empty, non-comment `<pre>` line in `step` is a command (Commands and tools); `./check` is not read as a tool. Then, in prose, the step says the check prints one line for each requirement, and carries one sentence cited to the experiment: "This check fails on a fresh setup and passes after the reference solution." `sources` lists the snippet (the reference solution) and the experiment.
+
+`teach lint` takes a `project` lesson to be a checked task when one of the three scripts or `requirements.json` exists, or a `step` line starts with `./check `. It then reports `LESSON_TASK_INCOMPLETE` once for each missing part: a script, `requirements.json`, the step line `./check N` for this lesson's number, the text of a requirement in the step (`step does not hold the text of requirement <id>`), or the experiment in `sources`. It reports `TASK_REQUIREMENTS_INVALID` on `evidence/NNNN/requirements.json` once for each problem of the file, for each `records` id with no learning record, and for each `read` that names no file of `lessons/` or `reference/` and no vault entry.
 
 Three safety rules bound the scripts; the first and third are plan rules, stated in the plan, not lint findings.
 
@@ -70,7 +96,7 @@ Three safety rules bound the scripts; the first and third are plan rules, stated
 2. `check.sh` changes nothing. A `kubectl`, `docker` or `kind` verb comes from a read-only allowlist (judgment, this format's reading of each tool): kubectl `get`, `describe`, `wait`, `logs`, `top`, `events`, `explain`, `diff`, `version`, `api-resources`, `api-versions`, `cluster-info`, `auth can-i`, `config view`, `config current-context`, `config get-contexts`, `rollout status`, `rollout history`, `kustomize`; docker `ps`, `inspect`, `logs`, `images`, `version`, `info`, `port`, `top`, `diff`, `stats`, `network ls`, `network inspect`, `volume ls`, `volume inspect`; kind `get`, `version`. No command's first word is `rm`, `mv`, `cp`, `tee`, `sed`, `mkdir`, `touch`, `chmod` or `chown`. Outside quoted strings, no `>` or `>>` redirects to a file: a redirect to a file descriptor (`>&2`) or to `/dev/null` is the exception. `teach lint` reports the advisory `WARN_TASK_CHECK_MUTATES`, `check.sh line N: <word>`, once for each `check.sh` line breaking one of these lists: an author reminder when the skill writes `check.sh`, not an enforcement. It reads quoted strings as empty, splits the line at each `|`, `||`, `&&` or `;` with or without spaces around it, and reads each segment's first word, after `VAR=` tokens and `sudo`, `timeout` with its flags and duration, `time`, `if`, `!`, `then`, `do` and `else`, and a tool's verb after its flags and the values of `-n`, `--namespace`, `--context`, `--kubeconfig`, `--host`, `-o` and `--output`. It does not see `$(...)`, `[[ a > b ]]`, a heredoc or any script invoked from the checker.
 3. A check may wait, with a bound: a wait is a bounded poll of a read-only query, never a change.
 
-Judgment, not measured: for a Kubernetes environment, `run.sh` and the skill run `check.sh` under a read-only credential (a ServiceAccount with only read verbs), so a checker that mutates fails in the validation run rather than passing the lists.
+Judgment, not measured: for a Kubernetes environment, `run.sh` sets a read-only credential (a ServiceAccount with only read verbs) in the environment of its `./check` lines, so a checker that mutates fails in the validation run rather than passing the lists. `teach check` gives the checker the environment it was started with, so the learner's `./check N` runs with the learner's own credential.
 
 ## Labs
 

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Project: Two files in a folder</title>
+<link rel="stylesheet" href="../assets/lesson.css">
+</head>
+<body data-lesson="0001-files" data-shape="project">
+<h1>Project: Two files in a folder</h1>
+
+<section data-block="mission" aria-label="why this lesson">
+<p>This lesson serves the criterion "create the files a task names and see the check pass": make two files in the folder teach-0001, then see every requirement of the check reported ok.</p>
+</section>
+
+<section data-block="step" aria-label="do it yourself">
+<p>Reset the task's folder, make the files, then run the check. The check asserts three requirements:</p>
+<ul>
+<li>The file teach-0001/a.txt exists.</li>
+<li>The file teach-0001/b.txt exists.</li>
+<li>The file teach-0001/b.txt holds the word hello.</li>
+</ul>
+<pre><code>evidence/0001/setup.sh</code></pre>
+<pre><code>./check 1</code></pre>
+<p>The check prints one line for each requirement. This check fails on a fresh setup and passes after the reference solution. <a data-cite="2026-01-01-fx-experiment">[2]</a></p>
+</section>
+
+<section data-block="sources" aria-label="sources">
+<ul>
+<li><a data-cite="2026-01-01-fx-snippet">2026-01-01-fx-snippet</a> (the reference solution)</li>
+<li><a data-cite="2026-01-01-fx-experiment">2026-01-01-fx-experiment</a></li>
+</ul>
+</section>
+
+<section data-block="followup" aria-label="follow up">
+<p>You can now make the files a task names and check them with a script.</p>
+<p>You can ask follow-up questions in the terminal.</p>
+</section>
+
+<script type="module" src="../assets/quiz.js"></script>
+</body>
+</html>

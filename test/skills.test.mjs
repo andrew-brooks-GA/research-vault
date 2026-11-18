@@ -97,6 +97,14 @@ test('the teach skill and formats state the three preferences and reviews as off
   assert.ok(read('skills/research-teach/PATH-FORMAT.md').includes('Path reviews: yes'), 'PATH-FORMAT plans reviews only with Path reviews: yes');
 });
 
+test('the teach skill and LESSON-FORMAT state the checked task form: ./check and requirements.json (issue 79 D3, D4)', () => {
+  const s = read('skills/research-teach/SKILL.md');
+  for (const x of ['./check', 'requirements.json', './check --dry-run --hints', 'ok <id>', 'FAIL <id>: <hint>', 'echo /check >> .gitignore']) assert.ok(s.includes(x), `teach skill lacks ${x}`);
+  const f = read('skills/research-teach/LESSON-FORMAT.md');
+  for (const x of ['./check', 'requirements.json', 'FAIL <id>', 'not reached', 'TASK_REQUIREMENTS_INVALID']) assert.ok(f.includes(x), `LESSON-FORMAT lacks ${x}`);
+  for (const old of ['prints `PASS`', 'FAIL: <requirement>']) assert.ok(!s.includes(old) && !f.includes(old), `the old checker output is still stated: ${old}`);
+});
+
 test('research-authoring has a Code section whose first sentence states the code block condition (spec 15 D5)', () => {
   const s = read('skills/research-authoring/SKILL.md');
   const section = s.slice(s.indexOf('## Code\n'));

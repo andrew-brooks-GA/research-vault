@@ -14,7 +14,7 @@ const DOC_EXT = 'mjs|js|md|json|yml|css|html';
 // Every extension in the tree must be in one of these two sets (test/deps.test.mjs). '' is the
 // extensionless bin/research-vault shim; dotfiles and LICENSE share it and yield nothing.
 export const EXTRACTED = new Set(['.mjs', '.js', '.md', '.yml', '.json', '']);
-export const IGNORED = new Set(['.cast', '.css', '.html']);
+export const IGNORED = new Set(['.cast', '.css', '.html', '.sh']);
 // Files no extractor reads: release history legitimately names removed files; the other two quote
 // every syntax (COUPLINGS rows are couples edges, the sample table is test input).
 const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.mjs']);
@@ -142,7 +142,18 @@ export const COUPLINGS = [
   ['bin/lib/teach.mjs', 'skills/research-teach/LESSON-FORMAT.md', "EXPORT_TEXT's two replacements for FOLLOWUP and CONNECT_LEAD and MENTION_RE's three phrases are quoted in the connect rules", 'You can ask your instructor follow-up questions.'],
   ['bin/lib/lesson.mjs', 'skills/research-teach/assets/lesson.css', 'the [data-block=...] selectors name the same blocks, complete, predict, connect and scaffold among them, each in the two-column span list', 'data-block'],
   ['skills/research-teach/LESSON-FORMAT.md', 'bin/lib/lesson.mjs', 'the shape table: the Shapes section is SHAPES (shape names, required middle blocks in order, the frame; the scaffold of a project is optional and not in SHAPES) and states the LESSON_SHAPE_UNKNOWN, LESSON_SHAPE_BLOCK_MISSING, LESSON_SHAPE_MISMATCH, LESSON_COMPLETE_NOT_WORKED, LESSON_PREDICT_INVALID and LESSON_PLAN_NO_ELEMENTS rules', 'SHAPES'],
-  ['bin/lib/lesson.mjs', 'skills/research-teach/LESSON-FORMAT.md', "the Checked task section's three scripts, step line and experiment citation are what LESSON_TASK_INCOMPLETE checks", 'check.sh'],
+  ['bin/lib/lesson.mjs', 'skills/research-teach/LESSON-FORMAT.md', "the Checked task section's three scripts, requirements.json, ./check N step line, quoted requirement texts and experiment citation are what LESSON_TASK_INCOMPLETE checks, and what makes a project lesson a checked task", 'step does not hold the text of requirement'],
+  ['bin/lib/lesson.mjs', 'skills/research-teach/LESSON-FORMAT.md', 'the TASK_REQUIREMENTS_INVALID code, on the requirements file, for its problems, an unknown record and a read that names nothing', 'TASK_REQUIREMENTS_INVALID'],
+  ['bin/lib/lesson.mjs', 'docs/REFERENCE.md', 'the TASK_REQUIREMENTS_INVALID code of teach lint', 'TASK_REQUIREMENTS_INVALID'],
+  ['bin/lib/task.mjs', 'skills/research-teach/LESSON-FORMAT.md', "the Checked task section states readRequirements's keys and limits, parseChecker's line forms and problems and reportLines's lines; the literal matches reportLines's FAIL line in the code and FAIL <id>: in the format", /FAIL (?:\$\{r\.id\}|<id>): /],
+  ['bin/lib/task.mjs', 'skills/research-teach/LESSON-FORMAT.md', "reportLines's last line with hints held back", 'hints: ./check --hints'],
+  ['bin/lib/task.mjs', 'skills/research-teach/LESSON-FORMAT.md', "readRequirements's and parseChecker's words for LAB_TEXT_BAD_RE", 'control, line-separator or bidi character'],
+  ['bin/lib/task.mjs', 'skills/research-teach/SKILL.md', "section 3 states the checker's output form and run.sh's ./check --dry-run --hints N; section 1 writes the ./check wrapper that runs teach check", './check'],
+  ['bin/lib/task.mjs', 'docs/REFERENCE.md', "the teach check section quotes reportLines's lines and runChecker's and parseChecker's problems", 'output past 1 MiB'],
+  ['bin/commands/teach.mjs', 'docs/REFERENCE.md', 'the teach check usage', 'check [--dry-run] [--hints] <N> [workspace]'],
+  ['bin/commands/teach.mjs', 'docs/REFERENCE.md', "teach check's problem line on stderr: the code's template and the docs' NNNN form", /teach check: (?:\$\{nnnn\}|NNNN): /],
+  ['bin/commands/teach.mjs', 'skills/research-teach/LESSON-FORMAT.md', "teach check's problem line on stderr: the code's template and the format's NNNN form", /teach check: (?:\$\{nnnn\}|NNNN): /],
+  ['bin/commands/teach.mjs', 'skills/research-teach/SKILL.md', "teach check's problem line on stderr, named for run.sh's check code 2: the code's template and the skill's NNNN form", /teach check: (?:\$\{nnnn\}|NNNN): /],
   ['bin/lib/lesson.mjs', 'skills/research-teach/LESSON-FORMAT.md', "the read-only allowlist, deny list and redirection rule of the Checked task section's safety rule 2 are TASK_READ_ONLY, TASK_DENY and the redirect test WARN_TASK_CHECK_MUTATES checks", 'api-resources'],
   ['bin/lib/lesson.mjs', 'test/fixtures/teach/lessons/0004-tool-fxctl.html', 'the shape table: the tool fixture (data-shape, data-teaches, complete) lints clean against SHAPES; its plan has an Elements part', 'data-shape'],
   ['test/fixtures/teach/assets/fxctl.cast', 'test/fixtures/teach/lessons/0004-tool-fxctl.html', 'the example block replays the cast, and the <pre> after its data-cast element is teach cast transcript of the cast: record the cast again and paste its transcript again', '$ fxctl run 7'],
@@ -201,7 +212,8 @@ export const COUPLINGS = [
   ['bin/lib/advise.mjs', 'skills/research-librarian/SKILL.md', 'the field of a pair at one source_url with one version absent', 'source_url-unversioned'],
   ['bin/lib/advise.mjs', 'docs/REFERENCE.md', 'OPEN_QUESTION_DAYS is written as 60 days in the advise row', /\b60\b/],
   ['bin/lib/advise.mjs', 'bin/commands/search.mjs', 'the queried event fields kind, ids, topic and outcome that the usage report counts', 'no-match'],
-  ['skills/research-teach/LESSON-FORMAT.md', 'skills/research-teach/SKILL.md', "the mission block's sentence list (the win, the idea, the activity) is restated in step 5; the checked task's setup.sh, check.sh and solution.sh and the run.sh sequence (setup, check, solution, check, setup, check, exit 0 on 1, 0, 1) are stated in section 3 and the step form in Checked task", 'the idea'],
+  ['skills/research-teach/LESSON-FORMAT.md', 'skills/research-teach/SKILL.md', "the mission block's sentence list (the win, the idea, the activity) is restated in step 5; the checked task's setup.sh, check.sh, solution.sh and requirements.json, the checker's ok <id> and FAIL <id>: <hint> lines, and the run.sh sequence (setup, ./check --dry-run --hints N, solution, check, setup, check, exit 0 on 1, 0, 1) are stated in section 3, and the file's rules, the output and the step form in Checked task", 'the idea'],
+  ['skills/research-teach/LESSON-FORMAT.md', 'skills/research-teach/SKILL.md', "run.sh's check line, which the experiment's Result quotes and the step's ./check N line does not", './check --dry-run --hints'],
   ['skills/research-teach/LESSON-FORMAT.md', 'skills/research-teach/MISSION-FORMAT.md', "the Checked task paragraph scopes setup.sh and solution.sh to the environment MISSION.md's Task environment: bullet names", 'Task environment'],
   ['bin/lib/advise.mjs', 'hooks/pre-web.mjs', "the queried event's kind and ids that the usage report counts", "'queried'"],
   ['bin/lib/advise.mjs', 'hooks/post-tool-use.mjs', "the cited event's kind and id that the usage report counts", "'cited'"],
