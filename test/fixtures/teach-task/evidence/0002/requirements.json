@@ -1,0 +1,4 @@
+{ "version": 1, "timeout": 60,
+  "requirements": [
+    { "id": "c-exists", "text": "The file teach-0002/c.txt exists.", "records": [], "read": "0002-more.html" },
+    { "id": "c-text", "text": "The file teach-0002/c.txt holds the word world.", "records": [], "read": "0002-more.html" } ] }

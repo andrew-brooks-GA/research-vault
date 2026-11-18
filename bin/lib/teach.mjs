@@ -343,6 +343,22 @@ export function taskSummary(a) {
   return [['ok', passed], ['failed', failed], ['not reached', unreached]].filter(([, l]) => l.length).map(([w, l]) => `${w} ${l.join(', ')}`).join('; ');
 }
 
+// Issue 79 D8: the grade of each certification run, derived and never stored, from attempts in chronological order:
+// the last attempt of each lesson with the run id; `ok` counts passed ids, `total` the three lists. Oldest run first.
+export function certificationRuns(attempts) {
+  const runs = new Map();
+  for (const a of attempts) {
+    if (!isTaskAttempt(a) || typeof a.certification !== 'string') continue;
+    if (!runs.has(a.certification)) runs.set(a.certification, new Map());
+    runs.get(a.certification).set(a.lesson, a);
+  }
+  return [...runs].map(([id, byLesson]) => {
+    const last = [...byLesson.values()];
+    const tasks = last.map((a) => ({ lesson: a.lesson, ok: listOf(a, 'passed').length, total: ['passed', 'failed', 'unreached'].reduce((n, k) => n + listOf(a, k).length, 0) }));
+    return { id, date: String(last.map((a) => a.date).sort().at(-1)), ok: tasks.reduce((n, t) => n + t.ok, 0), total: tasks.reduce((n, t) => n + t.total, 0), tasks };
+  });
+}
+
 export function teachIndex(workspaceDir, { now }) {
   const lessonsDir = join(workspaceDir, 'lessons');
   const lessons = (existsSync(lessonsDir) ? readdirSync(lessonsDir).sort() : [])

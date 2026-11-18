@@ -3,7 +3,7 @@
 // no process of the group it started.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { tmpdir } from 'node:os';
@@ -473,7 +473,7 @@ test('the views: teach next, teach progress, the progress page and the timeline 
   assert.deepEqual(rows, ['| 0001-files | 0 | none | none | none |', `| 0001-files | 3 |  | ok a-exists, b-exists, b-text on ${TODAY} |  |`]);
   assert.doesNotMatch(text.stdout, FRACTION);
   const p = progress(ws, { now: new Date() });
-  assert.deepEqual(p.lessons.map((l) => [l.id, l.kind ?? null, l.attempts.length]), [['0001-files', null, 0], ['0001-files', 'task', 3]]);
+  assert.deepEqual(p.lessons.filter((l) => l.id === '0001-files').map((l) => [l.id, l.kind ?? null, l.attempts.length]), [['0001-files', null, 0], ['0001-files', 'task', 3]]);
   const html = progressHtml(p);
   assert.ok(html.includes(`<td><b>ok a-exists, b-exists, b-text</b> <small>${TODAY}</small></td>`), html);
   for (const s of ['failed a-exists; not reached b-exists, b-text', 'ok a-exists; failed b-exists; not reached b-text']) assert.ok(html.includes(`<b>${s}</b>`), s);
@@ -611,4 +611,400 @@ test('teach lint reports the id all as TASK_REQUIREMENTS_INVALID', () => {
   const vault = fixtureVault();
   const findings = lintWorkspace(ws, { workspaceDir: ws, vaultPath: vault, entries: buildManifest(vault).entries, schema: loadSchema(ROOT), teachSchema: loadTeachSchema(ROOT), now: '2026-10-26' });
   assert.deepEqual(findings.map((f) => `${f.code} ${f.file}: ${f.message}`), [`TASK_REQUIREMENTS_INVALID evidence/0001/requirements.json: ${RESERVED}`]);
+});
+
+// Issue 79 commit 5 (D8): a certification run of one task or several, with one start, one end and one grade. The
+// fixture's second task, 0002-more, has two requirements, c-exists and c-text, which name no record.
+const { startRun, endRun, readRun, runLine, openLine } = await import('../bin/lib/task.mjs');
+const { certificationRuns } = await import('../bin/lib/teach.mjs');
+const RUN = '.teach-certify.json';
+const ENDING = '.teach-certify.ending.json';
+const runScript = (ws, n, name) => assert.equal(spawnSync(join(ws, 'evidence', n, name), [], { cwd: ws }).status, 0, `${n} ${name}`);
+const state = (ws) => JSON.parse(readFileSync(join(ws, RUN), 'utf8'));
+// An in-process start or end with the clock passed in; what they print is collected, not written.
+const io = (now) => { const out = [], err = []; return { now, out: (s) => out.push(s), err: (s) => err.push(s), lines: { out, err } }; };
+const T0 = new Date('2026-01-01T10:00:00.000Z');
+const at = (min, sec = 0) => new Date(T0.getTime() + min * 60000 + sec * 1000);
+const RUN_LINE = (id, rest = '') => `certification run ${id}: 0 minutes${rest}; end: ./check --certify; drop: ./check --cancel`;
+const FAILED2 = ['FAIL c-exists: The file teach-0002/c.txt exists.', '  hint: make the file c.txt inside teach-0002', '  read: 0002-more.html', 'not reached c-text: The file teach-0002/c.txt holds the word world.'];
+
+test('certification start: --start 1 2 runs both setups, writes the state, and takes started from the clock after the second setup', async () => {
+  const ws = copy();
+  // The clock reads T0 until task 2's setup has made teach-0002/, and T1 after.
+  const T1 = at(3);
+  const o = io(() => (existsSync(join(ws, 'teach-0002')) ? T1 : T0));
+  assert.equal(await startRun(ws, ['1', '2'], { minutes: null, pass: null, hints: true }, o), 0, o.lines.err.join('\n'));
+  assert.deepEqual(state(ws), { id: 'c-20260101-100000', started: T1.toISOString(), tasks: ['0001', '0002'], minutes: null, pass: null, hints: true });
+  assert.ok(existsSync(join(ws, 'teach-0001')) && existsSync(join(ws, 'teach-0002')));
+  assert.deepEqual(o.lines.out, [
+    'setup: evidence/0001/setup.sh',
+    'setup: evidence/0002/setup.sh',
+    'certification run c-20260101-100000: started',
+    'tasks: 0001-files, 0002-more',
+    'requirements: 5',
+    'hints: not held back',
+    'check a task: ./check <N>',
+    'end and grade: ./check --certify',
+    'drop, recording nothing: ./check --cancel',
+  ]);
+});
+
+test('certification start: the CLI prints the run, the limit and the pass line when set, and hints held back', () => {
+  const ws = copy();
+  const r = check(ws, '--start', '1', '2', '--minutes', '60', '--pass', '70', '--no-hints');
+  assert.equal(r.status, 0, r.stderr);
+  const s = state(ws);
+  assert.deepEqual([s.tasks, s.minutes, s.pass, s.hints], [['0001', '0002'], 60, 70, false]);
+  assert.match(s.id, /^c-\d{8}-\d{6}$/);
+  assert.equal(r.stdout, ['setup: evidence/0001/setup.sh', 'setup: evidence/0002/setup.sh', `certification run ${s.id}: started`, 'tasks: 0001-files, 0002-more', 'requirements: 5',
+    'time limit: 60 minutes', 'pass line: 70%', 'hints: held back', 'check a task: ./check <N>', 'end and grade: ./check --certify', 'drop, recording nothing: ./check --cancel'].join('\n') + '\n');
+});
+
+test('certification start: a second --start exits 2 and leaves the state as it was', () => {
+  const ws = copy();
+  assert.equal(check(ws, '--start', '1').status, 0);
+  const before = readFileSync(join(ws, RUN), 'utf8');
+  const r = check(ws, '--start', '2');
+  assert.equal(r.status, 2);
+  assert.equal(r.stdout, '');
+  assert.equal(r.stderr, `teach check: certification run ${state(ws).id} is open; end: ./check --certify; drop: ./check --cancel\n`);
+  assert.equal(readFileSync(join(ws, RUN), 'utf8'), before);
+  assert.ok(!existsSync(join(ws, 'teach-0002')), 'the second start ran no setup');
+});
+
+test('certification start: a number twice, a bad --minutes or --pass, a task with no requirements.json and a number with no lesson exit 2 and leave no state', () => {
+  const cases = [
+    [[], ['1', '1'], 'teach check: 0001 is given twice\n'],
+    [[], ['1', '--minutes', '0'], 'teach check: --minutes must be a whole number from 1 to 1440\n'],
+    [[], ['1', '--minutes', '1441'], 'teach check: --minutes must be a whole number from 1 to 1440\n'],
+    [[], ['1', '--pass', '101'], 'teach check: --pass must be a whole number from 1 to 100\n'],
+    [[], ['1', '--pass', 'x'], 'teach check: --pass must be a whole number from 1 to 100\n'],
+    [[(ws) => rmSync(join(ws, 'evidence', '0002', 'requirements.json'))], ['1', '2'], 'teach check: 0002: evidence/0002/requirements.json is missing\n'],
+    [[(ws) => rmSync(join(ws, 'lessons', '0002-more.html'))], ['1', '2'], 'teach check: 0002: no lessons/0002-*.html\n'],
+    [[(ws) => rmSync(join(ws, 'evidence', '0002', 'solution.sh'))], ['2'], 'teach check: 0002: evidence/0002/solution.sh is missing\n'],
+    [[(ws) => chmodSync(join(ws, 'evidence', '0002', 'setup.sh'), 0o644)], ['2'], 'teach check: 0002: evidence/0002/setup.sh is not executable\n'],
+    [[], ['9'], 'teach check: 0009: no evidence/0009/ folder\n'],
+  ];
+  for (const [mutate, args, stderr] of cases) {
+    const ws = copy();
+    for (const m of mutate) m(ws);
+    const r = check(ws, '--start', ...args);
+    assert.deepEqual([r.status, r.stdout, r.stderr], [2, '', stderr], args.join(' '));
+    assert.ok(!existsSync(join(ws, RUN)), args.join(' '));
+    assert.ok(!existsSync(join(ws, 'teach-0001')), `${args.join(' ')}: no setup ran`);
+  }
+});
+
+test('certification start: task 2\'s setup.sh exits 3: exit 2, no state, and the line names task 0001 as reset', () => {
+  const ws = copy();
+  writeFileSync(join(ws, 'evidence', '0002', 'setup.sh'), '#!/usr/bin/env bash\nexit 3\n', { mode: 0o755 });
+  const r = check(ws, '--start', '1', '2');
+  assert.equal(r.status, 2);
+  assert.equal(r.stderr, 'teach check: 0002: setup.sh exited 3; no run started; scopes already reset: 0001\n');
+  assert.ok(!existsSync(join(ws, RUN)));
+  const first = copy();
+  writeFileSync(join(first, 'evidence', '0001', 'setup.sh'), '#!/usr/bin/env bash\nexit 3\n', { mode: 0o755 });
+  assert.equal(check(first, '--start', '1', '2').stderr, 'teach check: 0001: setup.sh exited 3; no run started; scopes already reset: none\n');
+});
+
+test('certification start: SIGINT during a setup stops its group, removes the state and exits 2', async () => {
+  const ws = copy();
+  writeFileSync(join(ws, 'evidence', '0001', 'setup.sh'), '#!/usr/bin/env bash\necho $$ > setup.pid\nsleep 30 & sleep 30\n', { mode: 0o755 });
+  const child = spawn(process.execPath, [BIN, 'teach', 'check', '--start', '1', ws], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stderr = '';
+  child.stderr.on('data', (b) => { stderr += b; });
+  const exited = once(child, 'exit');
+  const pidFile = join(ws, 'setup.pid');
+  for (const end = Date.now() + 10000; !(existsSync(pidFile) && readFileSync(pidFile, 'utf8').endsWith('\n')) && Date.now() < end;) await new Promise((ok) => setTimeout(ok, 20));
+  const pgid = Number(readFileSync(pidFile, 'utf8'));
+  try {
+    child.kill('SIGINT');
+    const [code] = await exited;
+    assert.equal(code, 2);
+    assert.equal(stderr, 'teach check: 0001: stopped by SIGINT; no run started; scopes already reset: none\n');
+    assert.ok(groupGone(pgid), `group ${pgid} is still there`);
+    assert.ok(!existsSync(join(ws, RUN)));
+  } finally { try { process.kill(-pgid, 'SIGKILL'); } catch { /* gone */ } }
+});
+
+test('certification forms: --start with --certify, --certify 1, --cancel 1 and --minutes 5 1 without --start print the usage and exit 2', () => {
+  const ws = copy();
+  for (const args of [['--start', '1', '--certify'], ['--certify', '1'], ['--cancel', '1'], ['--minutes', '5', '1'], ['--pass', '50', '1'], ['--no-hints', '1'],
+    ['--certify', '--hints'], ['--cancel', '--certify'], ['--start', '1', '--hints'], ['--start']]) {
+    const r = check(ws, ...args);
+    assert.equal(r.status, 2, args.join(' '));
+    assert.match(r.stderr, USAGE_RE, args.join(' '));
+    assert.ok(r.stderr.includes('check --start <N>... [--minutes <M>] [--pass <P>] [--no-hints] [workspace] | check --certify [workspace] | check --cancel [workspace]'), args.join(' '));
+  }
+  assert.ok(!existsSync(join(ws, RUN)));
+});
+
+test('an open run: ./check 1 prints the requirements and the certification run line, exits 1 and writes no attempt; other lessons check as usual', () => {
+  const ws = copy();
+  assert.equal(check(ws, '--start', '1', '--minutes', '60').status, 0);
+  const id = state(ws).id;
+  const r = check(ws, '1');
+  assert.equal(r.stdout, [...FAILED, RUN_LINE(id, ' of 60')].join('\n') + '\n');
+  assert.equal(r.status, 1);
+  assert.deepEqual(attemptFiles(ws), []);
+  runScript(ws, '0002', 'setup.sh');
+  const other = check(ws, '2');
+  assert.equal(other.stdout, FAILED2.join('\n') + '\n');
+  assert.equal(attemptFiles(ws).length, 1);
+});
+
+test('an open run with hints held back: ./check 1 prints no hint line, and ./check --hints 1 exits 2', () => {
+  const ws = copy();
+  editFile(join(ws, 'MISSION.md'), '- Hints: always', '- Hints: on request');
+  assert.equal(check(ws, '--start', '1', '--no-hints').status, 0);
+  const id = state(ws).id;
+  const r = check(ws, '1');
+  assert.equal(r.stdout, [FAILED[0], ...FAILED.slice(2), RUN_LINE(id, '')].join('\n') + '\n');
+  const h = check(ws, '--hints', '1');
+  assert.deepEqual([h.status, h.stdout, h.stderr], [2, '', `teach check: 0001: hints are held back in certification run ${id}\n`]);
+  assert.deepEqual(attemptFiles(ws), []);
+});
+
+test('an open run with hints not held back: Hints: on request still gives the hints: line before the run line', () => {
+  const ws = copy();
+  editFile(join(ws, 'MISSION.md'), '- Hints: always', '- Hints: on request');
+  assert.equal(check(ws, '--start', '1').status, 0);
+  const r = check(ws, '1');
+  assert.equal(r.stdout, [FAILED[0], ...FAILED.slice(2), 'hints: ./check --hints 1', RUN_LINE(state(ws).id)].join('\n') + '\n');
+  assert.equal(check(ws, '--hints', '1').stdout, [...FAILED, RUN_LINE(state(ws).id)].join('\n') + '\n');
+});
+
+test('an open run: teach next prints certification: open with the tasks and the minutes', () => {
+  const ws = copy();
+  assert.equal(check(ws, '--start', '1', '2', '--minutes', '60', '--no-hints').status, 0);
+  assert.equal(nextLine(ws, 'certification:'), `certification: open ${state(ws).id}, tasks 0001, 0002, 0 minutes of 60, hints held back`);
+  const plain = copy();
+  assert.equal(check(plain, '--start', '2').status, 0);
+  assert.equal(nextLine(plain, 'certification:'), `certification: open ${state(plain).id}, tasks 0002, 0 minutes`);
+  assert.equal(nextLine(copy(), 'certification:'), undefined);
+});
+
+test('certification end: --certify with no run exits 2', () => {
+  const r = check(copy(), '--certify');
+  assert.deepEqual([r.status, r.stdout, r.stderr], [2, '', 'teach check: no certification run is open; start one with ./check --start <N>\n']);
+});
+
+test('certification end: task 1 solved and task 2 untouched: two attempts with the run id, the grade over both, and neither state file', () => {
+  const ws = copy();
+  solved(ws);
+  assert.equal(check(ws, '1').status, 0);
+  assert.equal(attemptFiles(ws).length, 1);
+  assert.equal(check(ws, '--start', '1', '2').status, 0);
+  const id = state(ws).id;
+  runScript(ws, '0001', 'solution.sh');
+  const r = check(ws, '--certify');
+  assert.equal(r.stderr, '');
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, ['0001-files: 3 of 3', '0002-more: 0 of 2', 'grade: 3 of 5 requirements', 'time: 0 minutes', '0001-files:', ...SOLVED, '0002-more:', ...FAILED2].join('\n') + '\n');
+  // Task 1's lists equal its last attempt's, and it is written all the same.
+  assert.equal(attemptFiles(ws).length, 3);
+  const [a1, a2] = [attemptAt(ws, -2), attemptAt(ws, -1)].sort((x, y) => x.lesson.localeCompare(y.lesson));
+  assert.deepEqual([a1.lesson, a1.certification, a1.passed], ['0001-files', id, ['a-exists', 'b-exists', 'b-text']]);
+  assert.deepEqual([a2.lesson, a2.certification, a2.failed, a2.unreached], ['0002-more', id, ['c-exists'], ['c-text']]);
+  assert.ok(!existsSync(join(ws, RUN)) && !existsSync(join(ws, ENDING)));
+  // A plain ./check 1 after the run, with the same lists, writes no attempt.
+  assert.equal(check(ws, '1').status, 0);
+  assert.equal(attemptFiles(ws).length, 3);
+});
+
+test('certification end: the pass line is met at 3 of 5 for 60% and not met for 61%', () => {
+  for (const [pass, word] of [['60', 'met'], ['61', 'not met']]) {
+    const ws = copy();
+    assert.equal(check(ws, '--start', '1', '2', '--pass', pass).status, 0);
+    runScript(ws, '0001', 'solution.sh');
+    const r = check(ws, '--certify');
+    assert.deepEqual(r.stdout.split('\n').slice(2, 5), ['grade: 3 of 5 requirements', `pass line ${pass}%: ${word}`, 'time: 0 minutes']);
+  }
+});
+
+test('certification end: the time against the limit, with the clock passed in, changes no grade', async () => {
+  const schema = loadTeachSchema(ROOT);
+  for (const [min, line] of [[42, 'time: 42 minutes (limit 60)'], [60, 'time: 60 minutes (limit 60)'], [65, 'time: 65 minutes, 5 over the limit of 60']]) {
+    const ws = copy();
+    assert.equal(await startRun(ws, ['1', '2'], { minutes: '60', pass: null, hints: true }, io(() => T0)), 0);
+    runScript(ws, '0001', 'solution.sh');
+    const o = io(() => at(min, 30));
+    assert.equal(await endRun(ws, schema, o), 0, o.lines.err.join('\n'));
+    assert.deepEqual(o.lines.out.slice(0, 4), ['0001-files: 3 of 3', '0002-more: 0 of 2', 'grade: 3 of 5 requirements', line]);
+  }
+});
+
+test('certification end: a problem in task 2 writes no attempt for either task, keeps the run open, and --cancel then removes it', () => {
+  const ws = copy();
+  assert.equal(check(ws, '--start', '1', '2').status, 0);
+  const id = state(ws).id;
+  runScript(ws, '0001', 'solution.sh');
+  writeFileSync(join(ws, 'evidence', '0002', 'check.sh'), '#!/usr/bin/env bash\nexit 7\n', { mode: 0o755 });
+  const r = check(ws, '--certify');
+  assert.deepEqual([r.status, r.stdout, r.stderr], [2, '', `teach check: 0002: check.sh exited 7; certification run ${id} is still open; end: ./check --certify; drop: ./check --cancel\n`]);
+  assert.deepEqual(attemptFiles(ws), []);
+  assert.equal(state(ws).id, id);
+  const c = check(ws, '--cancel');
+  assert.deepEqual([c.status, c.stdout, c.stderr], [0, `dropped certification run ${id}; nothing was recorded\n`, '']);
+  assert.ok(!existsSync(join(ws, RUN)));
+  assert.deepEqual(attemptFiles(ws), []);
+});
+
+test('certification cancel: a run of two tasks cancelled records nothing; --cancel with no run exits 2', () => {
+  const ws = copy();
+  assert.equal(check(ws, '--start', '1', '2').status, 0);
+  runScript(ws, '0001', 'solution.sh');
+  check(ws, '1');
+  assert.equal(check(ws, '--cancel').status, 0);
+  assert.deepEqual(attemptFiles(ws), []);
+  const none = check(ws, '--cancel');
+  assert.deepEqual([none.status, none.stdout, none.stderr], [2, '', 'teach check: no certification run is open\n']);
+});
+
+test('a crash: a state file that is not JSON makes --certify exit 2 and name --cancel, which removes it', () => {
+  const ws = copy();
+  writeFileSync(join(ws, RUN), '{');
+  const r = check(ws, '--certify');
+  assert.equal(r.status, 2);
+  assert.equal(r.stderr, 'teach check: .teach-certify.json is not a certification run; drop it with ./check --cancel\n');
+  assert.equal(nextLine(ws, 'certification:'), 'certification: .teach-certify.json is not a certification run; drop it with ./check --cancel');
+  const c = check(ws, '--cancel');
+  assert.deepEqual([c.status, c.stdout], [0, 'dropped .teach-certify.json; nothing was recorded\n']);
+  assert.ok(!existsSync(join(ws, RUN)));
+});
+
+test('a crash: with .teach-certify.ending.json in place, --start and --certify exit 2 and name --cancel, which removes it and says attempts may be recorded', () => {
+  const ws = copy();
+  assert.equal(check(ws, '--start', '1').status, 0);
+  const id = state(ws).id;
+  renameSync(join(ws, RUN), join(ws, ENDING));
+  const ending = `teach check: an end of certification run ${id} did not finish; attempts of the run may be recorded; ./check --cancel removes it\n`;
+  for (const args of [['--start', '2'], ['--certify']]) {
+    const r = check(ws, ...args);
+    assert.deepEqual([r.status, r.stdout, r.stderr], [2, '', ending], args.join(' '));
+  }
+  assert.ok(!existsSync(join(ws, 'teach-0002')));
+  const c = check(ws, '--cancel');
+  assert.deepEqual([c.status, c.stdout], [0, `removed the end of certification run ${id} that did not finish; attempts of the run may be recorded\n`]);
+  assert.ok(!existsSync(join(ws, ENDING)) && !existsSync(join(ws, RUN)));
+});
+
+test('certificationRuns counts the last attempt of each lesson in a run, oldest run first', () => {
+  const a = (id, lesson, run, passed, failed = [], unreached = [], date = '2026-01-01') => ({ id, date, lesson, tested: [], passed, failed, unreached, certification: run });
+  assert.deepEqual(certificationRuns([a('a-1', '0001-files', 'c-1', ['x'], ['y']), a('a-2', '0001-files', 'c-1', ['x', 'y'], [], [], '2026-01-02')]),
+    [{ id: 'c-1', date: '2026-01-02', ok: 2, total: 2, tasks: [{ lesson: '0001-files', ok: 2, total: 2 }] }]);
+  assert.deepEqual(certificationRuns([a('a-1', '0001-files', 'c-1', ['x']), a('a-2', '0002-more', 'c-1', [], ['p'], ['q']), a('a-3', '0001-files', 'c-2', [], ['x']),
+    { id: 'a-4', date: '2026-01-01', lesson: '0001-files', tested: [], passed: ['x'], failed: [], unreached: [] }]).map((r) => [r.id, r.ok, r.total, r.tasks.length]),
+  [['c-1', 1, 3, 2], ['c-2', 0, 1, 1]]);
+  assert.deepEqual(certificationRuns([]), []);
+});
+
+test('the views after a run: teach next prints the grade line, the progress timeline shows certification 3 of 3, and teach lint is clean', () => {
+  const ws = copy();
+  assert.equal(check(ws, '--start', '1', '2').status, 0);
+  const id = state(ws).id;
+  runScript(ws, '0001', 'solution.sh');
+  assert.equal(check(ws, '--certify').status, 0);
+  assert.equal(nextLine(ws, 'certification:'), `certification: ${id} 3 of 5 (0001 3 of 3, 0002 0 of 2)`);
+  const next = teach(ws, 'next').stdout.split('\n');
+  assert.equal(next.indexOf(`certification: ${id} 3 of 5 (0001 3 of 3, 0002 0 of 2)`), next.findIndex((l) => l.startsWith('answered:')) + 1);
+  const html = progressHtml(progress(ws, { now: new Date() }));
+  assert.ok(html.includes('<b>certification 3 of 3</b>'), html);
+  assert.ok(html.includes('<b>certification 0 of 2</b>'), html);
+  for (const d of ['teach-0001', 'teach-0002']) rmSync(join(ws, d), { recursive: true });
+  const vault = fixtureVault();
+  assert.deepEqual(lintWorkspace(ws, { workspaceDir: ws, vaultPath: vault, entries: buildManifest(vault).entries, schema: loadSchema(ROOT), teachSchema: loadTeachSchema(ROOT), now: '2026-10-26' }), []);
+});
+
+test('readRun: none, a run, and a file that is not a run', () => {
+  const ws = copy();
+  assert.deepEqual(readRun(ws), {});
+  writeFileSync(join(ws, RUN), JSON.stringify({ id: 'c-20260101-100000', started: null, tasks: ['0001'], minutes: null, pass: null, hints: true }));
+  assert.deepEqual(readRun(ws).state.tasks, ['0001']);
+  for (const bad of [{ id: 'x', started: null, tasks: ['0001'], minutes: null, pass: null, hints: true }, { id: 'c-20260101-100000', started: null, tasks: [], minutes: null, pass: null, hints: true },
+    { id: 'c-20260101-100000', started: null, tasks: ['0001'], minutes: 0, pass: null, hints: true }, { id: 'c-20260101-100000', started: null, tasks: ['0001'], minutes: null, pass: null, hints: true, extra: 1 }, []]) {
+    writeFileSync(join(ws, RUN), JSON.stringify(bad));
+    assert.equal(readRun(ws).problem, '.teach-certify.json is not a certification run; drop it with ./check --cancel', JSON.stringify(bad));
+  }
+});
+
+// Fix round 1 of the commit 5 review.
+const writeState = (ws, patch) => writeFileSync(join(ws, RUN), JSON.stringify({ ...state(ws), ...patch }) + '\n');
+
+test('certification start: a setup that leaves a background process exits 0 and the process stays after --start', async () => {
+  const ws = copy();
+  writeFileSync(join(ws, 'evidence', '0001', 'setup.sh'), '#!/usr/bin/env bash\nrm -rf teach-0001\nmkdir teach-0001\nsleep 30 >/dev/null 2>&1 &\necho $! > bg.pid\n', { mode: 0o755 });
+  const o = io(() => T0);
+  assert.equal(await startRun(ws, ['1'], { minutes: null, pass: null, hints: true }, o), 0, o.lines.err.join('\n'));
+  const pid = Number(readFileSync(join(ws, 'bg.pid'), 'utf8'));
+  try {
+    await new Promise((ok) => setTimeout(ok, 300));
+    assert.doesNotThrow(() => process.kill(pid, 0), 'the background sleep was stopped');
+  } finally { try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ } }
+});
+
+test('an open run with --no-hints and the mission\'s Hints: always prints no hint line and no hints: line', () => {
+  const ws = copy();
+  assert.match(readFileSync(join(ws, 'MISSION.md'), 'utf8'), /- Hints: always/);
+  assert.equal(check(ws, '--start', '1', '--no-hints').status, 0);
+  const r = check(ws, '1');
+  assert.equal(r.stdout, [FAILED[0], ...FAILED.slice(2), RUN_LINE(state(ws).id)].join('\n') + '\n');
+});
+
+test('the open-run lines print the minutes since started, from the clock passed in and from the CLI\'s clock', () => {
+  const s = { id: 'c-20260101-100000', started: T0.toISOString(), tasks: ['0001'], minutes: 60, pass: null, hints: true };
+  assert.equal(runLine(s, at(42, 10)), 'certification run c-20260101-100000: 42 minutes of 60; end: ./check --certify; drop: ./check --cancel');
+  assert.equal(openLine(s, at(42, 10)), 'certification: open c-20260101-100000, tasks 0001, 42 minutes of 60');
+  const ws = copy();
+  assert.equal(check(ws, '--start', '1', '--minutes', '60').status, 0);
+  writeState(ws, { started: new Date(Date.now() - (42 * 60 + 20) * 1000).toISOString() });
+  assert.equal(check(ws, '1').stdout.trimEnd().split('\n').at(-1), RUN_LINE(state(ws).id, ' of 60').replace('0 minutes', '42 minutes'));
+  assert.equal(nextLine(ws, 'certification:'), `certification: open ${state(ws).id}, tasks 0001, 42 minutes of 60`);
+});
+
+test('with two finished runs, teach next shows the latest', () => {
+  const ws = copy();
+  assert.equal(check(ws, '--start', '1').status, 0);
+  writeState(ws, { id: 'c-20260101-000000' });
+  assert.equal(check(ws, '--certify').status, 0);
+  assert.equal(check(ws, '--start', '1', '2').status, 0);
+  const id = state(ws).id;
+  runScript(ws, '0001', 'solution.sh');
+  assert.equal(check(ws, '--certify').status, 0);
+  assert.equal(nextLine(ws, 'certification:'), `certification: ${id} 3 of 5 (0001 3 of 3, 0002 0 of 2)`);
+});
+
+test('the end report gives hints by the mission\'s bullet: with Hints: on request it prints no hint: line', () => {
+  const ws = copy();
+  editFile(join(ws, 'MISSION.md'), '- Hints: always', '- Hints: on request');
+  assert.equal(check(ws, '--start', '1', '2').status, 0);
+  const r = check(ws, '--certify');
+  assert.equal(r.status, 0);
+  const out = r.stdout.split('\n');
+  assert.ok(!out.some((l) => l.startsWith('  hint:')), r.stdout);
+  assert.deepEqual(out.slice(-4, -1), ['  read: 0002-more.html', 'not reached c-text: The file teach-0002/c.txt holds the word world.', 'hints: ./check --hints 2']);
+});
+
+test('certification end: of two ends at the same moment, the one that finds no state to rename exits 2 and records nothing', async () => {
+  const ws = copy();
+  const schema = loadTeachSchema(ROOT);
+  assert.equal(await startRun(ws, ['1', '2'], { minutes: null, pass: null, hints: true }, io(() => T0)), 0);
+  const [a, b] = [io(() => at(5)), io(() => at(5))];
+  const codes = await Promise.all([endRun(ws, schema, a), endRun(ws, schema, b)]);
+  assert.deepEqual([...codes].sort(), [0, 2]);
+  const loser = codes[0] === 2 ? a : b;
+  assert.deepEqual(loser.lines.err, ['teach check: no certification run is open; start one with ./check --start <N>']);
+  assert.deepEqual(loser.lines.out, []);
+  assert.equal(attemptFiles(ws).length, 2);
+  assert.ok(!existsSync(join(ws, RUN)) && !existsSync(join(ws, ENDING)));
+});
+
+test('certification end: a state with started null is refused, names --cancel and records nothing', () => {
+  const ws = copy();
+  assert.equal(check(ws, '--start', '1').status, 0);
+  writeState(ws, { started: null });
+  const r = check(ws, '--certify');
+  assert.deepEqual([r.status, r.stdout, r.stderr], [2, '', `teach check: certification run ${state(ws).id} has not started: its start did not finish; ./check --cancel removes it\n`]);
+  assert.deepEqual(attemptFiles(ws), []);
+  assert.ok(existsSync(join(ws, RUN)));
 });

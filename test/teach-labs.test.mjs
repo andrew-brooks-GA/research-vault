@@ -466,7 +466,7 @@ test('teach readme prints one Labs row per manifest lab after the lessons/files/
   assert.ok(!readmeDraft(ws).includes('labs/labs.json'));
 });
 
-test('in the serve path only labs.mjs and task.mjs import child_process, and spawn is called once in each, in launch and runChecker, with no shell; no exec, execFile or eval (spec 49 D5, issue 79 D4)', () => {
+test('in the serve path only labs.mjs and task.mjs import child_process, and spawn is called once in each, in launch and runGroup, with no shell; no exec, execFile or eval (spec 49 D5, issue 79 D4, D8)', () => {
   const serve = ['bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/teach.mjs', 'bin/lib/lesson.mjs', 'bin/commands/teach.mjs', 'bin/lib/args.mjs', 'skills/research-teach/assets/quiz.js'];
   const RUNS = /child_process|\bspawn\b|(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function/;
   for (const f of serve.slice(2)) assert.ok(!RUNS.test(readFileSync(join(ROOT, f), 'utf8')), f);
@@ -475,13 +475,16 @@ test('in the serve path only labs.mjs and task.mjs import child_process, and spa
   assert.deepEqual(walk('bin').filter((f) => readFileSync(join(ROOT, f), 'utf8').includes('child_process')).sort(), ['bin/lib/codex-review.mjs', 'bin/lib/gate.mjs', 'bin/lib/host-install.mjs', 'bin/lib/labs.mjs', 'bin/lib/task.mjs']);
   for (const file of serve) assert.doesNotMatch(readFileSync(join(ROOT, file), 'utf8'), /from ['"][^'"]*(?:codex-review|host-install)\.mjs['"]/);
   assert.match(readFileSync(join(ROOT, 'bin/lib/gate.mjs'), 'utf8'), /import \{ execFileSync \} from 'node:child_process';/);
-  // Issue 79 D4: task.mjs starts a checked task's checker; its one spawn call is in runChecker.
+  // Issue 79 D4, D8: task.mjs starts a checked task's checker and, at a certification run's start, its setup.sh; its
+  // one spawn call is in runGroup, which runChecker and runSetup call with those two script names only.
   const task = readFileSync(join(ROOT, 'bin/lib/task.mjs'), 'utf8');
   assert.deepEqual(task.match(/^import .*child_process.*$/gm), ["import { spawn } from 'node:child_process';"]);
   assert.ok(!/(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function|shell:\s*true/.test(task));
   assert.equal([...task.matchAll(/\bspawn\(/g)].length, 1);
-  const runChecker = task.slice(task.indexOf('export function runChecker('), task.indexOf('\n}\n', task.indexOf('export function runChecker(')));
-  assert.match(runChecker, /spawn\(join\(ws, 'evidence', nnnn, 'check\.sh'\), \[\], \{ cwd: ws, env, shell: false, detached: true, stdio: \['ignore', 'pipe', 'pipe'\] \}\)/);
+  const runGroup = task.slice(task.indexOf('function runGroup('), task.indexOf('\n}\n', task.indexOf('function runGroup(')));
+  assert.match(runGroup, /spawn\(join\(ws, 'evidence', nnnn, name\), \[\], \{ cwd: ws, env, shell: false, detached: true, stdio: \['ignore', inherit \? 'inherit' : 'pipe', inherit \? 'inherit' : 'pipe'\] \}\)/);
+  assert.deepEqual([...task.matchAll(/runGroup\(/g)].length, 3);
+  assert.deepEqual([...task.matchAll(/runGroup\(ws, nnnn, '([^']+)'/g)].map((m) => m[1]), ['check.sh', 'setup.sh']);
   const src = readFileSync(join(ROOT, 'bin/lib/labs.mjs'), 'utf8');
   assert.deepEqual(src.match(/^import .*child_process.*$/gm), ["import { spawn } from 'node:child_process';"]);
   assert.ok(!/(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function|shell:\s*true/.test(src));

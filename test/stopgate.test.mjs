@@ -200,6 +200,7 @@ test('missingGates lists a checked task\'s lesson when only its requirements.jso
   const page = join(root, 'ws', 'lessons', '0001-files.html');
   const req = join(root, 'ws', 'evidence', '0001', 'requirements.json');
   recordVerdict(root, page, 'PASS');
+  recordVerdict(root, join(root, 'ws', 'lessons', '0002-more.html'), 'PASS'); // the fixture's second task
   const old = new Date(Date.now() - 3600000);
   utimesSync(page, old, old);
   assert.deepEqual(missingGates(root, vault, {}, Date.now() - 60000), []);

@@ -9,17 +9,17 @@ import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
 import { TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
-import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft, exportWorkspace, writeExport, lessonIndex, escapeHtml, missionPrefs, taskSummary, isTaskAttempt, LESSON_ID_RE } from '../lib/teach.mjs';
-import { readRequirements, runChecker, parseChecker, reportLines, checkAttempt, answeredAttempt } from '../lib/task.mjs';
+import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft, exportWorkspace, writeExport, lessonIndex, escapeHtml, missionPrefs, taskSummary, isTaskAttempt, certificationRuns, LESSON_ID_RE } from '../lib/teach.mjs';
+import { readRequirements, reportLines, checkAttempt, answeredAttempt, taskLesson, checkTask, readRun, runLine, openLine, startRun, endRun, cancelRun } from '../lib/task.mjs';
 import { scanCast, castTranscript } from '../lib/cast.mjs';
 import { hasVerdict } from '../lib/gate.mjs';
-import { readLabs, secretHits, LAB_TEXT_BAD_RE } from '../lib/labs.mjs';
+import { readLabs, secretHits } from '../lib/labs.mjs';
 import { readBrand } from '../lib/brand.mjs';
 import { isInsideVault } from '../lib/containment.mjs';
 import { lintWorkspace, proseMetrics, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | cast check <file> [--needle <value>]... | cast transcript <file> | check [--dry-run] [--hints] <N> [workspace] | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [--labs] [workspace]';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | cast check <file> [--needle <value>]... | cast transcript <file> | check [--dry-run] [--hints] <N> [workspace] | check --start <N>... [--minutes <M>] [--pass <P>] [--no-hints] [workspace] | check --certify [workspace] | check --cancel [workspace] | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [--labs] [workspace]';
 
 const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
 const out = (s) => process.stdout.write(s + '\n');
@@ -138,6 +138,7 @@ function next(ws, args) {
     return 2;
   }
   const active = idx.records.filter((r) => r.status === 'active');
+  const run = readRun(ws);
   const ids = (rows) => rows.map((r) => r.id).join(', ') || 'none';
   // Issue 79 D6: a task attempt reads ok, failed or answered, never a score.
   const last = (a) => (a ? `${a.kind === 'answered' ? 'answered' : a.kind === 'task' ? (a.wrongHere ? 'failed' : 'ok') : `${a.score}/${a.total}`} on ${a.date}` : 'none');
@@ -152,6 +153,9 @@ function next(ws, args) {
     ...(idx.prefs.reminders ? [`review-due: ${ids(active.filter((r) => r.reviewDue))}`] : []),
     `review-failed: ${ids(active.filter((r) => r.reviewFailed))}`,
     `answered: ${ids(active.filter((r) => r.answered))}`,
+    // Issue 79 D8: the latest run's grade, derived from its attempts, and the open run.
+    ...certificationRuns(idx.attempts).slice(-1).map((g) => `certification: ${g.id} ${g.ok} of ${g.total} (${g.tasks.map((t) => `${t.lesson.slice(0, 4)} ${t.ok} of ${t.total}`).join(', ')})`),
+    ...(run.state ? [openLine(run.state, new Date())] : run.problem ? [`certification: ${run.problem}`] : []),
     `preferences: hints ${idx.prefs.hints}, path reviews ${idx.prefs.pathReviews ? 'yes' : 'no'}, reminders ${
       idx.prefs.reminders ? `every ${idx.prefs.reminders} day${idx.prefs.reminders === 1 ? '' : 's'}` : 'none'}`,
     ...(idx.prefs.unset.length ? [`preferences-unset: ${idx.prefs.unset.join(', ')}`] : []),
@@ -165,40 +169,51 @@ function next(ws, args) {
 // when every requirement is ok, 1 otherwise, and 2 for a problem, with one problem line on stderr
 // (the checker's last stderr line added to a problem with its output) and no report. Issue 79 D4: without --dry-run, an
 // attempt is written when the three lists differ from those of the lesson's last attempt that has a `tested` list, or
-// there is none.
+// there is none. D8: `--start <N>... [--minutes <M>] [--pass <P>] [--no-hints]`, `--certify` and `--cancel` start, end
+// and drop a certification run; a check of a task in an open run records nothing and ends with the run's line.
+const RUN_ONLY = ['minutes', 'pass', 'no-hints'];
 async function check(words, args, schema) {
   const nums = words.filter((w) => /^\d{1,4}$/.test(w));
   const other = words.filter((w) => !/^\d{1,4}$/.test(w));
-  if (nums.length !== 1 || other.length > 1) return usage();
+  const flags = Object.keys(args).filter((k) => k !== '_');
+  const mode = Object.entries({ start: args.start, certify: args.certify, cancel: args.cancel }).filter(([, v]) => v === true).map(([k]) => k);
+  if (mode.length > 1 || other.length > 1) return usage();
+  if (mode[0] === 'certify' || mode[0] === 'cancel' ? nums.length || flags.length !== 1
+    : mode[0] === 'start' ? !nums.length || flags.some((k) => k !== 'start' && !RUN_ONLY.includes(k))
+      : nums.length !== 1 || flags.some((k) => RUN_ONLY.includes(k))) return usage();
   const ws = workspace(other[0]);
   if (!ws) return usage();
+  const io = { now: () => new Date(), out, err: (s) => process.stderr.write(s + '\n') };
+  // A flag given with no value is '', which startRun refuses as out of range.
+  const given = (k, v) => (k in args ? v ?? '' : null);
+  if (mode[0] === 'start') return startRun(ws, nums, { minutes: given('minutes', args.minutes), pass: given('pass', args.pass), hints: args['no-hints'] !== true }, io);
+  if (mode[0] === 'certify') return endRun(ws, schema, io);
+  if (mode[0] === 'cancel') return cancelRun(ws, io);
   const nnnn = nums[0].padStart(4, '0');
   const refuse = (why) => { process.stderr.write(`teach check: ${nnnn}: ${why}\n`); return 2; };
   if (!statSync(join(ws, 'evidence', nnnn), { throwIfNoEntry: false })?.isDirectory()) return refuse(`no evidence/${nnnn}/ folder`);
-  let lessons = [];
+  let lesson = null;
   if (args['dry-run'] !== true) {
-    const dir = join(ws, 'lessons');
-    lessons = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.html') && f.startsWith(`${nnnn}-`) && LESSON_ID_RE.test(f.slice(0, -5))) : [];
-    if (lessons.length !== 1) return refuse(`${lessons.length ? 'more than one' : 'no'} lessons/${nnnn}-*.html`);
+    const l = taskLesson(ws, nnnn);
+    if (l.problem) return refuse(l.problem);
+    lesson = l.lesson;
   }
-  const { timeout, requirements, problems } = readRequirements(ws, nnnn);
-  if (problems.length) return refuse(problems[0]);
-  const run = await runChecker(ws, nnnn, { timeoutMs: timeout * 1000, env: process.env });
-  if (run.problem) return refuse(run.problem);
-  const parsed = parseChecker(requirements, run);
-  if (parsed.problem) {
-    const last = run.stderr.split('\n').map((l) => l.trim()).filter(Boolean).at(-1)?.replace(new RegExp(LAB_TEXT_BAD_RE, 'gu'), '?');
-    return refuse(last ? `${parsed.problem}; stderr: ${last}` : parsed.problem);
-  }
+  const open = readRun(ws);
+  if (open.problem) return refuse(open.problem);
+  const run = open.state?.tasks.includes(nnnn) ? open.state : null;
+  if (run && !run.hints && args.hints === true) return refuse(`hints are held back in certification run ${run.id}`);
+  const c = await checkTask(ws, nnnn);
+  if (c.problem) return refuse(c.problem);
+  const { requirements, parsed } = c;
   // The attempt is written before the report, so a write that fails leaves nothing on stdout.
-  if (lessons.length) {
-    const lesson = lessons[0].slice(0, -5);
+  if (lesson && !run) {
     const task = checkAttempt(requirements, parsed);
     const prev = teachIndex(ws, { now: new Date() }).attempts.filter((a) => a.lesson === lesson && isTaskAttempt(a)).at(-1);
     if (!prev || ['passed', 'failed', 'unreached'].some((k) => JSON.stringify(task[k]) !== JSON.stringify(prev[k]))) writeAttempt(ws, { lesson, task, now: new Date() }, schema);
   }
-  const hints = args.hints === true || missionPrefs(ws).hints === 'always';
-  out(reportLines(requirements, parsed, { hints, n: Number(nnnn) }).join('\n'));
+  const held = run?.hints === false;
+  const hints = !held && (args.hints === true || missionPrefs(ws).hints === 'always');
+  out([...reportLines(requirements, parsed, { hints, n: Number(nnnn), ask: !held }), ...(run ? [runLine(run, new Date())] : [])].join('\n'));
   return parsed.failed.length || parsed.unreached.length ? 1 : 0;
 }
 

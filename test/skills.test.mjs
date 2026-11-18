@@ -105,6 +105,11 @@ test('the teach skill and LESSON-FORMAT state the checked task form: ./check and
   for (const old of ['prints `PASS`', 'FAIL: <requirement>']) assert.ok(!s.includes(old) && !f.includes(old), `the old checker output is still stated: ${old}`);
 });
 
+test('the teach skill states the certification run: --start, --certify, --cancel and its state file (issue 79 D8)', () => {
+  const s = read('skills/research-teach/SKILL.md');
+  for (const x of ['./check --start <N>', '--minutes <M>', '--pass <P>', '--no-hints', './check --certify', './check --cancel', 'certification: open', '.teach-certify.json', 'echo .teach-certify.json >> .gitignore']) assert.ok(s.includes(x), `teach skill lacks ${x}`);
+});
+
 test('the teach skill gives the answer and records it with --answered (issue 79 D7)', () => {
   const s = read('skills/research-teach/SKILL.md');
   for (const x of ['teach attempt add --lesson <id> --answered <ids>', 'answered:']) assert.ok(s.includes(x), `teach skill lacks ${x}`);
