@@ -308,6 +308,7 @@ export const COUPLINGS = [
   ['bin/commands/teach.mjs', 'SECURITY.md', "serve's refusal of --terminal without python3 and its pty module is quoted", 'teach serve: --terminal needs python3 with its pty module'],
   ['bin/lib/teach.mjs', 'docs/REFERENCE.md', "the teach serve section states createServer's /term/ routes, their bodies and refusals, next=/term/lessons/ and the --terminal framing headers", '/term/stream'],
   ['bin/lib/teach.mjs', 'SECURITY.md', "the Terminal section states createServer's /term/ routes, their checks, bodies and refusals, next=/term/lessons/ and the --terminal framing headers", 'no terminal cookie; open the address teach serve printed'],
+  ['bin/lib/teach.mjs', 'SECURITY.md', "the Terminal section states createServer's GET /term/lessons/<lesson id>.html (termPage) and GET /terminal/<file> (TERMINAL_FILES by name)", '/terminal/'],
   ['bin/lib/terminal.mjs', 'SECURITY.md', "the Terminal section states the helper's pty, the shell's environment, KEPT_MAX, UNSENT_MAX and the SIGHUP and SIGKILL to the helper's group", 'xterm-256color'],
   ['bin/lib/teach.mjs', 'skills/research-teach/terminal/terminal.mjs', 'the page reads the shell\'s output on the route createServer answers', '/term/stream'],
   ['bin/lib/teach.mjs', 'skills/research-teach/terminal/terminal.mjs', 'the page posts what is typed to the route createServer answers', '/term/input'],

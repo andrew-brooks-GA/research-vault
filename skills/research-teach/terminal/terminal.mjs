@@ -43,7 +43,8 @@ if (typeof document !== 'undefined') {
   term.loadAddon(fit);
   const screen = document.querySelector('.term-screen');
   term.open(screen);
-  const typeIn = inputQueue((data) => post('/term/input', { data }));
+  // A 409 (`terminal not running`): the shell has ended, so what was typed shows the ended line, not nothing.
+  const typeIn = inputQueue((data) => post('/term/input', { data }).then((r) => { if (r.status === 409) showEnded(); }));
   term.onData(typeIn);
   // D4 (the review, F7): only the tab that has focus sets the size, when the pane changes size and after each new stream.
   const resize = () => { if (document.hasFocus()) post('/term/resize', { rows: term.rows, cols: term.cols }); };
@@ -62,9 +63,11 @@ if (typeof document !== 'undefined') {
   screen.after(ended);
 
   // Each stream starts with the shell's kept output, so the screen is cleared first. A stream this page closes
-  // (`reading.abort()`) ends quietly; one the server cuts while the shell runs (too much unsent) is opened again at once;
-  // one the server ends, or a server that is gone, shows the ended line.
+  // (`reading.abort()`) ends quietly; one the server cuts while the shell runs (too much unsent) is opened again after
+  // 250 ms, so output faster than the page reads does not reconnect in a tight loop; one the server ends, or a server
+  // that is gone, shows the ended line.
   let reading = null, shellEnded = false;
+  const showEnded = () => { shellEnded = true; ended.hidden = false; };
   const open = async () => {
     reading?.abort();
     const ctl = reading = new AbortController();
@@ -82,9 +85,12 @@ if (typeof document !== 'undefined') {
       } catch { cut = true; }
     } catch { /* aborted, or the server is gone */ }
     if (ctl.signal.aborted) return;
-    if (cut) return open();
-    shellEnded = true;
-    ended.hidden = false;
+    if (cut) {
+      await new Promise((r) => setTimeout(r, 250));
+      if (!ctl.signal.aborted) open(); // a hidden tab or a newer open aborts ctl meanwhile
+      return;
+    }
+    showEnded();
   };
   again.addEventListener('click', () => { open(); term.focus(); });
   // D4 (the review, F2): a hidden tab holds no stream.

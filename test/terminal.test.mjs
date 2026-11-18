@@ -272,6 +272,30 @@ test('past 256 KiB of output, a new stream replays at most 262144 bytes, startin
   assert.ok(s.text.includes(`\n${one}\n${two}\n`), 'the replay\'s first line is a line of the output');
 });
 
+test('a stream that is not read is cut once its unsent output passes 4 MiB: it aborts, with no clean end', { skip }, async () => {
+  const t = newT();
+  const { port } = await start(workspace(), { terminal: true, t });
+  const cookie = await openCookie(port, t);
+  const watch = await openStream(port, cookie);
+  const events = [];
+  const stalled = await new Promise((resolve) => {
+    const r = request({ host: '127.0.0.1', port, path: '/term/stream', headers: { Host: `127.0.0.1:${port}`, Cookie: cookie }, setHost: false, agent: false }, (res) => {
+      res.pause(); // read nothing until the shell is done
+      for (const e of ['end', 'aborted', 'error', 'close']) res.on(e, () => events.push(e));
+      resolve(res);
+    });
+    r.on('error', () => events.push('request error'));
+    r.end();
+  });
+  // About 21 MiB, past the 4 MiB the server keeps unsent plus what the kernel's socket buffers hold.
+  assert.equal((await post(port, 'input', { data: 'yes 0123456789012345678901234567890123456789012345678901234567890123456789 | head -n 300000; echo "big""-done"\n' }, { cookie })).status, 200);
+  await until(() => watch.text.includes('\nbig-done'), 'the shell to print 21 MiB', 30000);
+  stalled.resume();
+  await until(() => events.some((e) => e !== 'end'), 'the stalled stream to be cut');
+  assert.ok(!events.includes('end') && !stalled.complete, events.join(' '));
+  assert.ok(!watch.ended, 'a stream that is read is not cut');
+});
+
 test('with --labs and --terminal, one GET /labs/open sets one cookie that both a lab POST and GET /term/stream accept', { skip }, async () => {
   const t = newT();
   const { port } = await start(workspace(), { labs: true, terminal: true, t });
