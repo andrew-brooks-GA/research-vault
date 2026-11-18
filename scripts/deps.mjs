@@ -32,7 +32,9 @@ export const COUPLINGS = [
   ['bin/lib/capture-operation.mjs', 'skills/research-orchestrate/SKILL.md', 'the Write step runs capture --batch with --operation-id and branches on recoveryStateCreated, LOCK_BUSY, RECEIPT_IO and INPUT_CHANGED', 'recoveryStateCreated'],
   ['bin/lib/ids.mjs', 'skills/research-orchestrate/SKILL.md', 'the Write prompt restates slugify: the stopword list and the six-word limit'],
   ['bin/commands/verify.mjs', 'skills/research-orchestrate/SKILL.md', 'the Write step runs verify --quotes with --by-id so a row is recorded as an agent\'s and reads found, foundIn and context from its output; section 4 closes questions with --answered-by', '--quotes'],
-  ['bin/commands/capture.mjs', 'skills/research-orchestrate/SKILL.md', 'the Write step tells a repeated URL from a title clash by the duplicate message', 'existing entry with same url'],
+  ['bin/commands/capture.mjs', 'skills/research-orchestrate/SKILL.md', 'the Write step reads a repeated URL by the duplicate message', 'existing entry with same url'],
+  ['bin/commands/capture.mjs', 'skills/research-orchestrate/SKILL.md', 'the Write step reads a title clash by the id-taken error', 'id taken'],
+  ['bin/commands/capture.mjs', 'docs/RELIABILITY.md', 'a title clash is described by the id-taken error', 'id taken'],
   ['skills/research-orchestrate/SKILL.md', 'docs/RELIABILITY.md', 'the run directory, the retry rule and the quote-matched row are restated', 'quote-matched'],
 
   ['bin/lib/codex-review.mjs', 'agents/claims-reviewer.md', 'the shared policy and PASS/FAIL-as-sent review protocol'],

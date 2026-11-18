@@ -44,7 +44,8 @@ export function prepareEntry(vaultPath, opts, ctx = {}) {
   const newHash = hashInput != null ? sha256(hashInput) : (opts.contentHash || null);
   if (!ctx.ignoreExisting && opts.type === 'source' && opts.url) {
     const normUrl = normalizeUrl(opts.url);
-    const version = verKey(opts.subjectVersion);
+    // Issue 72 item 7: the version this capture stores; with no subject name it stores none (line 80).
+    const version = verKey(opts.subjectName ? opts.subjectVersion : null);
     const existing = ctx.manifestEntries || buildManifest(vaultPath).entries;
     const candidates = [...existing, ...pending.map(p => ({ id: p.id, source_url: normalizeUrlSafe(p.data.source_url), subject: p.data.subject, content_hash: p.data.content_hash }))];
     for (const e of candidates) {
@@ -62,8 +63,13 @@ export function prepareEntry(vaultPath, opts, ctx = {}) {
   const path = join(vaultPath, folder, `${id}.md`);
   // Ids are vault-wide: a title that slugs to an id already used in another folder collides too.
   const taken = Object.values(TYPE_FOLDER).find(f => existsSync(join(vaultPath, f, `${id}.md`)));
-  if (!ctx.ignoreExisting && (taken || pending.some(p => p.id === id)))
+  if (!ctx.ignoreExisting && (taken || pending.some(p => p.id === id))) {
+    // Issue 72 item 7: a source gets here only at a URL and version that no entry holds, and an entry in another folder
+    // is of another type, so the id belongs to another entry: an error, not a duplicate to skip.
+    const where = taken || pending.find(p => p.id === id).folder;
+    if (opts.type === 'source' || where !== folder) throw new Error(`id taken: entry id ${id} already exists in ${where}/ and is another entry; give this entry a more specific title`);
     return { dedup: { id, ambiguous: false, reason: `entry id ${id} already exists${taken ? ` in ${taken}/` : ''} (supersede via verify, do not overwrite)` } };
+  }
   const data = {
     title: opts.title, type: opts.type, created: now,
     domain: opts.domain ? csvList(opts.domain) : ['software-engineering'],

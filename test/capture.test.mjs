@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, cpSync, existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { captureEntry, run } from '../bin/commands/capture.mjs';
+import { captureEntry, run, runBatch } from '../bin/commands/capture.mjs';
 import { makeId, sha256 } from '../bin/lib/ids.mjs';
 import { readEntry, writeEntry } from '../bin/lib/fsutil.mjs';
 import { lintVault } from '../bin/lib/lintrules.mjs';
@@ -462,14 +463,13 @@ test('a malformed binding file is reported on stderr, capture still runs with --
   assert.match(err, /\.research-vault\.json/);
 });
 
-test('captureEntry refuses an id already used in another folder and names it', () => {
+test('captureEntry refuses an id already used in another folder, names it, and calls it taken (issue 72 item 7)', () => {
   const vault = mkdtempSync(join(tmpdir(), 'rv-capture-collide-'));
   cpSync(join(fileURLToPath(new URL('../vault-template', import.meta.url))), vault, { recursive: true });
   const snip = captureEntry(vault, { type: 'snippet', title: 'gate round lines', language: 'markdown', now: '2026-10-27' });
   assert.equal(snip.dedup, null);
-  const exp = captureEntry(vault, { type: 'experiment', title: 'gate round lines', provider: 'local', modelId: 'none', dateRun: '2026-10-27', task: 't', outcome: 'success', now: '2026-10-27' });
-  assert.equal(exp.dedup.id, snip.id);
-  assert.match(exp.dedup.reason, /^entry id 2026-10-27-gate-round-lines already exists in snippets\/ \(supersede via verify, do not overwrite\)$/);
+  assert.throws(() => captureEntry(vault, { type: 'experiment', title: 'gate round lines', provider: 'local', modelId: 'none', dateRun: '2026-10-27', task: 't', outcome: 'success', now: '2026-10-27' }),
+    /^Error: id taken: entry id 2026-10-27-gate-round-lines already exists in snippets\/ and is another entry; give this entry a more specific title$/);
   assert.equal(existsSync(join(vault, 'experiments', `${snip.id}.md`)), false);
 });
 
@@ -489,4 +489,46 @@ test('capture refuses a blocklisted source, --force captures it with the overrid
     await assert.rejects(run({ type: 'source', title: 'Spam two', url: 'https://spam.example.com/b', vault: dir }), /blocked source/);
     assert.equal(await run({ type: 'source', title: 'Spam two', url: 'https://spam.example.com/b', vault: dir, force: true }), 0);
   } finally { process.stdout.write = orig; }
+});
+
+// Issue 72 item 7: a title that gives the id of another entry is an error, at the CLI and in --batch; a repeated URL is still a duplicate.
+test('a source whose title gives a taken id is refused as id taken, at the CLI and in --batch; a repeated entry is still a duplicate', () => {
+  const dir = freshVault();
+  const cli = (...a) => spawnSync(process.execPath, ['bin/research-vault.mjs', 'capture', '--vault', dir, ...a], { encoding: 'utf8' });
+  assert.equal(cli('--type', 'source', '--title', 'Install guide', '--url', 'https://one.example/install').status, 0);
+  const files = () => ['sources', 'questions'].flatMap(f => existsSync(join(dir, f)) ? readdirSync(join(dir, f)) : []).sort();
+  const before = files();
+  const clash = cli('--type', 'source', '--title', 'Install guide', '--url', 'https://two.example/setup');
+  assert.equal(clash.status, 2); assert.match(clash.stderr, /^error: id taken: entry id \d{4}-\d{2}-\d{2}-install-guide already exists in sources\/ and is another entry/);
+  const question = cli('--type', 'question', '--title', 'Install guide');
+  assert.equal(question.status, 2); assert.match(question.stderr, /id taken: .* in sources\//);
+  const again = cli('--type', 'source', '--title', 'Install guide', '--url', 'https://one.example/install');
+  assert.equal(again.status, 1); assert.match(again.stdout, /^duplicate of .*existing entry with same url/);
+  assert.equal(cli('--type', 'question', '--title', 'Asked once').status, 0);
+  const asked = cli('--type', 'question', '--title', 'Asked once');
+  assert.equal(asked.status, 1); assert.match(asked.stdout, /^duplicate of .*already exists in questions\//);
+  const plan = join(dir, '..', 'plan.json');
+  writeFileSync(plan, JSON.stringify([{ type: 'source', title: 'Install guide', url: 'https://two.example/setup' }, { type: 'source', title: 'Other page', url: 'https://three.example/x' }]));
+  const r = runBatch(dir, plan);
+  assert.deepEqual(r.skipped, []); assert.deepEqual(r.created, []);
+  assert.equal(r.errors.length, 1); assert.equal(r.errors[0].index, 0); assert.match(r.errors[0].error, /^id taken: /);
+  const inBatch = join(dir, '..', 'plan2.json');
+  writeFileSync(inBatch, JSON.stringify([{ type: 'source', title: 'Same name', url: 'https://four.example/a' }, { type: 'source', title: 'Same name', url: 'https://five.example/b' }]));
+  const r2 = runBatch(dir, inBatch);
+  assert.equal(r2.errors.length, 1); assert.equal(r2.errors[0].index, 1); assert.match(r2.errors[0].error, /^id taken: .* in sources\//);
+  const mixed = join(dir, '..', 'plan3.json');
+  writeFileSync(mixed, JSON.stringify([{ type: 'source', title: 'Mixed name', url: 'https://six.example/a' }, { type: 'question', title: 'Mixed name' }]));
+  const r3 = runBatch(dir, mixed);
+  assert.equal(r3.errors.length, 1); assert.equal(r3.errors[0].index, 1); assert.match(r3.errors[0].error, /^id taken: .* in sources\//);
+  // A version given with no subject name is not stored, so the same page again is still a duplicate, at the CLI and in a batch run twice.
+  const bare = ['--type', 'source', '--title', 'Release notes', '--url', 'https://seven.example/rel', '--subject-version', '1.0'];
+  assert.equal(cli(...bare).status, 0);
+  const twice = cli(...bare);
+  assert.equal(twice.status, 1); assert.match(twice.stdout, /^duplicate of .*existing entry with same url/);
+  const rerun = join(dir, '..', 'plan4.json');
+  writeFileSync(rerun, JSON.stringify([{ type: 'source', title: 'Rerun page', url: 'https://eight.example/r', subjectVersion: '2' }]));
+  assert.equal(runBatch(dir, rerun).created.length, 1);
+  const again2 = runBatch(dir, rerun);
+  assert.deepEqual(again2.errors, []); assert.equal(again2.skipped.length, 1);
+  assert.deepEqual(files(), [...before, ...['asked-once.md', 'release-notes.md', 'rerun-page.md'].map(e => readdirSync(join(dir, e === 'asked-once.md' ? 'questions' : 'sources')).find(f => f.endsWith(e)))].sort());
 });
