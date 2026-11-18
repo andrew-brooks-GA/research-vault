@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -85,4 +85,34 @@ test('CLI outside a bound repo prints the summary line only', () => {
   const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: elsewhere }), cwd: elsewhere, env, encoding: 'utf8' });
   assert.equal(r.status, 0);
   assert.equal(r.stdout, 'research-vault: 2 entries; 1 stale\n');
+});
+
+// Issue 72 item 13: in a research-vault checkout whose claims reviewer is not the one of the running plugin, the hook says so.
+test('CLI names a checkout whose claims reviewer differs from the plugin running the session (issue 72 item 13)', () => {
+  const run = (cwd, vault) => spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd }), cwd, env: { ...process.env, RESEARCH_VAULT_PATH: vault }, encoding: 'utf8' });
+  const own = readFileSync(join(dirname(HOOK), '..', 'agents', 'claims-reviewer.md'));
+  const checkout = (dir, name, body) => {
+    mkdirSync(join(dir, 'agents'), { recursive: true });
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name }) + '\n');
+    writeFileSync(join(dir, 'agents', 'claims-reviewer.md'), body);
+    spawnSync('git', ['-C', dir, 'init', '-q']);
+  };
+  for (const [name, body, notice] of [['research-vault', 'another reviewer\n', true], ['research-vault', own, false], ['something-else', 'another reviewer\n', false]]) {
+    const { root, vault } = repo({ due: false });
+    checkout(root, name, body);
+    const r = run(root, vault);
+    assert.equal(r.status, 0);
+    assert.equal(/claims reviewer/.test(r.stdout), notice, `${name}: ${r.stdout}`);
+    if (notice) assert.ok(r.stdout.includes(`--plugin-dir ${realpathSync(root)}`), r.stdout);
+  }
+  // A checkout inside the bound repo, as a worktree is: its own reviewer decides, and the advice names it.
+  const { root, vault } = repo({ due: false });
+  checkout(root, 'research-vault', own);
+  const inner = join(root, 'wt');
+  checkout(inner, 'research-vault', 'another reviewer\n');
+  const r = run(inner, vault);
+  assert.ok(r.stdout.includes(`--plugin-dir ${realpathSync(inner)}`), r.stdout);
+  checkout(inner, 'research-vault', own);
+  writeFileSync(join(root, 'agents', 'claims-reviewer.md'), 'another reviewer\n');
+  assert.ok(!/claims reviewer/.test(run(inner, vault).stdout));
 });
