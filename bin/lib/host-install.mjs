@@ -54,6 +54,10 @@ function generatedSkill(text, root, launcher, model, effort) {
   // Resolve quoted paths before replacing prose references. Shell metacharacters in
   // the installation path must never acquire meaning when copied into a command.
   text = text.replace(/"\$\{CLAUDE_PLUGIN_ROOT\}\/bin\/research-vault\.mjs"/g, () => shellQuote(launcher));
+  // Issue 72 item 10: the orchestrate script runs the pinned launcher, whatever path its args.cli names, and its args
+  // comment no longer sends a reader to the package CLI.
+  text = text.replace('const CLI = `node "${args.cli}" `', () => `const CLI = ${JSON.stringify(`node ${shellQuote(launcher)} `)}`);
+  text = text.replace('cli = absolute path to research-vault.mjs', 'cli = not read in this Codex copy: every command runs the launcher of section 0');
   text = text.replace(/"\$\{CLAUDE_PLUGIN_ROOT\}([^"\n]*)"/g, (_, tail) => shellQuote(root + tail));
   text = text.replaceAll('${CLAUDE_PLUGIN_ROOT}', () => root);
   text = text.replace(/Agent tool, `subagent_type: research-vault:claims-reviewer` \(use the qualified name\), no `model`, not a fork/g,

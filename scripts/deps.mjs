@@ -48,6 +48,8 @@ export const COUPLINGS = [
   ['bin/lib/host-install.mjs', 'skills/research-claims-gate/SKILL.md', 'the exact Claude dispatch and plugin-root forms translated for Codex'],
   ['bin/lib/host-install.mjs', 'skills/research-teach/SKILL.md', 'the exact reader dispatch and plugin-root forms translated for Codex'],
   ['bin/lib/host-install.mjs', 'skills/research-orchestrate/SKILL.md', 'the plugin-root form translated for Codex'],
+  ['bin/lib/host-install.mjs', 'skills/research-orchestrate/SKILL.md', 'the Codex copy pins the script\'s CLI line to the launcher', 'const CLI = `node "${args.cli}" `'],
+  ['bin/lib/host-install.mjs', 'skills/research-orchestrate/SKILL.md', 'the Codex copy rewrites the script\'s args comment', 'cli = absolute path to research-vault.mjs'],
   ['hooks/codex.mjs', 'hooks/hooks.json', 'the four lifecycle event names and shared handler selection'],
   ['hooks/codex.mjs', 'scripts/deps.mjs', 'Dependencies maps to the development PostToolUse --hook protocol'],
   ['bin/research-vault', 'bin/research-vault.mjs', 'the shim execs ./research-vault.mjs by name'],
