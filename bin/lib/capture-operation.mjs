@@ -130,7 +130,12 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
     lock = join(dir, 'writer.lock');
     try {
       fs.mkdirSync(lock, { mode: 0o700 }); owned = true;
-    } catch (e) { errors.push({ ...fault('LOCK_BUSY', 'lock', e), retryable: false, error: `exclusive writer lock unavailable: ${lock}; inspect owner.json and confirm the original process is gone before explicitly removing this lock` }); return output(); }
+    } catch (e) {
+      // Issue 72 item 3: a lock with no owner.json names no process. A writer that has just made it, one of an older
+      // version or a person may have left it.
+      const how = e.code === 'EEXIST' && !fs.existsSync(join(lock, 'owner.json')) ? 'it holds no owner.json, so it names no process: confirm that no --operation-id capture is running' : 'inspect owner.json and confirm the original process is gone';
+      errors.push({ ...fault('LOCK_BUSY', 'lock', e), retryable: false, error: `exclusive writer lock unavailable: ${lock}; ${how} before explicitly removing this lock` }); return output();
+    }
     // The lock is ours from here; without its owner diagnostic we give it back rather than hold it unnamed.
     try { atomicJson(join(lock, 'owner.json'), { operationId: key, pid: process.pid, vault, started: new Date().toISOString() }); }
     catch (e) { errors.push(fault('RECEIPT_IO', 'lock', e)); return output(); }

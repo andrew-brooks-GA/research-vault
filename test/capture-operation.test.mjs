@@ -224,3 +224,17 @@ test('issue 72 item 2: an entry takes the mode capture without --operation-id gi
   assert.equal(mode(legacy), 0o664);
   assert.equal(mode(op.created[0].path), 0o664);
 });
+test('issue 72 item 3: LOCK_BUSY says when the lock holds no owner.json', () => {
+  const f = fixture(); const lock = join(f.vault, '.capture-operations/writer.lock');
+  fs.mkdirSync(lock, { recursive: true });
+  const bare = f.run().errors[0];
+  assert.equal(bare.code, 'LOCK_BUSY'); assert.match(bare.error, /holds no owner\.json/); assert.doesNotMatch(bare.error, /inspect owner\.json/);
+  fs.writeFileSync(join(lock, 'owner.json'), '{}');
+  const named = f.run().errors[0];
+  assert.equal(named.code, 'LOCK_BUSY'); assert.match(named.error, /inspect owner\.json/);
+  // A lock that could not be made for another reason than that it exists is not called a lock with no owner.json.
+  if (process.platform === 'win32' || process.getuid?.() === 0) return;
+  const g = fixture(); const ops = join(g.vault, '.capture-operations'); fs.mkdirSync(ops); fs.chmodSync(ops, 0o500);
+  let denied; try { denied = g.run().errors[0]; } finally { fs.chmodSync(ops, 0o700); }
+  assert.equal(denied.code, 'LOCK_BUSY'); assert.doesNotMatch(denied.error, /holds no owner\.json/);
+});
