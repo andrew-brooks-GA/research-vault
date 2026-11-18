@@ -9,7 +9,7 @@ import { extractCitations, SPAN_RE } from './citations.mjs';
 import { isInsideVault } from './containment.mjs';
 import { traverse } from './graph.mjs';
 import {
-  extractQuizJson, extractCites, serveFile, validateEntry, ENUM_CODES, LESSON_ID_RE, RECORD_ID_RE,
+  extractQuizJson, extractCites, serveFile, validateEntry, ENUM_CODES, LESSON_ID_RE, RECORD_ID_RE, missionPrefs,
 } from './teach.mjs';
 import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
 import { readLabs, labPin, lessonLab, sha256, LAB_MANIFEST } from './labs.mjs';
@@ -978,6 +978,8 @@ export function lintWorkspace(workspaceDir, ctx) {
     listDir(join(workspaceDir, d), '.html').flatMap((f) => lintLesson(join(workspaceDir, d, f), c)));
   if (brand) findings.push(...lintBrand(workspaceDir, brand));
   findings.push(...lintStore(workspaceDir, c));
+  // Issue 79 D1: a preference bullet that is not read.
+  for (const message of missionPrefs(workspaceDir).invalid) findings.push({ code: 'MISSION_PREF_INVALID', file: 'MISSION.md', message, warning: false });
   findings.push(...lintLabManifest(workspaceDir));
   // Issue 65 (spec 47 D1): a player file in assets/ must be the pinned release's.
   for (const [name, want] of Object.entries(PLAYER_FILES)) {

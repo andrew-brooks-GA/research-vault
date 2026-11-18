@@ -146,8 +146,12 @@ function next(ws, args) {
     '|---|---|---|---|---|',
     ...active.map((r) => `| ${r.id} | ${r.kind} | ${r.date} | ${r.lesson ?? ''} | ${last(r.lastAttempt)} |`),
     '',
-    `review-due: ${ids(active.filter((r) => r.reviewDue))}`,
+    // Issue 79 D1, D2: review-due only with reminders; the preferences the skill reads, and those to ask for.
+    ...(idx.prefs.reminders ? [`review-due: ${ids(active.filter((r) => r.reviewDue))}`] : []),
     `review-failed: ${ids(active.filter((r) => r.reviewFailed))}`,
+    `preferences: hints ${idx.prefs.hints}, path reviews ${idx.prefs.pathReviews ? 'yes' : 'no'}, reminders ${
+      idx.prefs.reminders ? `every ${idx.prefs.reminders} day${idx.prefs.reminders === 1 ? '' : 's'}` : 'none'}`,
+    ...(idx.prefs.unset.length ? [`preferences-unset: ${idx.prefs.unset.join(', ')}`] : []),
     ...pathLines(ws, args),
   ].join('\n'));
   return 0;

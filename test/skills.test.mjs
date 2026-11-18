@@ -88,6 +88,15 @@ test('teach skill names teach next, PLAN.md, teach lint, the assets copy, teach 
   assert.ok(s5.indexOf('teach lint') >= 0 && s5.indexOf('teach lint') < s5.indexOf('`research-claims-gate` skill'), 'lint before gate in §5');
 });
 
+test('the teach skill and formats state the three preferences and reviews as offers (issue 79 D1, D2)', () => {
+  const s = read('skills/research-teach/SKILL.md');
+  for (const x of ['preferences:', 'preferences-unset:', 'Hints:', 'Path reviews:', 'Reminders:', 'Path reviews: yes']) assert.ok(s.includes(x), `teach skill lacks ${x}`);
+  assert.ok(!s.includes('21 days') && !s.includes('Cepeda'), 'the skill keeps no fixed review gap');
+  const mf = read('skills/research-teach/MISSION-FORMAT.md');
+  for (const x of ['- Hints: always', 'on request', '- Path reviews: yes', '- Reminders: none', 'every <N> days', 'MISSION_PREF_INVALID']) assert.ok(mf.includes(x), `MISSION-FORMAT lacks ${x}`);
+  assert.ok(read('skills/research-teach/PATH-FORMAT.md').includes('Path reviews: yes'), 'PATH-FORMAT plans reviews only with Path reviews: yes');
+});
+
 test('research-authoring has a Code section whose first sentence states the code block condition (spec 15 D5)', () => {
   const s = read('skills/research-authoring/SKILL.md');
   const section = s.slice(s.indexOf('## Code\n'));

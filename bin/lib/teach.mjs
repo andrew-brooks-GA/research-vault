@@ -18,7 +18,6 @@ import { HEADING_RE, TABLE_SEP_RE, WORKSPACE_GATES, hasVerdict } from './gate.mj
 import { readLabs, lessonLab, labRunner, secretHits, labCookie, LAB_ACTIONS, LAB_BODY_MAX, LAB_ID_RE } from './labs.mjs';
 import { readBrand, withBrand, brandUrl } from './brand.mjs';
 
-export const SPACING_DAYS = 21;
 export const ATTEMPT_BODY_MAX = 4096;
 export const LESSON_ID_RE = /^\d{4}-[a-z][a-z0-9-]*$/;
 export const RECORD_ID_RE = /^\d{4}-[a-z][a-z0-9-]*$/;
@@ -276,6 +275,44 @@ function missionCriteria(workspaceDir) {
   return out;
 }
 
+// Issue 79 D1: the three preference bullets under the Constraints heading. A bullet is one of them when its text
+// before the colon is a name in any letter case; it is read only when spelled as below (any spaces after the colon),
+// and a second bullet of one name is never read. `invalid` holds one message per bullet not read.
+const everyDays = (v) => { const n = Number(/^every ([1-9]\d{0,3}) days$/.exec(v)?.[1]); return n <= 3650 ? n : undefined; };
+const PREFS = [
+  ['hints', 'Hints', (v) => (v === 'always' || v === 'on request' ? v : undefined), '"Hints: always" or "Hints: on request"'],
+  ['path reviews', 'Path reviews', (v) => (v === 'yes' ? true : v === 'no' ? false : undefined), '"Path reviews: yes" or "Path reviews: no"'],
+  ['reminders', 'Reminders', (v) => (v === 'none' ? null : v === 'every 1 day' ? 1 : everyDays(v)),
+    '"Reminders: none" or "Reminders: every <N> days", N from 1 to 3650'],
+];
+
+export function missionPrefs(workspaceDir) {
+  const p = join(workspaceDir, 'MISSION.md');
+  const seen = new Set();
+  const got = {};
+  const invalid = [];
+  let inSection = false;
+  (existsSync(p) ? readFileSync(p, 'utf8').split(/\r?\n/) : []).forEach((line, i) => {
+    if (/^#{1,6}\s/.test(line)) { inSection = /^#{1,6}\s+constraints\b/i.test(line); return; }
+    const text = inSection && /^\s*(?:[-*]|\d+\.)\s+(.+?)\s*$/.exec(line)?.[1];
+    const pref = text && PREFS.find(([name]) => text.split(':')[0].trim().toLowerCase() === name);
+    if (!pref) return;
+    const [name, label, read, forms] = pref;
+    const value = text.startsWith(`${label}:`) ? read(text.slice(label.length + 1).trim()) : undefined;
+    if (seen.has(name)) invalid.push(`line ${i + 1}: a second ${label}: bullet is not read`);
+    else if (value === undefined) invalid.push(`line ${i + 1}: ${show(text)} is not ${forms}`);
+    else got[name] = value;
+    seen.add(name);
+  });
+  return {
+    hints: got.hints ?? 'always',
+    pathReviews: got['path reviews'] ?? false,
+    reminders: got.reminders ?? null,
+    unset: PREFS.map(([name]) => name).filter((name) => !(name in got)),
+    invalid,
+  };
+}
+
 function parsedRows(dir, nameRe) {
   const rows = [];
   for (const f of mdFiles(dir)) {
@@ -309,7 +346,9 @@ export function teachIndex(workspaceDir, { now }) {
   const backlinks = {};
   for (const a of attempts) for (const r of (Array.isArray(a.records) ? a.records : [])) (backlinks[r] ??= []).push(a.id);
 
-  const cutoff = isoDate(new Date(now.getTime() - SPACING_DAYS * DAY_MS));
+  // Issue 79 D2: review-due only when the mission asks for reminders, every N days.
+  const prefs = missionPrefs(workspaceDir);
+  const cutoff = prefs.reminders ? isoDate(new Date(now.getTime() - prefs.reminders * DAY_MS)) : null;
   const records = parsedRows(join(workspaceDir, 'learning-records')).map((r) => {
     const wrongIn = (a) => Array.isArray(a.records) && a.records.includes(r.id);
     const last = attempts.filter((a) => wrongIn(a) || (tests[a.lesson] || []).includes(r.id)).at(-1);
@@ -322,18 +361,19 @@ export function teachIndex(workspaceDir, { now }) {
       evidence: backlinks[r.id] ?? [],
       lastAttempt,
       // Due when written before the spacing cutoff and not attempted since that cutoff.
-      reviewDue: active && String(r.date) < cutoff && !(lastAttempt && String(lastAttempt.date) >= cutoff),
+      reviewDue: cutoff !== null && active && String(r.date) < cutoff && !(lastAttempt && String(lastAttempt.date) >= cutoff),
       reviewFailed: active && lastAttempt?.wrongHere === true,
     };
   });
   const refDir = join(workspaceDir, 'reference');
   const reference = (existsSync(refDir) ? readdirSync(refDir).sort() : []).filter((f) => f.endsWith('.html'))
     .map((f) => ({ slug: f.slice(0, -5), file: `reference/${f}`, cites: extractCites(readFileSync(join(refDir, f), 'utf8')) }));
-  return { criteria: missionCriteria(workspaceDir), lessons, reference, records, attempts, backlinks };
+  return { criteria: missionCriteria(workspaceDir), prefs, lessons, reference, records, attempts, backlinks };
 }
 
 // Learner performance over time, from the attempts on disk: every attempt per lesson in
-// chronological order with first, latest and best, plus record counts and what is due for review.
+// chronological order with first, latest and best, plus record counts and what is due for review
+// (null when the mission asks for no reminders, issue 79 D2).
 export function progress(workspaceDir, { now }) {
   const idx = teachIndex(workspaceDir, { now });
   const byLesson = new Map(idx.lessons.map((l) => [l.id, { id: l.id, title: l.title, class: l.class, attempts: [] }]));
@@ -356,7 +396,7 @@ export function progress(workspaceDir, { now }) {
     lessons,
     attempts: idx.attempts.length,
     records: { active: idx.records.filter((r) => r.status === 'active').length, byKind },
-    reviewDue: idx.records.filter((r) => r.reviewDue).map((r) => r.id),
+    reviewDue: idx.prefs.reminders ? idx.records.filter((r) => r.reviewDue).map((r) => r.id) : null,
     reviewFailed: idx.records.filter((r) => r.reviewFailed).map((r) => r.id),
   };
 }
@@ -368,7 +408,7 @@ export function progressText(p) {
   const lines = ['| lesson | attempts | first | latest | best |', '|---|---|---|---|---|'];
   for (const l of p.lessons) lines.push(`| ${l.id} | ${l.attempts.length} | ${fmtScore(l.first)} | ${fmtScore(l.latest)} | ${fmtScore(l.best)} |`);
   lines.push('', `attempts: ${p.attempts}`, `records: ${p.records.active} active (${Object.entries(p.records.byKind).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'})`,
-    `review-due: ${p.reviewDue.join(', ') || 'none'}`, `review-failed: ${p.reviewFailed.join(', ') || 'none'}`);
+    ...(p.reviewDue ? [`review-due: ${p.reviewDue.join(', ') || 'none'}`] : []), `review-failed: ${p.reviewFailed.join(', ') || 'none'}`);
   return lines.join('\n') + '\n';
 }
 
@@ -400,7 +440,7 @@ export function progressHtml(p) {
 <html lang="en"><head><meta charset="utf-8"><title>Progress</title><link rel="stylesheet" href="/assets/lesson.css"></head>
 <body>${navHtml()}<h1>Progress</h1>
 <section data-block="progress"><table class="progress"><thead><tr><th>lesson</th><th>attempts</th><th>first</th><th>latest</th><th>best</th></tr></thead><tbody>${rows}</tbody></table>
-<p>${p.attempts} attempt${p.attempts === 1 ? '' : 's'}; ${p.records.active} active learning record${p.records.active === 1 ? '' : 's'}${Object.keys(p.records.byKind).length ? ` (${esc(Object.entries(p.records.byKind).map(([k, n]) => `${k} ${n}`).join(', '))})` : ''}. Review due: ${esc(p.reviewDue.join(', ') || 'none')}. Review failed: ${esc(p.reviewFailed.join(', ') || 'none')}.</p></section>
+<p>${p.attempts} attempt${p.attempts === 1 ? '' : 's'}; ${p.records.active} active learning record${p.records.active === 1 ? '' : 's'}${Object.keys(p.records.byKind).length ? ` (${esc(Object.entries(p.records.byKind).map(([k, n]) => `${k} ${n}`).join(', '))})` : ''}.${p.reviewDue ? ` Review due: ${esc(p.reviewDue.join(', ') || 'none')}.` : ''} Review failed: ${esc(p.reviewFailed.join(', ') || 'none')}.</p></section>
 <section data-block="timeline"><ol class="timeline">${timeline || '<li>No attempts yet.</li>'}</ol></section>
 </body></html>
 `;

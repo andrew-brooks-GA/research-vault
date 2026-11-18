@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Optional, non-load-bearing: print a one-line vault summary at session start, then one line per
-// research-teach workspace in the bound repo (only when the vault resolved from .research-vault.json) that has review-due records, stale reference docs or an attempt,
+// research-teach workspace in the bound repo (only when the vault resolved from .research-vault.json) that has stale reference docs, an attempt, or
+// review-due records when its mission asks for reminders (issue 79 D2),
 // and, in a checkout of this plugin whose claims reviewer is not the running plugin's, one line that says so (issue 72 item 13).
 // Silent when no vault exists; never blocks; always exits 0.
 import { existsSync, readFileSync } from 'node:fs';
@@ -15,10 +16,9 @@ import { findWorkspaces, reviewerHash, contentHash } from '../bin/lib/gate.mjs';
 import { checkCitations } from '../bin/commands/check.mjs';
 import { extractCitations } from '../bin/lib/citations.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
-import { SPACING_DAYS, teachIndex } from '../bin/lib/teach.mjs';
+import { teachIndex } from '../bin/lib/teach.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-export { SPACING_DAYS };
 
 // name defaults to the workspace folder name; the CLI passes the path relative to the project root.
 // A reference doc counts as stale when any data-cite id, or any URL or id the citation scan finds, is stale.
@@ -34,7 +34,8 @@ export function workspaceBrief(wsDir, vaultPath, now, name = basename(wsDir)) {
   const a = idx.attempts.at(-1);
   if (n + m === 0 && !a) return '';
   const last = a ? `; last attempt ${a.total - (a.wrong?.length ?? 0)}/${a.total} on ${a.lesson}` : '';
-  return `research-teach ${name}: ${n} record(s) review-due; ${m} reference doc(s) with a stale citation${last}`;
+  const due = idx.prefs.reminders ? `${n} record(s) review-due; ` : '';
+  return `research-teach ${name}: ${due}${m} reference doc(s) with a stale citation${last}`;
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) {
