@@ -265,3 +265,10 @@ test('issue 72 item 5: a replay checks a reused source by the rules it was reuse
     assert.equal(fs.readFileSync(path, 'utf8'), edited, name);
   }
 });
+test('issue 72 item 6: every plan entry that cannot be read is reported, and nothing is written', () => {
+  const f = fixture(['not an object', { type: 'question', title: 'Good' }, 42, { type: 'note', title: 'One', contentFile: 'missing-1.txt' }, { type: 'note', title: 'Two', contentFile: 'missing-2.txt' }]);
+  const r = f.run();
+  assert.deepEqual(r.errors.map(e => [e.index, e.code]), [[0, 'INPUT_INVALID'], [2, 'INPUT_INVALID'], [3, 'INPUT_INVALID'], [4, 'INPUT_INVALID']]);
+  assert.match(r.errors[2].error, /missing-1\.txt/); assert.match(r.errors[3].error, /missing-2\.txt/);
+  assert.equal(r.recoveryStateCreated, false); assert.deepEqual(bytes(f.vault), []);
+});

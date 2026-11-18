@@ -32,13 +32,15 @@ function fault(code, index, e) {
 function input(planPath, opts) {
   const plan = JSON.parse(fs.readFileSync(planPath, 'utf8'));
   if (!Array.isArray(plan) || !plan.length) throw new Error('plan must be a non-empty JSON array');
+  // Issue 72 item 6: every entry that cannot be read is reported, as prepare() reports every entry that fails.
+  const failures = [];
   const inputs = plan.map((spec, index) => {
-    if (!spec || Array.isArray(spec) || typeof spec !== 'object') throw Object.assign(new Error('entry must be an object'), { index });
-    let bytes;
-    try { bytes = spec.contentFile ? fs.readFileSync(resolve(dirname(planPath), spec.contentFile)) : null; }
-    catch (e) { e.index = index; throw e; }
-    return { spec, bytes };
+    try {
+      if (!spec || Array.isArray(spec) || typeof spec !== 'object') throw new Error('entry must be an object');
+      return { spec, bytes: spec.contentFile ? fs.readFileSync(resolve(dirname(planPath), spec.contentFile)) : null };
+    } catch (e) { e.index = index; failures.push(e); }
   });
+  if (failures.length) throw Object.assign(failures[0], { failures });
   return { inputs, inputDigest: digest({ plan, options: { ackDataEgress: !!opts.ackDataEgress }, files: inputs.map(i => i.bytes ? sha256(i.bytes) : null) }) };
 }
 function render(vault, item, date, opts) {
@@ -248,6 +250,6 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
     receipt.phase = errors.length ? 'needs-repair' : 'complete'; receipt.errors = [...errors];
     try { save(); } catch (e) { receipt.phase = 'needs-repair'; errors.push(fault('RECEIPT_IO', 'finalization', e)); }
     return output();
-  } catch (e) { errors.push(fault(receipt ? 'ARTIFACT_IO' : 'INPUT_INVALID', e.index ?? -1, e)); return output(); }
+  } catch (e) { for (const f of e.failures || [e]) errors.push(fault(receipt ? 'ARTIFACT_IO' : 'INPUT_INVALID', f.index ?? -1, f)); return output(); }
   finally { if (owned) { try { fs.unlinkSync(join(lock, 'owner.json')); } catch {} try { fs.rmdirSync(lock); } catch {} } }
 }
