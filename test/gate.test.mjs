@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, appendFileSync, existsSync, readFileSync, mkdirSync, chmodSync, mkdtempSync, rmSync, utimesSync } from 'node:fs';
+import { writeFileSync, appendFileSync, existsSync, readFileSync, mkdirSync, chmodSync, mkdtempSync, rmSync, utimesSync, cpSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -10,7 +10,7 @@ import { missingGates } from '../hooks/stop-gate.mjs';
 import {
   unitHashes, changedUnits, mdUnits,
   LEDGER_FILENAME, contentHash, ledgerKey, recordVerdict, gateStatus, reviewerHash,
-  evidenceFor, renderEvidence, findWorkspaces, gatedFiles, referencedImages,
+  evidenceFor, renderEvidence, findWorkspaces, gatedFiles, referencedImages, taskFile,
 } from '../bin/lib/gate.mjs';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'gate');
@@ -872,4 +872,76 @@ test('gate staged and gate status count the cited ids of the changed units that 
   gateCli(root, vault, 'record', 'docs/split.md', 'PASS');
   writeFileSync(join(root, 'docs', 'split.md'), '# Split\n\n## A\n\n<!-- evidence: 2026-09-09-not-here -->\n\nOne.\n\n## B\n\n<!-- evidence: 2026-01-01-fx-experiment -->\n\nTwo, changed.\n');
   assert.ok(gateCli(root, vault, 'status', 'docs/split.md').out.startsWith('docs/split.md: none @ '));
+});
+
+// ---- a checked task's requirements file (issue 79 D9) ----
+const TASK_FIXTURE = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'teach-task');
+const TASK_PAGE = 'ws/lessons/0001-files.html';
+function taskRepo(vault = 'vault') {
+  const root = mkdtempSync(join(tmpdir(), 'rv-gate-task-'));
+  writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault }) + '\n');
+  cpSync(TASK_FIXTURE, join(root, 'ws'), { recursive: true });
+  return { root, page: join(root, TASK_PAGE), req: join(root, 'ws', 'evidence', '0001', 'requirements.json') };
+}
+const editRequirements = (req) => writeFileSync(req, readFileSync(req, 'utf8').replace('holds the word hello', 'holds the word goodbye'));
+
+test('an edit to requirements.json reopens the step unit alone, and gate status --check exits 1', () => {
+  const vault = fixtureVault();
+  const { root, req } = taskRepo(vault);
+  assert.equal(gateCli(root, vault, 'record', TASK_PAGE, 'PASS').code, 0);
+  assert.equal(gateCli(root, vault, 'status', TASK_PAGE, '--check').code, 0);
+  editRequirements(req);
+  assert.equal(gateCli(root, vault, 'changed', TASK_PAGE).out, 'changed units: step\n');
+  const s = gateCli(root, vault, 'status', TASK_PAGE, '--check');
+  assert.equal(s.code, 1, s.out);
+});
+
+test('gate staged --check reports the lesson when only its requirements.json is staged', () => {
+  const vault = fixtureVault();
+  const { root, req } = taskRepo(vault);
+  const git = (...a) => spawnSync('git', ['-C', root, '-c', 'user.email=a@b', '-c', 'user.name=t', ...a], { encoding: 'utf8' });
+  git('init', '-q');
+  gateCli(root, vault, 'record', TASK_PAGE, 'PASS');
+  git('add', '-A');
+  git('commit', '-qm', 'c');
+  editRequirements(req);
+  git('add', 'ws/evidence/0001/requirements.json');
+  const st = gateCli(root, vault, 'staged', '--check');
+  assert.equal(st.code, 1, st.out);
+  assert.equal(st.out, `${TASK_PAGE}: none\n`);
+});
+
+test('a lesson with no requirements.json hashes its step unit as today', () => {
+  const { page, req } = taskRepo();
+  const html = readFileSync(page);
+  const bare = unitHashes(html).step;
+  assert.notEqual(unitHashes(html, null, page).step, bare);
+  rmSync(req);
+  assert.equal(unitHashes(html, null, page).step, bare);
+});
+
+test('a row written before units still gives a checked task\'s exact bytes their verdict', () => {
+  const { root, page } = taskRepo();
+  appendFileSync(join(root, LEDGER_FILENAME), JSON.stringify({ event: 'claims', file: TASK_PAGE, sha256: contentHash(readFileSync(page)), verdict: 'PASS' }) + '\n');
+  assert.equal(gateStatus(root, page).verdict, 'PASS');
+});
+
+test('an edit to the step block\'s text alone reopens the step unit, and gate status --check exits 1', () => {
+  const vault = fixtureVault();
+  const { root, page } = taskRepo(vault);
+  assert.equal(gateCli(root, vault, 'record', TASK_PAGE, 'PASS').code, 0);
+  writeFileSync(page, readFileSync(page, 'utf8').replace('Reset the task\'s folder', 'Reset the task folder'));
+  assert.equal(gateCli(root, vault, 'changed', TASK_PAGE).out, 'changed units: step\n');
+  assert.equal(gateCli(root, vault, 'status', TASK_PAGE, '--check').code, 1);
+});
+
+test('taskFile is null for a page outside lessons/ and for a lesson with no four-digit number, beside an existing requirements file', () => {
+  const { root, page, req } = taskRepo();
+  assert.equal(taskFile(page), req);
+  for (const rel of ['reference/0001-x.html', 'lessons/files/0001-x.html', 'lessons/x.html']) {
+    const f = join(root, 'ws', rel);
+    mkdirSync(dirname(f), { recursive: true });
+    writeFileSync(f, '<section data-block="step"><p>s</p></section>');
+    assert.equal(taskFile(f), null, rel);
+  }
 });

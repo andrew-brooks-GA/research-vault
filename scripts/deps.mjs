@@ -110,6 +110,8 @@ export const COUPLINGS = [
   ['bin/lib/gate.mjs', 'agents/claims-reviewer.md', 'the renderEvidence line format, unit names and verdict tokens; recordVerdict hashes this file into the reviewer field'],
   ['bin/lib/gate.mjs', 'skills/research-claims-gate/SKILL.md', "the 'image: <workspace-relative path> sha256:<hash>' evidence line and the img:<src> unit name are copied", 'image: '],
   ['bin/lib/gate.mjs', 'docs/REFERENCE.md', "the 'image: <workspace-relative path> sha256:<hash>' evidence line and the img:<src> unit name are copied", 'image: '],
+  ['bin/lib/gate.mjs', 'bin/lib/task.mjs', "taskFile builds the evidence/NNNN/requirements.json path that readRequirements reads", 'requirements.json'],
+  ['bin/lib/gate.mjs', 'docs/REFERENCE.md', "the Gate rule states that a checked task's step unit hashes evidence/NNNN/requirements.json, and that gate staged and the Stop hook take a lesson from that file", 'evidence/NNNN/requirements.json'],
   ['bin/lib/gate.mjs', 'agents/claims-reviewer.md', "the 'image: <path> sha256:<hash>' evidence line the reviewer may open", 'image: '],
   ['bin/lib/gate.mjs', 'hooks/stop-gate.mjs', 'the PASS|MERIT text the hook prints', 'MERIT'],
   ['bin/lib/gate.mjs', 'docs/REFERENCE.md', 'the ledger filename and the verdicts', '.research-vault-ledger.jsonl'],

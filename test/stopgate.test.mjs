@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, appendFileSync, mkdirSync, utimesSync } from 'node:fs';
+import { writeFileSync, appendFileSync, mkdirSync, utimesSync, cpSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -189,4 +189,20 @@ test('missingGates counts the cited ids this vault lacks, and the reason line na
   assert.equal(m.missing, 1);
   assert.equal(reasonLine(m), '- docs/x.md: 1 cited id not in this vault: rebuild that evidence, then run the research-claims-gate skill, then research-vault gate record docs/x.md PASS|MERIT');
   assert.equal(reasonLine({ file: 'docs/y.md', sha256: 'x' }), '- docs/y.md: run the research-claims-gate skill, then research-vault gate record docs/y.md PASS|MERIT');
+});
+
+test('missingGates lists a checked task\'s lesson when only its requirements.json changed (issue 79 D9)', () => {
+  const root = tmpVault('rv-stopgate-task-');
+  const vault = join(root, 'research');
+  mkdirSync(vault);
+  writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault }) + '\n');
+  cpSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'teach-task'), join(root, 'ws'), { recursive: true });
+  const page = join(root, 'ws', 'lessons', '0001-files.html');
+  const req = join(root, 'ws', 'evidence', '0001', 'requirements.json');
+  recordVerdict(root, page, 'PASS');
+  const old = new Date(Date.now() - 3600000);
+  utimesSync(page, old, old);
+  assert.deepEqual(missingGates(root, vault, {}, Date.now() - 60000), []);
+  writeFileSync(req, readFileSync(req, 'utf8').replace('hello', 'goodbye'));
+  assert.deepEqual(missingGates(root, vault, {}, Date.now() - 60000).map((m) => m.file), ['ws/lessons/0001-files.html']);
 });

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../bin/lib/resolve.mjs';
 import { loadProjectConfig } from '../bin/lib/projectconfig.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
-import { gatedFiles, gateStatus, ledgerKey, referencedImages, missingEvidence } from '../bin/lib/gate.mjs';
+import { gatedFiles, gateStatus, ledgerKey, referencedImages, taskFile, missingEvidence } from '../bin/lib/gate.mjs';
 import { langFor, codeFiles, extractCodeLinks, readVersions } from '../bin/lib/codelinks.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -35,7 +35,7 @@ export function missingGates(repoRoot, vaultPath, cfg, since) {
   const changed = (f) => statSync(f).mtimeMs >= since && !cleanInGit(repoRoot, f);
   const cache = {};
   const out = gatedFiles(repoRoot, vaultPath, cfg)
-    .filter((f) => changed(f) || referencedImages(f).some(changed))
+    .filter((f) => changed(f) || [...referencedImages(f), taskFile(f)].filter(Boolean).some(changed))
     .map((f) => gateStatus(repoRoot, f))
     .filter((s) => !s.verdict)
     .map(({ file, sha256, units }) => {
