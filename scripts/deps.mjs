@@ -149,6 +149,7 @@ export const COUPLINGS = [
   ['bin/lib/lesson.mjs', 'docs/REFERENCE.md', 'the TASK_REQUIREMENTS_INVALID code of teach lint', 'TASK_REQUIREMENTS_INVALID'],
   ['bin/lib/task.mjs', 'skills/research-teach/LESSON-FORMAT.md', "the Checked task section states readRequirements's keys and limits, parseChecker's line forms and problems and reportLines's lines; the literal matches reportLines's FAIL line in the code and FAIL <id>: in the format", /FAIL (?:\$\{r\.id\}|<id>): /],
   ['bin/lib/task.mjs', 'skills/research-teach/LESSON-FORMAT.md', "reportLines's last line with hints held back", 'hints: ./check --hints'],
+  ['bin/lib/task.mjs', 'SECURITY.md', "Local writers names teach check's scripts and the certification run's state file", '.teach-certify.json'],
   ['bin/lib/task.mjs', 'skills/research-teach/LESSON-FORMAT.md', "readRequirements's and parseChecker's words for LAB_TEXT_BAD_RE", 'control, line-separator or bidi character'],
   ['bin/lib/task.mjs', 'skills/research-teach/SKILL.md', "section 3 states the checker's output form and run.sh's ./check --dry-run --hints N; section 1 writes the ./check wrapper that runs teach check", './check'],
   ['bin/lib/task.mjs', 'docs/REFERENCE.md', "the teach check section quotes reportLines's lines and runChecker's and parseChecker's problems", 'output past 1 MiB'],

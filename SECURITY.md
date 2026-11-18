@@ -16,6 +16,8 @@ One local process writes your entries without a per-run prompt: the advisory `Po
 
 A second local process, `teach serve`, writes learner data, not entries: one attempt file in the workspace's `attempts/` per accepted `POST /attempt`, and `.teach-serve.json`. Its limits are in the next section. With `--labs` it also runs the lab scripts a workspace pins, which write wherever they write (Lab runs, below).
 
+A fourth, `teach check` (`./check` in a teaching workspace), runs a checked task's `evidence/NNNN/check.sh` with the environment it was started with, and with `--start` each task's `setup.sh`. Unlike a lab script, neither is pinned by a hash: they are the workspace's own scripts, run when the learner runs `./check`. It writes one attempt file in `attempts/` for each check it records and `.teach-certify.json` while a certification run is open; the scripts write wherever they write, and a background process a setup leaves keeps running.
+
 A third local write is the usage log, `_index/usage.jsonl` in the vault, appended by the pre-web hook, the post-edit hook and `search`: ids, facets and an outcome per event, never the fetched page, and free query text only when the repo's binding sets `usage.text` to `true`. It stays under `_index/`, which the vault's `.gitignore` ignores, and nothing reads it but the vault's own reports.
 
 ## Lesson server (`teach serve`)
