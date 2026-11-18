@@ -200,3 +200,16 @@ test('a lock whose owner file could not be written is removed, not left to block
   assert.equal(blocked.errors[0].code, 'RECEIPT_IO'); assert.equal(blocked.errors[0].phase, 'lock'); assert.equal(fs.existsSync(join(f.vault, '.capture-operations/writer.lock')), false);
   assert.equal(f.run().errors.length, 0);
 });
+
+// Issue 72 items 1, 2, 3, 5 and 6. Item 4 (Windows paths) has no test: the suite does not run on Windows.
+test('issue 72 item 1: the next lock holder removes the temporary link a killed writer left, and no other file', () => {
+  const f = fixture(); const module = new URL('../bin/lib/capture-operation.mjs', import.meta.url).href;
+  const code = `import { captureOperation } from ${JSON.stringify(module)}; captureOperation(${JSON.stringify(f.vault)},${JSON.stringify(f.path)},'stable_key',{now:${JSON.stringify(now)},event:e=>{if(e==='published')process.kill(process.pid,'SIGKILL')}})`;
+  assert.equal(spawnSync(process.execPath, ['--input-type=module', '-e', code]).signal, 'SIGKILL');
+  const dir = join(f.vault, 'questions'), litter = () => fs.readdirSync(dir).filter(n => n.endsWith('.tmp'));
+  assert.equal(litter().length, 1);
+  fs.writeFileSync(join(dir, 'other.md.tmp'), 'not this protocol\'s');
+  fs.rmSync(join(f.vault, '.capture-operations/writer.lock'), { recursive: true });
+  assert.equal(f.run().operation.phase, 'complete');
+  assert.deepEqual(litter(), ['other.md.tmp']);
+});

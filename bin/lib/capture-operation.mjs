@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { prepareEntry } from '../commands/capture.mjs';
 import { serializeFrontmatter } from './frontmatter.mjs';
-import { readEntry, walkEntries, TYPE_FOLDER } from './fsutil.mjs';
+import { readEntry, walkEntries, TYPE_FOLDER, ENTRY_FOLDERS } from './fsutil.mjs';
 import { loadSchema } from './schema.mjs';
 import { sha256, normalizeUrl, verKey } from './ids.mjs';
 import { buildManifest, danglingEdges, writeManifest } from './manifest.mjs';
@@ -134,6 +134,13 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
     // The lock is ours from here; without its owner diagnostic we give it back rather than hold it unnamed.
     try { atomicJson(join(lock, 'owner.json'), { operationId: key, pid: process.pid, vault, started: new Date().toISOString() }); }
     catch (e) { errors.push(fault('RECEIPT_IO', 'lock', e)); return output(); }
+    // Issue 72 item 1: a writer killed between link and unlink leaves `<id>.md.<uuid>.tmp` beside the entry. Only this
+    // file writes that name, and we hold the lock, so such a file is a dead writer's; the entry is a separate link.
+    for (const f of ENTRY_FOLDERS) {
+      let names = [];
+      try { names = fs.readdirSync(join(vault, f)); } catch {}
+      for (const n of names) if (/\.md\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/.test(n)) { try { fs.unlinkSync(join(vault, f, n)); } catch {} }
+    }
     // Another writer may have finished between our initial read and lock acquisition.
     // Never prepare from that stale observation or replace its receipt.
     if (fs.existsSync(receiptPath)) {
