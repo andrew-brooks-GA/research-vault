@@ -4,6 +4,7 @@
 import { accessSync, constants, existsSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
+import { parseFrontmatter } from './frontmatter.mjs';
 import { LAB_TEXT_BAD_RE, LAB_OUTPUT_MAX, STOP_GRACE, KILL_WAIT, stopGroup } from './labs.mjs';
 import { show, RECORD_ID_RE, LESSON_ID_RE, writeAttempt, missionPrefs } from './teach.mjs';
 
@@ -61,7 +62,12 @@ export function parseChecker(requirements, { code, stdout }) {
   const seen = new Map(); // id -> null for ok, the hint for FAIL
   for (const line of stdout.split(/\r?\n/)) {
     const m = /^ok (\S+)$/.exec(line) ?? /^FAIL (\S+?): (.+)$/s.exec(line);
-    if (!m) continue;
+    if (!m) {
+      // A line that starts with ok or FAIL, in any case, and a requirement's id, in neither form: a checker bug.
+      const [first, second] = line.trim().split(/[\s:]+/);
+      if (/^(ok|fail)$/i.test(first) && ids.includes(second)) return { problem: `check.sh printed ${show(line.trim())}, which is not of the form ok <id> or FAIL <id>: <hint>` };
+      continue;
+    }
     const [, id, hint = null] = m;
     if (!ids.includes(id)) return { problem: `check.sh printed ${show(id)}, which requirements.json does not hold` };
     if (seen.has(id)) return { problem: `check.sh printed ${id} twice` };
@@ -197,7 +203,15 @@ const RUN_BAD = `${RUN_FILE} is not a certification run; drop it with ./check --
 const OPEN_TAIL = 'end: ./check --certify; drop: ./check --cancel';
 const inRange = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
 const runIdIn = (file) => { try { const id = JSON.parse(readFileSync(file, 'utf8'))?.id; return RUN_ID_RE.test(id) ? id : null; } catch { return null; } };
-const endingProblem = (id) => `an end of ${id ? `certification run ${id}` : 'a certification run'} did not finish; attempts of the run may be recorded; ./check --cancel removes it`;
+const endingProblem = (id) => (id ? `an end of certification run ${id} did not finish; ./check --cancel removes it and the attempts it wrote`
+  : 'an end of a certification run did not finish; attempts of the run may be recorded; ./check --cancel removes it');
+// The attempts/*.md files whose certification is `id`.
+const runAttempts = (ws, id) => {
+  const dir = join(ws, 'attempts');
+  return (existsSync(dir) ? readdirSync(dir) : []).filter((f) => f.endsWith('.md')).map((f) => join(dir, f)).filter((f) => {
+    try { return parseFrontmatter(readFileSync(f, 'utf8')).data.certification === id; } catch { return false; }
+  });
+};
 const minutesOf = (s, now) => (s.started ? Math.max(0, Math.floor((now.getTime() - Date.parse(s.started)) / 60000)) : 0);
 
 // {} with no run, { state } for an open run, or { problem } (naming --cancel) for an end that did not finish or a
@@ -255,7 +269,8 @@ export async function startRun(ws, nums, { minutes, pass, hints }, { now, out, e
   if (open.problem) return refuse(open.problem);
   const t0 = now().toISOString();
   // ponytail: the id changes once a second, so two runs started and ended within one second share an id and
-  // certificationRuns merges them; the fix is a suffix when attempts already hold the id.
+  // certificationRuns merges them, and a --cancel of the second's stopped end removes the first's attempts too; the fix
+  // is a suffix when attempts already hold the id.
   const state = { id: `c-${t0.slice(0, 10).replaceAll('-', '')}-${t0.slice(11, 19).replaceAll(':', '')}`, started: null, tasks, minutes: M, pass: P, hints };
   const file = join(ws, RUN_FILE);
   try { writeFileSync(file, JSON.stringify(state) + '\n', { flag: 'wx' }); } catch (e) {
@@ -273,6 +288,8 @@ export async function startRun(ws, nums, { minutes, pass, hints }, { now, out, e
     }
     reset.push(t);
   }
+  // A --cancel during a setup removed the state: the start does not write it again.
+  if (runIdIn(file) !== state.id) return refuse(`certification run ${state.id} was dropped during its setup; no run started; scopes already reset: ${reset.join(', ')}`);
   state.started = now().toISOString();
   writeFileSync(file, JSON.stringify(state) + '\n');
   out(`certification run ${state.id}: started`);
@@ -324,14 +341,18 @@ export async function endRun(ws, schema, { now, out, err, env = process.env }) {
   return 0;
 }
 
-// D8's cancel: an end that did not finish is removed first, and says attempts may be recorded; else the state is
-// removed, and nothing was recorded. Exit 2 with neither.
+// D8's cancel: an end that did not finish is removed first, with the attempts it wrote, so a stopped end leaves no
+// part of a grade (with no run id in the file, they cannot be found, and it says attempts may be recorded); else the
+// state is removed, and nothing was recorded. Exit 2 with neither.
 export function cancelRun(ws, { out, err }) {
   const ending = join(ws, ENDING_FILE), file = join(ws, RUN_FILE);
   if (existsSync(ending)) {
     const id = runIdIn(ending);
+    const written = id ? runAttempts(ws, id) : [];
+    for (const f of written) rmSync(f, { force: true });
     rmSync(ending, { force: true });
-    out(`removed the end of ${id ? `certification run ${id}` : 'a certification run'} that did not finish; attempts of the run may be recorded`);
+    out(id ? `removed the end of certification run ${id} that did not finish and the ${written.length} attempt${written.length === 1 ? '' : 's'} it wrote; nothing of the run is recorded`
+      : 'removed the end of a certification run that did not finish; attempts of the run may be recorded');
     return 0;
   }
   if (!existsSync(file)) { err('teach check: no certification run is open'); return 2; }

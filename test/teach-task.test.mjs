@@ -43,7 +43,7 @@ const parse = (code, lines) => parseChecker(REQS, { code, stdout: lines.map((l) 
 
 test('parseChecker: every id ok with exit 0 passes them all; a line of neither form is ignored', () => {
   assert.deepEqual(parse(0, ['ok a-exists', 'ok b-exists', 'ok b-text']), { passed: ['a-exists', 'b-exists', 'b-text'], failed: [], unreached: [] });
-  assert.deepEqual(parse(0, ['checking teach-0001', 'ok a-exists', 'okay b-exists', 'FAIL b-exists', 'ok b-exists', 'ok b-text']),
+  assert.deepEqual(parse(0, ['checking teach-0001', 'ok a-exists', 'okay b-exists', 'OK, all checked', 'FAIL nope', 'OK nope', 'ok b-exists', 'ok b-text']),
     { passed: ['a-exists', 'b-exists', 'b-text'], failed: [], unreached: [] });
 });
 
@@ -71,6 +71,14 @@ test('parseChecker: each problem of D3 is a problem, never a result', () => {
     [1, ['ok a-exists', 'FAIL a-exists: x'], 'check.sh printed a-exists twice'],
     [1, ['FAIL a-exists: bad \u001b[31m hint'], "check.sh printed a hint for a-exists with a control, line-separator or bidi character"],
     [1, ['FAIL a-exists: bad \u202e hint'], "check.sh printed a hint for a-exists with a control, line-separator or bidi character"],
+    // A line that starts with ok or FAIL and an id, in neither form, is named, not skipped.
+    [0, ['OK a-exists', 'ok b-exists', 'ok b-text'], 'check.sh printed "OK a-exists", which is not of the form ok <id> or FAIL <id>: <hint>'],
+    [0, ['ok: a-exists', 'ok b-exists', 'ok b-text'], 'check.sh printed "ok: a-exists", which is not of the form ok <id> or FAIL <id>: <hint>'],
+    [0, ['ok a-exists ', 'ok b-exists', 'ok b-text'], 'check.sh printed "ok a-exists", which is not of the form ok <id> or FAIL <id>: <hint>'],
+    [1, ['ok a-exists', 'FAIL b-exists'], 'check.sh printed "FAIL b-exists", which is not of the form ok <id> or FAIL <id>: <hint>'],
+    [1, ['FAIL: a-exists missing'], 'check.sh printed "FAIL: a-exists missing", which is not of the form ok <id> or FAIL <id>: <hint>'],
+    [1, ['oK a-exists'], 'check.sh printed "oK a-exists", which is not of the form ok <id> or FAIL <id>: <hint>'],
+    [0, ['ok:a-exists', 'ok b-exists', 'ok b-text'], 'check.sh printed "ok:a-exists", which is not of the form ok <id> or FAIL <id>: <hint>'],
   ];
   for (const [code, lines, problem] of cases) assert.deepEqual(parse(code, lines), { problem }, lines.join(' | '));
 });
@@ -615,8 +623,8 @@ test('teach lint reports the id all as TASK_REQUIREMENTS_INVALID', () => {
 
 // Issue 79 commit 5 (D8): a certification run of one task or several, with one start, one end and one grade. The
 // fixture's second task, 0002-more, has two requirements, c-exists and c-text, which name no record.
-const { startRun, endRun, readRun, runLine, openLine } = await import('../bin/lib/task.mjs');
-const { certificationRuns } = await import('../bin/lib/teach.mjs');
+const { startRun, endRun, readRun, runLine, openLine, checkAttempt } = await import('../bin/lib/task.mjs');
+const { certificationRuns, writeAttempt } = await import('../bin/lib/teach.mjs');
 const RUN = '.teach-certify.json';
 const ENDING = '.teach-certify.ending.json';
 const runScript = (ws, n, name) => assert.equal(spawnSync(join(ws, 'evidence', n, name), [], { cwd: ws }).status, 0, `${n} ${name}`);
@@ -873,20 +881,47 @@ test('a crash: a state file that is not JSON makes --certify exit 2 and name --c
   assert.ok(!existsSync(join(ws, RUN)));
 });
 
-test('a crash: with .teach-certify.ending.json in place, --start and --certify exit 2 and name --cancel, which removes it and says attempts may be recorded', () => {
+test('a crash: with .teach-certify.ending.json in place, --start and --certify exit 2 and name --cancel, which removes it and the attempts it wrote', async () => {
   const ws = copy();
+  assert.equal(check(ws, '1').status, 1); // an attempt of no run, which stays
   assert.equal(check(ws, '--start', '1').status, 0);
   const id = state(ws).id;
   renameSync(join(ws, RUN), join(ws, ENDING));
-  const ending = `teach check: an end of certification run ${id} did not finish; attempts of the run may be recorded; ./check --cancel removes it\n`;
+  // The end was stopped after it wrote the attempt of task 1.
+  const { requirements } = readRequirements(ws, '0001');
+  const failed = parseChecker(requirements, { code: 1, stdout: 'FAIL a-exists: x\n' });
+  writeAttempt(ws, { lesson: '0001-files', task: checkAttempt(requirements, failed, 'c-20250101-000000'), now: at(4) }, loadTeachSchema(ROOT)); // another run's, which stays
+  writeAttempt(ws, { lesson: '0001-files', task: checkAttempt(requirements, failed, id), now: at(5) }, loadTeachSchema(ROOT));
+  assert.equal(attemptFiles(ws).length, 3);
+  const ending = `teach check: an end of certification run ${id} did not finish; ./check --cancel removes it and the attempts it wrote\n`;
   for (const args of [['--start', '2'], ['--certify']]) {
     const r = check(ws, ...args);
     assert.deepEqual([r.status, r.stdout, r.stderr], [2, '', ending], args.join(' '));
   }
   assert.ok(!existsSync(join(ws, 'teach-0002')));
   const c = check(ws, '--cancel');
-  assert.deepEqual([c.status, c.stdout], [0, `removed the end of certification run ${id} that did not finish; attempts of the run may be recorded\n`]);
+  assert.deepEqual([c.status, c.stdout], [0, `removed the end of certification run ${id} that did not finish and the 1 attempt it wrote; nothing of the run is recorded\n`]);
   assert.ok(!existsSync(join(ws, ENDING)) && !existsSync(join(ws, RUN)));
+  const left = attemptFiles(ws).map((f) => parseFrontmatter(readFileSync(join(ws, 'attempts', f), 'utf8')).data);
+  assert.deepEqual(left.map((a) => a.certification).sort(), ['c-20250101-000000', undefined]);
+});
+
+test('a crash with no run id in .teach-certify.ending.json: --cancel removes it and says attempts may be recorded', () => {
+  const ws = copy();
+  writeFileSync(join(ws, ENDING), '{}\n');
+  const c = check(ws, '--cancel');
+  assert.deepEqual([c.status, c.stdout], [0, 'removed the end of a certification run that did not finish; attempts of the run may be recorded\n']);
+});
+
+test('certification start: a --cancel during a setup is not undone; the start exits 2 and writes no state', async () => {
+  const ws = copy();
+  // Task 2's setup stands in for a --cancel in a second terminal while it runs.
+  writeFileSync(join(ws, 'evidence', '0002', 'setup.sh'), '#!/usr/bin/env bash\nrm -f .teach-certify.json\n');
+  chmodSync(join(ws, 'evidence', '0002', 'setup.sh'), 0o755);
+  const o = io(() => T0);
+  assert.equal(await startRun(ws, ['1', '2'], { minutes: null, pass: null, hints: true }, o), 2);
+  assert.deepEqual(o.lines.err, ['teach check: certification run c-20260101-100000 was dropped during its setup; no run started; scopes already reset: 0001, 0002']);
+  assert.ok(!existsSync(join(ws, RUN)));
 });
 
 test('certificationRuns counts the last attempt of each lesson in a run, oldest run first', () => {
