@@ -200,3 +200,75 @@ test('a lock whose owner file could not be written is removed, not left to block
   assert.equal(blocked.errors[0].code, 'RECEIPT_IO'); assert.equal(blocked.errors[0].phase, 'lock'); assert.equal(fs.existsSync(join(f.vault, '.capture-operations/writer.lock')), false);
   assert.equal(f.run().errors.length, 0);
 });
+
+// Issue 72 items 1, 2, 3, 5 and 6. Item 4 (Windows paths) has no test: the suite does not run on Windows.
+test('issue 72 item 1: the next lock holder removes the temporary link a killed writer left, and no other file', () => {
+  const f = fixture(); const module = new URL('../bin/lib/capture-operation.mjs', import.meta.url).href;
+  const code = `import { captureOperation } from ${JSON.stringify(module)}; captureOperation(${JSON.stringify(f.vault)},${JSON.stringify(f.path)},'stable_key',{now:${JSON.stringify(now)},event:e=>{if(e==='published')process.kill(process.pid,'SIGKILL')}})`;
+  assert.equal(spawnSync(process.execPath, ['--input-type=module', '-e', code]).signal, 'SIGKILL');
+  const dir = join(f.vault, 'questions'), litter = () => fs.readdirSync(dir).filter(n => n.endsWith('.tmp'));
+  assert.equal(litter().length, 1);
+  fs.writeFileSync(join(dir, 'other.md.tmp'), 'not this protocol\'s');
+  fs.rmSync(join(f.vault, '.capture-operations/writer.lock'), { recursive: true });
+  assert.equal(f.run().operation.phase, 'complete');
+  assert.deepEqual(litter(), ['other.md.tmp']);
+});
+test('issue 72 item 2: an entry takes the mode capture without --operation-id gives one', { skip: process.platform === 'win32' }, async () => {
+  const { captureEntry } = await import('../bin/commands/capture.mjs');
+  const f = fixture([{ type: 'question', title: 'By the operation' }]);
+  // ponytail: umask is process-wide; fine while this file's tests run one after another.
+  const old = process.umask(0o002);
+  let op, legacy; try { op = f.run(); legacy = captureEntry(f.vault, { type: 'question', title: 'By capture', now }).path; } finally { process.umask(old); }
+  assert.equal(op.operation.phase, 'complete');
+  const mode = p => fs.statSync(p).mode & 0o777;
+  assert.equal(mode(legacy), 0o664);
+  assert.equal(mode(op.created[0].path), 0o664);
+});
+test('issue 72 item 3: LOCK_BUSY says when the lock holds no owner.json', () => {
+  const f = fixture(); const lock = join(f.vault, '.capture-operations/writer.lock');
+  fs.mkdirSync(lock, { recursive: true });
+  const bare = f.run().errors[0];
+  assert.equal(bare.code, 'LOCK_BUSY'); assert.match(bare.error, /holds no owner\.json/); assert.doesNotMatch(bare.error, /inspect owner\.json/);
+  fs.writeFileSync(join(lock, 'owner.json'), '{}');
+  const named = f.run().errors[0];
+  assert.equal(named.code, 'LOCK_BUSY'); assert.match(named.error, /inspect owner\.json/);
+  // A lock that could not be made for another reason than that it exists is not called a lock with no owner.json.
+  if (process.platform === 'win32' || process.getuid?.() === 0) return;
+  const g = fixture(); const ops = join(g.vault, '.capture-operations'); fs.mkdirSync(ops); fs.chmodSync(ops, 0o500);
+  let denied; try { denied = g.run().errors[0]; } finally { fs.chmodSync(ops, 0o700); }
+  assert.equal(denied.code, 'LOCK_BUSY'); assert.doesNotMatch(denied.error, /holds no owner\.json/);
+});
+test('issue 72 item 5: a replay checks a reused source by the rules it was reused by, and any other reused entry by its bytes', async () => {
+  const { applyVerification } = await import('../bin/commands/verify.mjs');
+  const src = { type: 'source', title: 'A page', url: 'https://example.com/a' }, q = { type: 'question', title: 'Asked' };
+  const change = (p, from, to) => fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace(from, to));
+  const cases = [
+    ['verified', src, (p, id, v) => applyVerification(v, { id, method: 'existence-check', result: 'confirmed' }), true],
+    ['gone', src, p => fs.unlinkSync(p), false],
+    ['superseded', src, p => change(p, 'status: active', 'status: superseded'), false],
+    ['another URL', src, p => change(p, 'https://example.com/a', 'https://example.com/b'), false],
+    ['another type', src, p => change(p, 'type: source', 'type: note'), false],
+    ['a question reused for its bytes, then edited', q, p => change(p, '# Asked', '# Asked\n\nThe opposite claim.'), false],
+  ];
+  for (const [name, spec, edit, completes] of cases) {
+    const f = fixture([spec, { type: 'question', title: 'After' }]);
+    const first = join(f.root, 'first.json'); fs.writeFileSync(first, JSON.stringify([spec]));
+    assert.equal(captureOperation(f.vault, first, 'first_key', { now }).operation.phase, 'complete', name);
+    const failed = f.run({ event: (e, row) => { if (e === 'artifact' && row.index === 1) fail('EBUSY'); } });
+    assert.deepEqual(failed.operation.results.map(r => r.state), ['reused', 'pending'], name);
+    const path = join(f.vault, failed.operation.results[0].path);
+    edit(path, failed.operation.results[0].id, f.vault);
+    const edited = fs.existsSync(path) ? fs.readFileSync(path, 'utf8') : null;
+    const replay = f.run();
+    if (!completes) { assert.equal(replay.errors[0]?.code, 'DESTINATION_CONFLICT', name); assert.equal(replay.errors[0].index, 0, name); continue; }
+    assert.deepEqual(replay.errors, [], name); assert.equal(replay.operation.phase, 'complete', name);
+    assert.equal(fs.readFileSync(path, 'utf8'), edited, name);
+  }
+});
+test('issue 72 item 6: every plan entry that cannot be read is reported, and nothing is written', () => {
+  const f = fixture(['not an object', { type: 'question', title: 'Good' }, 42, { type: 'note', title: 'One', contentFile: 'missing-1.txt' }, { type: 'note', title: 'Two', contentFile: 'missing-2.txt' }]);
+  const r = f.run();
+  assert.deepEqual(r.errors.map(e => [e.index, e.code]), [[0, 'INPUT_INVALID'], [2, 'INPUT_INVALID'], [3, 'INPUT_INVALID'], [4, 'INPUT_INVALID']]);
+  assert.match(r.errors[2].error, /missing-1\.txt/); assert.match(r.errors[3].error, /missing-2\.txt/);
+  assert.equal(r.recoveryStateCreated, false); assert.deepEqual(bytes(f.vault), []);
+});

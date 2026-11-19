@@ -1,5 +1,6 @@
-// Spec 49: the lab manifest `labs/labs.json`, its reader and the pins (D1, D2), and the runner (D4 to D7). This is
-// the one file that imports node:child_process, and `launch` the one function that calls spawn.
+// Spec 49: the lab manifest `labs/labs.json`, its reader and the pins (D1, D2), and the runner (D4 to D7). Here
+// `launch` is the one function that calls spawn. task.mjs also imports node:child_process: it starts a checked
+// task's checker for `teach check` (issue 79 D4), and stops its group with stopGroup.
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -237,7 +238,7 @@ const groupAlive = (pgid) => { try { process.kill(-pgid, 0); return true; } catc
 const signalGroup = (pgid, sig) => { try { process.kill(-pgid, sig); } catch { /* the group is gone */ } };
 // D5's Stop sequence on one group: SIGTERM; SIGKILL once STOP_GRACE has passed with the group still there; then at
 // most KILL_WAIT for it to go, polled every 20 ms. True when the group is gone. Every signal goes to the group.
-async function stopGroup(pgid, L) {
+export async function stopGroup(pgid, L) {
   signalGroup(pgid, 'SIGTERM');
   for (const end = Date.now() + L.STOP_GRACE; groupAlive(pgid) && Date.now() < end;) await sleep(POLL);
   if (!groupAlive(pgid)) return true;

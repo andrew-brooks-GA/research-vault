@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../bin/lib/resolve.mjs';
 import { loadProjectConfig } from '../bin/lib/projectconfig.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
-import { gatedFiles, gateStatus, ledgerKey, referencedImages } from '../bin/lib/gate.mjs';
+import { gatedFiles, gateStatus, ledgerKey, referencedImages, taskFile, missingEvidence } from '../bin/lib/gate.mjs';
 import { langFor, codeFiles, extractCodeLinks, readVersions } from '../bin/lib/codelinks.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -33,11 +33,16 @@ export function cleanInGit(repoRoot, file) {
 // { file, line, symbol, id, key, version, declared } for a link pinned to a version a changed versions file no longer declares.
 export function missingGates(repoRoot, vaultPath, cfg, since) {
   const changed = (f) => statSync(f).mtimeMs >= since && !cleanInGit(repoRoot, f);
+  const cache = {};
   const out = gatedFiles(repoRoot, vaultPath, cfg)
-    .filter((f) => changed(f) || referencedImages(f).some(changed))
+    .filter((f) => changed(f) || [...referencedImages(f), taskFile(f)].filter(Boolean).some(changed))
     .map((f) => gateStatus(repoRoot, f))
     .filter((s) => !s.verdict)
-    .map(({ file, sha256 }) => ({ file, sha256 }));
+    .map(({ file, sha256, units }) => {
+      // Issue 72 item 12: cited ids this vault lacks are named, so the reader rebuilds that evidence before gating.
+      const missing = missingEvidence(repoRoot, file, vaultPath, units, cache);
+      return { file, sha256, ...(missing && { missing }) };
+    });
   const keys = Object.entries(cfg?.code?.versions ?? {}).filter(([, v]) => changed(resolve(repoRoot, v.file))).map(([k]) => k);
   if (keys.length) {
     const versions = readVersions(cfg, repoRoot);
@@ -51,7 +56,7 @@ export function missingGates(repoRoot, vaultPath, cfg, since) {
 }
 
 export function reasonLine(m) {
-  if (m.sha256) return `- ${m.file}: run the research-claims-gate skill, then research-vault gate record ${m.file} PASS|MERIT`;
+  if (m.sha256) return `- ${m.file}: ${m.missing ? `${m.missing} cited id${m.missing === 1 ? '' : 's'} not in this vault: rebuild that evidence, then ` : ''}run the research-claims-gate skill, then research-vault gate record ${m.file} PASS|MERIT`;
   return `- ${m.file}:${m.line} ${m.symbol}: pinned ${m.key}=${m.version}, declared ${m.declared}; re-verify ${m.id} and move the pin, or capture the new version and replace the id`;
 }
 

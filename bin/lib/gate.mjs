@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, appendFileSync, existsSync, readdirSync } from 'node:fs';
-import { join, resolve, relative, dirname, extname } from 'node:path';
+import { join, resolve, relative, dirname, extname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractCitations } from './citations.mjs';
 import { buildManifest } from './manifest.mjs';
@@ -91,6 +91,8 @@ export function mdUnits(text) {
 // (the tag itself outside one) and the file's bytes, so a pixel change reopens it alone and a caption or alt change also
 // reopens the data-block holding the figure (for a fact block, the paragraph holding it; none for a figure between fact paragraphs);
 // a missing file hashes differently from a present one. Given the page's path, so src can be resolved as the image lint does.
+// A checked task's `step` unit is hashed over the block and its requirements file's bytes (taskFile), so an edit to
+// the file reopens the step alone.
 // With a language, one `sym:<name>` unit per linked declaration; a Markdown draft without data-block
 // elements is one unit per heading section and per table row (mdUnits); anything else, or a code file without an
 // attached link, is one unit, "all". A page whose path ends in .md is never cut as a lesson (pageBlocks).
@@ -110,6 +112,7 @@ export function unitHashes(content, lang = null, page = null) {
     for (const u of md) units[u.unit] = contentHash(lines.slice(u.start - 1, u.end).filter((_, k) => u.row || !rowLines.has(u.start + k)).join('\n'));
     return Object.keys(units).length ? units : { all: contentHash(html) };
   }
+  const task = page && taskFile(page);
   for (const [name, { html: inner }] of blocks) {
     if (name === 'fact') {
       [...inner.matchAll(/<p\b[^>]*>[\s\S]*?<\/p>/gi)].forEach((pm, i) => { units[`fact:${i}`] = contentHash(pm[0]); });
@@ -119,6 +122,8 @@ export function unitHashes(content, lang = null, page = null) {
       try { items = JSON.parse(/<script\b[^>]*\bdata-quiz\b[^>]*>([\s\S]*?)<\/script>/i.exec(inner)?.[1] ?? 'null')?.items; } catch { items = null; }
       if (Array.isArray(items)) items.forEach((it, i) => { units[`quiz:${i}`] = contentHash(JSON.stringify(it)); });
       else units.quiz = contentHash(inner);
+    } else if (name === 'step' && task) {
+      units.step = contentHash(Buffer.concat([Buffer.from(inner + '\0'), readFileSync(task)]));
     } else {
       units[name] = contentHash(inner);
     }
@@ -168,6 +173,15 @@ function imageRefs(html, page, { bytes = true } = {}) {
 export function referencedImages(page) {
   if (extname(page) !== '.html') return [];
   try { return imageRefs(readFileSync(page, 'utf8'), page, { bytes: false }).filter((i) => i.ok).map((i) => i.file); } catch { return []; }
+}
+
+// Issue 79 D9: a lesson page's evidence/NNNN/requirements.json as an absolute path when the file exists, else null.
+export function taskFile(page) {
+  const abs = resolve(page);
+  const nnnn = /^(\d{4})-.*\.html$/.exec(basename(abs))?.[1];
+  if (!nnnn || basename(dirname(abs)) !== 'lessons') return null;
+  const file = join(workspaceOf(abs), 'evidence', nnnn, 'requirements.json');
+  return existsSync(file) ? file : null;
 }
 
 // The binding of this repo root and the language of a code.globs file under it, else null. A
@@ -221,8 +235,9 @@ export function gateStatus(repoRoot, filePath) {
   const reviewer = reviewerHash();
   const hit = rows.findLast((r) => counts(r, file, reviewer) && r.sha256 === sha256);
   const pending = changedUnits(repoRoot, filePath);
-  // The page's exact bytes were passed, unless an image it references has changed since (only an img: unit can differ).
-  if (hit && !pending.some((u) => u.startsWith('img:'))) return { file, sha256, verdict: hit.verdict, ts: hit.ts, units: [] };
+  // The page's exact bytes were passed, unless an image it references or its requirements file (taskFile) has changed
+  // since (only an img: unit, or the step unit, can differ). A row written before units has no step hash to compare.
+  if (hit && !pending.some((u) => u.startsWith('img:') || (u === 'step' && hit.units?.step))) return { file, sha256, verdict: hit.verdict, ts: hit.ts, units: [] };
   // No row for these exact bytes: the draft still passes when every unit of it was passed in some row.
   if (pending.length) {
     // Say why a file covered yesterday is not today: a passing row exists, from another reviewer.
@@ -357,9 +372,28 @@ export function stagedGates(repoRoot, vaultPath, cfg, cwd = repoRoot) {
     staged = git('diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z').split('\0').filter(Boolean).map((f) => resolve(top, f));
   } catch { return []; }
   const gated = new Set(gatedFiles(top, vaultPath, cfg));
-  // A gated page is also judged when an image it references is staged.
-  const pages = [...gated].filter((f) => staged.includes(f) || referencedImages(f).some((i) => staged.includes(i)));
-  return pages.map((f) => { const { file, verdict, reviewerChanged } = gateStatus(repoRoot, f); return { file, verdict, ...(reviewerChanged && { reviewerChanged }) }; });
+  // A gated page is also judged when an image it references, or its requirements file (taskFile), is staged.
+  const pages = [...gated].filter((f) => staged.includes(f) || [...referencedImages(f), taskFile(f)].some((i) => staged.includes(i)));
+  const cache = {};
+  return pages.map((f) => {
+    const { file, verdict, reviewerChanged, units } = gateStatus(repoRoot, f);
+    const missing = verdict ? 0 : missingEvidence(repoRoot, f, vaultPath, units, cache);
+    return { file, verdict, ...(reviewerChanged && { reviewerChanged }), ...(missing && { missing }) };
+  });
+}
+
+// Issue 72 item 12: how many ids the changed units of a Markdown file cite that this vault does not hold. A doc gated
+// against another vault cites them, and those units cannot pass here until that evidence is rebuilt. Code files are not
+// counted. `cache` lets a caller build the vault's manifest once for many files.
+export function missingEvidence(repoRoot, filePath, vaultPath, units, cache = {}) {
+  try {
+    const abs = resolve(repoRoot, filePath);
+    if (codeLang(repoRoot, abs)) return 0;
+    const text = readFileSync(abs, 'utf8');
+    const cites = changedCites(text, !pageBlocks(text, abs).size ? mdUnits(text) : [], units?.length ? units : null);
+    const rows = checkCitations(cites, (cache.manifest ??= buildManifest(vaultPath)).entries, loadSchema(REPO_ROOT), new Date().toISOString().slice(0, 10));
+    return new Set(rows.filter((r) => r.status === 'uncovered' && r.type === 'id').map((r) => r.value)).size;
+  } catch { return 0; }
 }
 
 // The files of a teach workspace the gate covers; `teach export` gates exactly these.

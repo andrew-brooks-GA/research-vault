@@ -101,8 +101,11 @@ function listSupersedeSuspects(m) {
   const out = [];
   for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) {
     const a = live[i], b = live[j];
-    if (a.type !== b.type || verKey(a.subject?.version) !== verKey(b.subject?.version)) continue;
-    const by = a.source_url && a.source_url === b.source_url ? 'source_url'
+    if (a.type !== b.type) continue;
+    // Issue 72 item 8: capture keeps one URL with a version and without one as two sources; pair them too.
+    const bare = a.source_url && a.source_url === b.source_url && (verKey(a.subject?.version) === null) !== (verKey(b.subject?.version) === null);
+    if (!bare && verKey(a.subject?.version) !== verKey(b.subject?.version)) continue;
+    const by = bare ? 'source_url-unversioned' : a.source_url && a.source_url === b.source_url ? 'source_url'
       : a.subject?.name && a.subject.name === b.subject?.name ? 'subject' : null;
     if (by) out.push({ older: a.id, newer: b.id, by });
   }

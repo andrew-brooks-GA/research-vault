@@ -88,7 +88,7 @@ export async function run(args) {
   const rows = searchVault(vaultPath, { type: args.type, domain: args.domain, topic: args.topic, series: args.series, text: args.text, body: args.body, includeSuperseded: !!args['include-superseded'], sort: args.sort, now });
   // The usage log (spec 29): the facets and the ids returned; --text only behind usage.text.
   try {
-    const cfg = loadProjectConfig(process.cwd(), { schema: loadSchema(REPO_ROOT) })?.config;
+    const cfg = loadProjectConfig(args.cwd ?? process.cwd(), { schema: loadSchema(REPO_ROOT) })?.config;
     appendUsage(vaultPath, { kind: 'queried', via: 'search', type: args.type, topic: args.topic, outcome: rows.length ? 'hits' : 'no-match', ids: rows.map(e => e.id), text: cfg?.usage?.text === true && args.text ? args.text : undefined });
   } catch { /* the log never changes the answer */ }
   if (args.json) process.stdout.write(JSON.stringify(rows, null, 2) + '\n');

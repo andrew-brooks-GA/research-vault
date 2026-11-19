@@ -35,15 +35,17 @@ test('verify --quotes: a quote on one line of a stored body adds one inconclusiv
   assert.equal(entry(dir).body, BODY, 'the body is unchanged');
 });
 
-test('verify --quotes: a quote over two lines is not found, a short quote is refused, and a quote on three lines reports all three', async () => {
+test('verify --quotes: a quote over two lines is found with its first line in the row, a short quote is refused, and a quote on three lines reports all three', async () => {
   const dir = tmpVault(); src(dir, BODY);
   const [two, short, three] = await checkQuotes(dir, ID, ['A sentence that begins on this line and ends on the next one here.', 'Repeat me', 'Repeat me here please.'], NOW);
-  assert.equal(two.found, false);
-  assert.match(two.reason, /not on any one line of the stored text/);
+  assert.deepEqual([two.found, two.foundIn, two.lines, two.occurrences], [true, 'body', [4], 1]);
+  assert.match(two.context, /A sentence that begins on this line and \/ ends on the next one here\. \/ Repeat me here please\. \/ Repeat me here please\./);
   assert.equal(short.refused, true);
   assert.deepEqual(three.lines, [6, 7, 9]);
   assert.equal(three.occurrences, 3);
-  assert.equal(matched(dir).length, 1);
+  const rows = matched(dir);
+  assert.equal(rows.length, 2);
+  assert.match(rows[0].notes, /^[0-9a-f]{8} L4@[0-9a-f]{8}: A sentence that begins on this line and ends on the next one here\.$/);
 });
 
 test('verify --quotes: a quote absent from the stored body and present on the fetched page is found on the page, with the body and hash unchanged', async () => {
@@ -88,4 +90,38 @@ test('verify --quotes: the method cannot be given by hand, a non-source is refus
   assert.equal(JSON.parse(written.join(''))[0].found, true);
   assert.equal(matched(dir)[0].by_id, 'research-orchestrate');
   assert.ok(readFileSync(join(dir, '.vault-manifest.json'), 'utf8').includes(ID));
+});
+
+// Issue 77: a quote may run over adjacent lines with no blank line between them.
+test('verify --quotes: a quote over adjacent lines is found in a body and on a page; one across a blank line or over block quote marks is not; a body of 15,000 lines with no blank line is checked in under two seconds', async () => {
+  const dir = tmpVault();
+  src(dir, `# ${ID}\n\n## Install\nRun the installer with the flag set.\n\n- never commit secrets to\n- the repo should be public\n\nThe last line of one paragraph ends here.\n\nThe first line of the next paragraph starts here.\n\n> A quoted paragraph whose sentence is long enough that the file wraps it\n> onto a second line with its own mark.\n\n${'Filler line of stored text. '.repeat(8)}\n`);
+  const [head, items, blank, marks] = await checkQuotes(dir, ID, [
+    'Install Run the installer with the flag set.',
+    'never commit secrets to - the repo should be public',
+    'The last line of one paragraph ends here. The first line of the next paragraph starts here.',
+    'A quoted paragraph whose sentence is long enough that the file wraps it onto a second line with its own mark.',
+  ], NOW);
+  assert.deepEqual([head.found, head.lines], [true, [3]], 'a heading and the text under it are adjacent lines');
+  assert.deepEqual([items.found, items.lines], [true, [6]], 'two list items are adjacent lines');
+  assert.equal(blank.found, false);
+  assert.match(blank.reason, /not on one line or over adjacent lines of the stored text/);
+  assert.equal(marks.found, false);
+  const [onPage] = await checkQuotes(dir, ID, ['Only the live page holds this sentence, and its source breaks it here.'], { ...NOW, fetch: page('Only the live page holds this sentence,\nand its source breaks it here.\n') });
+  assert.deepEqual([onPage.found, onPage.foundIn, onPage.lines], [true, 'page', [1]]);
+  assert.equal(matched(dir).at(-1).result, 'confirmed');
+  const big = tmpVault(); src(big, 'ab ab ab ab ab ab ab\n'.repeat(15000));
+  const t0 = performance.now();
+  const many = await checkQuotes(big, ID, Array.from({ length: 16 }, (_, i) => 'ab '.repeat(20 + i).trim()), NOW);
+  assert.equal(many.filter(r => r.found).length, 16);
+  assert.ok(performance.now() - t0 < 2000, 'sixteen quotes on 15,000 lines with no blank line take under two seconds');
+});
+
+// Issue 77: a line is joined with as many next lines as the quote needs past the line's own length, so a quote
+// that starts late in a line longer than the quote, and runs onto the next line, is found.
+test('verify --quotes: a quote that starts late in a long line and ends on the next line is found at the long line', async () => {
+  const dir = tmpVault();
+  src(dir, `# ${ID}\n\n${'Filler words of a long opening line. '.repeat(4)}The quoted sentence starts here\nand ends on the next line.\n`);
+  const [r] = await checkQuotes(dir, ID, ['The quoted sentence starts here and ends on the next line.'], NOW);
+  assert.deepEqual([r.found, r.lines], [true, [3]]);
 });

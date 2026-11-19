@@ -634,53 +634,115 @@ test('a project step with no command, its result in prose, lints clean (spec 43)
   assert.deepEqual(codes(lintFile(dir, rel)), []);
 });
 
-// Issue 3 (spec 46 D4): a checked task is three scripts under evidence/NNNN/, a step line ending
-// evidence/NNNN/check.sh and an experiment in sources; LESSON_TASK_INCOMPLETE names each missing part.
+// Issue 79 D9 (after issue 3, spec 46 D4): a checked task is three scripts and requirements.json under evidence/NNNN/,
+// a step line ./check N that quotes each requirement's text, and an experiment in sources; LESSON_TASK_INCOMPLETE names
+// each missing part, TASK_REQUIREMENTS_INVALID each problem of the file. test/fixtures/teach-task is one such task.
+const TASK = join(process.cwd(), 'test', 'fixtures', 'teach-task');
+const TASK_LESSON = 'lessons/0001-files.html';
 const checkedTask = () => {
-  const dir = copyFixture();
-  const path = join(dir, 'lessons', '0006-project-fx.html');
-  writeFileSync(path, readFileSync(path, 'utf8')
-    .replace('<p>Run the check. You should see <code>30</code> printed.</p>\n<pre><code>node -e "console.log(fx(5))"</code></pre>',
-      '<p>Make fx(5) print 30.</p>\n<pre><code>evidence/0006/setup.sh</code></pre>\n<pre><code>evidence/0006/check.sh</code></pre>\n'
-      + '<p>The second prints <code>PASS</code>. This check fails on a fresh setup and passes after the reference solution. <a data-cite="2026-01-01-fx-experiment">[2]</a></p>')
-    .replace('(the reference solution)</li>\n', '(the reference solution)</li>\n<li><a data-cite="2026-01-01-fx-experiment">2026-01-01-fx-experiment</a></li>\n'));
-  for (const s of ['setup', 'check', 'solution', 'run']) writeFileSync(join(dir, 'evidence', '0006', `${s}.sh`), `#!/usr/bin/env bash\n# ${s} for fx\nexit 0\n`);
+  const dir = mkdtempSync(join(tmpdir(), 'rv-task-'));
+  cpSync(TASK, dir, { recursive: true });
   return dir;
 };
+const editTask = (dir, rel, from, to) => { const p = join(dir, rel); writeFileSync(p, readFileSync(p, 'utf8').replace(from, to)); };
 
-test('a checked task with its three scripts, step line and experiment lints clean', () => {
-  assert.deepEqual(codes(lintFile(checkedTask(), 'lessons/0006-project-fx.html')), []);
+test('the fixture task lints clean, with no LESSON_TOOL_NOT_INTRODUCED for ./check; ./other 1 still gives one', () => {
+  const dir = checkedTask();
+  assert.deepEqual(lintWorkspace(dir, ctxFor(dir)), []);
+  editTask(dir, TASK_LESSON, '<pre><code>./check 1</code></pre>', '<pre><code>./check 0001</code></pre>');
+  assert.deepEqual(lintWorkspace(dir, ctxFor(dir)), [], './check with leading zeros');
+  editTask(dir, TASK_LESSON, '<pre><code>./check 0001</code></pre>', '<pre><code>./check 1</code></pre>\n<pre><code>./other 1</code></pre>');
+  assert.deepEqual(lintFile(dir, TASK_LESSON).map((f) => `${f.code} ${f.message}`),
+    ['LESSON_TOOL_NOT_INTRODUCED step runs other, which is neither in MISSION.md "Known tools" nor taught by this or an earlier lesson (data-teaches)']);
 });
 
 test('a checked task missing a part reports one LESSON_TASK_INCOMPLETE naming it', () => {
-  const rel = 'lessons/0006-project-fx.html';
-  const edit = (dir, from, to) => { const p = join(dir, rel); writeFileSync(p, readFileSync(p, 'utf8').replace(from, to)); };
   const cases = [
-    ...['setup', 'check', 'solution'].map((s) => [(dir) => rmSync(join(dir, 'evidence', '0006', `${s}.sh`)), `evidence/0006/${s}.sh is missing`]),
-    [(dir) => edit(dir, '<pre><code>evidence/0006/check.sh</code></pre>\n', ''), 'step has no line ending evidence/0006/check.sh'],
-    [(dir) => { edit(dir, '<li><a data-cite="2026-01-01-fx-experiment">2026-01-01-fx-experiment</a></li>\n', ''); edit(dir, ' <a data-cite="2026-01-01-fx-experiment">[2]</a>', ''); },
+    ...['setup', 'check', 'solution'].map((s) => [(dir) => rmSync(join(dir, 'evidence', '0001', `${s}.sh`)), `evidence/0001/${s}.sh is missing`]),
+    [(dir) => rmSync(join(dir, 'evidence', '0001', 'requirements.json')), 'evidence/0001/requirements.json is missing'],
+    [(dir) => editTask(dir, TASK_LESSON, '<pre><code>./check 1</code></pre>\n', ''), 'step has no line ./check 1'],
+    [(dir) => editTask(dir, TASK_LESSON, '<pre><code>./check 1</code></pre>', '<pre><code>./check 2</code></pre>'), 'step has no line ./check 1'],
+    [(dir) => editTask(dir, TASK_LESSON, '<li>The file teach-0001/b.txt holds the word hello.</li>\n', ''), 'step does not hold the text of requirement b-text'],
+    [(dir) => { editTask(dir, TASK_LESSON, '<li><a data-cite="2026-01-01-fx-experiment">2026-01-01-fx-experiment</a></li>\n', ''); editTask(dir, TASK_LESSON, ' <a data-cite="2026-01-01-fx-experiment">[2]</a>', ''); },
       'sources cites no experiment'],
   ];
   for (const [mutate, message] of cases) {
     const dir = checkedTask();
     mutate(dir);
-    const f = lintFile(dir, rel);
+    const f = lintFile(dir, TASK_LESSON);
     assert.deepEqual(codes(f), ['LESSON_TASK_INCOMPLETE'], message);
     assert.equal(f[0].message, message);
     assert.equal(f[0].warning, false);
   }
 });
 
-test('a project lesson with no script and no check.sh step line has no LESSON_TASK_INCOMPLETE', () => {
+test('a project lesson with a ./check 1 step line and no script or requirements.json gives a finding for each', () => {
+  const dir = checkedTask();
+  for (const s of ['setup.sh', 'check.sh', 'solution.sh', 'requirements.json']) rmSync(join(dir, 'evidence', '0001', s));
+  assert.deepEqual(lintFile(dir, TASK_LESSON).map((f) => `${f.code} ${f.message}`).sort(), [
+    'LESSON_TASK_INCOMPLETE evidence/0001/check.sh is missing', 'LESSON_TASK_INCOMPLETE evidence/0001/requirements.json is missing',
+    'LESSON_TASK_INCOMPLETE evidence/0001/setup.sh is missing', 'LESSON_TASK_INCOMPLETE evidence/0001/solution.sh is missing']);
+});
+
+test('an invalid requirements.json, an unknown record and a read that names nothing each give TASK_REQUIREMENTS_INVALID on the file', () => {
+  const rel = 'evidence/0001/requirements.json';
+  const cases = [
+    [(dir) => editTask(dir, rel, '"version": 1', '"version": 1, "extra": true'), 'requirements.json has the key "extra", which is not allowed'],
+    [(dir) => editTask(dir, rel, '"records": []', '"records": ["0002-nope"]'), 'requirement 3: record 0002-nope is not in learning-records/'],
+    [(dir) => editTask(dir, rel, '"records": [], "read": "0001-files.html"', '"records": [], "read": "0009-nothing.html"'),
+      'requirement b-text: read 0009-nothing.html names no file of lessons/ or reference/ and no vault entry'],
+    [(dir) => editTask(dir, rel, '"records": [], "read": "0001-files.html"', '"records": [], "read": "../MISSION.md"'),
+      'requirement b-text: read ../MISSION.md names no file of lessons/ or reference/ and no vault entry'],
+  ];
+  for (const [mutate, message] of cases) {
+    const dir = checkedTask();
+    mutate(dir);
+    assert.deepEqual(lintWorkspace(dir, ctxFor(dir)), [{ code: 'TASK_REQUIREMENTS_INVALID', file: rel, message, warning: false }], message);
+  }
+  // A read may name a vault entry, or a file of reference/.
+  const dir = checkedTask();
+  editTask(dir, rel, '"records": [], "read": "0001-files.html"', '"records": [], "read": "2026-01-01-fx-doc"');
+  assert.deepEqual(lintWorkspace(dir, ctxFor(dir)), []);
+  const ref = checkedTask();
+  mkdirSync(join(ref, 'reference'));
+  writeFileSync(join(ref, 'reference', 'files.txt'), 'a reference file\n');
+  editTask(ref, rel, '"records": [], "read": "0001-files.html"', '"records": [], "read": "files.txt"');
+  assert.deepEqual(lintFile(ref, TASK_LESSON), []);
+  assert.deepEqual(lintWorkspace(ref, ctxFor(ref)).filter((f) => f.code === 'TASK_REQUIREMENTS_INVALID'), []);
+});
+
+test('a requirements.json with an unknown record and a read that names nothing gets a TASK_REQUIREMENTS_INVALID for each', () => {
+  const dir = checkedTask();
+  const rel = 'evidence/0001/requirements.json';
+  editTask(dir, rel, '"records": ["0001-files"], "read": "0001-files.html" },\n    { "id": "b-exists"', '"records": ["0002-nope"], "read": "0001-files.html" },\n    { "id": "b-exists"');
+  editTask(dir, rel, '"records": [], "read": "0001-files.html"', '"records": [], "read": "0009-nothing.html"');
+  assert.deepEqual(lintWorkspace(dir, ctxFor(dir)).map((f) => `${f.code} ${f.file}: ${f.message}`), [
+    'TASK_REQUIREMENTS_INVALID evidence/0001/requirements.json: requirement 1: record 0002-nope is not in learning-records/',
+    'TASK_REQUIREMENTS_INVALID evidence/0001/requirements.json: requirement b-text: read 0009-nothing.html names no file of lessons/ or reference/ and no vault entry']);
+});
+
+test('a project lesson with no script and no ./check step line has no LESSON_TASK_INCOMPLETE', () => {
   assert.ok(!codes(lintFile(FIX, 'lessons/0006-project-fx.html')).includes('LESSON_TASK_INCOMPLETE'));
+});
+
+// The lab probe (2026-11-18-probe-teach-lint-warn-lab-bypassed) printed both results at commit 1e0ef62.
+test('WARN_LAB_BYPASSED on the fixture task: a setup.sh that runs kind create cluster warns; one that sources the lab library does not', () => {
+  const dir = checkedTask();
+  const lab = { docs: ['LAB.txt'], uses: ['lab/lib.sh'], bypass: ['kind create cluster'] };
+  const warned = () => lintWorkspace(dir, ctxFor(dir, { lab })).filter((f) => f.code === 'WARN_LAB_BYPASSED').map((f) => f.file);
+  assert.deepEqual(warned(), []);
+  writeFileSync(join(dir, 'evidence', '0001', 'setup.sh'), readFileSync(join(dir, 'evidence', '0001', 'setup.sh'), 'utf8') + 'kind create cluster --name teach-0001\n');
+  assert.deepEqual(warned(), ['evidence/0001/setup.sh']);
+  writeFileSync(join(dir, 'evidence', '0001', 'setup.sh'), readFileSync(join(dir, 'evidence', '0001', 'setup.sh'), 'utf8') + 'source lab/lib.sh\n');
+  assert.deepEqual(warned(), []);
 });
 
 // Issue 4 (spec 46 D3 rule 2): WARN_TASK_CHECK_MUTATES is an advisory, one per check.sh line that looks like a write.
 test('a checked task whose check.sh writes reports one WARN_TASK_CHECK_MUTATES per offending line', () => {
   const dir = checkedTask();
-  writeFileSync(join(dir, 'evidence', '0006', 'check.sh'),
-    '#!/usr/bin/env bash\nkubectl -n teach-0006 delete pod x\necho "FAIL: x, y" >&2\nkubectl get pods | tee out\n');
-  const f = lintFile(dir, 'lessons/0006-project-fx.html');
+  writeFileSync(join(dir, 'evidence', '0001', 'check.sh'),
+    '#!/usr/bin/env bash\nkubectl -n teach-0001 delete pod x\necho "FAIL a-exists: x" >&2\nkubectl get pods | tee out\n');
+  const f = lintFile(dir, TASK_LESSON);
   assert.deepEqual(codes(f), ['WARN_TASK_CHECK_MUTATES', 'WARN_TASK_CHECK_MUTATES']);
   assert.ok(f.every((x) => x.warning));
   assert.ok(f[0].message.startsWith('check.sh line 2:'), f[0].message);
@@ -689,10 +751,10 @@ test('a checked task whose check.sh writes reports one WARN_TASK_CHECK_MUTATES p
 
 test('WARN_TASK_CHECK_MUTATES reads every segment, the command after timeout, and skips the value of -o', () => {
   const dir = checkedTask();
-  writeFileSync(join(dir, 'evidence', '0006', 'check.sh'), '#!/usr/bin/env bash\n' + [
+  writeFileSync(join(dir, 'evidence', '0001', 'check.sh'), '#!/usr/bin/env bash\n' + [
     'kubectl get pods; rm x', 'if kubectl get x; then rm y; fi', 'timeout -s KILL 30 kubectl delete x', 'timeout --signal=KILL 30 kubectl delete x',
     'timeout 30 kubectl get x', 'kubectl -o json get pods', 'kubectl get pods|tee out', 'kubectl get x && kubectl delete y'].join('\n') + '\n');
-  assert.deepEqual(lintFile(dir, 'lessons/0006-project-fx.html').map((x) => x.message),
+  assert.deepEqual(lintFile(dir, TASK_LESSON).map((x) => x.message),
     ['check.sh line 2: rm', 'check.sh line 3: rm', 'check.sh line 4: kubectl', 'check.sh line 5: kubectl', 'check.sh line 8: tee', 'check.sh line 9: kubectl']);
 });
 

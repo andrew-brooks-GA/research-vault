@@ -17,8 +17,8 @@ import { lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWU
 import { HEADING_RE, TABLE_SEP_RE, WORKSPACE_GATES, hasVerdict } from './gate.mjs';
 import { readLabs, lessonLab, labRunner, secretHits, labCookie, LAB_ACTIONS, LAB_BODY_MAX, LAB_ID_RE } from './labs.mjs';
 import { readBrand, withBrand, brandUrl } from './brand.mjs';
+import { shellTerminal } from './terminal.mjs';
 
-export const SPACING_DAYS = 21;
 export const ATTEMPT_BODY_MAX = 4096;
 export const LESSON_ID_RE = /^\d{4}-[a-z][a-z0-9-]*$/;
 export const RECORD_ID_RE = /^\d{4}-[a-z][a-z0-9-]*$/;
@@ -145,10 +145,11 @@ function gradeAttempt(workspaceDir, lesson, answers, result) {
   return { total, wrong, records: uniq(wrong.map((i) => items[i].record).filter(Boolean)) };
 }
 
-export function writeAttempt(workspaceDir, { lesson, answers, result, now }, schema) {
+// Issue 79 D5: `task` holds a task attempt's fields ready-made (task.mjs's checkAttempt or answeredAttempt).
+export function writeAttempt(workspaceDir, { lesson, answers, result, task, now }, schema) {
   if (!LESSON_ID_RE.test(String(lesson))) throw new Error(`invalid lesson id: ${lesson}`);
   if (!existsSync(join(workspaceDir, 'lessons', `${lesson}.html`))) throw new Error(`no lesson: ${lesson}`);
-  const data = { type: 'attempt', date: isoDate(now), lesson, ...gradeAttempt(workspaceDir, lesson, answers, result) };
+  const data = { type: 'attempt', date: isoDate(now), lesson, ...(task ?? gradeAttempt(workspaceDir, lesson, answers, result)) };
   const { total, wrong } = data;
   assertValid(data, schema);
   const dir = join(workspaceDir, 'attempts');
@@ -214,6 +215,8 @@ export function importAttempts(workspaceDir, text, { schema, now }) {
   const planned = new Set();
   const plan = list.map((a) => {
     const base = attemptId(new Date(a.at), a.lesson.slice(0, 4), () => false);
+    // ponytail: a task attempt of the same second and lesson holds this base id too, so the quiz attempt is skipped
+    // (issue 79 D5, R17); the fix is to compare only with attempts that have no `tested` list.
     if (planned.has(base) || existsSync(join(workspaceDir, 'attempts', `${base}.md`))) return { line: `skipped ${base}: already recorded` };
     let items = [];
     try { ({ items } = readQuiz(workspaceDir, a.lesson)); } catch { items = []; } // no quiz that parses: now -/0
@@ -276,6 +279,44 @@ function missionCriteria(workspaceDir) {
   return out;
 }
 
+// Issue 79 D1: the three preference bullets under the Constraints heading. A bullet is one of them when its text
+// before the colon is a name in any letter case; it is read only when spelled as below (any spaces after the colon),
+// and a second bullet of one name is never read. `invalid` holds one message per bullet not read.
+const everyDays = (v) => { const n = Number(/^every ([1-9]\d{0,3}) days$/.exec(v)?.[1]); return n <= 3650 ? n : undefined; };
+const PREFS = [
+  ['hints', 'Hints', (v) => (v === 'always' || v === 'on request' ? v : undefined), '"Hints: always" or "Hints: on request"'],
+  ['path reviews', 'Path reviews', (v) => (v === 'yes' ? true : v === 'no' ? false : undefined), '"Path reviews: yes" or "Path reviews: no"'],
+  ['reminders', 'Reminders', (v) => (v === 'none' ? null : v === 'every 1 day' ? 1 : everyDays(v)),
+    '"Reminders: none" or "Reminders: every <N> days", N from 1 to 3650'],
+];
+
+export function missionPrefs(workspaceDir) {
+  const p = join(workspaceDir, 'MISSION.md');
+  const seen = new Set();
+  const got = {};
+  const invalid = [];
+  let inSection = false;
+  (existsSync(p) ? readFileSync(p, 'utf8').split(/\r?\n/) : []).forEach((line, i) => {
+    if (/^#{1,6}\s/.test(line)) { inSection = /^#{1,6}\s+constraints\b/i.test(line); return; }
+    const text = inSection && /^\s*(?:[-*]|\d+\.)\s+(.+?)\s*$/.exec(line)?.[1];
+    const pref = text && PREFS.find(([name]) => text.split(':')[0].trim().toLowerCase() === name);
+    if (!pref) return;
+    const [name, label, read, forms] = pref;
+    const value = text.startsWith(`${label}:`) ? read(text.slice(label.length + 1).trim()) : undefined;
+    if (seen.has(name)) invalid.push(`line ${i + 1}: a second ${label}: bullet is not read`);
+    else if (value === undefined) invalid.push(`line ${i + 1}: ${show(text)} is not ${forms}`);
+    else got[name] = value;
+    seen.add(name);
+  });
+  return {
+    hints: got.hints ?? 'always',
+    pathReviews: got['path reviews'] ?? false,
+    reminders: got.reminders ?? null,
+    unset: PREFS.map(([name]) => name).filter((name) => !(name in got)),
+    invalid,
+  };
+}
+
 function parsedRows(dir, nameRe) {
   const rows = [];
   for (const f of mdFiles(dir)) {
@@ -291,6 +332,32 @@ export function attemptOrder(a, b) {
   const key = (id) => { const m = /^(.*-\d{4})(?:-(\d+))?$/.exec(id); return [m[1], Number(m[2] ?? 1)]; };
   const [ab, an] = key(a), [bb, bn] = key(b);
   return ab < bb ? -1 : ab > bb ? 1 : an - bn;
+}
+
+// Issue 79 D5, D6: an attempt with a `tested` list is a task attempt, and every view prints it as this text.
+const listOf = (a, k) => (Array.isArray(a[k]) ? a[k] : []);
+export const isTaskAttempt = (a) => Array.isArray(a.tested);
+export function taskSummary(a) {
+  if (Array.isArray(a.answered)) return `answered ${a.answered.join(', ')}`;
+  const [passed, failed, unreached] = ['passed', 'failed', 'unreached'].map((k) => listOf(a, k));
+  if (a.certification) return `certification ${passed.length} of ${passed.length + failed.length + unreached.length}`;
+  return [['ok', passed], ['failed', failed], ['not reached', unreached]].filter(([, l]) => l.length).map(([w, l]) => `${w} ${l.join(', ')}`).join('; ');
+}
+
+// Issue 79 D8: the grade of each certification run, derived and never stored, from attempts in chronological order:
+// the last attempt of each lesson with the run id; `ok` counts passed ids, `total` the three lists. Oldest run first.
+export function certificationRuns(attempts) {
+  const runs = new Map();
+  for (const a of attempts) {
+    if (!isTaskAttempt(a) || typeof a.certification !== 'string') continue;
+    if (!runs.has(a.certification)) runs.set(a.certification, new Map());
+    runs.get(a.certification).set(a.lesson, a);
+  }
+  return [...runs].map(([id, byLesson]) => {
+    const last = [...byLesson.values()];
+    const tasks = last.map((a) => ({ lesson: a.lesson, ok: listOf(a, 'passed').length, total: ['passed', 'failed', 'unreached'].reduce((n, k) => n + listOf(a, k).length, 0) }));
+    return { id, date: String(last.map((a) => a.date).sort().at(-1)), ok: tasks.reduce((n, t) => n + t.ok, 0), total: tasks.reduce((n, t) => n + t.total, 0), tasks };
+  });
 }
 
 export function teachIndex(workspaceDir, { now }) {
@@ -309,12 +376,16 @@ export function teachIndex(workspaceDir, { now }) {
   const backlinks = {};
   for (const a of attempts) for (const r of (Array.isArray(a.records) ? a.records : [])) (backlinks[r] ??= []).push(a.id);
 
-  const cutoff = isoDate(new Date(now.getTime() - SPACING_DAYS * DAY_MS));
+  // Issue 79 D2: review-due only when the mission asks for reminders, every N days.
+  const prefs = missionPrefs(workspaceDir);
+  const cutoff = prefs.reminders ? isoDate(new Date(now.getTime() - prefs.reminders * DAY_MS)) : null;
   const records = parsedRows(join(workspaceDir, 'learning-records')).map((r) => {
     const wrongIn = (a) => Array.isArray(a.records) && a.records.includes(r.id);
-    const last = attempts.filter((a) => wrongIn(a) || (tests[a.lesson] || []).includes(r.id)).at(-1);
+    // A task attempt counts for a record only when its `tested` list names it, never through the lesson's quiz.
+    const last = attempts.filter((a) => (isTaskAttempt(a) ? a.tested.includes(r.id) : wrongIn(a) || (tests[a.lesson] || []).includes(r.id))).at(-1);
     const lastAttempt = last
-      ? { id: last.id, date: last.date, score: last.total - (last.wrong?.length ?? 0), total: last.total, wrongHere: wrongIn(last) }
+      ? { id: last.id, date: last.date, score: last.total - (last.wrong?.length ?? 0), total: last.total, wrongHere: wrongIn(last),
+        kind: Array.isArray(last.answered) ? 'answered' : isTaskAttempt(last) ? 'task' : 'quiz' }
       : null;
     const active = r.status === 'active';
     return {
@@ -322,53 +393,63 @@ export function teachIndex(workspaceDir, { now }) {
       evidence: backlinks[r.id] ?? [],
       lastAttempt,
       // Due when written before the spacing cutoff and not attempted since that cutoff.
-      reviewDue: active && String(r.date) < cutoff && !(lastAttempt && String(lastAttempt.date) >= cutoff),
+      reviewDue: cutoff !== null && active && String(r.date) < cutoff && !(lastAttempt && String(lastAttempt.date) >= cutoff),
       reviewFailed: active && lastAttempt?.wrongHere === true,
+      answered: active && lastAttempt?.kind === 'answered',
     };
   });
   const refDir = join(workspaceDir, 'reference');
   const reference = (existsSync(refDir) ? readdirSync(refDir).sort() : []).filter((f) => f.endsWith('.html'))
     .map((f) => ({ slug: f.slice(0, -5), file: `reference/${f}`, cites: extractCites(readFileSync(join(refDir, f), 'utf8')) }));
-  return { criteria: missionCriteria(workspaceDir), lessons, reference, records, attempts, backlinks };
+  return { criteria: missionCriteria(workspaceDir), prefs, lessons, reference, records, attempts, backlinks };
 }
 
 // Learner performance over time, from the attempts on disk: every attempt per lesson in
-// chronological order with first, latest and best, plus record counts and what is due for review.
+// chronological order with first, latest and best, plus record counts and what is due for review
+// (null when the mission asks for no reminders, issue 79 D2). Issue 79 D6: a lesson's task attempts make a second row,
+// `kind: 'task'`, right after the lesson's own, each attempt with its summary and no score; its first and best are null.
 export function progress(workspaceDir, { now }) {
   const idx = teachIndex(workspaceDir, { now });
   const byLesson = new Map(idx.lessons.map((l) => [l.id, { id: l.id, title: l.title, class: l.class, attempts: [] }]));
+  const tasks = new Map();
   for (const a of idx.attempts) {
     const total = Number(a.total) || 0;
     const wrong = Array.isArray(a.wrong) ? a.wrong : [];
     if (!byLesson.has(a.lesson)) byLesson.set(a.lesson, { id: a.lesson, title: a.lesson, class: 'lesson', attempts: [] });
-    byLesson.get(a.lesson).attempts.push({ id: a.id, date: String(a.date), score: total - wrong.length, total, wrong, ...(a.result ? { result: String(a.result) } : {}) });
+    if (isTaskAttempt(a)) {
+      const l = byLesson.get(a.lesson);
+      if (!tasks.has(a.lesson)) tasks.set(a.lesson, { id: l.id, title: l.title, class: l.class, kind: 'task', attempts: [] });
+      tasks.get(a.lesson).attempts.push({ id: a.id, date: String(a.date), summary: taskSummary(a) });
+    } else byLesson.get(a.lesson).attempts.push({ id: a.id, date: String(a.date), score: total - wrong.length, total, wrong, ...(a.result ? { result: String(a.result) } : {}) });
   }
   const ratio = (x) => (x.total ? x.score / x.total : 0);
-  const lessons = [...byLesson.values()].map((l) => ({
+  const lessons = [...byLesson.values()].flatMap((l) => [{
     ...l,
     first: l.attempts[0] ?? null,
     latest: l.attempts.at(-1) ?? null,
     best: l.attempts.reduce((b, a) => (b === null || ratio(a) > ratio(b) ? a : b), null),
-  }));
+  }, ...(tasks.has(l.id) ? [{ ...tasks.get(l.id), first: null, latest: tasks.get(l.id).attempts.at(-1), best: null }] : [])]);
   const byKind = {};
   for (const r of idx.records) if (r.status === 'active') byKind[r.kind] = (byKind[r.kind] ?? 0) + 1;
   return {
     lessons,
     attempts: idx.attempts.length,
     records: { active: idx.records.filter((r) => r.status === 'active').length, byKind },
-    reviewDue: idx.records.filter((r) => r.reviewDue).map((r) => r.id),
+    reviewDue: idx.prefs.reminders ? idx.records.filter((r) => r.reviewDue).map((r) => r.id) : null,
     reviewFailed: idx.records.filter((r) => r.reviewFailed).map((r) => r.id),
   };
 }
 
-const scoreOf = (a) => a.result ?? `${a.score}/${a.total}`; // a project run shows pass or fail
+// A project run shows pass or fail, a task attempt its summary (issue 79 D6); a task row's first and best are empty.
+const scoreOf = (a) => a.summary ?? a.result ?? `${a.score}/${a.total}`;
 const fmtScore = (a) => (a ? `${scoreOf(a)} on ${a.date}` : 'none');
+const fmtCell = (l, a) => (l.kind === 'task' && !a ? '' : fmtScore(a));
 
 export function progressText(p) {
   const lines = ['| lesson | attempts | first | latest | best |', '|---|---|---|---|---|'];
-  for (const l of p.lessons) lines.push(`| ${l.id} | ${l.attempts.length} | ${fmtScore(l.first)} | ${fmtScore(l.latest)} | ${fmtScore(l.best)} |`);
+  for (const l of p.lessons) lines.push(`| ${l.id} | ${l.attempts.length} | ${fmtCell(l, l.first)} | ${fmtCell(l, l.latest)} | ${fmtCell(l, l.best)} |`);
   lines.push('', `attempts: ${p.attempts}`, `records: ${p.records.active} active (${Object.entries(p.records.byKind).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'})`,
-    `review-due: ${p.reviewDue.join(', ') || 'none'}`, `review-failed: ${p.reviewFailed.join(', ') || 'none'}`);
+    ...(p.reviewDue ? [`review-due: ${p.reviewDue.join(', ') || 'none'}`] : []), `review-failed: ${p.reviewFailed.join(', ') || 'none'}`);
   return lines.join('\n') + '\n';
 }
 
@@ -391,16 +472,16 @@ export const withNav = (html) => (/<script[^>]*quiz\.js/i.test(html) ? html : ht
 
 export function progressHtml(p) {
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const cell = (a) => (a ? `<td><b>${esc(scoreOf(a))}</b> <small>${esc(a.date)}</small></td>` : '<td>none</td>');
-  const rows = p.lessons.map((l) => `<tr><td><a href="/lessons/${esc(l.id)}.html">${esc(l.title)}</a></td><td>${l.attempts.length}</td>${cell(l.first)}${cell(l.latest)}${cell(l.best)}</tr>`).join('');
+  const cell = (l, a) => (a ? `<td><b>${esc(scoreOf(a))}</b> <small>${esc(a.date)}</small></td>` : l.kind === 'task' ? '<td></td>' : '<td>none</td>');
+  const rows = p.lessons.map((l) => `<tr><td><a href="/lessons/${esc(l.id)}.html">${esc(l.title)}</a></td><td>${l.attempts.length}</td>${cell(l, l.first)}${cell(l, l.latest)}${cell(l, l.best)}</tr>`).join('');
   const timeline = p.lessons.flatMap((l) => l.attempts.map((a) => ({ ...a, lesson: l.title, lid: l.id })))
     .sort((a, b) => (a.id < b.id ? -1 : 1))
-    .map((a) => `<li><small>${esc(a.date)}</small> <a href="/lessons/${esc(a.lid)}.html">${esc(a.lesson)}</a>: <b>${esc(scoreOf(a))}</b>${a.wrong.length && !a.result ? ` <small>(missed item${a.wrong.length > 1 ? 's' : ''} ${a.wrong.map((i) => i + 1).join(', ')})</small>` : ''}</li>`).join('');
+    .map((a) => `<li><small>${esc(a.date)}</small> <a href="/lessons/${esc(a.lid)}.html">${esc(a.lesson)}</a>: <b>${esc(scoreOf(a))}</b>${a.summary === undefined && a.wrong.length && !a.result ? ` <small>(missed item${a.wrong.length > 1 ? 's' : ''} ${a.wrong.map((i) => i + 1).join(', ')})</small>` : ''}</li>`).join('');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Progress</title><link rel="stylesheet" href="/assets/lesson.css"></head>
 <body>${navHtml()}<h1>Progress</h1>
 <section data-block="progress"><table class="progress"><thead><tr><th>lesson</th><th>attempts</th><th>first</th><th>latest</th><th>best</th></tr></thead><tbody>${rows}</tbody></table>
-<p>${p.attempts} attempt${p.attempts === 1 ? '' : 's'}; ${p.records.active} active learning record${p.records.active === 1 ? '' : 's'}${Object.keys(p.records.byKind).length ? ` (${esc(Object.entries(p.records.byKind).map(([k, n]) => `${k} ${n}`).join(', '))})` : ''}. Review due: ${esc(p.reviewDue.join(', ') || 'none')}. Review failed: ${esc(p.reviewFailed.join(', ') || 'none')}.</p></section>
+<p>${p.attempts} attempt${p.attempts === 1 ? '' : 's'}; ${p.records.active} active learning record${p.records.active === 1 ? '' : 's'}${Object.keys(p.records.byKind).length ? ` (${esc(Object.entries(p.records.byKind).map(([k, n]) => `${k} ${n}`).join(', '))})` : ''}.${p.reviewDue ? ` Review due: ${esc(p.reviewDue.join(', ') || 'none')}.` : ''} Review failed: ${esc(p.reviewFailed.join(', ') || 'none')}.</p></section>
 <section data-block="timeline"><ol class="timeline">${timeline || '<li>No attempts yet.</li>'}</ol></section>
 </body></html>
 `;
@@ -902,6 +983,29 @@ function postAttempt(req, res, workspaceDir, origin, schema, now) {
   });
 }
 
+// Plan 2026-11-18 browser terminal D3: the largest /term/ POST body, and the refusal without the cookie.
+const TERM_BODY_MAX = 65536;
+const NO_TERM_COOKIE = 'no terminal cookie; open the address teach serve printed\n';
+// D5: GET /terminal/<file> sends these files of the plugin's terminal folder, with their types, and nothing else.
+const TERMINAL_DIR = fileURLToPath(new URL('../../skills/research-teach/terminal/', import.meta.url));
+const TERMINAL_FILES = {
+  'terminal.mjs': CONTENT_TYPES['.js'], 'xterm.mjs': CONTENT_TYPES['.js'], 'addon-fit.mjs': CONTENT_TYPES['.js'],
+  'terminal.css': CONTENT_TYPES['.css'], 'xterm.css': CONTENT_TYPES['.css'],
+  'LICENSE-xterm': 'text/plain; charset=utf-8', 'LICENSE-addon-fit': 'text/plain; charset=utf-8',
+};
+// D4: the terminal page: the lesson in a frame on the left, the terminal on the right under the workspace folder's name.
+const termPage = (ws, id) => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${id}: terminal</title>
+<link rel="stylesheet" href="/terminal/xterm.css">
+<link rel="stylesheet" href="/terminal/terminal.css">
+<script type="module" src="/terminal/terminal.mjs"></script>
+</head><body>
+<div class="term-lesson"><iframe src="/lessons/${id}.html" title="Lesson ${id}"></iframe></div>
+<section class="term-pane" aria-label="Terminal"><p class="term-folder">${escapeHtml(basename(ws))}</p><div class="term-screen"></div></section>
+</body></html>
+`;
+
 // Spec 49 D4: equal strings, compared in constant time once their byte lengths match.
 const same = (a, b) => {
   const x = Buffer.from(String(a)), y = Buffer.from(String(b));
@@ -916,17 +1020,23 @@ const same = (a, b) => {
 // LAB_OUTPUT_MAX. t and the session value are never written to a page, a response body or a log line. Under labs
 // the server carries stopLabs (the Stop sequence on every running group) and killLabs (SIGKILL to each) for the
 // caller's signal and exit handlers.
-export function createServer(workspaceDir, { schema, now = () => new Date(), titles = {}, labs = false, t, env = process.env, log = () => {}, limits } = {}) {
+// Plan 2026-11-18 browser terminal D1 to D3, under teach serve --terminal only (`terminal`): t, the lab address and the
+// cookie as under labs; the three /term/ routes on one shell (terminal.mjs), started as `python` running `shell` from
+// the workspace root; framing only by a page of this server. The server carries stopShell and killShell.
+export function createServer(workspaceDir, { schema, now = () => new Date(), titles = {}, labs = false, terminal = false, t, env = process.env, log = () => {}, limits,
+  shell = env.SHELL ? [env.SHELL, '-l'] : ['/bin/bash', '-l'], python = 'python3' } = {}) {
   const ws = resolve(workspaceDir);
   const clock = typeof now === 'function' ? now : () => now;
-  if (labs && !/^[0-9a-f]{64}$/.test(t ?? '')) throw new Error('teach serve --labs needs a lab address value of 64 hex characters');
+  if ((labs || terminal) && !/^[0-9a-f]{64}$/.test(t ?? '')) throw new Error('teach serve --labs or --terminal needs a lab address value of 64 hex characters');
   let session = null;
   const runner = labs ? labRunner(ws, { env, log, limits }) : null;
+  const term = terminal ? shellTerminal(ws, { shell, python, env }) : null;
   const hasCookie = (req, port) => session !== null && String(req.headers.cookie ?? '').split(';').some((p) => {
     const i = p.indexOf('=');
     return i !== -1 && p.slice(0, i).trim() === labCookie(port) && same(p.slice(i + 1).trim(), session);
   });
-  // A wrong or missing t is 403 and sets no cookie; next is used only when it is /lessons/<lesson id>.html.
+  // A wrong or missing t is 403 and sets no cookie; next is used only when it is /lessons/<lesson id>.html, or under
+  // terminal /term/lessons/<lesson id>.html.
   const openLabs = (req, res, port) => {
     if (req.method !== 'GET') return send(req, res, 405, 'method not allowed\n');
     const q = new URLSearchParams(req.url.includes('?') ? req.url.slice(req.url.indexOf('?') + 1) : '');
@@ -934,24 +1044,32 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
     if (ts.length !== 1 || !same(ts[0], t)) return send(req, res, 403, 'forbidden\n');
     session ??= randomBytes(32).toString('hex');
     const next = q.get('next') ?? '';
-    const lesson = /^\/lessons\/([^/]+)\.html$/.exec(next)?.[1];
+    const [, termPage, lesson] = /^(\/term)?\/lessons\/([^/]+)\.html$/.exec(next) ?? [];
     res.writeHead(303, {
-      Location: lesson && LESSON_ID_RE.test(lesson) ? next : '/',
+      Location: lesson && LESSON_ID_RE.test(lesson) && (terminal || !termPage) ? next : '/',
       'Set-Cookie': `${labCookie(port)}=${session}; HttpOnly; SameSite=Strict; Path=/`,
       'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=utf-8', 'X-Content-Type-Options': 'nosniff',
     });
     res.end();
   };
-  // Checks 3 to 5 of a lab POST (1 and 2 are the caller's), in order, 3 and 4 before a byte of the body is read; then the
-  // runner's checks 6 to 13 and the action.
-  const postLab = (req, res, action, port) => {
+  // Checks 3 and 4 of a lab POST, in order, before a byte of the body is read: true when it was refused.
+  const refusePost = (req, res, port, max, noCookie) => {
     const type = req.headers['content-type'];
     const length = req.headers['content-length'];
     if (req.headers.origin !== `http://127.0.0.1:${port}` || !/^application\/json(;\s*charset=utf-8)?$/i.test(type ?? '') ||
-        (length !== undefined && !(Number(length) <= LAB_BODY_MAX))) {
-      return send(req, res, 403, 'forbidden\n', undefined, true);
+        (length !== undefined && !(Number(length) <= max))) {
+      send(req, res, 403, 'forbidden\n', undefined, true);
+      return true;
     }
-    if (!hasCookie(req, port)) return send(req, res, 403, 'no lab cookie; open the lab address teach serve printed\n', undefined, true);
+    if (!hasCookie(req, port)) {
+      send(req, res, 403, noCookie, undefined, true);
+      return true;
+    }
+    return false;
+  };
+  // Checks 3 to 5 of a lab POST (1 and 2 are the caller's); then the runner's checks 6 to 13 and the action.
+  const postLab = (req, res, action, port) => {
+    if (refusePost(req, res, port, LAB_BODY_MAX, 'no lab cookie; open the lab address teach serve printed\n')) return;
     readBody(req, res, LAB_BODY_MAX, (text) => {
       let body = null;
       try { body = JSON.parse(text); } catch { /* the 400 below */ }
@@ -962,10 +1080,31 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
       send(req, res, refused[0], `${refused[1]}\n`);
     });
   };
+  // D3: POST /term/input and /term/resize, with the lab POST checks, then their body.
+  const postTerm = (req, res, route, port) => {
+    if (refusePost(req, res, port, TERM_BODY_MAX, NO_TERM_COOKIE)) return;
+    readBody(req, res, TERM_BODY_MAX, (text) => {
+      let body = null;
+      try { body = JSON.parse(text); } catch { /* the 400 below */ }
+      if (route === 'input') {
+        if (!keysAre(body, ['data']) || typeof body.data !== 'string') return send(req, res, 400, 'body must be {"data": "<text>"}\n');
+        return term.input(body.data) ? send(req, res, 200, 'ok\n') : send(req, res, 409, 'terminal not running\n');
+      }
+      const within = (n, max) => Number.isInteger(n) && n >= 1 && n <= max;
+      if (!keysAre(body, ['rows', 'cols']) || !within(body.rows, 500) || !within(body.cols, 1000)) {
+        return send(req, res, 400, 'body must be {"rows": <1 to 500>, "cols": <1 to 1000>}\n');
+      }
+      term.resize(body.rows, body.cols);
+      send(req, res, 200, 'ok\n');
+    });
+  };
   // requireHostHeader off: a missing Host gets our 403, not node:http's own 400.
   const server = http.createServer({ requireHostHeader: false }, (req, res) => {
     const base = `127.0.0.1:${server.address().port}`;
-    if (labs) { // spec 49 D4: no page of a --labs server can be framed, so none can be clicked through a frame
+    if (terminal) { // plan 2026-11-18 D1: only a page of this server may frame one, for the terminal page
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+      res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
+    } else if (labs) { // spec 49 D4: no page of a --labs server can be framed, so none can be clicked through a frame
       res.setHeader('X-Frame-Options', 'DENY');
       res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
     }
@@ -977,10 +1116,26 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
       if (path === '/attempt') return postAttempt(req, res, ws, `http://${base}`, schema, clock);
       const action = /^\/lab\/([a-z]+)$/.exec(path)?.[1];
       if (labs && LAB_ACTIONS.includes(action)) return postLab(req, res, action, port);
+      const route = { '/term/input': 'input', '/term/resize': 'resize' }[path];
+      if (terminal && route) return postTerm(req, res, route, port);
       return send(req, res, 404, 'not found\n', undefined, true);
     }
     if (!isBodyless) return send(req, res, 405, 'method not allowed\n', undefined, true);
-    if (labs && path === '/labs/open') return openLabs(req, res, port);
+    if ((labs || terminal) && path === '/labs/open') return openLabs(req, res, port);
+    if (terminal && path === '/term/stream') {
+      if (req.method !== 'GET') return send(req, res, 405, 'method not allowed\n');
+      return hasCookie(req, port) ? term.stream(res) : send(req, res, 403, NO_TERM_COOKIE);
+    }
+    if (terminal && path.startsWith('/term/lessons/')) {
+      if (!hasCookie(req, port)) return send(req, res, 403, NO_TERM_COOKIE);
+      const id = /^\/term\/lessons\/([^/]+)\.html$/.exec(path)?.[1];
+      const lesson = id && LESSON_ID_RE.test(id) && statSync(join(ws, 'lessons', `${id}.html`), { throwIfNoEntry: false });
+      return lesson && lesson.isFile() ? send(req, res, 200, termPage(ws, id), 'text/html; charset=utf-8') : send(req, res, 404, 'not found\n');
+    }
+    if (terminal && path.startsWith('/terminal/')) {
+      const name = path.slice('/terminal/'.length);
+      return Object.hasOwn(TERMINAL_FILES, name) ? send(req, res, 200, readFileSync(join(TERMINAL_DIR, name)), TERMINAL_FILES[name]) : send(req, res, 404, 'not found\n');
+    }
     // Spec 50 D4: every HTML reply carries the brand, read on each request; with none, or an invalid one, the page as it is.
     const branded = (html) => {
       const { brand } = readBrand(ws);
@@ -1006,6 +1161,10 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
   if (runner) {
     server.stopLabs = runner.stopAll;
     server.killLabs = runner.killAll;
+  }
+  if (term) {
+    server.stopShell = term.stopShell;
+    server.killShell = term.killShell;
   }
   return server;
 }

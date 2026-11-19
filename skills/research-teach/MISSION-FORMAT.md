@@ -28,6 +28,9 @@
 ## Constraints
 - {Time, budget, prior commitments, learning preferences, anything that bounds the approach}
 - Task environment: {kind on this machine, a cluster I can reset; written only when the depth answer was "do it unaided" and the learner named one}
+- Hints: {always or on request}
+- Path reviews: {yes or no}
+- Reminders: {none or every <N> days}
 
 ## Out of scope
 - {Adjacent topics the user explicitly does not want to chase right now, protecting the zone of proximal development}
@@ -41,4 +44,5 @@
 - **Revise when reality shifts.** Missions change. When the user's goal moves, update this file: don't leave a stale mission steering future sessions.
 - **Scope first, then the floor.** Ask what the sessions should include and leave out before asking about any tool or term; then check only the tools and terms that scope needs. A tool the learner uses daily but no lesson needs stays out of the Floor.
 - **The Floor is what the learner showed, not rated.** Check each term the scope needs with one dialog question (`SKILL.md` section 2, item 4); a correct pick or sentence goes to Known terms, anything else to New to me, and the `prior-knowledge` record says whether a Known term was recognised or produced. Ask "daily, have run it, or never" for each tool a lesson will run. `teach lint` enforces both lists.
+- **Three preferences, in a fixed form.** The interview's last item (`SKILL.md` section 2, item 7) writes one bullet for each under `## Constraints`: `- Hints: always` or `- Hints: on request`; `- Path reviews: yes` or `- Path reviews: no`; `- Reminders: none` or `- Reminders: every <N> days`, N a whole number from 1 to 3650 (`every 1 day` also). Any spaces may follow the colon. A bullet named `hints`, `path reviews` or `reminders` in any letter case is read only when it is spelled as here, and a second bullet of one name is never read; `teach lint` reports `MISSION_PREF_INVALID` for each such bullet under `## Constraints` that it does not read. With no bullet read, the answer is `always`, `no` or `none`, and `teach next` lists that preference on its `preferences-unset:` line (the default answers are on its `preferences:` line). With `Reminders: every <N> days`, an active record written before the date N days ago is `review-due` when no attempt on or after that date names it or is on a lesson whose quiz tests it (a checked task's attempt counts only for the records its `tested` list names); with `none`, no record is. With `Path reviews: yes`, `PATH.md` plans review lines. To change an answer, edit its bullet; that is not a mission shift.
 - **Keep it short.** If `MISSION.md` runs past a screen, it has stopped being a compass and started being a plan.

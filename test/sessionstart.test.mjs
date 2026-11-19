@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { tmpVault, put } from './helpers.mjs';
-import { workspaceBrief, SPACING_DAYS } from '../hooks/session-start.mjs';
+import { workspaceBrief } from '../hooks/session-start.mjs';
 
 const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'session-start.mjs');
 const NOW = new Date(); // the CLI reads the real clock, so the fixture dates hang off it too
@@ -16,8 +16,9 @@ const iso = (d) => d.toISOString().slice(0, 10);
 const record = (date) => `---\ntitle: r\ntype: learning-record\ndate: ${iso(date)}\nstatus: active\nkind: understanding\n---\n# r\n`;
 
 // A bound repo with one workspace: two learning records (one review-due) and two reference docs
-// (one stale); `attempt` adds one graded attempt (1 of 3 wrong) on lesson 0001-x.
-function repo({ due = true, attempt = false } = {}) {
+// (one stale); `attempt` adds one graded attempt (1 of 3 wrong) on lesson 0001-x. The mission asks for reminders
+// every 21 days unless `reminders` is false (issue 79 D2).
+function repo({ due = true, attempt = false, reminders = true } = {}) {
   const root = tmpVault('rv-sessionstart-');
   const vault = join(root, 'research');
   mkdirSync(vault, { recursive: true });
@@ -27,8 +28,8 @@ function repo({ due = true, attempt = false } = {}) {
   const ws = join(root, 'learn', 'k8s');
   mkdirSync(join(ws, 'learning-records'), { recursive: true });
   mkdirSync(join(ws, 'reference'), { recursive: true });
-  writeFileSync(join(ws, 'MISSION.md'), '# m\n');
-  writeFileSync(join(ws, 'learning-records', '0001-a.md'), record(due ? day(SPACING_DAYS + 1) : day(1)));
+  writeFileSync(join(ws, 'MISSION.md'), reminders ? '# m\n\n## Constraints\n- Reminders: every 21 days\n' : '# m\n');
+  writeFileSync(join(ws, 'learning-records', '0001-a.md'), record(due ? day(21 + 1) : day(1)));
   writeFileSync(join(ws, 'learning-records', '0002-b.md'), record(day(1)));
   writeFileSync(join(ws, 'reference', 'fresh.html'), '<a href="https://e.com/fresh">x</a>\n');
   writeFileSync(join(ws, 'reference', 'stale.html'), `<a href="https://e.com/${due ? 'old' : 'fresh'}">x</a>\n`);
@@ -42,7 +43,6 @@ function repo({ due = true, attempt = false } = {}) {
 
 test('workspaceBrief counts review-due records and stale reference docs', () => {
   const { vault, ws } = repo();
-  assert.equal(SPACING_DAYS, 21);
   assert.equal(workspaceBrief(ws, vault, NOW, 'learn/k8s'),
     'research-teach learn/k8s: 1 record(s) review-due; 1 reference doc(s) with a stale citation');
 });
@@ -60,6 +60,28 @@ test('workspaceBrief adds the last attempt clause', () => {
 test('workspaceBrief is empty when nothing is due and there is no attempt', () => {
   const { vault, ws } = repo({ due: false });
   assert.equal(workspaceBrief(ws, vault, NOW, 'learn/k8s'), '');
+});
+
+test('workspaceBrief without reminders leaves out the review-due count (issue 79 D2)', () => {
+  const { vault, ws } = repo({ reminders: false, attempt: true });
+  assert.equal(workspaceBrief(ws, vault, NOW, 'learn/k8s'),
+    'research-teach learn/k8s: 1 reference doc(s) with a stale citation; last attempt 2/3 on 0001-x');
+  const quiet = repo({ reminders: false, due: false });
+  assert.equal(workspaceBrief(quiet.ws, quiet.vault, NOW, 'learn/k8s'), '');
+});
+
+// Issue 79 D6: a task attempt is named by its summary, never a score.
+test('workspaceBrief names a task attempt by its summary (issue 79 D6)', () => {
+  const { vault, ws } = repo({ reminders: false, due: false });
+  mkdirSync(join(ws, 'attempts'), { recursive: true });
+  writeFileSync(join(ws, 'attempts', 'a-20260101-120000-0001.md'),
+    '---\ntype: attempt\ndate: 2026-01-01\nlesson: 0001-x\ntotal: 3\nwrong: [0, 1, 2]\nrecords: []\npassed: []\nfailed: [a-exists]\nunreached: [b-exists, b-text]\ntested: []\n---\n');
+  assert.equal(workspaceBrief(ws, vault, NOW, 'learn/k8s'),
+    'research-teach learn/k8s: 0 reference doc(s) with a stale citation; last attempt on 0001-x: failed a-exists; not reached b-exists, b-text');
+  writeFileSync(join(ws, 'attempts', 'a-20260101-120001-0001.md'),
+    '---\ntype: attempt\ndate: 2026-01-01\nlesson: 0001-x\ntotal: 1\nwrong: [0]\nrecords: []\ntested: []\nanswered: [b-text]\n---\n');
+  assert.equal(workspaceBrief(ws, vault, NOW, 'learn/k8s'),
+    'research-teach learn/k8s: 0 reference doc(s) with a stale citation; last attempt on 0001-x: answered b-text');
 });
 
 test('CLI prints the workspace line after the summary line', () => {
@@ -80,9 +102,39 @@ test('CLI outside a bound repo prints the summary line only', () => {
   const elsewhere = tmpVault('rv-sessionstart-cwd-');
   mkdirSync(join(elsewhere, 'ws', 'learning-records'), { recursive: true });
   writeFileSync(join(elsewhere, 'ws', 'MISSION.md'), '# m\n');
-  writeFileSync(join(elsewhere, 'ws', 'learning-records', '0001-a.md'), record(day(SPACING_DAYS + 1)));
+  writeFileSync(join(elsewhere, 'ws', 'learning-records', '0001-a.md'), record(day(21 + 1)));
   const env = { ...process.env, RESEARCH_VAULT_PATH: vault };
   const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: elsewhere }), cwd: elsewhere, env, encoding: 'utf8' });
   assert.equal(r.status, 0);
   assert.equal(r.stdout, 'research-vault: 2 entries; 1 stale\n');
+});
+
+// Issue 72 item 13: in a research-vault checkout whose claims reviewer is not the one of the running plugin, the hook says so.
+test('CLI names a checkout whose claims reviewer differs from the plugin running the session (issue 72 item 13)', () => {
+  const run = (cwd, vault) => spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd }), cwd, env: { ...process.env, RESEARCH_VAULT_PATH: vault }, encoding: 'utf8' });
+  const own = readFileSync(join(dirname(HOOK), '..', 'agents', 'claims-reviewer.md'));
+  const checkout = (dir, name, body) => {
+    mkdirSync(join(dir, 'agents'), { recursive: true });
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name }) + '\n');
+    writeFileSync(join(dir, 'agents', 'claims-reviewer.md'), body);
+    spawnSync('git', ['-C', dir, 'init', '-q']);
+  };
+  for (const [name, body, notice] of [['research-vault', 'another reviewer\n', true], ['research-vault', own, false], ['something-else', 'another reviewer\n', false]]) {
+    const { root, vault } = repo({ due: false });
+    checkout(root, name, body);
+    const r = run(root, vault);
+    assert.equal(r.status, 0);
+    assert.equal(/claims reviewer/.test(r.stdout), notice, `${name}: ${r.stdout}`);
+    if (notice) assert.ok(r.stdout.includes(`--plugin-dir ${realpathSync(root)}`), r.stdout);
+  }
+  // A checkout inside the bound repo, as a worktree is: its own reviewer decides, and the advice names it.
+  const { root, vault } = repo({ due: false });
+  checkout(root, 'research-vault', own);
+  const inner = join(root, 'wt');
+  checkout(inner, 'research-vault', 'another reviewer\n');
+  const r = run(inner, vault);
+  assert.ok(r.stdout.includes(`--plugin-dir ${realpathSync(inner)}`), r.stdout);
+  checkout(inner, 'research-vault', own);
+  writeFileSync(join(root, 'agents', 'claims-reviewer.md'), 'another reviewer\n');
+  assert.ok(!/claims reviewer/.test(run(inner, vault).stdout));
 });

@@ -1,0 +1,5 @@
+{ "version": 1, "timeout": 60,
+  "requirements": [
+    { "id": "a-exists", "text": "The file teach-0001/a.txt exists.", "records": ["0001-files"], "read": "0001-files.html" },
+    { "id": "b-exists", "text": "The file teach-0001/b.txt exists.", "records": ["0001-files"], "read": "0001-files.html" },
+    { "id": "b-text", "text": "The file teach-0001/b.txt holds the word hello.", "records": [], "read": "0001-files.html" } ] }

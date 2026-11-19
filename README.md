@@ -25,7 +25,7 @@ Plain Markdown. Nothing to install beyond Node. Source ingest and embedding have
 
 ## What it looks like
 
-The dialogue and transcript below are illustrative, not captured acceptance runs.
+The dialogue below is illustrative, not a captured acceptance run. The terminal transcript after it is captured output.
 
 ```text
 You:    digging into vcluster sleep mode — capture https://docs.vcluster.com/sleep-mode
@@ -39,16 +39,20 @@ Claude: From your vault (vcluster 0.20 · last verified 4 months ago):
         ⚠ fast-moving and past its 90-day window — want me to re-verify against the live docs first?
 ```
 
-And from code, in a repo whose vault lives inside it:
+And from code, in a repo whose vault lives inside it. This transcript is the output of one run in a throwaway repo; `research-vault` stands for `node <plugin>/bin/research-vault.mjs`:
 
 ```text
--- sleep call order per 2026-03-03-sleep-mode-api@sdk=0.20.4
+$ cat src/sleep.lua
+-- sleep call order per 2026-11-16-sleep-mode-api@sdk=0.20.4
 local function sleep(client)
-  ...
+  client:pause()
+  client:scale(0)
+end
 
-$ research-vault check          # after package-lock.json moves the sdk to 0.21.0
-STALE     src/sleep.lua:1 sleep  2026-03-03-sleep-mode-api  (sdk 0.20.4 -> 0.21.0)
-check: 4 file(s); 2 ok, 1 stale, 0 uncovered, 0 unattached, 3 code link(s)
+return sleep
+$ research-vault check   # package-lock.json now declares sdk 0.21.0
+STALE     src/sleep.lua:1 sleep  2026-11-16-sleep-mode-api  (sdk 0.20.4 -> 0.21.0)
+check: 1 file(s); 0 ok, 1 stale, 0 uncovered, 0 unattached, 1 code link(s)
 versions: sdk=0.21.0
 ```
 
@@ -97,7 +101,7 @@ Explicit commands are listed in the reference. Agent workflows such as teaching 
 
 ## Learning something
 
-This section is for someone learning a topic rather than building software, and it assumes Claude Code. You need Node 22 or newer; the four install lines above are typed into Claude Code, and the last of them prints a `RESEARCH_VAULT_PATH` line to add to your shell profile so later sessions find your vault.
+This section is for someone learning a topic rather than building software, and it assumes Claude Code. You need Node 22 or newer; the four install lines above are typed into Claude Code, and the command file of the last of them tells the agent to run `init`, which prints a `RESEARCH_VAULT_PATH` line. On a first install, when no default vault is recorded yet, adding that line to your shell profile is optional: `init` also records this vault as the default, and a later process outside a bound repo, with the variable unset, resolves it from there (checked on macOS).
 
 Start Claude Code in a project folder (a repo) you want the lessons kept in and say "teach me X". The teaching skill instructs the agent to bind the folder to your vault, then ask an interview as multiple-choice questions in its dialog, one per term or tool it needs to know about, in groups of up to four, and write a mission and a path of lessons from your answers. Each lesson is a web page served on your own machine, with an index of every lesson and a navigation bar. Concept, diagnose and review lessons carry a quiz; answered on the served page, it records your score. The lesson format requires a reminder to ask follow-up questions in the terminal; answering them remains an agent task.
 

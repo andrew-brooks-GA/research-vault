@@ -8,14 +8,14 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { fixtureVault, put } from './helpers.mjs';
 import { workspaceBrief } from '../hooks/session-start.mjs';
-import { progress, progressHtml } from '../bin/lib/teach.mjs';
+import { progress, progressHtml, progressText } from '../bin/lib/teach.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'research-vault.mjs');
 const FIX = join(ROOT, 'test', 'fixtures', 'teach');
 const VAULT = fixtureVault();
 const TODAY = new Date().toISOString().slice(0, 10);
-const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | cast check <file> [--needle <value>]... | cast transcript <file> | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [--labs] [workspace]\n';
+const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | cast check <file> [--needle <value>]... | cast transcript <file> | check [--dry-run] [--hints] <N> [workspace] | check --start <N>... [--minutes <M>] [--pass <P>] [--no-hints] [workspace] | check --certify [workspace] | check --cancel [workspace] | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [--labs] [--terminal] [workspace]\n';
 
 const copyFixture = () => {
   const dir = mkdtempSync(join(tmpdir(), 'rv-teach-'));
@@ -217,18 +217,60 @@ const FRINGE = 'fringe: 4. The sextuple, named | terms: sextuple | after: 1\nfri
   'inner: 8. Reading what fx printed | after: 1 | lesson: 0005-diagnose-fx\ninner: 7. The fxctl tool | tool: fxctl | after: 1 | lesson: 0004-tool-fxctl\n' +
   'inner: 2. A bad lesson | after: 1 | lesson: 0002-bad\n';
 
+const PREFS = 'preferences: hints always, path reviews yes, reminders every 21 days\n';
+
 test('CLI teach next prints criteria, the records table and the review lines', () => {
   const ws = copyFixture();
   const head = '1. Predict what fx prints for a given input\n2. Run fx on a new input and check the prediction\n\n' +
     '| id | kind | date | lesson | last attempt |\n|---|---|---|---|---|\n';
   const r1 = cli(['next', ws]);
   assert.equal(r1.status, 0);
-  assert.equal(r1.stdout, head + '| 0001-known | understanding | 2026-01-01 | 0001-good | none |\n\nreview-due: 0001-known\nreview-failed: none\n' + FRINGE);
+  assert.equal(r1.stdout, head + '| 0001-known | understanding | 2026-01-01 | 0001-good | none |\n\nreview-due: 0001-known\nreview-failed: none\nanswered: none\n' + PREFS + FRINGE);
   // A wrong answer on the review item today: no longer due, now failed. Run from the cwd.
   assert.equal(cli(['attempt', 'add', '--lesson', '0003-review-good', '--answers', '0,0,1', ws]).status, 0);
   const r2 = cli(['next'], ws);
   assert.equal(r2.status, 0);
-  assert.equal(r2.stdout, head + `| 0001-known | understanding | 2026-01-01 | 0001-good | 2/3 on ${TODAY} |\n\nreview-due: none\nreview-failed: 0001-known\n` + FRINGE);
+  assert.equal(r2.stdout, head + `| 0001-known | understanding | 2026-01-01 | 0001-good | 2/3 on ${TODAY} |\n\nreview-due: none\nreview-failed: 0001-known\nanswered: none\n` + PREFS + FRINGE);
+});
+
+// Issue 79 D1 and D2: the preferences lines, and no review-due line without reminders.
+test('CLI teach next prints the preferences lines and leaves out review-due without reminders (issue 79)', () => {
+  const ws = copyFixture();
+  const mission = join(ws, 'MISSION.md');
+  const text = readFileSync(mission, 'utf8');
+  const lines = (r) => r.stdout.split('\n');
+  const all = lines(cli(['next', ws]));
+  assert.ok(all.includes('preferences: hints always, path reviews yes, reminders every 21 days'), all.join('\n'));
+  assert.ok(!all.some((l) => l.startsWith('preferences-unset:')));
+  writeFileSync(mission, text.replace('- Hints: always\n', ''));
+  const noHints = lines(cli(['next', ws]));
+  const at = noHints.indexOf('preferences: hints always, path reviews yes, reminders every 21 days');
+  assert.ok(at > 0, noHints.join('\n'));
+  assert.equal(noHints[at + 1], 'preferences-unset: hints');
+  assert.equal(noHints[at - 1], 'answered: none');
+  assert.ok(noHints[at - 2].startsWith('review-failed: '));
+  writeFileSync(mission, text.replace('- Hints: always\n', '- Hints: on request\n').replace('- Reminders: every 21 days\n', '- Reminders: every 1 day\n'));
+  assert.ok(lines(cli(['next', ws])).includes('preferences: hints on request, path reviews yes, reminders every 1 day'));
+  writeFileSync(mission, text.replace(/- Hints: always\n- Path reviews: yes\n- Reminders: every 21 days\n/, ''));
+  const none = lines(cli(['next', ws]));
+  assert.ok(!none.some((l) => l.startsWith('review-due:')), none.join('\n'));
+  assert.ok(none.includes('review-failed: none'));
+  assert.ok(none.includes('preferences: hints always, path reviews no, reminders none'));
+  assert.ok(none.includes('preferences-unset: hints, path reviews, reminders'));
+});
+
+test('CLI teach lint reports MISSION_PREF_INVALID for a bad preference bullet (issue 79 D1)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-teach-prefs-'));
+  for (const f of ['MISSION.md', 'PATH.md', 'GLOSSARY.md', 'lessons/0001-good.html', 'lessons/0003-review-good.html', 'reference/good.html',
+    'learning-records/0001-known.md', 'attempts/a-20260101-120000-0001.md', 'evidence/0001/PLAN.md']) {
+    mkdirSync(dirname(join(dir, f)), { recursive: true });
+    cpSync(join(FIX, f), join(dir, f));
+  }
+  writeFileSync(join(dir, 'MISSION.md'), readFileSync(join(dir, 'MISSION.md'), 'utf8').replace('- Reminders: every 21 days', '- Reminders: weekly'));
+  const r = cli(['lint', dir]);
+  assert.equal(r.status, 1);
+  const hits = r.stdout.split('\n').filter((l) => l.startsWith('MISSION_PREF_INVALID  MISSION.md: '));
+  assert.equal(hits.length, 1, r.stdout);
 });
 
 test('CLI teach next: fringe empty states, and teach lint reports a forward after: (spec 17)', () => {
@@ -351,6 +393,18 @@ test('CLI teach progress prints every attempt per lesson with first, latest and 
   const r2 = cli(['progress', ws]);
   assert.match(r2.stdout, new RegExp(`\\| 0001-good \\| 2 \\| 2/3 on 2026-01-01 \\| 3/3 on ${TODAY} \\| 3/3 on ${TODAY} \\|`));
   assert.match(r2.stdout, /attempts: 2/);
+});
+
+test('progress without reminders: reviewDue is null and neither view shows review-due (issue 79 D2)', () => {
+  const ws = copyFixture();
+  const mission = join(ws, 'MISSION.md');
+  writeFileSync(mission, readFileSync(mission, 'utf8').replace('- Reminders: every 21 days\n', ''));
+  const p = progress(ws, { now: new Date() });
+  assert.equal(p.reviewDue, null);
+  assert.ok(!progressText(p).includes('review-due:'));
+  assert.ok(progressText(p).includes('review-failed: none'));
+  assert.ok(!progressHtml(p).includes('Review due'));
+  assert.ok(progressHtml(p).includes('Review failed: none.'));
 });
 
 test('CLI teach attempt add --result records a project run; progress and /progress show pass or fail (spec 22 D3)', () => {

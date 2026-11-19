@@ -1,11 +1,11 @@
 // Opt-in publication protocol. Legacy capture deliberately remains outside this lock.
 import * as fs from 'node:fs';
-import { dirname, join, resolve, relative } from 'node:path';
+import { dirname, join, resolve, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { prepareEntry } from '../commands/capture.mjs';
 import { serializeFrontmatter } from './frontmatter.mjs';
-import { readEntry, walkEntries, TYPE_FOLDER } from './fsutil.mjs';
+import { readEntry, walkEntries, TYPE_FOLDER, ENTRY_FOLDERS } from './fsutil.mjs';
 import { loadSchema } from './schema.mjs';
 import { sha256, normalizeUrl, verKey } from './ids.mjs';
 import { buildManifest, danglingEdges, writeManifest } from './manifest.mjs';
@@ -32,13 +32,15 @@ function fault(code, index, e) {
 function input(planPath, opts) {
   const plan = JSON.parse(fs.readFileSync(planPath, 'utf8'));
   if (!Array.isArray(plan) || !plan.length) throw new Error('plan must be a non-empty JSON array');
+  // Issue 72 item 6: every entry that cannot be read is reported, as prepare() reports every entry that fails.
+  const failures = [];
   const inputs = plan.map((spec, index) => {
-    if (!spec || Array.isArray(spec) || typeof spec !== 'object') throw Object.assign(new Error('entry must be an object'), { index });
-    let bytes;
-    try { bytes = spec.contentFile ? fs.readFileSync(resolve(dirname(planPath), spec.contentFile)) : null; }
-    catch (e) { e.index = index; throw e; }
-    return { spec, bytes };
+    try {
+      if (!spec || Array.isArray(spec) || typeof spec !== 'object') throw new Error('entry must be an object');
+      return { spec, bytes: spec.contentFile ? fs.readFileSync(resolve(dirname(planPath), spec.contentFile)) : null };
+    } catch (e) { e.index = index; failures.push(e); }
   });
+  if (failures.length) throw Object.assign(failures[0], { failures });
   return { inputs, inputDigest: digest({ plan, options: { ackDataEgress: !!opts.ackDataEgress }, files: inputs.map(i => i.bytes ? sha256(i.bytes) : null) }) };
 }
 function render(vault, item, date, opts) {
@@ -56,6 +58,10 @@ function render(vault, item, date, opts) {
   if (spec.subjectVersion && !spec.subjectName) throw new Error('subjectVersion requires subjectName');
   return { ...prep, text: serializeFrontmatter(prep.data, prep.body, prep.order) };
 }
+// A source entry at the planned source's URL and version, and whether it may stand for the planned one. prepare() reuses
+// a source by these rules, and a replay checks a reused source again by them (issue 72 item 5).
+const sameSource = (e, p) => e.data.type === 'source' && normalizeUrl(e.data.source_url) === normalizeUrl(p.data.source_url) && verKey(e.data.subject?.version) === verKey(p.data.subject?.version);
+const suitable = (e, p, spec) => e.data.status === 'active' && !(p.data.content_hash && p.data.content_hash !== e.data.content_hash) && !(spec.storeBody && p.body !== e.body);
 function entries(vault) {
   return walkEntries(vault).map(path => ({ ...readEntry(path), path, text: fs.readFileSync(path, 'utf8') }));
 }
@@ -64,10 +70,10 @@ function prepare(vault, inputs, date, opts) {
   for (const [index, item] of inputs.entries()) {
     try {
       const p = render(vault, item, date, opts);
-      const matches = p.data.type === 'source' ? available.filter(e => e.data.type === 'source' && normalizeUrl(e.data.source_url) === normalizeUrl(p.data.source_url) && verKey(e.data.subject?.version) === verKey(p.data.subject?.version)) : [];
+      const matches = p.data.type === 'source' ? available.filter(e => sameSource(e, p)) : [];
       if (matches.length > 1) throw new Error('ambiguous source URL/version');
       let reused = matches[0];
-      if (reused && (reused.data.status !== 'active' || (p.data.content_hash && p.data.content_hash !== reused.data.content_hash) || (item.spec.storeBody && p.body !== reused.body))) throw new Error(`unsuitable existing source: ${reused.id}`);
+      if (reused && !suitable(reused, p, item.spec)) throw new Error(`unsuitable existing source: ${reused.id}`);
       const collision = available.filter(e => e.id === p.id);
       if (!reused && collision.length) {
         if (collision.length !== 1 || collision[0].text !== p.text || collision[0].data.type !== p.data.type) throw new Error(`destination conflict: ${p.id}`);
@@ -79,7 +85,9 @@ function prepare(vault, inputs, date, opts) {
         const found = available.filter(e => e.id === ref).length;
         if (found !== 1) throw new Error(`${found ? 'ambiguous' : 'unresolved'} reference: ${ref}; use actual reused IDs when replanning`);
       }
-      results.push({ index, id: chosen.id, path: relative(vault, chosen.path), fingerprint: sha256(chosen.text), state: reused ? 'reused' : 'pending', ...(reused ? { reason: 'existing suitable entry', actualId: chosen.id, ...(results.some(r => r.path === relative(vault, chosen.path)) ? { reuseOf: results.find(r => r.path === relative(vault, chosen.path)).index } : {}) } : {}) });
+      // Issue 72 item 4: the receipt's path uses '/' on every platform, the form validReceipt accepts.
+      const rel = relative(vault, chosen.path).split(sep).join('/');
+      results.push({ index, id: chosen.id, path: rel, fingerprint: sha256(chosen.text), state: reused ? 'reused' : 'pending', ...(reused ? { reason: 'existing suitable entry', actualId: chosen.id, ...(results.some(r => r.path === rel) ? { reuseOf: results.find(r => r.path === rel).index } : {}) } : {}) });
       rendered.push(p);
       if (!reused) available.push(p);
     } catch (e) {
@@ -130,10 +138,22 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
     lock = join(dir, 'writer.lock');
     try {
       fs.mkdirSync(lock, { mode: 0o700 }); owned = true;
-    } catch (e) { errors.push({ ...fault('LOCK_BUSY', 'lock', e), retryable: false, error: `exclusive writer lock unavailable: ${lock}; inspect owner.json and confirm the original process is gone before explicitly removing this lock` }); return output(); }
+    } catch (e) {
+      // Issue 72 item 3: a lock with no owner.json names no process. A writer that has just made it, one of an older
+      // version or a person may have left it.
+      const how = e.code === 'EEXIST' && !fs.existsSync(join(lock, 'owner.json')) ? 'it holds no owner.json, so it names no process: confirm that no --operation-id capture is running' : 'inspect owner.json and confirm the original process is gone';
+      errors.push({ ...fault('LOCK_BUSY', 'lock', e), retryable: false, error: `exclusive writer lock unavailable: ${lock}; ${how} before explicitly removing this lock` }); return output();
+    }
     // The lock is ours from here; without its owner diagnostic we give it back rather than hold it unnamed.
     try { atomicJson(join(lock, 'owner.json'), { operationId: key, pid: process.pid, vault, started: new Date().toISOString() }); }
     catch (e) { errors.push(fault('RECEIPT_IO', 'lock', e)); return output(); }
+    // Issue 72 item 1: a writer killed between link and unlink leaves `<id>.md.<uuid>.tmp` beside the entry. Only this
+    // file writes that name, and we hold the lock, so such a file is a dead writer's; the entry is a separate link.
+    for (const f of ENTRY_FOLDERS) {
+      let names = [];
+      try { names = fs.readdirSync(join(vault, f)); } catch {}
+      for (const n of names) if (/\.md\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/.test(n)) { try { fs.unlinkSync(join(vault, f, n)); } catch {} }
+    }
     // Another writer may have finished between our initial read and lock acquisition.
     // Never prepare from that stale observation or replace its receipt.
     if (fs.existsSync(receiptPath)) {
@@ -190,9 +210,12 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
         try {
           const stat = fs.lstatSync(path);
           if (!stat.isFile()) throw new Error('destination is not a regular file');
-          const text = fs.readFileSync(path, 'utf8');
-          readEntry(path);
-          if (sha256(text) !== row.fingerprint) throw new Error('destination fingerprint changed');
+          const text = fs.readFileSync(path, 'utf8'), entry = readEntry(path), p = rendered[row.index];
+          // Issue 72 item 5: this operation did not write a reused source, so it is checked again by the rules prepare()
+          // reused it by, and an edit that keeps it suitable, such as a verification, is no conflict. Any other row,
+          // a question reused because its bytes were the same among them, keeps its bytes.
+          if (row.state === 'reused' && p.data.type === 'source') { if (!sameSource(entry, p) || !suitable(entry, p, loaded.inputs[row.index].spec)) throw new Error('reused source no longer suitable'); }
+          else if (sha256(text) !== row.fingerprint) throw new Error('destination fingerprint changed');
           found = true;
         } catch (e) { if (e.code !== 'ENOENT' || row.state !== 'pending') throw e; }
         if (found && row.state === 'pending') row.state = 'created';
@@ -205,7 +228,8 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
       try {
         event('artifact', row);
         fs.mkdirSync(dirname(path), { recursive: true });
-        fs.writeFileSync(tmp, rendered[row.index].text, { flag: 'wx', mode: 0o600 });
+        // Issue 72 item 2: the default mode, as capture without --operation-id writes an entry.
+        fs.writeFileSync(tmp, rendered[row.index].text, { flag: 'wx' });
         // link is exclusive: EEXIST never replaces another writer's destination.
         fs.linkSync(tmp, path);
         row.state = 'created';
@@ -226,6 +250,6 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
     receipt.phase = errors.length ? 'needs-repair' : 'complete'; receipt.errors = [...errors];
     try { save(); } catch (e) { receipt.phase = 'needs-repair'; errors.push(fault('RECEIPT_IO', 'finalization', e)); }
     return output();
-  } catch (e) { errors.push(fault(receipt ? 'ARTIFACT_IO' : 'INPUT_INVALID', e.index ?? -1, e)); return output(); }
+  } catch (e) { for (const f of e.failures || [e]) errors.push(fault(receipt ? 'ARTIFACT_IO' : 'INPUT_INVALID', f.index ?? -1, f)); return output(); }
   finally { if (owned) { try { fs.unlinkSync(join(lock, 'owner.json')); } catch {} try { fs.rmdirSync(lock); } catch {} } }
 }

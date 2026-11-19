@@ -88,3 +88,15 @@ test('gate evidence --packet: the command prints the list and the packet line, a
   assert.match(ok.out, new RegExp(`^2026-01-01-${BIG} \\[source, active\\]\\n2026-01-02-s \\[synthesis, active\\]\\npacket: .* \\(1 of 2 entries cut .*cannot pass it\\)\\n$`));
   assert.ok(existsSync(join(p, 'sources', `2026-01-01-${BIG}.md`)));
 });
+
+// Issue 77: the row of a sentence over two lines holds its first line, and the excerpt holds both lines.
+test('gate evidence --packet: a quote over two lines is cut with both of its lines', async () => {
+  const dir = tmpVault();
+  put(dir, 'source', `2026-01-01-${BIG}`, { source_type: 'article', source_url: 'https://example.org/big' }, body(BIG).replace(line(40), 'The quoted sentence begins on line forty\nand ends on the line after it.'));
+  await checkQuotes(dir, `2026-01-01-${BIG}`, ['The quoted sentence begins on line forty and ends on the line after it.'], { ...NOW, runKey: RUN });
+  const p = out();
+  buildPacket(dir, [{ id: `2026-01-01-${BIG}` }], p, RUN, process.cwd());
+  const big = readEntry(join(p, 'sources', `2026-01-01-${BIG}.md`));
+  assert.ok(big.body.includes('L40: The quoted sentence begins on line forty\nL41: and ends on the line after it.'));
+  assert.match(big.data.verifications.at(-1).notes, /^[0-9a-f]{8} L40@[0-9a-f]{8} run-abc123: /);
+});

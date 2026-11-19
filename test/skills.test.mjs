@@ -88,6 +88,34 @@ test('teach skill names teach next, PLAN.md, teach lint, the assets copy, teach 
   assert.ok(s5.indexOf('teach lint') >= 0 && s5.indexOf('teach lint') < s5.indexOf('`research-claims-gate` skill'), 'lint before gate in §5');
 });
 
+test('the teach skill and formats state the three preferences and reviews as offers (issue 79 D1, D2)', () => {
+  const s = read('skills/research-teach/SKILL.md');
+  for (const x of ['preferences:', 'preferences-unset:', 'Hints:', 'Path reviews:', 'Reminders:', 'Path reviews: yes']) assert.ok(s.includes(x), `teach skill lacks ${x}`);
+  assert.ok(!s.includes('21 days') && !s.includes('Cepeda'), 'the skill keeps no fixed review gap');
+  const mf = read('skills/research-teach/MISSION-FORMAT.md');
+  for (const x of ['- Hints: always', 'on request', '- Path reviews: yes', '- Reminders: none', 'every <N> days', 'MISSION_PREF_INVALID']) assert.ok(mf.includes(x), `MISSION-FORMAT lacks ${x}`);
+  assert.ok(read('skills/research-teach/PATH-FORMAT.md').includes('Path reviews: yes'), 'PATH-FORMAT plans reviews only with Path reviews: yes');
+});
+
+test('the teach skill and LESSON-FORMAT state the checked task form: ./check and requirements.json (issue 79 D3, D4)', () => {
+  const s = read('skills/research-teach/SKILL.md');
+  for (const x of ['./check', 'requirements.json', './check --dry-run --hints', 'ok <id>', 'FAIL <id>: <hint>', 'echo /check >> .gitignore']) assert.ok(s.includes(x), `teach skill lacks ${x}`);
+  const f = read('skills/research-teach/LESSON-FORMAT.md');
+  for (const x of ['./check', 'requirements.json', 'FAIL <id>', 'not reached', 'TASK_REQUIREMENTS_INVALID']) assert.ok(f.includes(x), `LESSON-FORMAT lacks ${x}`);
+  for (const old of ['prints `PASS`', 'FAIL: <requirement>']) assert.ok(!s.includes(old) && !f.includes(old), `the old checker output is still stated: ${old}`);
+});
+
+test('the teach skill states the certification run: --start, --certify, --cancel and its state file (issue 79 D8)', () => {
+  const s = read('skills/research-teach/SKILL.md');
+  for (const x of ['./check --start <N>', '--minutes <M>', '--pass <P>', '--no-hints', './check --certify', './check --cancel', 'certification: open', '.teach-certify.json', 'echo .teach-certify.json >> .gitignore']) assert.ok(s.includes(x), `teach skill lacks ${x}`);
+});
+
+test('the teach skill gives the answer and records it with --answered (issue 79 D7)', () => {
+  const s = read('skills/research-teach/SKILL.md');
+  for (const x of ['teach attempt add --lesson <id> --answered <ids>', 'answered:']) assert.ok(s.includes(x), `teach skill lacks ${x}`);
+  assert.ok(!s.includes('turns the attempt into a read'), 'reading the solution is no longer a read');
+});
+
 test('research-authoring has a Code section whose first sentence states the code block condition (spec 15 D5)', () => {
   const s = read('skills/research-authoring/SKILL.md');
   const section = s.slice(s.indexOf('## Code\n'));
@@ -143,4 +171,83 @@ test('the orchestrate skill\'s reference script is a Workflow script', () => {
   const agents = code.match(/(?<![.\w$])agent\(/g).length;
   assert.ok(agents >= 3);
   assert.equal(code.match(/\bmodel: 'opus'/g)?.length, agents, 'every agent() call in the script carries model: opus');
+});
+
+// Issues 74, 75 and 76: the script repairs an address before the Write step, and the prompts say the rest.
+test('the orchestrate script hands the Write step https addresses and no version on a floating address', async () => {
+  const skill = read('skills/research-orchestrate/SKILL.md');
+  const script = skill.slice(skill.indexOf('## 2. Run the workflow')).match(/```javascript\n([\s\S]*?)\n```/)[1];
+  const page = (url, extra = {}) => ({ url, title: 't', domain: 'd', topics: 'x', authorityTier: 'a', authorityBasis: 'b', summary: 's', claims: [{ claim: 'c', quote: 'q' }], ...extra });
+  const v = { subjectName: 'X', subjectVersion: '2.0' };
+  const lanePages = [
+    page('http://example.com/blog/a/'), page('https://example.com/docs/latest/r', v), page('https://example.com/x/v10.15.0/r.md', v),
+    page('https://example.com/a?ref=main', v), page('https://example.com/mainline/a', v), page('https://example.com/blog/a/'),
+    page('HTTP://Example.com/Docs/Main/x', v), page('https://example.com?next=/main/', v), page('http://example.com:8080/x'), page('http://user:pw@example.com/x'),
+    page('https://main/x', v), page('https://example.com/a#/main/', v), page('http://example.com?x=1'),
+  ];
+  let prompt = '';
+  const agent = async (text, opts) => (opts.phase === 'Recon' ? 'none' : opts.phase === 'Research' ? { pages: structuredClone(lanePages) } : ((prompt = text), { status: 'complete', lint: '' }));
+  const AsyncFunction = (async () => {}).constructor;
+  await new AsyncFunction('agent', 'parallel', 'pipeline', 'phase', 'log', 'args', 'budget', 'workflow', script.replace(/^export /, ''))(
+    agent, (fns) => Promise.all(fns.map((f) => f())), null, () => {}, () => {}, { question: 'q', cli: '/cli', vault: '/v', today: '2026-11-17', runKey: 'run-test01', storeText: true, lanes: ['one lane'], pagesPerLane: 4 });
+  const got = JSON.parse(prompt.slice(prompt.lastIndexOf('PAGES: ') + 7)).map((p) => [p.url, p.subjectName ?? null, p.subjectVersion ?? null, p.claims.length]);
+  assert.deepEqual(got, [
+    ['https://example.com/blog/a/', null, null, 2],
+    ['https://example.com/docs/latest/r', 'X', null, 1],
+    ['https://example.com/x/v10.15.0/r.md', 'X', '2.0', 1],
+    ['https://example.com/a?ref=main', 'X', '2.0', 1],
+    ['https://example.com/mainline/a', 'X', '2.0', 1],
+    ['https://Example.com/Docs/Main/x', 'X', null, 1],
+    ['https://example.com?next=/main/', 'X', '2.0', 1],
+    ['http://example.com:8080/x', null, null, 1],
+    ['http://user:pw@example.com/x', null, null, 1],
+    ['https://main/x', 'X', '2.0', 1],
+    ['https://example.com/a#/main/', 'X', '2.0', 1],
+    ['https://example.com?x=1', null, null, 1],
+  ]);
+  // The script's word list is a copy of FLOATING in bin/lib/fill.mjs.
+  const inFill = read('bin/lib/fill.mjs').match(/const FLOATING = new Set\(\[([^\]]*)\]\)/)[1].replace(/['\s]/g, '').split(',');
+  const inScript = script.match(/const FLOATING = \/\\\/\(([^)]*)\)/)[1].split('|');
+  assert.deepEqual(inScript, inFill);
+  for (const s of ['[--subject-name <subjectName>] [--subject-version <subjectVersion>]', 'Pass each of the two only when the page has that field; never make up a version.', 'A PDF may give no text to check (the one PDF probed gave none): where a paper or a report has an HTML page of its full text, read that page and give its address; give a PDF address only when there is none, and its quotes may then stay unchecked.']) assert.ok(script.includes(s), s);
+  for (const s of ['A PDF source answers `no-text`', '`capture --fill <id> --content-file <file> --ack-data-egress`']) assert.ok(skill.includes(s), s);
+  // Section 3 gives the same nine words by hand.
+  const byHand = skill.slice(skill.indexOf("The script's address repair does not run here")).split('\n')[0];
+  assert.deepEqual([...byHand.matchAll(/`([a-z]+)`/g)].map((m) => m[1]), inFill);
+  for (const s of ['give an `http://` address with no port in its `https://` form', 'pass no `--subject-version`']) assert.ok(byHand.includes(s), s);
+});
+
+// Issue 73: a raw file and its rendered page are one document at two addresses. The script marks the second page,
+// and the Write step tests the mark with the quote check before it captures that page.
+test('the orchestrate script marks a page that may be a second address of an earlier page', async () => {
+  const skill = read('skills/research-orchestrate/SKILL.md');
+  const script = skill.slice(skill.indexOf('## 2. Run the workflow')).match(/```javascript\n([\s\S]*?)\n```/)[1];
+  const page = (url, extra = {}) => ({ url, title: 't', domain: 'd', topics: 'x', authorityTier: 'a', authorityBasis: 'b', summary: 's', claims: [{ claim: 'c', quote: 'q' }], ...extra });
+  const v = { subjectName: 'X', subjectVersion: '9.0' };
+  const lanePages = [
+    page('https://raw.githubusercontent.com/eslint/eslint/main/docs/src/rules/max-lines.md'), page('https://eslint.org/docs/latest/rules/max-lines'),
+    page('https://eslint.org/docs/latest/rules/max-depth'), page('https://eslint.org/docs/v9.x/rules/max-lines', v),
+    page('https://github.com/a/b/blob/main/README.md'), page('https://example.com/project/readme'), page('https://example.com'), page('https://example.org/'),
+    page('https://Mirror.example.net/Docs/Max-Lines.HTML?x=1#top'), page('https://example.com/a/faq/'), page('https://example.org/b/faq'),
+    page('https://example.org/copy/max-depth.html', { claims: [] }), page('https://example.com/x/index.html'), page('https://example.org/y/index'),
+    page('https://one.example/guide/setup'), page('https://one.example/v2/guide/setup'), page('https://two.example/setup.md'),
+    page('https://one.example/v3/setup'), page('https://three.example/tagged/v9/max-lines.md', v),
+  ];
+  let prompt = '';
+  const agent = async (text, opts) => (opts.phase === 'Recon' ? 'none' : opts.phase === 'Research' ? { pages: structuredClone(lanePages) } : ((prompt = text), { status: 'complete', lint: '' }));
+  const AsyncFunction = (async () => {}).constructor;
+  const out = await new AsyncFunction('agent', 'parallel', 'pipeline', 'phase', 'log', 'args', 'budget', 'workflow', script.replace(/^export /, ''))(
+    agent, (fns) => Promise.all(fns.map((f) => f())), null, () => {}, () => {}, { question: 'q', cli: '/cli', vault: '/v', today: '2026-11-17', runKey: 'run-test73', storeText: true, lanes: ['one lane'], pagesPerLane: 4 });
+  const want = [null, 0, null, null, null, null, null, null, 0, null, 9, null, null, null, null, null, 14, null, 3];
+  assert.deepEqual(JSON.parse(prompt.slice(prompt.lastIndexOf('PAGES: ') + 7)).map((p) => p.maybeSameAs ?? null), want, 'marks in the Write prompt');
+  assert.deepEqual(out.pages.map((p) => p.maybeSameAs ?? null), want, "marks in the script's return");
+  for (const s of [
+    '1. Sources. Leave out every page that has maybeSameAs: step 3 decides whether it gets a source.',
+    'If more than half of this page\'s quotes are found, the two pages are one document: run no capture and no fill for this page; its row has status reused, the sourceId of page <maybeSameAs>, the reason "same document as page <maybeSameAs>"',
+  ]) assert.ok(script.includes(s), s);
+  for (const s of [
+    'capture each `source`, a page marked `maybeSameAs` only when the quote check says it is another document or the page the mark names has no source or failed;',
+    'A page marked `maybeSameAs` gets no source of its own when more than half of its quotes are found in the text of the page the mark names',
+    'The script\'s mark for one document at two addresses does not run here either: when two kept pages on different hosts have the same last path segment, less its extension, and the same subject version or none on both, and that name is not "index" or "readme"',
+  ]) assert.ok(skill.includes(s), s);
 });

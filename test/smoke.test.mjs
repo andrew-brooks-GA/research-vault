@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpVault, put } from './helpers.mjs';
 
 test('CLI prints usage and exits 0 with no args', () => {
@@ -15,4 +19,29 @@ test('CLI does not truncate large piped stdout (process.exit after write)', () =
   const out = execFileSync('node', ['bin/research-vault.mjs', 'manifest', '--vault', dir], { maxBuffer: 1 << 26 });
   assert.ok(out.length > 65536, `expected > 64 KB, got ${out.length}`);
   assert.doesNotThrow(() => JSON.parse(out.toString()));
+});
+
+// Issue 72 item 9: --help or -h after a command prints usage and runs nothing, even with no vault yet.
+test('a command given --help or -h prints its row of the command table and writes nothing', () => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-help-'));
+  const env = { PATH: process.env.PATH, HOME: root, XDG_CONFIG_HOME: join(root, 'config'), XDG_DATA_HOME: join(root, 'data'), RESEARCH_VAULT_PATH: join(root, 'vault') };
+  const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const cli = join(repo, 'bin', 'research-vault.mjs');
+  const run = (...argv) => spawnSync(process.execPath, [cli, ...argv], { cwd: root, env, encoding: 'utf8', timeout: 20000 });
+  const names = readFileSync(cli, 'utf8').match(/commands: ([\w|-]+)/)[1].split('|');
+  const table = readFileSync(join(repo, 'docs', 'REFERENCE.md'), 'utf8');
+  for (const [cmd, flag] of [...names.map((c) => [c, '--help']), ['init', '-h']]) {
+    const r = run(cmd, flag);
+    assert.equal(r.status, 0, `${cmd} ${flag}: ${r.stderr}`);
+    assert.ok(r.stdout.startsWith(`research-vault ${cmd}: `), `${cmd} ${flag}: ${r.stdout}`);
+    assert.equal(r.stdout.includes('section of docs/REFERENCE.md'), !table.includes(`\n| \`${cmd}\` | `), `${cmd}: its row, or the pointer when it has none`);
+    assert.ok(!r.stdout.includes('<!--') && !r.stdout.includes('\\|'), `${cmd}: no comment and no escaped bar`);
+    assert.deepEqual(readdirSync(root), [], `${cmd} ${flag} wrote nothing`);
+  }
+  const unknown = run('nosuch', '--help');
+  assert.equal(unknown.status, 1);
+  assert.match(unknown.stderr, /unknown command: nosuch/);
+  // -h given as the value of a flag is that value, not a request for help.
+  const text = run('search', '--vault', mkdtempSync(join(tmpdir(), 'rv-help-vault-')), '--text', '-h');
+  assert.ok(!text.stdout.startsWith('research-vault search:'), text.stdout);
 });

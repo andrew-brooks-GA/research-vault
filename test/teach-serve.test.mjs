@@ -244,6 +244,16 @@ function importWorkspace() {
   quizLesson(ws, '0002-two', [2, 2, 0]);
   return ws;
 }
+// Issue 79 D2: with no Reminders: bullet, /progress.json carries reviewDue null.
+test('GET /progress.json carries reviewDue null when the mission asks for no reminders (issue 79 D2)', async () => {
+  const { server, port } = await start(importWorkspace());
+  try {
+    const r = await req(port, { path: '/progress.json' });
+    assert.equal(r.status, 200);
+    assert.ok(r.text.includes('"reviewDue":null'), r.text);
+  } finally { server.close(); }
+});
+
 const AT = '2026-10-26T20:57:00.690Z';
 const importCli = (file, ws) => spawnSync(process.execPath, [BIN, 'teach', 'attempt', 'import', file, ws], { encoding: 'utf8' });
 const files = (ws) => (existsSync(join(ws, 'attempts')) ? readdirSync(join(ws, 'attempts')).sort() : []);

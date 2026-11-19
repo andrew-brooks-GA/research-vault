@@ -7,9 +7,9 @@ import { fileURLToPath } from 'node:url';
 import { loadTeachSchema } from '../bin/lib/schema.mjs';
 import { parseFrontmatter } from '../bin/lib/frontmatter.mjs';
 import {
-  SPACING_DAYS, ATTEMPT_ID_RE, LESSON_ID_RE, RECORD_ID_RE, STORED_DERIVED,
+  ATTEMPT_ID_RE, LESSON_ID_RE, RECORD_ID_RE, STORED_DERIVED,
   validateEntry, nextRecordId, attemptId, writeRecord, supersedeRecord, readQuiz,
-  writeAttempt, teachIndex, fixRecordFrontmatter, lessonIndex, indexHtml,
+  writeAttempt, teachIndex, fixRecordFrontmatter, lessonIndex, indexHtml, missionPrefs, taskSummary,
 } from '../bin/lib/teach.mjs';
 import { footnoteCitations } from '../bin/lib/teach.mjs';
 
@@ -45,7 +45,6 @@ test('loadTeachSchema returns field lists and taxonomy', () => {
   assert.deepEqual(schema.taxonomy.status, ['active', 'superseded']);
   assert.deepEqual(schema.taxonomy.kind, ['understanding', 'prior-knowledge', 'misconception', 'mission-shift']);
   assert.deepEqual(schema.taxonomy.type_folder, { 'learning-record': 'learning-records', attempt: 'attempts' });
-  assert.equal(SPACING_DAYS, 21);
   assert.ok(LESSON_ID_RE.test('0003-review-tls') && !LESSON_ID_RE.test('0003-2026-10-01-x'));
   assert.ok(RECORD_ID_RE.test('0001-tls-basics') && !RECORD_ID_RE.test('LR-0001'));
 });
@@ -169,6 +168,30 @@ test('writeAttempt errors on malformed quiz JSON without writing', () => {
   assert.equal(list(join(dir, 'attempts')).length, 1);
 });
 
+// Issue 79 D5: a task attempt's fields come ready-made in `task`; no quiz is read.
+test('writeAttempt with a task object stores its fields after records, and the attempt validates', () => {
+  const dir = ws();
+  mkdirSync(join(dir, 'lessons'), { recursive: true });
+  writeFileSync(join(dir, 'lessons', '0007-task.html'), '<html><body><p>no quiz</p></body></html>\n');
+  const task = { total: 3, wrong: [1, 2], records: ['0001-a'], passed: ['x'], failed: ['y'], unreached: ['z'], tested: ['0001-a'] };
+  const r = writeAttempt(dir, { lesson: '0007-task', task, now: NOW }, schema);
+  assert.deepEqual([r.id, r.total, r.wrong], ['a-20261026-123456-0007', 3, [1, 2]]);
+  const text = readFileSync(r.path, 'utf8');
+  assert.equal(text, '---\ntype: attempt\ndate: 2026-10-26\nlesson: 0007-task\ntotal: 3\nwrong: [1, 2]\nrecords: [0001-a]\npassed: [x]\nfailed: [y]\nunreached: [z]\ntested: [0001-a]\n---\n');
+  assert.deepEqual(validateEntry(parseFrontmatter(text).data, schema), []);
+  const a = writeAttempt(dir, { lesson: '0007-task', task: { total: 1, wrong: [0], records: [], tested: [], answered: ['b-text'] }, now: NOW }, schema);
+  assert.deepEqual(parseFrontmatter(readFileSync(a.path, 'utf8')).data, { type: 'attempt', date: '2026-10-26', lesson: '0007-task', total: 1, wrong: [0], records: [], tested: [], answered: ['b-text'] });
+});
+
+// Issue 79 D6: the one text every view prints for a task attempt.
+test('taskSummary: answered, certification, and the parts of a check that are not empty', () => {
+  assert.equal(taskSummary({ answered: ['a-exists', 'b-text'], tested: [] }), 'answered a-exists, b-text');
+  assert.equal(taskSummary({ certification: 'c-20261118-120000', passed: ['a', 'b'], failed: ['c'], unreached: ['d'], tested: [] }), 'certification 2 of 4');
+  assert.equal(taskSummary({ passed: ['a', 'b'], failed: [], unreached: [], tested: [] }), 'ok a, b');
+  assert.equal(taskSummary({ passed: [], failed: ['a'], unreached: ['b', 'c'], tested: [] }), 'failed a; not reached b, c');
+  assert.equal(taskSummary({ passed: ['a'], failed: ['b'], unreached: ['c'], tested: [] }), 'ok a; failed b; not reached c');
+});
+
 test('fixRecordFrontmatter migrates LR-NNNN supersession and is idempotent', () => {
   const dir = ws();
   const lr = join(dir, 'learning-records');
@@ -204,7 +227,7 @@ test('fixRecordFrontmatter migrates LR-NNNN supersession and is idempotent', () 
 
 test('teachIndex derives evidence, lastAttempt, reviewDue and reviewFailed', () => {
   const dir = ws();
-  writeFileSync(join(dir, 'MISSION.md'), '# Mission\n\nWin.\n\n## Success Looks Like\n\n- Explain TLS\n* Route SNI\n1. Debug a cert\n\nprose\n\n## Other\n\n- not a criterion\n');
+  writeFileSync(join(dir, 'MISSION.md'), '# Mission\n\nWin.\n\n## Success Looks Like\n\n- Explain TLS\n* Route SNI\n1. Debug a cert\n\nprose\n\n## Other\n\n- not a criterion\n\n## Constraints\n- Reminders: every 21 days\n');
   const lr = join(dir, 'learning-records');
   mkdirSync(lr, { recursive: true });
   const rec = (id, date, extra = '') => writeFileSync(join(lr, `${id}.md`),
@@ -247,11 +270,11 @@ test('teachIndex derives evidence, lastAttempt, reviewDue and reviewFailed', () 
   const by = Object.fromEntries(ix.records.map((r) => [r.id, r]));
   assert.deepEqual(Object.keys(by).sort(), ['0001-old-unreviewed', '0002-old-reviewed-recently', '0003-failed', '0004-old-superseded', '0005-old-reviewed-long-ago']);
   assert.deepEqual(by['0003-failed'].evidence, [recent.id]);
-  assert.deepEqual(by['0003-failed'].lastAttempt, { id: recent.id, date: iso(new Date(NOW - DAY)), score: 1, total: 2, wrongHere: true });
+  assert.deepEqual(by['0003-failed'].lastAttempt, { id: recent.id, date: iso(new Date(NOW - DAY)), score: 1, total: 2, wrongHere: true, kind: 'quiz' });
   assert.equal(by['0002-old-reviewed-recently'].lastAttempt.wrongHere, false);
   assert.deepEqual(by['0002-old-reviewed-recently'].evidence, []);
   assert.equal(by['0001-old-unreviewed'].lastAttempt, null);
-  assert.deepEqual(by['0005-old-reviewed-long-ago'].lastAttempt, { id: older.id, date: iso(new Date(NOW - 30 * DAY)), score: 1, total: 1, wrongHere: false });
+  assert.deepEqual(by['0005-old-reviewed-long-ago'].lastAttempt, { id: older.id, date: iso(new Date(NOW - 30 * DAY)), score: 1, total: 1, wrongHere: false, kind: 'quiz' });
   assert.deepEqual(ix.attempts.map((a) => a.id), [older.id, recent.id]);
 
   const due = ix.records.filter((r) => r.reviewDue).map((r) => r.id);
@@ -260,6 +283,64 @@ test('teachIndex derives evidence, lastAttempt, reviewDue and reviewFailed', () 
   assert.deepEqual(due, ['0001-old-unreviewed', '0005-old-reviewed-long-ago']);
   assert.deepEqual(failed, ['0003-failed']);
   for (const r of ix.records) for (const f of STORED_DERIVED) if (f !== 'evidence') assert.ok(!(f in r), `${r.id} carries ${f}`);
+});
+
+// Issue 79 D1: the three preference bullets under ## Constraints.
+const prefsOf = (constraints, extra = '') => {
+  const dir = ws();
+  writeFileSync(join(dir, 'MISSION.md'), `# Mission\n\n## Success looks like\n- One\n${extra}\n## Constraints\n- Ten minutes a session\n${constraints}`);
+  return missionPrefs(dir);
+};
+
+test('missionPrefs reads the Hints, Path reviews and Reminders bullets (issue 79 D1)', () => {
+  assert.deepEqual(prefsOf(''), { hints: 'always', pathReviews: false, reminders: null, unset: ['hints', 'path reviews', 'reminders'], invalid: [] });
+  assert.deepEqual(missionPrefs(ws()), { hints: 'always', pathReviews: false, reminders: null, unset: ['hints', 'path reviews', 'reminders'], invalid: [] });
+  assert.deepEqual(prefsOf('- Hints: on request\n- Path reviews: yes\n- Reminders: every 14 days\n'),
+    { hints: 'on request', pathReviews: true, reminders: 14, unset: [], invalid: [] });
+  assert.equal(prefsOf('- Reminders: every 1 day\n').reminders, 1);
+  assert.equal(prefsOf('- Reminders:    none   \n').reminders, null);
+  assert.deepEqual(prefsOf('- Reminders:    none   \n').unset, ['hints', 'path reviews']);
+  for (const [bullet, name] of [['- hints: Always\n', 'hints'], ['- Reminders: every 0 days\n', 'reminders'], ['- Reminders: weekly\n', 'reminders']]) {
+    const p = prefsOf(bullet);
+    assert.equal(p.invalid.length, 1, bullet);
+    assert.ok(p.unset.includes(name), bullet);
+    assert.equal(p.hints, 'always', bullet);
+    assert.equal(p.reminders, null, bullet);
+  }
+  const twice = prefsOf('- Hints: on request\n- Hints: always\n');
+  assert.equal(twice.invalid.length, 1);
+  assert.equal(twice.hints, 'on request');
+  assert.ok(!twice.unset.includes('hints'));
+  // A bullet with one of the names under another heading is not read.
+  const tooMany = prefsOf('- Reminders: every 3651 days\n');
+  assert.equal(tooMany.invalid.length, 1);
+  assert.ok(tooMany.unset.includes('reminders'));
+  assert.equal(tooMany.reminders, null);
+  const elsewhere = prefsOf('', '\n## Out of scope\n- Hints: on request\n- Reminders: every 7 days\n');
+  assert.deepEqual(elsewhere, { hints: 'always', pathReviews: false, reminders: null, unset: ['hints', 'path reviews', 'reminders'], invalid: [] });
+});
+
+test('teachIndex: a record 30 days old with no attempt is review-due only with reminders of 30 days or fewer (issue 79 D2)', () => {
+  const due = (constraints, age = 30) => {
+    const dir = ws();
+    writeFileSync(join(dir, 'MISSION.md'), `# Mission\n\n## Success looks like\n- One\n\n## Constraints\n${constraints}`);
+    mkdirSync(join(dir, 'learning-records'), { recursive: true });
+    writeFileSync(join(dir, 'learning-records', '0001-old.md'),
+      `---\ntitle: old\ntype: learning-record\ndate: ${iso(new Date(NOW - age * DAY))}\nstatus: active\nkind: understanding\n---\n# old\n`);
+    const ix = teachIndex(dir, { now: NOW });
+    return ix.records[0].reviewDue;
+  };
+  assert.equal(due(''), false);
+  assert.equal(due('- Reminders: weekly\n'), false);
+  assert.equal(due('- Reminders: every 45 days\n'), false);
+  assert.equal(due('- Reminders: every 21 days\n'), true);
+  assert.equal(due('- Reminders: every 7 days\n'), true);
+  // The cutoff boundary: 8 days old is due with every 7 days, exactly 7 days old is not.
+  assert.equal(due('- Reminders: every 7 days\n', 8), true);
+  assert.equal(due('- Reminders: every 7 days\n', 7), false);
+  const dir = ws();
+  writeFileSync(join(dir, 'MISSION.md'), '# Mission\n\n## Constraints\n- Reminders: every 7 days\n');
+  assert.deepEqual(teachIndex(dir, { now: NOW }).prefs, missionPrefs(dir));
 });
 
 test('fixRecordFrontmatter migrates frontmatter that has only the old Status line', () => {

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync, existsSync } from 'node:fs';
 import { parseArgs } from './lib/args.mjs';
 
 const USAGE = `research-vault <command> [options]
@@ -28,6 +29,16 @@ const commands = {
   embed: () => import('./commands/embed.mjs'),
 };
 if (!commands[cmd]) { process.stderr.write(`unknown command: ${cmd}\n${USAGE}\n`); process.exit(1); }
+// Issue 72 item 9: --help or -h after a command prints that command's row of the docs/REFERENCE.md command table,
+// without its evidence comment, and runs nothing.
+if ('help' in args || args._.slice(1).includes('-h')) {
+  const doc = new URL('../docs/REFERENCE.md', import.meta.url);
+  const head = `| \`${cmd}\` | `;
+  const row = existsSync(doc) && readFileSync(doc, 'utf8').split('\n').find(l => l.startsWith(head));
+  const text = row ? row.slice(head.length).replace(/\s*<!--[\s\S]*?-->/g, '').replace(/ \|$/, '').replaceAll('\\|', '|') : `see the ${cmd} section of docs/REFERENCE.md`;
+  process.stdout.write(`research-vault ${cmd}: ${text}\n`);
+  process.exit(0);
+}
 try {
   const mod = await commands[cmd]();
   const code = await mod.run(args);

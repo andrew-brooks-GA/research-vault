@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, symlin
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { manageCodex, installationFiles } from '../bin/lib/host-install.mjs';
+import { manageCodex, installationFiles, shellQuote } from '../bin/lib/host-install.mjs';
 
 function project(t) {
   const root = mkdtempSync(join(tmpdir(), "rv codex $' "));
@@ -99,4 +99,25 @@ test('generated review commands honor installed model and effort choices', t => 
   const skill = files.get('.agents/skills/research-claims-gate/SKILL.md').toString();
   assert.match(skill, /host review codex --model gpt-6-astra --effort xhigh --role claims-reviewer/);
   assert.ok(!skill.includes('host review codex --role'));
+});
+
+// Issue 72 item 10: the Codex copy of the orchestrate script runs the pinned launcher, whatever args.cli names.
+test('the Codex orchestrate script runs the pinned launcher, not the path args.cli names', async t => {
+  const root = project(t);
+  const { files } = installationFiles(root);
+  const skill = files.get('.agents/skills/research-orchestrate/SKILL.md').toString();
+  const script = skill.slice(skill.indexOf('## 2. Run the workflow')).match(/```javascript\n([\s\S]*?)\n```/)[1];
+  const page = { url: 'https://example.com/a', title: 't', domain: 'd', topics: 'x', authorityTier: 'a', authorityBasis: 'b', summary: 's', claims: [{ claim: 'c', quote: 'q' }] };
+  let prompt = '', recon = '';
+  const agent = async (text, opts) => (opts.phase === 'Recon' ? ((recon = text), 'none') : opts.phase === 'Research' ? { pages: [structuredClone(page)] } : ((prompt = text), { status: 'complete', lint: '' }));
+  const AsyncFunction = (async () => {}).constructor;
+  await new AsyncFunction('agent', 'parallel', 'pipeline', 'phase', 'log', 'args', 'budget', 'workflow', script.replace(/^export /, ''))(
+    agent, (fns) => Promise.all(fns.map((f) => f())), null, () => {}, () => {}, { question: 'q', cli: '/bypass/research-vault.mjs', vault: '/v', today: '2026-11-17', runKey: 'run-test72', storeText: true, lanes: ['one lane'], pagesPerLane: 2 });
+  const launcher = `node ${shellQuote(join(root, '.research-vault-host/codex/run.mjs'))} `;
+  assert.ok(prompt.includes(`${launcher}capture --fill`), 'the Write step runs the launcher');
+  assert.ok(recon.includes(`${launcher}search`), 'so does the Recon step');
+  assert.ok(!prompt.includes('/bypass') && !recon.includes('/bypass'), 'and neither names the path args.cli names');
+  // A Codex controller runs the steps inline from this text: the constant and the args comment name no other CLI.
+  assert.ok(script.includes(`const CLI = ${JSON.stringify(launcher)}`), 'the constant in the text is the launcher');
+  assert.ok(!script.includes('${args.cli}') && !script.includes('absolute path to research-vault.mjs'), 'the text sends no reader to args.cli');
 });

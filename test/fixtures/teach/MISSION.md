@@ -18,3 +18,6 @@ Read and predict the output of the fixture function before running it.
 
 ## Constraints
 - Ten minutes a session
+- Hints: always
+- Path reviews: yes
+- Reminders: every 21 days

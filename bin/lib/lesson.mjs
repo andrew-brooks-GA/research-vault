@@ -9,12 +9,13 @@ import { extractCitations, SPAN_RE } from './citations.mjs';
 import { isInsideVault } from './containment.mjs';
 import { traverse } from './graph.mjs';
 import {
-  extractQuizJson, extractCites, serveFile, validateEntry, ENUM_CODES, LESSON_ID_RE, RECORD_ID_RE,
+  extractQuizJson, extractCites, serveFile, validateEntry, ENUM_CODES, LESSON_ID_RE, RECORD_ID_RE, missionPrefs,
 } from './teach.mjs';
 import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
 import { readLabs, labPin, lessonLab, sha256, LAB_MANIFEST } from './labs.mjs';
 import { scanCast, PLAYER_FILES, PLAYER_VERSION } from './cast.mjs';
 import { readBrand, BRAND_DEFAULTS, contrast } from './brand.mjs';
+import { readRequirements } from './task.mjs';
 
 export const QUIZ_MIN_ITEMS = 3;
 export const QUIZ_SPREAD_MAX = 1.6;
@@ -287,7 +288,8 @@ const exampleCommands = (blocks) => preLines(blocks.get('example')?.html ?? '').
 
 // The tools a lesson's commands invoke, as a Map of tool -> block name. In `example`, a command is a <pre>
 // line starting with `$ `; in `step`, every non-empty, non-comment <pre> line is a command. One tool per
-// pipe, `&&` or `;` segment, skipping VAR=value prefixes. Tokens with a path separator are not tools.
+// pipe, `&&` or `;` segment, skipping VAR=value prefixes. Tokens with a path separator are not tools, and the
+// workspace's ./check wrapper is none (issue 79 D9).
 export function commandTools(blocks) {
   const tools = new Map();
   for (const name of ['example', 'step']) {
@@ -297,6 +299,7 @@ export function commandTools(blocks) {
     for (const line of lines) {
       for (const seg of line.split(/\s\|\s|\s&&\s|\s;\s/)) {
         const words = seg.trim().split(/\s+/).filter((w) => w && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w));
+        if (words[0] === './check') continue;
         const tool = words[0]?.replace(/^\.\//, '').toLowerCase();
         if (tool && /^[a-z0-9._-]+$/.test(tool) && !tools.has(tool)) tools.set(tool, name);
       }
@@ -660,16 +663,34 @@ export function lintLesson(filePath, ctx) {
     else if (!existsSync(plan)) add('EVIDENCE_PLAN_MISSING', `evidence/${basename(ev)}/ has no PLAN.md`);
     else if (shape && !/^#{1,6}\s+elements\b/im.test(readFileSync(plan, 'utf8'))) add('LESSON_PLAN_NO_ELEMENTS', `evidence/${basename(ev)}/PLAN.md has no Elements part`);
   }
-  // Issue 3 (spec 46 D4): a checked task is three scripts, a step line ending evidence/NNNN/check.sh and an
-  // experiment in sources; a script or a step line naming check.sh makes the lesson one, and each missing part is a finding.
+  // Issue 79 D9 (after issue 3, spec 46 D4): a checked task is three scripts and requirements.json under evidence/NNNN/,
+  // a step line `./check N` (N this lesson's number, with or without leading zeros), the text of each requirement in
+  // the step, and an experiment in sources. One of the four files, or a step line starting `./check `, makes the
+  // lesson one, and each missing part is a finding. Each problem of the file, and each read that names no file of
+  // lessons/ or reference/ and no vault entry, is TASK_REQUIREMENTS_INVALID on the file.
   if (shape === 'project') {
     const nnnn = basename(filePath).slice(0, 4);
-    const scripts = ['setup.sh', 'check.sh', 'solution.sh'].filter((s) => !existsSync(join(ws, 'evidence', nnnn, s)));
+    const ev = (f) => join(ws, 'evidence', nnnn, f);
+    const scripts = ['setup.sh', 'check.sh', 'solution.sh'].filter((s) => !existsSync(ev(s)));
+    const hasFile = existsSync(ev('requirements.json'));
     const lines = preLines(blocks.get('step')?.html ?? '').filter((l) => l && !l.startsWith('#'));
-    if (scripts.length < 3 || lines.some((l) => l.includes('check.sh'))) {
+    if (scripts.length < 3 || hasFile || lines.some((l) => l.startsWith('./check '))) {
       for (const s of scripts) add('LESSON_TASK_INCOMPLETE', `evidence/${nnnn}/${s} is missing`);
-      if (!lines.some((l) => l.split(/\s+/).at(-1) === `evidence/${nnnn}/check.sh`)) add('LESSON_TASK_INCOMPLETE', `step has no line ending evidence/${nnnn}/check.sh`);
+      if (!hasFile) add('LESSON_TASK_INCOMPLETE', `evidence/${nnnn}/requirements.json is missing`);
+      if (!lines.some((l) => Number(/^\.\/check (\d{1,4})$/.exec(l)?.[1]) === Number(nnnn))) add('LESSON_TASK_INCOMPLETE', `step has no line ./check ${Number(nnnn)}`);
       if (!order.some((c) => ctx.entries.find((e) => e.id === c)?.type === 'experiment')) add('LESSON_TASK_INCOMPLETE', 'sources cites no experiment');
+      if (hasFile) {
+        const { requirements, problems } = readRequirements(ws, nnnn);
+        const onFile = (message) => findings.push({ code: 'TASK_REQUIREMENTS_INVALID', file: `evidence/${nnnn}/requirements.json`, message, warning: false });
+        problems.forEach(onFile);
+        const step = unescapeHtml((blocks.get('step')?.html ?? '').replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ');
+        // With problems, `requirements` holds only the entries whose id, text and read are valid; each still gets both checks.
+        for (const r of requirements) {
+          if (!step.includes(r.text.replace(/\s+/g, ' '))) add('LESSON_TASK_INCOMPLETE', `step does not hold the text of requirement ${r.id}`);
+          const named = !r.read.includes('/') && ['lessons', 'reference'].some((d) => statSync(join(ws, d, r.read), { throwIfNoEntry: false })?.isFile());
+          if (!named && !ctx.entries.some((e) => e.id === r.read)) onFile(`requirement ${r.id}: read ${r.read} names no file of lessons/ or reference/ and no vault entry`);
+        }
+      }
     }
     const check = join(ws, 'evidence', nnnn, 'check.sh');
     if (existsSync(check)) readFileSync(check, 'utf8').split(/\r?\n/).forEach((l, i) => {
@@ -978,6 +999,8 @@ export function lintWorkspace(workspaceDir, ctx) {
     listDir(join(workspaceDir, d), '.html').flatMap((f) => lintLesson(join(workspaceDir, d, f), c)));
   if (brand) findings.push(...lintBrand(workspaceDir, brand));
   findings.push(...lintStore(workspaceDir, c));
+  // Issue 79 D1: a preference bullet that is not read.
+  for (const message of missionPrefs(workspaceDir).invalid) findings.push({ code: 'MISSION_PREF_INVALID', file: 'MISSION.md', message, warning: false });
   findings.push(...lintLabManifest(workspaceDir));
   // Issue 65 (spec 47 D1): a player file in assets/ must be the pinned release's.
   for (const [name, want] of Object.entries(PLAYER_FILES)) {
