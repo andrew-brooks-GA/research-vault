@@ -108,12 +108,28 @@ if (typeof document !== 'undefined') {
     doc.body.dataset.termRun = '1';
     const { pathname } = frame.contentWindow.location;
     if (pathname.startsWith('/lessons/')) history.replaceState(null, '', '/term' + pathname);
+    // The button sits in the top-right corner of a box around the <pre>, outside the <pre>, so the text it types is the
+    // <pre>'s alone. Inline styles: the frame does not load terminal.css. The colours are lesson.css's code colours.
     for (const pre of doc.querySelectorAll('[data-block="step"] pre')) {
+      const box = doc.createElement('div');
+      box.className = 'term-run-box';
+      box.style.cssText = 'position: relative; margin: 0.5rem 0 1rem;';
+      pre.before(box);
+      box.append(pre);
+      pre.style.margin = '0';
+      pre.style.paddingRight = '4.5rem';
+      pre.style.minHeight = '2.2rem'; // room for the button on a one-line block
       const run = doc.createElement('button');
       run.type = 'button';
+      run.className = 'term-run';
       run.textContent = 'Run';
+      run.title = 'Type this command into the terminal and run it';
+      run.setAttribute('aria-label', 'Run: ' + pre.textContent.trim().split('\n')[0].slice(0, 60));
+      run.style.cssText = 'position: absolute; top: 0.45rem; right: 0.5rem; font: inherit; font-size: 0.72rem; line-height: 1.4;' +
+        ' padding: 0.1rem 0.6rem; border-radius: 4px; cursor: pointer; color: var(--code-ink); background: transparent;' +
+        ' border: 1px solid currentColor; opacity: 0.85; user-select: none;';
       run.addEventListener('click', () => { typeIn(runText(pre.textContent)); term.focus(); });
-      pre.after(run);
+      box.append(run);
     }
   };
   frame.addEventListener('load', framed);
