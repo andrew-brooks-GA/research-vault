@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `research-teach`: add draft learner profiles, an author interview, scope choices from vault topics and rules for cutting a profile's path after the learner shows what they know.
+
 ## [0.13.0] - 2026-11-19
 
 - `research-teach` (#79's known limits): `./check --cancel` during a start's setups is no longer undone; the start exits 2 and writes no run. `./check --cancel` after a stopped `--certify` also removes the attempts that end wrote, so no part of a grade stays. A checker line that starts with `ok` or `FAIL` and a requirement's id but is in neither form (`OK a-exists`, `FAIL a-exists` with no hint) is now a problem that names the line, not a silent skip.

@@ -251,3 +251,15 @@ test('the orchestrate script marks a page that may be a second address of an ear
     'The script\'s mark for one document at two addresses does not run here either: when two kept pages on different hosts have the same last path segment, less its extension, and the same subject version or none on both, and that name is not "index" or "readme"',
   ]) assert.ok(skill.includes(s), s);
 });
+
+test('teach profile formats share their markers and interview references', () => {
+  const skill = read('skills/research-teach/SKILL.md');
+  const mission = read('skills/research-teach/MISSION-FORMAT.md');
+  for (const text of ['- Draft:', '- Depth:', 'teach-profile']) {
+    assert.ok(skill.includes(text), `skill lacks ${text}`);
+    assert.ok(mission.includes(text), `mission format lacks ${text}`);
+  }
+  assert.ok(skill.includes('AUTHOR-INTERVIEW.md'));
+  const rule = read('skills/research-teach/PATH-FORMAT.md').split('\n').find(line => line.startsWith('- **Cut a profile'));
+  assert.ok(rule.includes('PATH_PROJECT_AFTER'));
+});
