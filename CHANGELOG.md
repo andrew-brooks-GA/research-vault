@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `research-teach`: ask which profile to use when several are listed; read its entry at `snippets/<id>.md` in the vault and take the fenced blocks, leaving prose beside them; ask a term explained in the read-back through three short cases and `Pass`, without offering its definition; take what the draft includes from its success lines and, when present, its path's line titles.
 - `host review codex`: add `--timeout <seconds>` (1 to 3600, default 180) and a timeout error that names the flag.
 - `research-teach`: add draft learner profiles, an author interview, scope choices from vault topics and rules for cutting a profile's path after the learner shows what they know. Revise the text after trials with options for subjects outside software, a capture command and lint check for profiles, a stricter cut rule, and a reason item in the author interview.
 
