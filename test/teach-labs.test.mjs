@@ -470,11 +470,20 @@ test('in the serve path only labs.mjs, task.mjs and terminal.mjs import child_pr
   const serve = ['bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/teach.mjs', 'bin/lib/lesson.mjs', 'bin/commands/teach.mjs', 'bin/lib/args.mjs', 'skills/research-teach/assets/quiz.js'];
   const RUNS = /child_process|\bspawn\b|(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function/;
   for (const f of serve.slice(2)) assert.ok(!RUNS.test(readFileSync(join(ROOT, f), 'utf8')), f);
-  // gate.mjs is in the serve path. The Codex installer/reviewer are separate entry points, never serve dependencies.
+  // gate.mjs starts Git through runGit. The Codex installer and reviewer have separate entry points.
   const walk = (d) => readdirSync(join(ROOT, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith('.mjs') ? [join(d, e.name)] : []));
-  assert.deepEqual(walk('bin').filter((f) => readFileSync(join(ROOT, f), 'utf8').includes('child_process')).sort(), ['bin/lib/codex-review.mjs', 'bin/lib/gate.mjs', 'bin/lib/host-install.mjs', 'bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/terminal.mjs']);
+  assert.deepEqual(walk('bin').filter((f) => readFileSync(join(ROOT, f), 'utf8').includes('child_process')).sort(), ['bin/lib/codex-review.mjs', 'bin/lib/git.mjs', 'bin/lib/host-install.mjs', 'bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/terminal.mjs']);
   for (const file of serve) assert.doesNotMatch(readFileSync(join(ROOT, file), 'utf8'), /from ['"][^'"]*(?:codex-review|host-install)\.mjs['"]/);
-  assert.match(readFileSync(join(ROOT, 'bin/lib/gate.mjs'), 'utf8'), /import \{ execFileSync \} from 'node:child_process';/);
+  const gate = readFileSync(join(ROOT, 'bin/lib/gate.mjs'), 'utf8');
+  assert.doesNotMatch(gate, RUNS);
+  assert.equal(gate.match(/^import .*['"]\.\/git\.mjs['"].*$/gm)?.length, 1);
+  assert.match(gate, /^import \{ runGit \} from '\.\/git\.mjs';$/m);
+  assert.match(gate, /\brunGit\s*\(/);
+  const git = readFileSync(join(ROOT, 'bin/lib/git.mjs'), 'utf8');
+  assert.deepEqual(git.match(/^import .*child_process.*$/gm), ["import { execFileSync } from 'node:child_process';"]);
+  assert.equal([...git.matchAll(/\bexecFileSync\s*\(/g)].length, 1);
+  assert.match(git, /\bexecFileSync\(\s*'git'\s*,/);
+  assert.doesNotMatch(git, /shell:\s*true|\b(?:exec|execSync|eval)\s*\(|\bspawn(?:Sync)?\b/);
   // Issue 79 D4, D8: task.mjs starts a checked task's checker and, at a certification run's start, its setup.sh; its
   // one spawn call is in runGroup, which runChecker and runSetup call with those two script names only.
   const task = readFileSync(join(ROOT, 'bin/lib/task.mjs'), 'utf8');

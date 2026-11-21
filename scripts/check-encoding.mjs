@@ -1,7 +1,7 @@
-import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { runGit } from "../bin/lib/git.mjs";
 
-const files = execSync("git ls-files \"*.md\" \"*.mjs\" \"*.json\"").toString().split(/\r?\n/).filter(Boolean);
+const files = runGit(["ls-files", "*.md", "*.mjs", "*.json"], { timeout: 0, stderr: "inherit" }).split(/\r?\n/).filter(Boolean);
 let bad = 0;
 for (const f of files) {
   let b;

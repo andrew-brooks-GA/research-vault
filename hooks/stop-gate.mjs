@@ -4,13 +4,13 @@
 // session declares a version some link is still pinned to the old value of (spec 15). Silent
 // outside a bound repo; always exits 0, and says so in a systemMessage when it fails open.
 import { statSync, readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../bin/lib/resolve.mjs';
 import { loadProjectConfig } from '../bin/lib/projectconfig.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
 import { gatedFiles, gateStatus, ledgerKey, referencedImages, taskFile, missingEvidence } from '../bin/lib/gate.mjs';
+import { runGit } from '../bin/lib/git.mjs';
 import { langFor, codeFiles, extractCodeLinks, readVersions } from '../bin/lib/codelinks.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -25,7 +25,7 @@ export const TWELVE_HOURS = 12 * 60 * 60 * 1000;
 export function cleanInGit(repoRoot, file) {
   const abs = resolve(repoRoot, file);
   try {
-    return execFileSync('git', ['-C', dirname(abs), 'status', '--porcelain', '--ignored', '--', abs], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' }) === '';
+    return runGit(['status', '--porcelain', '--ignored', '--', abs], { cwd: dirname(abs) }) === '';
   } catch { return false; }
 }
 

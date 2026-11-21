@@ -4,10 +4,10 @@
 //   node scripts/deps.mjs          print every broken edge as `<kind> <from> -> <to>`, exit 1 if any
 //   node scripts/deps.mjs <id>     distance-1 dependents of a file, cli:<cmd> or npm:<script>
 //   node scripts/deps.mjs --hook   PostToolUse: additionalContext naming the edited file's dependents
-import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, posix, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runGit } from '../bin/lib/git.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DOC_EXT = 'mjs|js|md|json|yml|css|html';
@@ -79,6 +79,8 @@ export const COUPLINGS = [
   ['schema/taxonomy.json', 'test/helpers.mjs', 'put() hardcodes domain, method, by_type, result and volatility values', 'by_type'],
   ['schema/taxonomy.json', 'bin/commands/capture.mjs', 'the default domain, volatility, source_type, confidence, outcome, state and language values', 'source_type'],
   ['test/helpers.mjs', 'test/isolation.test.mjs', 'the source guard matches the testEnv helper by name', 'testEnv'],
+  ['bin/lib/git.mjs', 'test/git.test.mjs', 'the invocation test checks the fixed Git overrides and their order', "'-c', 'hook.post-index-change.enabled=false'"],
+  ['bin/lib/git.mjs', 'test/teach-labs.test.mjs', 'the process guard checks the child_process import and sole Git launch', "import { execFileSync } from 'node:child_process';"],
   ['schema/teach-taxonomy.json', 'skills/research-teach/LEARNING-RECORD-FORMAT.md', 'kind values, types and the learning-records folder are hand-copied', 'learning-records'],
   ['schema/frontmatter.schema.json', 'bin/lib/graph.mjs', 'DEPENDENCY_RELS must be a subset of edge_fields.backlink'],
   ['schema/frontmatter.schema.json', 'hooks/pre-web.mjs', 'title, topics, summary, source_url, status and type are read by name', 'source_url'],
@@ -323,7 +325,7 @@ export const COUPLINGS = [
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const ext = f => posix.extname(f);
 const read = f => readFileSync(join(REPO_ROOT, f), 'utf8');
-const lsFiles = (...flags) => execFileSync('git', ['ls-files', '-z', '--exclude-standard', ...flags], { cwd: REPO_ROOT, encoding: 'utf8' }).split('\0').filter(Boolean);
+const lsFiles = (...flags) => runGit(['ls-files', '-z', '--exclude-standard', ...flags], { processCwd: REPO_ROOT, timeout: 0, stderr: 'inherit' }).split('\0').filter(Boolean);
 const fmName = text => text.match(/^---\n[\s\S]*?^name:\s*(\S+)/m)?.[1];
 const IMPORT_RE = /(?:\bfrom\s*|\bimport\s*\(?\s*)['"](\.{1,2}\/[^'"]+)['"]/g;
 const imports = (file, text) => [...text.matchAll(IMPORT_RE)].map(m => posix.normalize(posix.join(posix.dirname(file), m[1])));

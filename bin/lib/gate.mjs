@@ -3,7 +3,6 @@
 // from what it cites, and finds the files the gate covers. A code file the binding's
 // code.globs name is keyed by linked symbol (spec 15); everything else as before.
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
 import { readFileSync, appendFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve, relative, dirname, extname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +12,7 @@ import { walkEntries, readEntry } from './fsutil.mjs';
 import { listStale } from './stale.mjs';
 import { loadSchema } from './schema.mjs';
 import { SKIP_DIRS, expandFiles } from './files.mjs';
+import { runGit } from './git.mjs';
 import { checkCitations } from '../commands/check.mjs';
 import { parseBlocks, imgAttr, imageTarget } from './lesson.mjs';
 import { findProjectConfig, loadProjectConfig } from './projectconfig.mjs';
@@ -367,9 +367,8 @@ export function findWorkspaces(repoRoot, vaultPath) {
 export function stagedGates(repoRoot, vaultPath, cfg, cwd = repoRoot) {
   let top, staged;
   try {
-    const git = (...a) => execFileSync('git', ['-C', cwd, ...a], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' });
-    top = git('rev-parse', '--show-toplevel').trim();
-    staged = git('diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z').split('\0').filter(Boolean).map((f) => resolve(top, f));
+    top = runGit(['rev-parse', '--show-toplevel'], { cwd, timeout: 0 }).trim();
+    staged = runGit(['diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z'], { cwd, timeout: 0 }).split('\0').filter(Boolean).map((f) => resolve(top, f));
   } catch { return []; }
   const gated = new Set(gatedFiles(top, vaultPath, cfg));
   // A gated page is also judged when an image it references, or its requirements file (taskFile), is staged.

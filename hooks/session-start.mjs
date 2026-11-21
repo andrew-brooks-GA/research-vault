@@ -5,7 +5,6 @@
 // and, in a checkout of this plugin whose claims reviewer is not the running plugin's, one line that says so (issue 72 item 13).
 // Silent when no vault exists; never blocks; always exits 0.
 import { existsSync, readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { join, dirname, basename, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../bin/lib/resolve.mjs';
@@ -13,6 +12,7 @@ import { findProjectConfig } from '../bin/lib/projectconfig.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { listStale } from '../bin/lib/stale.mjs';
 import { findWorkspaces, reviewerHash, contentHash } from '../bin/lib/gate.mjs';
+import { runGit } from '../bin/lib/git.mjs';
 import { checkCitations } from '../bin/commands/check.mjs';
 import { extractCitations } from '../bin/lib/citations.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
@@ -57,7 +57,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
           // and the verdicts it records are the plugin's, and the checkout's own `gate staged` does not count them.
           try {
             let top = root;
-            try { top = execFileSync('git', ['-C', cwd, 'rev-parse', '--show-toplevel'], { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' }).trim() || root; } catch { /* not a git checkout */ }
+            try { top = runGit(['rev-parse', '--show-toplevel'], { cwd }).trim() || root; } catch { /* not a git checkout */ }
             const mine = join(top, 'agents', 'claims-reviewer.md');
             if (JSON.parse(readFileSync(join(top, 'package.json'), 'utf8')).name === 'research-vault' && existsSync(mine) && contentHash(readFileSync(mine)) !== reviewerHash())
               process.stdout.write(`research-vault: this checkout's claims reviewer differs from the plugin running this session (${REPO_ROOT}); verdicts recorded with that plugin will not count for this checkout's gate staged. Load this checkout as the plugin (Claude Code: --plugin-dir ${top}).\n`);
