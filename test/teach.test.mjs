@@ -1,7 +1,7 @@
 // `teach` CLI verbs (record, attempt, lint, next) and the session brief (spec 12).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,7 +18,7 @@ const TODAY = new Date().toISOString().slice(0, 10);
 const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | cast check <file> [--needle <value>]... | cast transcript <file> | check [--dry-run] [--hints] <N> [workspace] | check --start <N>... [--minutes <M>] [--pass <P>] [--no-hints] [workspace] | check --certify [workspace] | check --cancel [workspace] | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [--labs] [--terminal] [workspace]\n';
 
 const copyFixture = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'rv-teach-'));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'rv-teach-')));
   cpSync(FIX, dir, { recursive: true });
   return dir;
 };
@@ -343,6 +343,29 @@ test('CLI teach path candidates: no topic exits 2; with --topic it prints the gr
   const l = cli(['lint', clean]);
   assert.equal(l.status, 0);
   assert.equal(l.stdout, 'lint: clean\nwarning WARN_PATH_TERM_UNPLANNED  PATH.md: New to me term "octuple" is on no line\'s terms: (PATH-FORMAT: every New to me term appears on a line); teach path candidates lists the vault\'s entries for it\n');
+});
+
+test('CLI teach path candidates skips an outside entry body', t => {
+  const ws = copyFixture();
+  t.after(() => rmSync(ws, { recursive: true, force: true }));
+  const vault = join(ws, 'vault');
+  const id = put(vault, 'note', '2026-01-02-local-doc', { type: 'source', title: 'Local candidate', topics: ['fx'] });
+  const target = join(ws, 'outside.md');
+  writeFileSync(target, '# function\n');
+  const sources = join(vault, 'sources');
+  mkdirSync(sources);
+  try { symlinkSync(target, join(sources, `${id}.md`), 'file'); }
+  catch (e) {
+    if (!['EPERM', 'EACCES', 'ENOSYS', 'ENOTSUP'].includes(e.code)) throw e;
+    t.skip(`File symlink unavailable (${e.code})`);
+    return;
+  }
+
+  const r = spawnSync(process.execPath, [BIN, 'teach', 'path', 'candidates', '--topic', 'fx', ws], { cwd: ws, encoding: 'utf8', env: testEnv({ RESEARCH_VAULT_PATH: vault }) });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stderr, '');
+  assert.match(r.stdout, /\[source\] Local candidate/);
+  assert.doesNotMatch(r.stdout, /term "function"/);
 });
 
 test('CLI teach path edges: none on the fixture, proposals once line 2 no longer reaches line 1, the PATH.md-less state (spec 19)', () => {

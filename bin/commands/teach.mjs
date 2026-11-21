@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { OUTSIDE_PROJECT_VAULT, resolveVault } from '../lib/resolve.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
-import { TYPE_FOLDER } from '../lib/fsutil.mjs';
+import { TYPE_FOLDER, walkEntries } from '../lib/fsutil.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
 import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft, exportWorkspace, writeExport, lessonIndex, escapeHtml, missionPrefs, taskSummary, isTaskAttempt, certificationRuns, LESSON_ID_RE } from '../lib/teach.mjs';
@@ -238,7 +238,11 @@ function candidates(ws, args) {
   const idx = teachIndex(ws, { now: new Date() });
   const manifest = buildManifest(vaultPath);
   const byId = new Map(manifest.entries.map((e) => [e.id, e]));
-  const readBody = (id) => { const p = join(vaultPath, TYPE_FOLDER[byId.get(id)?.type] ?? '', `${id}.md`); return existsSync(p) ? readFileSync(p, 'utf8') : ''; };
+  const entryPaths = new Set(walkEntries(vaultPath));
+  const readBody = (id) => {
+    const p = join(vaultPath, TYPE_FOLDER[byId.get(id)?.type] ?? '', `${id}.md`);
+    return entryPaths.has(p) && existsSync(p) ? readFileSync(p, 'utf8') : '';
+  };
   const r = pathCandidates({
     lines: readPath(ws) ?? [], floor: missionFloor(ws), topics, manifest, readBody, aliases: schema.taxonomy.topic_aliases,
     cites: [...idx.lessons.flatMap((l) => l.cites), ...idx.reference.flatMap((d) => d.cites)],

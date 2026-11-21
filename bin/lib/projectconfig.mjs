@@ -2,7 +2,7 @@
 // discovered by walking up from the working directory binds a repo to a vault and
 // supplies capture defaults. The plugin ships the mechanism; every repo-specific value
 // lives in the file, never here. Validated against the single schema/taxonomy.json.
-import { existsSync as realExists, readFileSync as realRead, writeFileSync as realWrite } from 'node:fs';
+import { existsSync as realExists, lstatSync as realLstat, readFileSync as realRead, writeFileSync as realWrite } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 
 export const PROJECT_CONFIG_FILENAME = '.research-vault.json';
@@ -227,10 +227,11 @@ export function loadProjectConfig(startDir, opts = {}) {
 // an existing binding (mirrors init's non-clobber discipline). `codeLinks` globs add the `code`
 // block; the body goes through parseProjectConfig first, so its rules live in one place. Returns the file path.
 export function scaffoldProjectConfig(dir, opts = {}, hooks = {}) {
-  const exists = hooks.existsSync ?? realExists;
+  const lstat = hooks.lstatSync ?? realLstat;
   const write = hooks.writeFileSync ?? realWrite;
   const target = join(dir, PROJECT_CONFIG_FILENAME);
-  if (exists(target)) throw new Error(`${PROJECT_CONFIG_FILENAME} already exists at ${target}`);
+  const alreadyExists = `${PROJECT_CONFIG_FILENAME} already exists at ${target}`;
+  if (lstat(target, { throwIfNoEntry: false })) throw new Error(alreadyExists);
   const body = {
     vault: opts.vault,
     defaults: { domain: opts.domain, topics: opts.topics ?? [], volatility: opts.volatility ?? 'fast' },
@@ -239,6 +240,11 @@ export function scaffoldProjectConfig(dir, opts = {}, hooks = {}) {
   };
   if (opts.codeLinks?.length) body.code = { globs: opts.codeLinks, languages: {}, versions: {} };
   parseProjectConfig(JSON.stringify(body), opts.schema);
-  write(target, JSON.stringify(body, null, 2) + '\n', 'utf8');
+  try {
+    write(target, JSON.stringify(body, null, 2) + '\n', { encoding: 'utf8', flag: 'wx' });
+  } catch (e) {
+    if (e.code === 'EEXIST') throw new Error(alreadyExists);
+    throw e;
+  }
   return target;
 }

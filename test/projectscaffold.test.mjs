@@ -14,8 +14,11 @@ function memFs() {
   const files = new Map();
   return {
     files,
-    existsSync: (p) => files.has(p),
-    writeFileSync: (p, c) => files.set(p, c),
+    lstatSync: (p) => files.has(p) ? {} : undefined,
+    writeFileSync: (p, c, opts) => {
+      assert.equal(opts.flag, 'wx');
+      files.set(p, c);
+    },
   };
 }
 

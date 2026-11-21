@@ -1,6 +1,7 @@
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync, readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { assertInsideVault } from '../lib/containment.mjs';
 import { loadSchema, fieldOrder } from '../lib/schema.mjs';
 import { makeId, normalizeUrl, normalizeUrlSafe, sha256, verKey } from '../lib/ids.mjs';
 import { buildManifest, writeManifest } from '../lib/manifest.mjs';
@@ -131,8 +132,10 @@ export function prepareEntry(vaultPath, opts, ctx = {}) {
 export function captureEntry(vaultPath, opts) {
   const prep = prepareEntry(vaultPath, opts);
   if (prep.dedup) return { dedup: prep.dedup };
-  mkdirSync(join(vaultPath, prep.folder), { recursive: true });
-  writeEntry(prep.path, prep.data, prep.body, prep.order);
+  const folder = join(vaultPath, prep.folder);
+  assertInsideVault(vaultPath, folder);
+  mkdirSync(folder, { recursive: true });
+  writeEntry(prep.path, prep.data, prep.body, prep.order, vaultPath);
   writeManifest(vaultPath);
   return { id: prep.id, path: prep.path, dedup: null };
 }
@@ -230,8 +233,10 @@ function runSpecs(vaultPath, plan, cliOpts, errors = []) {
   try {
     for (const prep of pending) {
       failing = prep;
-      mkdirSync(join(vaultPath, prep.folder), { recursive: true });
-      writeEntry(prep.path, prep.data, prep.body, prep.order);
+      const folder = join(vaultPath, prep.folder);
+      assertInsideVault(vaultPath, folder);
+      mkdirSync(folder, { recursive: true });
+      writeEntry(prep.path, prep.data, prep.body, prep.order, vaultPath);
       created.push({ id: prep.id, path: prep.path });
     }
   } catch (e) {

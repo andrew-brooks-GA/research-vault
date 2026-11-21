@@ -9,6 +9,7 @@ import { readEntry, walkEntries, TYPE_FOLDER, ENTRY_FOLDERS } from './fsutil.mjs
 import { loadSchema } from './schema.mjs';
 import { sha256, normalizeUrl, verKey } from './ids.mjs';
 import { buildManifest, danglingEdges, writeManifest } from './manifest.mjs';
+import { assertInsideVault, isInsideVault } from './containment.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const operationKey = key => typeof key === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(key);
@@ -19,12 +20,21 @@ function canonical(value) {
 }
 const digest = value => sha256(JSON.stringify(canonical(value)));
 const retryableIO = e => ['EINTR', 'EBUSY', 'EAGAIN'].includes(e.code);
-function atomicJson(path, value) {
+function atomicJson(vault, path, value) {
   const tmp = `${path}.${randomUUID()}.tmp`;
+  const text = JSON.stringify(value, null, 2) + '\n';
+  assertInsideVault(vault, path);
   try {
-    fs.writeFileSync(tmp, JSON.stringify(value, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
+    assertInsideVault(vault, tmp);
+    fs.writeFileSync(tmp, text, { flag: 'wx', mode: 0o600 });
+    assertInsideVault(vault, tmp);
+    assertInsideVault(vault, path);
     fs.renameSync(tmp, path);
-  } finally { try { fs.unlinkSync(tmp); } catch {} }
+  } finally { try { unlinkInside(vault, tmp); } catch {} }
+}
+function unlinkInside(vault, path) {
+  assertInsideVault(vault, path);
+  fs.unlinkSync(path);
 }
 function fault(code, index, e) {
   return { code, ...(typeof index === 'number' ? { index } : { phase: index }), retryable: retryableIO(e), error: e.message };
@@ -63,7 +73,7 @@ function render(vault, item, date, opts) {
 const sameSource = (e, p) => e.data.type === 'source' && normalizeUrl(e.data.source_url) === normalizeUrl(p.data.source_url) && verKey(e.data.subject?.version) === verKey(p.data.subject?.version);
 const suitable = (e, p, spec) => e.data.status === 'active' && !(p.data.content_hash && p.data.content_hash !== e.data.content_hash) && !(spec.storeBody && p.body !== e.body);
 function entries(vault) {
-  return walkEntries(vault).map(path => ({ ...readEntry(path), path, text: fs.readFileSync(path, 'utf8') }));
+  return walkEntries(vault).map(path => ({ ...readEntry(path, { folderChecked: true }), path, text: fs.readFileSync(path, 'utf8') }));
 }
 function prepare(vault, inputs, date, opts) {
   const existing = entries(vault), available = [...existing], results = [], rendered = [], failures = [];
@@ -114,7 +124,7 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
   let vault, receipt, receiptPath, lock, owned = false, recoveryStateCreated = false;
   const errors = [], event = opts.event || (() => {});
   const output = (extra = {}) => ({ created: (receipt?.results || []).filter(r => r.state === 'created').map(r => ({ index: r.index, id: r.id, path: join(vault, r.path) })), skipped: (receipt?.results || []).filter(r => r.state === 'reused').map(r => ({ index: r.index, id: r.id, reason: r.reason })), errors, recoveryStateCreated, ...(receipt ? { operation: receipt } : {}), ...extra });
-  const save = () => { event('receipt', receipt); atomicJson(receiptPath, receipt); recoveryStateCreated = true; };
+  const save = () => { event('receipt', receipt); atomicJson(vault, receiptPath, receipt); recoveryStateCreated = true; };
   try {
     if (!operationKey(key)) throw new Error('invalid operation key');
     vault = fs.realpathSync(vaultPath);
@@ -123,6 +133,8 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
     const schemaDigest = digest(loadSchema(opts.repoRoot || ROOT, { vaultPath: vault }));
     const dir = join(vault, '.capture-operations');
     receiptPath = join(dir, `${key}.json`);
+    try { assertInsideVault(vault, receiptPath); }
+    catch (e) { errors.push(fault('RECEIPT_IO', 'receipt', e)); return output(); }
     if (fs.existsSync(receiptPath)) {
       try { receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8')); validReceipt(receipt, key, vault, loaded.inputs.length); recoveryStateCreated = true; }
       catch (e) { receipt = undefined; errors.push(fault('RECEIPT_IO', 'receipt', e)); return output(); }
@@ -133,9 +145,14 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
       if (receipt.phase === 'complete') return output({ replay: true, historical: true });
     }
     event('before-lock', { key });
-    try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); }
+    try {
+      assertInsideVault(vault, dir);
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    }
     catch (e) { errors.push(fault('RECEIPT_IO', 'prepared', e)); return output(); }
     lock = join(dir, 'writer.lock');
+    try { assertInsideVault(vault, lock); }
+    catch (e) { errors.push(fault('RECEIPT_IO', 'lock', e)); return output(); }
     try {
       fs.mkdirSync(lock, { mode: 0o700 }); owned = true;
     } catch (e) {
@@ -145,17 +162,21 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
       errors.push({ ...fault('LOCK_BUSY', 'lock', e), retryable: false, error: `exclusive writer lock unavailable: ${lock}; ${how} before explicitly removing this lock` }); return output();
     }
     // The lock is ours from here; without its owner diagnostic we give it back rather than hold it unnamed.
-    try { atomicJson(join(lock, 'owner.json'), { operationId: key, pid: process.pid, vault, started: new Date().toISOString() }); }
+    try { atomicJson(vault, join(lock, 'owner.json'), { operationId: key, pid: process.pid, vault, started: new Date().toISOString() }); }
     catch (e) { errors.push(fault('RECEIPT_IO', 'lock', e)); return output(); }
     // Issue 72 item 1: a writer killed between link and unlink leaves `<id>.md.<uuid>.tmp` beside the entry. Only this
     // file writes that name, and we hold the lock, so such a file is a dead writer's; the entry is a separate link.
     for (const f of ENTRY_FOLDERS) {
+      const folder = join(vault, f);
+      if (!isInsideVault(vault, folder)) continue;
       let names = [];
-      try { names = fs.readdirSync(join(vault, f)); } catch {}
-      for (const n of names) if (/\.md\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/.test(n)) { try { fs.unlinkSync(join(vault, f, n)); } catch {} }
+      try { names = fs.readdirSync(folder); } catch {}
+      for (const n of names) if (/\.md\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/.test(n)) { try { unlinkInside(vault, join(folder, n)); } catch {} }
     }
     // Another writer may have finished between our initial read and lock acquisition.
     // Never prepare from that stale observation or replace its receipt.
+    try { assertInsideVault(vault, receiptPath); }
+    catch (e) { errors.push(fault('RECEIPT_IO', 'receipt', e)); return output(); }
     if (fs.existsSync(receiptPath)) {
       try { receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8')); validReceipt(receipt, key, vault, loaded.inputs.length); recoveryStateCreated = true; }
       catch (e) { receipt = undefined; errors.push(fault('RECEIPT_IO', 'receipt', e)); return output(); }
@@ -208,6 +229,7 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
         const path = join(vault, row.path);
         let found = false;
         try {
+          assertInsideVault(vault, path);
           const stat = fs.lstatSync(path);
           if (!stat.isFile()) throw new Error('destination is not a regular file');
           const text = fs.readFileSync(path, 'utf8'), entry = readEntry(path), p = rendered[row.index];
@@ -227,15 +249,20 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
       const path = join(vault, row.path), tmp = `${path}.${randomUUID()}.tmp`;
       try {
         event('artifact', row);
-        fs.mkdirSync(dirname(path), { recursive: true });
+        const folder = dirname(path);
+        assertInsideVault(vault, folder);
+        fs.mkdirSync(folder, { recursive: true });
         // Issue 72 item 2: the default mode, as capture without --operation-id writes an entry.
+        assertInsideVault(vault, tmp);
         fs.writeFileSync(tmp, rendered[row.index].text, { flag: 'wx' });
         // link is exclusive: EEXIST never replaces another writer's destination.
+        assertInsideVault(vault, tmp);
+        assertInsideVault(vault, path);
         fs.linkSync(tmp, path);
         row.state = 'created';
         event('published', row);
       } catch (e) { errors.push(fault(e.code === 'EEXIST' ? 'DESTINATION_CONFLICT' : 'ARTIFACT_IO', row.index, e)); break; }
-      finally { try { fs.unlinkSync(tmp); } catch {} }
+      finally { try { unlinkInside(vault, tmp); } catch {} }
       try { save(); } catch (e) { errors.push(fault('RECEIPT_IO', row.index, e)); return output(); }
     }
     if (!errors.length) {
@@ -251,5 +278,10 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
     try { save(); } catch (e) { receipt.phase = 'needs-repair'; errors.push(fault('RECEIPT_IO', 'finalization', e)); }
     return output();
   } catch (e) { for (const f of e.failures || [e]) errors.push(fault(receipt ? 'ARTIFACT_IO' : 'INPUT_INVALID', f.index ?? -1, f)); return output(); }
-  finally { if (owned) { try { fs.unlinkSync(join(lock, 'owner.json')); } catch {} try { fs.rmdirSync(lock); } catch {} } }
+  finally {
+    if (owned) {
+      try { unlinkInside(vault, join(lock, 'owner.json')); } catch {}
+      try { assertInsideVault(vault, lock); fs.rmdirSync(lock); } catch {}
+    }
+  }
 }

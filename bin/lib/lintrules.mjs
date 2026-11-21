@@ -6,6 +6,7 @@ import { serializeFrontmatter } from './frontmatter.mjs';
 import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, allowedValues } from './validate.mjs';
 import { BLOCKLIST, loadBlocklist, matchBlock } from './blocklist.mjs';
 import { isUnverifiedSource } from './manifest.mjs';
+import { assertInsideVault } from './containment.mjs';
 
 const MONOLITHIC_SYNTHESIS_WORDS = 1500;
 
@@ -68,12 +69,14 @@ export function lintVault(vaultPath, repoRoot) {
   // Dangling-ref coverage = every declared edge field (backlink-forming + reference-only),
   // shared with the manifest's backlink builder via schema/frontmatter.schema.json.
   const edgeFields = [...schema.fields.edge_fields.backlink, ...schema.fields.edge_fields.reference_only];
-  const files = walkEntries(vaultPath);
-  const ids = new Set(files.map(f => basename(f, '.md')));
   const violations = [];
   const add = (file, code, msg) => violations.push({ file, code, msg });
   const warnings = [];
   const warn = (file, code, msg) => warnings.push({ file, code, msg });
+  const files = walkEntries(vaultPath, {
+    onSkippedLink: file => warn(file, 'WARN_ENTRY_LINK_SKIPPED', 'skipped entry link: its target is outside the vault or cannot be resolved'),
+  });
+  const ids = new Set(files.map(f => basename(f, '.md')));
   // The source blocklist (spec 32): a list that does not parse is a violation; a match is a warning.
   let blocklist = [];
   try { blocklist = loadBlocklist(vaultPath); } catch (e) { add(join(vaultPath, BLOCKLIST), 'BLOCKLIST_INVALID', e.message); }
@@ -218,7 +221,11 @@ export function fixVault(vaultPath, repoRoot, { topics = false } = {}) {
       const order = fieldOrder(schema, entry.data.type);
       out = serializeFrontmatter(entry.data, entry.body, order, { preserve: false });
     }
-    if (out !== raw) { writeFileSync(abs, out, 'utf8'); fixed++; }
+    if (out !== raw) {
+      assertInsideVault(vaultPath, abs);
+      writeFileSync(abs, out, 'utf8');
+      fixed++;
+    }
   }
   return { fixed };
 }

@@ -5,7 +5,8 @@ import { buildManifest } from '../lib/manifest.mjs';
 import { walkEntries, readEntry } from '../lib/fsutil.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { staleness } from '../lib/stale.mjs';
-import { appendUsage } from '../lib/usagelog.mjs';
+import { appendUsage, USAGE_LOG } from '../lib/usagelog.mjs';
+import { VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { cosine, embedTexts, readIndex } from '../lib/embed.mjs';
 import { embeddingGate } from './embed.mjs';
@@ -52,7 +53,10 @@ export function searchVault(vaultPath, q, repoRoot = REPO_ROOT) {
   if (q.body) {
     const needle = q.body.toLowerCase();
     const bodyById = new Map();
-    for (const abs of walkEntries(vaultPath)) { const e = readEntry(abs); bodyById.set(e.id, (e.body || '').toLowerCase()); }
+    for (const abs of walkEntries(vaultPath)) {
+      const e = readEntry(abs, { folderChecked: true });
+      bodyById.set(e.id, (e.body || '').toLowerCase());
+    }
     rows = rows.filter(e => (bodyById.get(e.id) || '').includes(needle));
   }
   if (q.sort !== undefined) rows = sortRows(rows, q.sort, schema, new Date(q.now || new Date().toISOString().slice(0, 10)));
@@ -81,6 +85,12 @@ export async function semanticSearch(vaultPath, cfg, query, q, { fetch, repoRoot
   }).sort((a, b) => b.score - a.score).slice(0, Number(q.limit) || 10);
 }
 
+function warnUsageRefusal(error) {
+  if (error?.code === VAULT_PATH_OUTSIDE) {
+    process.stderr.write(`search: usage log was not written because it resolves outside the vault (${USAGE_LOG})\n`);
+  }
+}
+
 export async function run(args) {
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
   const now = args.now || new Date().toISOString().slice(0, 10);
@@ -90,7 +100,7 @@ export async function run(args) {
   try {
     const cfg = loadProjectConfig(args.cwd ?? process.cwd(), { schema: loadSchema(REPO_ROOT) })?.config;
     appendUsage(vaultPath, { kind: 'queried', via: 'search', type: args.type, topic: args.topic, outcome: rows.length ? 'hits' : 'no-match', ids: rows.map(e => e.id), text: cfg?.usage?.text === true && args.text ? args.text : undefined });
-  } catch { /* the log never changes the answer */ }
+  } catch (e) { warnUsageRefusal(e); }
   if (args.json) process.stdout.write(JSON.stringify(rows, null, 2) + '\n');
   else {
     const schema = loadSchema(REPO_ROOT);
@@ -111,7 +121,7 @@ async function runSemantic(vaultPath, args, now) {
   try {
     const usage = loadProjectConfig(args.cwd ?? process.cwd(), { schema: loadSchema(REPO_ROOT) })?.config?.usage;
     appendUsage(vaultPath, { kind: 'queried', via: 'search', semantic: true, type: args.type, topic: args.topic, outcome: rows.length ? 'hits' : 'no-match', ids: rows.map(e => e.id), text: usage?.text === true ? args.semantic : undefined });
-  } catch { /* the log never changes the answer */ }
+  } catch (e) { warnUsageRefusal(e); }
   if (args.json) process.stdout.write(JSON.stringify(rows, null, 2) + '\n');
   else {
     const schema = loadSchema(REPO_ROOT);

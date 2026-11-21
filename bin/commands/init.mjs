@@ -1,44 +1,55 @@
-import { cpSync, mkdirSync, existsSync, readdirSync, writeFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { cpSync, mkdirSync, existsSync, realpathSync, writeFileSync } from 'node:fs';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSchema } from '../lib/schema.mjs';
 import { generateAgentsMd } from '../lib/agentsmd.mjs';
 import { checkProjectVault, resolveVault, configPath } from '../lib/resolve.mjs';
 import { writeManifest } from '../lib/manifest.mjs';
-import { ENTRY_FOLDERS } from '../lib/fsutil.mjs';
+import { ENTRY_FOLDERS, walkEntries } from '../lib/fsutil.mjs';
 import { compileVault } from './compile.mjs';
 import { scaffoldProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
+import { assertInsideVault, VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const VAULT_MARKERS = ['AGENTS.md', 'taxonomy.json', 'README.md', 'CLAUDE.md', 'GEMINI.md', 'meta'];
 function hasVaultContent(dir) {
-  for (const f of ENTRY_FOLDERS) {
-    const p = join(dir, f);
-    if (existsSync(p) && readdirSync(p).some(n => n.endsWith('.md') && n !== 'INDEX.md')) return true;
-  }
-  return VAULT_MARKERS.some(m => existsSync(join(dir, m)));
+  return VAULT_MARKERS.some(m => existsSync(join(dir, m))) || walkEntries(dir).length > 0;
+}
+
+function writeVaultDocs(vaultPath, repoRoot) {
+  const docs = join(vaultPath, 'AGENTS.md');
+  const taxonomy = join(vaultPath, 'taxonomy.json');
+  const content = generateAgentsMd(loadSchema(repoRoot));
+  assertInsideVault(vaultPath, docs);
+  writeFileSync(docs, content, 'utf8');
+  // Copy the canonical taxonomy verbatim — single source of truth, no hand-maintained duplicate.
+  assertInsideVault(vaultPath, taxonomy);
+  cpSync(join(repoRoot, 'schema', 'taxonomy.json'), taxonomy);
 }
 
 export function runInit({ vaultPath, repoRoot = REPO_ROOT, force = false }) {
   if (existsSync(vaultPath) && hasVaultContent(vaultPath) && !force) {
     return { created: false, reason: 'target vault is non-empty (use --force to overwrite)', vaultPath };
   }
+  assertInsideVault(vaultPath, vaultPath);
   mkdirSync(vaultPath, { recursive: true });
-  cpSync(join(repoRoot, 'vault-template'), vaultPath, { recursive: true });
+  const root = realpathSync.native(vaultPath);
+  cpSync(join(repoRoot, 'vault-template'), root, { recursive: true, filter: (_src, dest) => {
+    assertInsideVault(vaultPath, join(vaultPath, relative(root, dest)));
+    return true;
+  } });
   // Create the six entry folders (+ attachments) explicitly — there are no INDEX.md
   // placeholders; the manifest is the index.
-  for (const f of ENTRY_FOLDERS) {
-    mkdirSync(join(vaultPath, f), { recursive: true });
+  for (const folder of [...ENTRY_FOLDERS, join('sources', '_attachments')]) {
+    const path = join(vaultPath, folder);
+    assertInsideVault(vaultPath, path);
+    mkdirSync(path, { recursive: true });
   }
-  mkdirSync(join(vaultPath, 'sources', '_attachments'), { recursive: true });
-  const schema = loadSchema(repoRoot);
-  writeFileSync(join(vaultPath, 'AGENTS.md'), generateAgentsMd(schema), 'utf8');
-  // Copy the canonical taxonomy verbatim — single source of truth, no hand-maintained duplicate.
-  cpSync(join(repoRoot, 'schema', 'taxonomy.json'), join(vaultPath, 'taxonomy.json'));
+  writeVaultDocs(vaultPath, repoRoot);
   writeManifest(vaultPath);
-  try { compileVault(vaultPath); } catch { /* derived view is best-effort */ }
+  try { compileVault(vaultPath); } catch (e) { if (e.code === VAULT_PATH_OUTSIDE) throw e; }
   return { created: true, vaultPath };
 }
 
@@ -49,9 +60,7 @@ export function refreshDocs({ vaultPath, repoRoot = REPO_ROOT }) {
   if (!existsSync(vaultPath) || !hasVaultContent(vaultPath)) {
     return { refreshed: false, reason: 'target is not an existing vault (nothing to refresh)', vaultPath };
   }
-  const schema = loadSchema(repoRoot);
-  writeFileSync(join(vaultPath, 'AGENTS.md'), generateAgentsMd(schema), 'utf8');
-  cpSync(join(repoRoot, 'schema', 'taxonomy.json'), join(vaultPath, 'taxonomy.json'));
+  writeVaultDocs(vaultPath, repoRoot);
   return { refreshed: true, vaultPath };
 }
 

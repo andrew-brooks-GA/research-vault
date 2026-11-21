@@ -8,6 +8,7 @@ import { buildExport } from '../lib/exportjsonl.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { INDEX, embedTexts } from '../lib/embed.mjs';
+import { assertInsideVault } from '../lib/containment.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BATCH = 64;
@@ -35,8 +36,13 @@ export async function run(args) {
     batch.forEach((w, j) => lines.push(JSON.stringify({ id: w.meta.id, chunk: w.meta.chunk, text: w.output, vector: vectors[j] })));
   }
   const header = { url: cfg.url, model: cfg.model ?? null, dimensions: lines.length ? JSON.parse(lines[0]).vector.length : 0, chunk: cfg.chunk ?? 800, overlap: cfg.overlap ?? 100, built: new Date().toISOString() };
-  mkdirSync(join(vaultPath, '_index'), { recursive: true });
-  writeFileSync(join(vaultPath, INDEX), [JSON.stringify(header), ...lines].join('\n') + '\n');
+  const path = join(vaultPath, INDEX);
+  const dir = dirname(path);
+  const text = [JSON.stringify(header), ...lines].join('\n') + '\n';
+  assertInsideVault(vaultPath, dir);
+  mkdirSync(dir, { recursive: true });
+  assertInsideVault(vaultPath, path);
+  writeFileSync(path, text);
   process.stdout.write(`embedded ${lines.length} windows of ${new Set(windows.map(w => w.meta.id)).size} entries into ${INDEX}\n`);
   return 0;
 }

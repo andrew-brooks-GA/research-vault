@@ -50,6 +50,16 @@ export function isInsideVault(parent, child, p = nodePath, fs = p === nodePath ?
   return compareContainment(parent, child, p, fs) === true;
 }
 
+export const VAULT_PATH_OUTSIDE = 'VAULT_PATH_OUTSIDE';
+
+export function assertInsideVault(vaultPath, path) {
+  const rel = nodePath.relative(vaultPath, path);
+  // Rename and removal also modify the directory holding the name.
+  if (!isInsideVault(vaultPath, path) || (rel && !isInsideVault(vaultPath, nodePath.dirname(path)))) {
+    throw Object.assign(new Error(`${rel || '.'}: path is outside the vault or cannot be resolved`), { code: VAULT_PATH_OUTSIDE });
+  }
+}
+
 // Compare canonical locations, including missing paths with a known directory prefix.
 // Return null when resolution could not establish a location.
 export function compareVaultLocations(a, b, p = nodePath, fs = p === nodePath ? nodeFs : null) {

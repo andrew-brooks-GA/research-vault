@@ -16,7 +16,7 @@ import { runGit } from './git.mjs';
 import { checkCitations } from '../commands/check.mjs';
 import { parseBlocks, imgAttr, imageTarget } from './lesson.mjs';
 import { findProjectConfig, loadProjectConfig } from './projectconfig.mjs';
-import { isInsideVault } from './containment.mjs';
+import { assertInsideVault, compareContainment, isInsideVault } from './containment.mjs';
 import { langFor, codeFiles, extractCodeLinks, codeUnits, codeUnitHashes, checkCodeLinks, worstStatus } from './codelinks.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -39,6 +39,7 @@ export function contentHash(data) { return createHash('sha256').update(data).dig
 
 // The ledger root for a file: the repo bound above it, else the vault when the file is inside it, else null.
 export function ledgerRoot(abs, vaultPath) {
+  if (compareContainment(vaultPath, abs, undefined, null)) assertInsideVault(vaultPath, abs);
   const cfg = findProjectConfig(dirname(abs));
   return cfg ? dirname(cfg.path) : isInsideVault(vaultPath, abs) ? resolve(vaultPath) : null;
 }
@@ -196,6 +197,7 @@ export function codeLang(repoRoot, filePath) {
 
 function ledgerRows(repoRoot) {
   const ledger = join(repoRoot, LEDGER_FILENAME);
+  assertInsideVault(repoRoot, ledger);
   return existsSync(ledger)
     ? readFileSync(ledger, 'utf8').split('\n').filter(Boolean).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } }) : [];
 }
@@ -224,7 +226,10 @@ export function recordVerdict(repoRoot, filePath, verdict, note) {
   const reviewer = reviewerHash();
   if (reviewer) row.reviewer = reviewer;
   if (note !== undefined) row.note = note;
-  appendFileSync(join(repoRoot, LEDGER_FILENAME), JSON.stringify(row) + '\n');
+  const ledger = join(repoRoot, LEDGER_FILENAME);
+  const line = JSON.stringify(row) + '\n';
+  assertInsideVault(repoRoot, ledger);
+  appendFileSync(ledger, line);
   return row;
 }
 
@@ -290,6 +295,7 @@ function changedCites(text, sections, changed) {
 // gains `units`, one per linked declaration with its line range and the worst status of its links.
 // `changed` (unit names, from `gate evidence --changed`) narrows a Markdown draft's citations (changedCites).
 export function evidenceFor(draftPath, vaultPath, { extra = [], code = null, changed = null } = {}) {
+  if (compareContainment(vaultPath, draftPath, undefined, null)) assertInsideVault(vaultPath, draftPath);
   const manifest = buildManifest(vaultPath);
   const byId = new Map(manifest.entries.map((e) => [e.id, e]));
   const text = readFileSync(draftPath, 'utf8');

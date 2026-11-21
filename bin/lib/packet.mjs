@@ -1,9 +1,10 @@
-import { join, resolve, relative, isAbsolute } from 'node:path';
+import { join, resolve } from 'node:path';
 import { existsSync, mkdirSync, readdirSync, copyFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { walkEntries, readEntry, writeEntry, TYPE_FOLDER } from './fsutil.mjs';
 import { loadSchema, fieldOrder } from './schema.mjs';
 import { writeManifest } from './manifest.mjs';
+import { assertInsideVault, mayBeInside } from './containment.mjs';
 
 export const RUN_KEY = /^run-[A-Za-z0-9]{6,}$/;
 // As in the prototype measured in spec 54 (T9): a source of 8,000 bytes or less is copied whole.
@@ -22,8 +23,7 @@ const h8 = s => createHash('sha256').update(s).digest('hex').slice(0, 8);
 export function buildPacket(vaultPath, entries, dir, runKey, repoRoot) {
   if (!RUN_KEY.test(String(runKey))) throw new Error('--packet needs --run <key>: run- and six or more letters or digits');
   const out = resolve(dir);
-  const rel = relative(resolve(vaultPath), out);
-  if (!rel || (!rel.startsWith('..') && !isAbsolute(rel))) throw new Error('--packet: the directory must be outside the vault');
+  if (mayBeInside(vaultPath, out)) throw new Error('--packet: the directory must be outside the vault');
   if (existsSync(out) && readdirSync(out).length) throw new Error(`--packet: ${dir} is not empty`);
   const want = new Set(entries.map(e => e.id));
   const plan = [];
@@ -45,9 +45,14 @@ export function buildPacket(vaultPath, entries, dir, runKey, repoRoot) {
   let excerpted = 0;
   for (const { abs, e, lines } of plan) {
     const folder = join(out, TYPE_FOLDER[e.data.type]);
+    assertInsideVault(out, folder);
     mkdirSync(folder, { recursive: true });
     const to = join(folder, `${e.id}.md`);
-    if (!lines) { copyFileSync(abs, to); continue; }
+    if (!lines) {
+      assertInsideVault(out, to);
+      copyFileSync(abs, to);
+      continue;
+    }
     const body = e.body.split('\n');
     const keep = new Set();
     for (const at of lines) for (let k = Math.max(1, at - AROUND); k <= Math.min(body.length, at + AROUND); k++) keep.add(k);
