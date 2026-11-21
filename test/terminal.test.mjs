@@ -80,18 +80,58 @@ function openStream(port, cookie) {
 }
 async function until(cond, what, ms = 8000) {
   const t0 = Date.now();
-  while (!cond()) {
-    if (Date.now() - t0 > ms) throw new Error(`timed out waiting for ${what}`);
+  let result = cond();
+  while (!result) {
+    if (Date.now() - t0 > ms) throw new Error(`timed out waiting for ${typeof what === 'function' ? what() : what}`);
     await new Promise((r) => setTimeout(r, 20));
+    result = cond();
   }
+  return result;
 }
-const waitFor = (s, re) => until(() => re.test(s.text), `${re}\n--- stream tail:\n${JSON.stringify(s.text.slice(-600))}`);
+// Bash can move to column one with CR after sending a bracketed-paste toggle.
+// The leading ^, \r or \n prevents matches in the middle of a line. The wrapper
+// drops the original pattern's flags.
+const shellOutput = (re) => new RegExp(`(?:^|[\\r\\n])(?:${re.source})`);
+const waitFor = (s, re, ms) => until(() => re.exec(s.text), () => `${re}\n--- stream tail:\n${JSON.stringify(s.text.slice(-600))}`, ms);
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+const doneChecks = shellOutput(/done-checks\r?\n/);
+const workspaceOutput = (ws) => shellOutput(new RegExp(`${esc(ws)}\\r?\\n`));
+const resizedOutput = shellOutput(/40 120\r?\n/);
+const bgPidOutput = shellOutput(/bg-pid (\d+)\r?\n/);
 
 after(() => {
   for (const s of servers.splice(0)) { s.killShell?.(); s.closeAllConnections(); s.close(); }
   for (const d of made.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+
+test('shell output matches the captured bash streams with bracketed paste', () => {
+  const replay = 'echo "done""-checks"\r\n\u001b[?2004hbash-5.3$ echo "done""-checks"\r\n\u001b[?2004l\rdone-checks\r\n' +
+    '\u001b[?2004hbash-5.3$ pwd\r\n\u001b[?2004l\r/tmp/rv-term-erPNzZ\r\n' +
+    '\u001b[?2004hbash-5.3$ \r\u001b[K\rbash-5.3$ stty size\r\n\u001b[?2004l\r40 120\r\n\u001b[?2004hbash-5.3$ ';
+  const job = 'sleep 300 &\r\n\u001b[?2004l\r[1] 7544\r\n\u001b[?2004hbash-5.3$ echo "bg""-pid" $!\r\n\u001b[?2004l\rbg-pid 7544\r\n';
+  assert.match(replay, doneChecks);
+  assert.match(replay, workspaceOutput('/tmp/rv-term-erPNzZ'));
+  assert.match(replay, resizedOutput);
+  assert.equal(bgPidOutput.exec(job)?.[1], '7544');
+});
+
+test('shell output matches after a plain CRLF and rejects echoed commands', () => {
+  for (const [command, output, re] of [
+    ['echo "done""-checks"', 'done-checks', doneChecks],
+    ['pwd', '/tmp/rv-term-erPNzZ', workspaceOutput('/tmp/rv-term-erPNzZ')],
+    ['stty size', '40 120', resizedOutput],
+    ['echo "bg""-pid" $!', 'bg-pid 7544', bgPidOutput],
+  ]) {
+    const echo = `${command}\r\n`;
+    const plain = `${echo}bash-5.3$ ${echo}`;
+    assert.match(`${plain}${output}\r\n`, re);
+    assert.doesNotMatch(plain, re);
+    assert.doesNotMatch(`${echo}\u001b[?2004hbash-5.3$ ${echo}\u001b[?2004l\r`, re);
+    const promptEcho = `bash-5.3$ echo ${output}\r\n`;
+    assert.doesNotMatch(promptEcho, re);
+    assert.doesNotMatch(`\r${promptEcho}`, re);
+  }
 });
 
 test('without --terminal the three routes are 404, as at 15e6685', { skip }, async () => {
@@ -177,16 +217,16 @@ test('a wrong Origin, a wrong Content-Type or a body over 65536 bytes is 403 bef
   const big = await post(port, 'input', { data: 'x'.repeat(65537) }, { cookie });
   assert.equal(big.status, 403, 'a body over 65536 bytes');
   await type('echo "done""-checks"\n');
-  await waitFor(first, /\ndone-checks/);
+  await waitFor(first, doneChecks);
   assert.ok(!first.text.includes('refused-input'), 'no refused body reached the shell');
 });
 
 test('pwd, typed through /term/input, comes back on the stream as the workspace root; the shell gets TERM and no CLAUDE names', { skip }, async () => {
   const r = await post(port, 'input', { data: 'pwd\n' }, { cookie });
   assert.deepEqual([r.status, r.text], [200, 'ok\n']);
-  await waitFor(first, new RegExp(`\\n${esc(ws)}\\r?\\n`));
+  await waitFor(first, workspaceOutput(ws));
   await type('echo "term=$TERM claude=${CLAUDE_TERM_TEST-unset}"\n');
-  await waitFor(first, /\nterm=xterm-256color claude=unset\r?\n/);
+  await waitFor(first, shellOutput(/term=xterm-256color claude=unset\r?\n/));
   for (const body of ['{"data": 1}', '{"data": null}', '{}', '{"data": "x", "y": 1}', '[]', 'null', 'nope']) {
     const b = await post(port, 'input', body, { cookie });
     assert.deepEqual([b.status, b.text], [400, 'body must be {"data": "<text>"}\n'], body);
@@ -197,7 +237,7 @@ test('after a resize to 40 by 120, stty size prints 40 120; any other resize bod
   const r = await post(port, 'resize', { rows: 40, cols: 120 }, { cookie });
   assert.deepEqual([r.status, r.text], [200, 'ok\n']);
   await type('stty size\n');
-  await waitFor(first, /\n40 120\r?\n/);
+  await waitFor(first, resizedOutput);
   for (const body of [{ rows: 0, cols: 80 }, { rows: 501, cols: 80 }, { rows: 24, cols: 0 }, { rows: 24, cols: 1001 }, { rows: 24.5, cols: 80 },
     { rows: '24', cols: 80 }, { rows: 24 }, { rows: 24, cols: 80, x: 1 }, null]) {
     const b = await post(port, 'resize', body, { cookie });
@@ -208,18 +248,19 @@ test('after a resize to 40 by 120, stty size prints 40 120; any other resize bod
 
 test('a second stream starts with the kept output, and both get what comes next', { skip }, async () => {
   const second = await openStream(port, cookie);
-  await waitFor(second, /\ndone-checks/);
-  assert.match(second.text, new RegExp(`\\n${esc(ws)}\\r?\\n`));
+  await waitFor(second, doneChecks);
+  await waitFor(second, workspaceOutput(ws));
   await type('echo "both""-streams"\n');
-  await waitFor(first, /\nboth-streams/);
-  await waitFor(second, /\nboth-streams/);
+  const bothStreams = shellOutput(/both-streams\r?\n/);
+  await waitFor(first, bothStreams);
+  await waitFor(second, bothStreams);
   second.close();
 });
 
 test('stopShell stops a background job of the shell, the streams end, and the next stream starts a new shell, whose replay holds none of the old output', { skip }, async (t) => {
   await type('sleep 300 &\necho "bg""-pid" $!\n');
-  await waitFor(first, /\nbg-pid (\d+)/);
-  const bg = Number(/\nbg-pid (\d+)/.exec(first.text)[1]);
+  const [, bgPid] = await waitFor(first, bgPidOutput);
+  const bg = Number(bgPid);
   t.after(() => { try { process.kill(bg, 'SIGKILL'); } catch { /* gone */ } });
   assert.ok(alive(bg));
   servers.find((s) => s.address()?.port === port).stopShell();
@@ -229,15 +270,15 @@ test('stopShell stops a background job of the shell, the streams end, and the ne
   assert.deepEqual([r.status, r.text], [409, 'terminal not running\n']);
   const again = await openStream(port, cookie);
   await type('echo "new""-shell"\n');
-  await waitFor(again, /\nnew-shell/);
+  await waitFor(again, shellOutput(/new-shell\r?\n/));
   assert.doesNotMatch(again.text, /bg-pid|both-streams|done-checks/, 'the old shell\'s output is not replayed');
 });
 
 test('a shell that exits while a background job holds the terminal open still ends the streams; input is then 409', { skip }, async (t) => {
   const s = await openStream(port, cookie);
   await type('sleep 30 &\necho "job""-pid" $!\n');
-  await waitFor(s, /\njob-pid (\d+)/);
-  const job = Number(/\njob-pid (\d+)/.exec(s.text)[1]);
+  const [, jobPid] = await waitFor(s, shellOutput(/job-pid (\d+)\r?\n/));
+  const job = Number(jobPid);
   t.after(() => { try { process.kill(job, 'SIGKILL'); } catch { /* gone */ } });
   await type('exit\n');
   await until(() => s.ended, 'the stream to end', 5000);
@@ -251,7 +292,7 @@ test('a shell no page has sized starts at 24 by 80', { skip }, async () => {
   const cookie = await openCookie(port, t);
   const s = await openStream(port, cookie);
   assert.equal((await post(port, 'input', { data: 'stty size\n' }, { cookie })).status, 200);
-  await waitFor(s, /\n24 80\r?\n/);
+  await waitFor(s, shellOutput(/24 80\r?\n/));
 });
 
 test('past 256 KiB of output, a new stream replays at most 262144 bytes, starting right after a newline', { skip }, async () => {
@@ -261,10 +302,10 @@ test('past 256 KiB of output, a new stream replays at most 262144 bytes, startin
   const s = await openStream(port, cookie);
   const r = await post(port, 'input', { data: 'seq 1 60000; echo "seq""-done"\n' }, { cookie });
   assert.equal(r.status, 200);
-  await waitFor(s, /\nseq-done/);
+  await waitFor(s, shellOutput(/seq-done\r?\n/));
   assert.ok(Buffer.byteLength(s.text) > 262144, 'the shell printed more than 256 KiB');
   const replay = await openStream(port, cookie);
-  await waitFor(replay, /\nseq-done\r\n.*\$ $/);
+  await waitFor(replay, shellOutput(/seq-done\r\n.*\$ $/));
   assert.ok(Buffer.byteLength(replay.text) <= 262144, String(Buffer.byteLength(replay.text)));
   const [one, two] = replay.text.split('\n');
   assert.match(one, /^\d+\r$/, 'the replay starts with a whole line');
@@ -289,7 +330,7 @@ test('a stream that is not read is cut once its unsent output passes 4 MiB: it a
   });
   // About 21 MiB, past the 4 MiB the server keeps unsent plus what the kernel's socket buffers hold.
   assert.equal((await post(port, 'input', { data: 'yes 0123456789012345678901234567890123456789012345678901234567890123456789 | head -n 300000; echo "big""-done"\n' }, { cookie })).status, 200);
-  await until(() => watch.text.includes('\nbig-done'), 'the shell to print 21 MiB', 30000);
+  await waitFor(watch, shellOutput(/big-done\r?\n/), 30000);
   stalled.resume();
   await until(() => events.some((e) => e !== 'end'), 'the stalled stream to be cut');
   assert.ok(!events.includes('end') && !stalled.complete, events.join(' '));
@@ -309,19 +350,19 @@ test('with --labs and --terminal, one GET /labs/open sets one cookie that both a
   assert.equal(s.status, 200);
   const r = await post(port, 'input', { data: 'echo "one""-cookie"\n' }, { cookie });
   assert.equal(r.status, 200);
-  await waitFor(s, /\none-cookie/);
+  await waitFor(s, shellOutput(/one-cookie\r?\n/));
 });
 
 test("closing the helper's standard input ends the shell", { skip }, async () => {
   const child = spawn('python3', ['-c', HELPER, ...SHELL], { env: testEnv(), cwd: tempDir('rv-term-helper-'), stdio: ['pipe', 'pipe', 'ignore', 'pipe'], detached: true });
-  let text = '';
+  const s = { text: '' };
   child.stdout.setEncoding('utf8');
-  child.stdout.on('data', (c) => { text += c; });
+  child.stdout.on('data', (c) => { s.text += c; });
   const closed = once(child, 'close');
   try {
     child.stdin.write('echo "shell""-pid $$"\n');
-    await until(() => /\nshell-pid \d+/.test(text), `the shell pid\n${text}`);
-    const pid = Number(/\nshell-pid (\d+)/.exec(text)[1]);
+    const [, shellPid] = await waitFor(s, shellOutput(/shell-pid (\d+)\r?\n/));
+    const pid = Number(shellPid);
     child.stdin.end();
     await Promise.race([closed, new Promise((_, no) => setTimeout(() => no(new Error('the helper did not exit')), 8000).unref())]);
     assert.equal(alive(pid), false, 'the shell has ended');

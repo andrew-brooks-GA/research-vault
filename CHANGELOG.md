@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Tests: the terminal tests wait for a line of shell output wherever the terminal puts the cursor at column one, after a line feed or after a carriage return. Bash with bracketed paste on sends an escape sequence and a carriage return before each output line, so on the Ubuntu CI runner eight tests of `test/terminal.test.mjs` timed out waiting for a line feed there. Two tests that need no shell check the patterns against a stream captured from that runner, and a timeout now reports the stream as it is when the wait gives up.
+
 - Tests: every child process a test starts (the CLI, the hooks, git, lab and task scripts) now gets its environment from one helper, `testEnv` in `test/helpers.mjs`: an allow list of inherited variables, `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` under a temporary home, an empty global git config, and no `RESEARCH_VAULT_*` variable unless the test sets one. `test/host-install.test.mjs` used to write the user's default-vault pointer on a machine that had none, and git-using tests read the developer's global git config. `test/isolation.test.mjs` fails when a test file starts a child process without the helper. Not covered: code a test calls in-process still reads the test runner's own environment.
 
 - Tests: the capture test that checks an explicit `--vault` against the operating system's default vault now points `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` at its own temporary root and refuses to write when the computed default is outside it. On Windows it used to write a file named `sentinel` into the developer's real default vault.
