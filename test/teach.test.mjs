@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { fixtureVault, put, testEnv } from './helpers.mjs';
+import { assertVaultUntouched, fixtureVault, outsideVaultRepo, put, testEnv } from './helpers.mjs';
 import { workspaceBrief } from '../hooks/session-start.mjs';
 import { progress, progressHtml, progressText } from '../bin/lib/teach.mjs';
 
@@ -115,25 +115,49 @@ test('CLI teach lint resolves the vault from the workspace, not the cwd; a missi
   // to a vault that does not exist, and RESEARCH_VAULT_PATH points nowhere too.
   const bind = (root, vault) => writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault }) + '\n');
   const repo = mkdtempSync(join(tmpdir(), 'rv-teach-repo-'));
-  bind(repo, VAULT);
+  fixtureVault(join(repo, 'research'));
+  bind(repo, 'research');
   const ws = join(repo, 'learn', 'fx');
   for (const f of ['MISSION.md', 'PATH.md', 'GLOSSARY.md', 'lessons/0001-good.html', 'reference/good.html', 'evidence/0001/PLAN.md']) {
     mkdirSync(dirname(join(ws, f)), { recursive: true });
     cpSync(join(FIX, f), join(ws, f));
   }
   const other = mkdtempSync(join(tmpdir(), 'rv-teach-other-'));
-  bind(other, join(other, 'no-vault'));
+  bind(other, 'no-vault');
   const overrides = { RESEARCH_VAULT_PATH: join(other, 'nowhere') };
   const r = spawnSync(process.execPath, [BIN, 'teach', 'lint', ws], { cwd: other, env: testEnv(overrides), encoding: 'utf8' });
   assert.equal(r.stderr, '');
   assert.equal(r.stdout, 'lint: clean\n');
   assert.equal(r.status, 0);
   // The workspace's own binding names a missing vault: exit 2, not a wall of LESSON_CITE_UNRESOLVED.
-  bind(repo, join(repo, 'gone'));
+  bind(repo, 'gone');
   const g = spawnSync(process.execPath, [BIN, 'teach', 'lint', ws], { cwd: other, env: testEnv(overrides), encoding: 'utf8' });
   assert.equal(g.status, 2);
   assert.equal(g.stdout, '');
   assert.equal(g.stderr, `teach lint: no vault at ${join(repo, 'gone')}\n`);
+});
+
+test('teach lint --fix, next and serve report a refused outside vault', (t) => {
+  const fixture = outsideVaultRepo(t);
+  const { cwd, binding } = fixture;
+  const ws = join(cwd, 'learn');
+  cpSync(FIX, ws, { recursive: true });
+  writeFileSync(join(ws, 'PATH.md'), '# Path\n\n1. Only | after: floor | lesson: 0001-good\n');
+  writeFileSync(join(ws, 'README.md'), '# Workspace\n');
+  const record = join(ws, 'learning-records', '0002-legacy.md');
+  const before = readFileSync(record);
+  for (const verb of [['lint', '--fix'], ['next'], ['serve']]) {
+    const result = spawnSync(process.execPath, [BIN, 'teach', ...verb, ws], {
+      cwd, env: testEnv(), encoding: 'utf8', timeout: 5000,
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, 2, result.stderr);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, /^error: .*vault outside its repository/);
+    assert.ok(result.stderr.includes(binding));
+  }
+  assert.deepEqual(readFileSync(record), before);
+  assertVaultUntouched(fixture);
 });
 
 test('CLI teach lint --fix migrates the legacy record and is idempotent', () => {
@@ -559,7 +583,7 @@ test('teach next prints readme: missing, ungated or ok after fringe: complete, a
   assert.equal(lines(), 'fringe: complete\nreadme: ungated', 'no binding, so no ledger');
   writeFileSync(join(ws, '.research-vault.json'), JSON.stringify({ vault: VAULT }) + '\n');
   assert.equal(lines(), 'fringe: complete\nreadme: ungated', 'no ledger row');
-  const gate = (...a) => spawnSync(process.execPath, [BIN, 'gate', ...a], { env: testEnv(), cwd: ws, encoding: 'utf8' });
+  const gate = (...a) => spawnSync(process.execPath, [BIN, 'gate', ...a], { env: testEnv({ RESEARCH_VAULT_PATH: VAULT }), cwd: ws, encoding: 'utf8' });
   assert.equal(gate('record', 'README.md', 'PASS').status, 0);
   assert.equal(lines(), 'fringe: complete\nreadme: ok');
   writeFileSync(join(ws, 'README.md'), README + 'One more line.\n');

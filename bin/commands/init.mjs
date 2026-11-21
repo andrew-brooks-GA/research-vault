@@ -3,7 +3,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSchema } from '../lib/schema.mjs';
 import { generateAgentsMd } from '../lib/agentsmd.mjs';
-import { resolveVault, configPath } from '../lib/resolve.mjs';
+import { checkProjectVault, resolveVault, configPath } from '../lib/resolve.mjs';
 import { writeManifest } from '../lib/manifest.mjs';
 import { ENTRY_FOLDERS } from '../lib/fsutil.mjs';
 import { compileVault } from './compile.mjs';
@@ -74,6 +74,9 @@ export async function run(args) {
         vault: vaultPath, domain: args.domain, topics, globs, volatility: args.volatility, codeLinks, schema: loadSchema(REPO_ROOT),
       });
       process.stdout.write(`Bound this repo to ${vaultPath} via ${target}.\n`);
+      if (!checkProjectVault(vaultPath, target).path) {
+        process.stderr.write('Warning: this binding names a vault outside the repository. It will be used only when RESEARCH_VAULT_PATH points at it or --vault is passed.\n');
+      }
       if (codeLinks.length) {
         process.stdout.write(`Code links on for ${codeLinks.join(', ')}: in ${target}, add a code.versions key ({ file, pattern }) per dependency to pin to, and a code.languages row ({ comment, decl }) for a language the plugin does not ship.\n`);
       }

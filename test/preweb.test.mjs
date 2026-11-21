@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { tmpVault, put, testEnv } from './helpers.mjs';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { assertVaultUntouched, outsideVaultRepo, tmpVault, put, testEnv } from './helpers.mjs';
 import { vaultContext } from '../hooks/pre-web.mjs';
 import { writeBlocklist } from './blocklist.test.mjs';
 
@@ -28,6 +30,27 @@ test('pre-web hook CLI emits PreToolUse additionalContext and exits 0', () => {
   const out = JSON.parse(r.stdout);
   assert.equal(out.hookSpecificOutput.hookEventName, 'PreToolUse');
   assert.match(out.hookSpecificOutput.additionalContext, /vcluster-sleep/);
+});
+
+test('PreToolUse stays silent for a refused outside vault', (t) => {
+  const fixture = outsideVaultRepo(t);
+  const { cwd, vault, title, id } = fixture;
+  const run = env => spawnSync(process.execPath, ['hooks/pre-web.mjs'], {
+    env: testEnv(env), encoding: 'utf8', input: JSON.stringify({ cwd, tool_name: 'WebSearch', tool_input: { query: title } }),
+  });
+  const result = run();
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, '');
+  assert.equal(result.stderr, '');
+  assertVaultUntouched(fixture);
+
+  const chosen = run({ RESEARCH_VAULT_PATH: vault });
+  assert.equal(chosen.status, 0, chosen.stderr);
+  const lines = readFileSync(join(vault, '_index', 'usage.jsonl'), 'utf8').trimEnd().split('\n');
+  assert.equal(lines.length, 1);
+  const { kind, via, tool, outcome, ids } = JSON.parse(lines[0]);
+  assert.deepEqual({ kind, via, tool, outcome, ids },
+    { kind: 'queried', via: 'pre-web', tool: 'WebSearch', outcome: 'hits', ids: [id] });
 });
 
 test('pre-web hook logs one queried event per call: hits, url-hit, no-match; text only when asked (spec 29 D2)', async () => {

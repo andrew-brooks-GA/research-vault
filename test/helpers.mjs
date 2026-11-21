@@ -1,5 +1,6 @@
 // Shared temp-vault builder for graph tests: hand-writes lint-shaped entries by id.
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeEntry, TYPE_FOLDER } from '../bin/lib/fsutil.mjs';
@@ -56,6 +57,33 @@ export function put(dir, type, id, extra = {}, body = `# ${id}\n`) {
   mkdirSync(join(dir, folder), { recursive: true });
   writeEntry(join(dir, folder, `${id}.md`), data, body, fieldOrder(schema, type));
   return id;
+}
+
+export function outsideVaultRepo(t) {
+  const temp = tmpVault('rv-outside-vault-');
+  t.after(() => rmSync(temp, { recursive: true, force: true }));
+  const cwd = join(temp, 'repo');
+  const vault = join(temp, 'vault');
+  mkdirSync(cwd);
+  const binding = join(cwd, '.research-vault.json');
+  writeFileSync(binding, JSON.stringify({ vault, gates: { globs: ['draft.md'] } }));
+  const title = 'Outside vault fixture';
+  const id = put(vault, 'note', '2026-01-01-outside-fixture', { title, sources: [], confidence: 'medium' });
+  const entry = join(vault, 'notes', `${id}.md`);
+  // Keep the frontmatter readable before the fix and give the body CRLF line endings.
+  const bytes = Buffer.from(readFileSync(entry, 'utf8')
+    .replace(/^title: .+$/m, '$& # fixture comment')
+    .replace(/(^# .*)\n$/m, '$1\r\n\r\nFixture body.\r\n'));
+  writeFileSync(entry, bytes);
+  const draft = join(cwd, 'draft.md');
+  writeFileSync(draft, `See ${id}.\n`);
+  return { cwd, vault, binding, id, title, entry, bytes, draft };
+}
+
+export function assertVaultUntouched({ vault, entry, bytes }) {
+  assert.deepEqual(readFileSync(entry), bytes);
+  assert.equal(existsSync(join(vault, '.vault-manifest.json')), false);
+  assert.equal(existsSync(join(vault, '_index')), false);
 }
 
 const ver = (date) => [{ date, by_type: 'human', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }];

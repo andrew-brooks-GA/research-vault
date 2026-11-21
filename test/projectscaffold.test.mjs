@@ -38,14 +38,93 @@ test('scaffoldProjectConfig refuses to overwrite an existing binding', () => {
 });
 
 // ---- code links (spec 15 D7) ----
-import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { defaultVaultPath } from '../bin/lib/resolve.mjs';
 import { testEnv } from './helpers.mjs';
 
 const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'research-vault.mjs');
+
+test('init --project writes a relative vault that resolves from a nested working directory', (t) => {
+  const repo = mkdtempSync(join(tmpdir(), 'rv-init-project-'));
+  t.after(() => rmSync(repo, { recursive: true, force: true }));
+  const nested = join(repo, 'docs');
+  mkdirSync(nested);
+  mkdirSync(join(repo, 'research'));
+  const init = spawnSync(process.execPath, [CLI, 'init', '--project', '--vault', 'research'], {
+    cwd: repo, env: testEnv(), encoding: 'utf8',
+  });
+  assert.equal(init.status, 0, init.stderr);
+  assert.equal(init.stderr, '');
+  assert.equal(JSON.parse(readFileSync(join(repo, PROJECT_CONFIG_FILENAME), 'utf8')).vault, 'research');
+  const paths = spawnSync(process.execPath, [CLI, 'host', 'paths'], { cwd: nested, env: testEnv(), encoding: 'utf8' });
+  assert.equal(paths.status, 0, paths.stderr);
+  assert.equal(JSON.parse(paths.stdout).vault, join(repo, 'research'));
+});
+
+test('first-run project init binds the default vault and plain init creates it', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-init-project-default-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const repo = join(root, 'repo');
+  const home = join(root, 'home');
+  mkdirSync(repo);
+  mkdirSync(home);
+  const overrides = {
+    HOME: home, USERPROFILE: home, LOCALAPPDATA: home, APPDATA: home, XDG_DATA_HOME: home, XDG_CONFIG_HOME: home,
+  };
+  const run = (...args) => spawnSync(process.execPath, [CLI, 'init', ...args], {
+    cwd: repo, env: testEnv(overrides), encoding: 'utf8',
+  });
+  const vault = defaultVaultPath({ platform: process.platform, home, env: testEnv(overrides) });
+  const binding = join(repo, PROJECT_CONFIG_FILENAME);
+  const project = run('--project');
+  assert.equal(project.status, 0, project.stderr);
+  assert.equal(project.stderr, '');
+  assert.equal(project.stdout, `Bound this repo to ${vault} via ${binding}.\n`);
+  assert.equal(JSON.parse(readFileSync(binding, 'utf8')).vault, vault);
+  assert.equal(existsSync(vault), false);
+  const init = run();
+  assert.equal(init.status, 0, init.stderr);
+  assert.equal(init.stderr, '');
+  assert.ok(init.stdout.startsWith(`Initialized vault at ${vault} (resolved via project); set as default.\n`));
+  assert.ok(existsSync(join(vault, 'AGENTS.md')));
+});
+
+test('project init warns about an outside vault that search requires an override to use', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-init-project-outside-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const repo = join(root, 'repo');
+  const vault = join(root, 'outside');
+  mkdirSync(repo);
+  mkdirSync(vault);
+  const overrides = { HOME: root, USERPROFILE: root, APPDATA: root, XDG_CONFIG_HOME: root };
+  const run = (...args) => spawnSync(process.execPath, [CLI, ...args], {
+    cwd: repo, env: testEnv(overrides), encoding: 'utf8',
+  });
+  const binding = join(repo, PROJECT_CONFIG_FILENAME);
+  const project = run('init', '--project', '--vault', vault);
+  assert.equal(project.status, 0, project.stderr);
+  assert.equal(project.stdout, `Bound this repo to ${vault} via ${binding}.\n`);
+  assert.equal(project.stderr,
+    'Warning: this binding names a vault outside the repository. It will be used only when RESEARCH_VAULT_PATH points at it or --vault is passed.\n');
+  assert.equal(JSON.parse(readFileSync(binding, 'utf8')).vault, vault);
+
+  const refused = run('search');
+  assert.equal(refused.status, 2, refused.stderr);
+  assert.equal(refused.stdout, '');
+  assert.match(refused.stderr, /^error: The binding at /);
+  const init = run('init', '--vault', vault);
+  assert.equal(init.status, 0, init.stderr);
+  assert.equal(init.stderr, '');
+  assert.ok(existsSync(join(vault, 'AGENTS.md')));
+  const search = run('search', '--vault', vault);
+  assert.equal(search.status, 0, search.stderr);
+  assert.equal(search.stderr, '');
+  assert.equal(search.stdout, '');
+});
 
 test('scaffoldProjectConfig with codeLinks writes the code block, and only on a relative vault', () => {
   const fs = memFs();

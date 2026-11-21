@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { win32, posix } from 'node:path';
 import path from 'node:path';
-import { mkdtempSync, mkdirSync, symlinkSync, realpathSync, writeFileSync, existsSync, lstatSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, symlinkSync, realpathSync, writeFileSync, existsSync, lstatSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isInsideVault, mayBeInside } from '../bin/lib/containment.mjs';
+import { compareVaultLocations, isInsideVault, mayBeInside } from '../bin/lib/containment.mjs';
 
 test('nested child is inside (win32 + posix)', () => {
   assert.equal(isInsideVault('C:\\Users\\me\\vault', 'C:\\Users\\me\\vault\\sources\\a.md', win32), true);
@@ -342,4 +342,63 @@ test('a filesystem root contains an existing child', () => {
   const child = realpathSync.native(tmpdir());
   const { root } = path.parse(child);
   assert.equal(isInsideVault(root, child), true);
+});
+
+test('vault location equality normalizes parent segments before following directory links', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-same-directory-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const a = join(root, 'a');
+  const b = join(root, 'b');
+  const deep = join(b, 'deep');
+  const link = join(a, 'link');
+  mkdirSync(a);
+  mkdirSync(deep, { recursive: true });
+  try {
+    symlinkSync(deep, link, process.platform === 'win32' ? 'junction' : 'dir');
+  } catch (err) {
+    return t.skip('cannot create directory link (' + err.code + ')');
+  }
+  const throughLink = link + path.sep + '..';
+  assert.equal(compareVaultLocations(throughLink, a), true);
+  assert.equal(compareVaultLocations(throughLink, b), false);
+  assert.equal(compareVaultLocations(link, deep), true);
+  assert.equal(compareVaultLocations(join(link, 'missing', 'vault'), join(deep, 'missing', 'vault')), true);
+});
+
+test('vault location equality passes normalized absolute paths to the filesystem', () => {
+  for (const p of [posix, win32]) {
+    const calls = [];
+    const fs = {
+      realpathSync(value) { calls.push(value); return value; },
+      statSync() { return { isDirectory: () => true }; },
+    };
+    const relative = ['link', '..', 'vault'].join(p.sep);
+    const absolute = p.resolve('vault');
+    assert.equal(compareVaultLocations(relative, absolute, p, fs), true);
+    assert.deepEqual(calls, [absolute, absolute]);
+  }
+});
+
+test('vault location equality accepts a trailing separator and refuses files and distinct directories', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-same-location-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const vault = join(root, 'vault');
+  const other = join(root, 'other');
+  const file = join(root, 'file');
+  mkdirSync(vault);
+  mkdirSync(other);
+  writeFileSync(file, '');
+  assert.equal(compareVaultLocations(vault, vault + path.sep), true);
+  assert.equal(compareVaultLocations(vault, other), false);
+  assert.equal(compareVaultLocations(file, file), false);
+});
+
+test('vault location equality follows the filesystem for directory letter case', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-same-location-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const vault = join(root, 'MixedCase');
+  const otherCase = join(root, 'mixedcase');
+  mkdirSync(vault);
+  if (!existsSync(otherCase)) return t.skip('temporary filesystem is case-sensitive');
+  assert.equal(compareVaultLocations(vault, otherCase), true);
 });

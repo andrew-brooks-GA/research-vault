@@ -4,7 +4,7 @@ import { writeFileSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { tmpVault, put, testEnv } from './helpers.mjs';
+import { assertVaultUntouched, outsideVaultRepo, tmpVault, put, testEnv } from './helpers.mjs';
 import { workspaceBrief } from '../hooks/session-start.mjs';
 
 const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'session-start.mjs');
@@ -22,7 +22,7 @@ function repo({ due = true, attempt = false, reminders = true } = {}) {
   const root = tmpVault('rv-sessionstart-');
   const vault = join(root, 'research');
   mkdirSync(vault, { recursive: true });
-  writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault }) + '\n');
+  writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault: 'research' }) + '\n');
   put(vault, 'source', '2026-07-10-fresh', { source_type: 'article', source_url: 'https://e.com/fresh', volatility: 'fast', verifications: ver(day(1).toISOString().slice(0, 10)) });
   put(vault, 'source', '2020-01-01-old', { source_type: 'article', source_url: 'https://e.com/old', volatility: 'fast', verifications: ver('2020-01-01') });
   const ws = join(root, 'learn', 'k8s');
@@ -104,6 +104,18 @@ test('CLI outside a bound repo prints the summary line only', () => {
   const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: elsewhere }), cwd: elsewhere, env: testEnv({ RESEARCH_VAULT_PATH: vault }), encoding: 'utf8' });
   assert.equal(r.status, 0);
   assert.equal(r.stdout, 'research-vault: 2 entries; 1 stale\n');
+});
+
+test('SessionStart stays silent for a refused outside vault', (t) => {
+  const fixture = outsideVaultRepo(t);
+  const { cwd } = fixture;
+  const result = spawnSync(process.execPath, [HOOK], {
+    cwd, env: testEnv(), encoding: 'utf8', input: JSON.stringify({ cwd }),
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, '');
+  assert.equal(result.stderr, '');
+  assertVaultUntouched(fixture);
 });
 
 // Issue 72 item 13: in a research-vault checkout whose claims reviewer is not the one of the running plugin, the hook says so.

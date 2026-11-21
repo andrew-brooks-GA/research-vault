@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync, rmSync, statSync,
 import { randomBytes } from 'node:crypto';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveVault } from '../lib/resolve.mjs';
+import { OUTSIDE_PROJECT_VAULT, resolveVault } from '../lib/resolve.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
 import { TYPE_FOLDER } from '../lib/fsutil.mjs';
@@ -39,13 +39,13 @@ function parseAnswers(list) {
 }
 
 function lint(ws, args) {
+  // Resolve from the workspace before writing any fixes.
+  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws });
   if (args.fix) {
     const dir = join(ws, 'learning-records');
     const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md')) : [];
     out(`fixed ${files.filter((f) => fixRecordFrontmatter(ws, f, new Date())).length} record(s)`);
   }
-  // Resolve from the workspace, so a project config there wins over the process cwd.
-  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws });
   if (!existsSync(vaultPath)) {
     process.stderr.write(`teach lint: no vault at ${vaultPath}\n`);
     return 2;
@@ -77,7 +77,10 @@ function readmeLine(ws, args) {
   if (!statSync(file, { throwIfNoEntry: false })?.isFile()) return 'readme: missing';
   try {
     return hasVerdict(file, resolveVault({ flag: args.vault ?? null, cwd: ws }).path) ? 'readme: ok' : 'readme: ungated';
-  } catch { return 'readme: ungated'; }
+  } catch (err) {
+    if (err.code === OUTSIDE_PROJECT_VAULT) throw err;
+    return 'readme: ungated';
+  }
 }
 
 // Spec 48: `teach export`. Exit 2 before any work on a bad --out or no vault; every check runs before the first
@@ -423,7 +426,10 @@ export async function run(args) {
     try {
       const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws });
       if (existsSync(vaultPath)) titles = Object.fromEntries(buildManifest(vaultPath).entries.map((e) => [e.id, e.title ?? e.id]));
-    } catch { /* serve without titles */ }
+    } catch (err) {
+      if (err.code === OUTSIDE_PROJECT_VAULT) throw err;
+      // Serve without titles when the vault cannot otherwise be read.
+    }
     return serve(ws, teachSchema, titles, args.labs === true, args.terminal === true);
   }
   return usage();

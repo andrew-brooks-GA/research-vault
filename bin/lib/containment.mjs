@@ -11,7 +11,7 @@ function realResolve(target, p, fs) {
   for (;;) {
     try {
       const real = fs.realpathSync.native ? fs.realpathSync.native(cur) : fs.realpathSync(cur);
-      return tail.length ? p.join(real, ...tail) : real;
+      return { path: tail.length ? p.join(real, ...tail) : real, prefix: real };
     } catch (err) {
       let code = err?.code;
       if (inspectEntry) {
@@ -24,7 +24,7 @@ function realResolve(target, p, fs) {
       }
       if (code !== 'ENOENT' && code !== 'ENOTDIR' && code !== 'ENAMETOOLONG') return null;
       const parent = p.dirname(cur);
-      if (parent === cur) return inspectEntry ? null : resolved;
+      if (parent === cur) return inspectEntry ? null : { path: resolved, prefix: resolved };
       tail.unshift(p.basename(cur));
       cur = parent;
     }
@@ -32,11 +32,11 @@ function realResolve(target, p, fs) {
 }
 
 // Return null for unknown containment. With no filesystem, use lexical paths.
-function compareContainment(parent, child, p, fs) {
+export function compareContainment(parent, child, p = nodePath, fs = p === nodePath ? nodeFs : null) {
   if (!parent || !child) return null;
-  const par = fs ? realResolve(parent, p, fs) : p.resolve(parent);
-  const chi = fs ? realResolve(child, p, fs) : p.resolve(child);
-  if (par === null || chi === null) return null;
+  const par = fs ? realResolve(parent, p, fs)?.path : p.resolve(parent);
+  const chi = fs ? realResolve(child, p, fs)?.path : p.resolve(child);
+  if (par === undefined || chi === undefined) return null;
   if (fs) {
     const prefix = par.endsWith(p.sep) ? par : par + p.sep;
     return chi === par || chi.startsWith(prefix);
@@ -48,6 +48,22 @@ function compareContainment(parent, child, p, fs) {
 // Use when an operation requires known containment.
 export function isInsideVault(parent, child, p = nodePath, fs = p === nodePath ? nodeFs : null) {
   return compareContainment(parent, child, p, fs) === true;
+}
+
+// Compare canonical locations, including missing paths with a known directory prefix.
+// Return null when resolution could not establish a location.
+export function compareVaultLocations(a, b, p = nodePath, fs = p === nodePath ? nodeFs : null) {
+  if (typeof a !== 'string' || !a || typeof b !== 'string' || !b || !fs) return false;
+  const first = realResolve(a, p, fs);
+  const second = realResolve(b, p, fs);
+  if (!first || !second) return null;
+  if (first.path !== second.path) return false;
+  try {
+    for (const prefix of new Set([first.prefix, second.prefix])) {
+      if (!fs.statSync(prefix).isDirectory()) return prefix === first.path ? false : null;
+    }
+    return true;
+  } catch { return null; }
 }
 
 // Use when an operation requires known separation.

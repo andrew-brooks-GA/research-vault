@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { tmpVault, put, testEnv } from './helpers.mjs';
+import { assertVaultUntouched, outsideVaultRepo, tmpVault, put, testEnv } from './helpers.mjs';
 import { citationWarnings } from '../hooks/post-tool-use.mjs';
 
 const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'post-tool-use.mjs');
@@ -16,7 +16,7 @@ function repo() {
   const root = tmpVault('rv-posttooluse-');
   const vault = join(root, 'research');
   mkdirSync(vault, { recursive: true });
-  const cfg = { vault, references: { globs: ['docs/*.md'] } };
+  const cfg = { vault: 'research', references: { globs: ['docs/*.md'] } };
   writeFileSync(join(root, '.research-vault.json'), JSON.stringify(cfg) + '\n');
   put(vault, 'source', '2026-07-10-fresh', { source_type: 'article', source_url: 'https://e.com/fresh', volatility: 'fast', verifications: ver('2026-07-10') });
   put(vault, 'source', '2026-01-01-old', { source_type: 'article', source_url: 'https://e.com/old', volatility: 'fast', verifications: ver('2026-01-01') });
@@ -61,6 +61,27 @@ test('CLI emits PostToolUse additionalContext for a doc edit and nothing for a v
   const other = run(join(root, 'other', 'b.md'));
   assert.equal(other.status, 0, other.stderr);
   assert.equal(other.stdout, '');
+});
+
+test('PostToolUse skips a refused outside vault and fixes a user-selected one', (t) => {
+  const fixture = outsideVaultRepo(t);
+  const { cwd, vault, entry, draft, bytes } = fixture;
+  const run = (file_path, env = {}) => spawnSync(process.execPath, [HOOK], {
+    cwd, env: testEnv(env), encoding: 'utf8',
+    input: JSON.stringify({ cwd, tool_name: 'Edit', tool_input: { file_path } }),
+  });
+  for (const file of [entry, draft]) {
+    const result = run(file);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, '');
+    assert.equal(result.stderr, '');
+    assertVaultUntouched(fixture);
+  }
+  const selected = run(entry, { RESEARCH_VAULT_PATH: vault });
+  assert.equal(selected.status, 0, selected.stderr);
+  assert.notDeepEqual(readFileSync(entry), bytes);
+  assert.doesNotMatch(readFileSync(entry, 'utf8'), /\r|# fixture comment/);
+  assert.ok(existsSync(join(vault, '.vault-manifest.json')));
 });
 
 // ---- code links (spec 15 D3) ----

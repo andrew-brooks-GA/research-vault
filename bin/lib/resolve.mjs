@@ -1,11 +1,13 @@
 import path from 'node:path';
 import { homedir } from 'node:os';
-import { readFileSync, existsSync } from 'node:fs';
+import nodeFs, { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loadSchema } from './schema.mjs';
-import { loadProjectConfig } from './projectconfig.mjs';
+import { loadProjectConfig, PROJECT_CONFIG_FILENAME } from './projectconfig.mjs';
+import { compareContainment, compareVaultLocations, mayBeInside } from './containment.mjs';
 
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+export const OUTSIDE_PROJECT_VAULT = 'ERR_OUTSIDE_PROJECT_VAULT';
 
 function pj(platform) { return platform === 'win32' ? path.win32 : path.posix; }
 
@@ -29,6 +31,45 @@ function readConfigPath(ctx) {
   try { return JSON.parse(readFileSync(p, 'utf8')).vaultPath || null; } catch { return null; }
 }
 
+export function checkProjectVault(vault, binding, {
+  env = process.env, platform = process.platform, home = homedir(), fs = nodeFs,
+  readConfig = () => readConfigPath({ env, platform, home }),
+} = {}) {
+  const choices = [() => env.RESEARCH_VAULT_PATH, readConfig, () => defaultVaultPath({ env, platform, home })];
+  const p = pj(platform);
+  const outside = 'a vault outside its repository that is not one of your own';
+  if (p.isAbsolute(vault) && /^[\\/]{2}/.test(vault)) {
+    // Comparing these spellings must not open a network share or a device.
+    const bound = p.normalize(vault);
+    const comparable = value => platform === 'win32' ? value.toLowerCase() : value;
+    for (const readChoice of choices) {
+      const value = readChoice();
+      if (typeof value !== 'string' || !value) continue;
+      const choice = p.normalize(value);
+      if (comparable(choice) === comparable(bound)) return { path: choice };
+    }
+    return { reason: outside };
+  }
+
+  const base = path.dirname(binding);
+  const vaultPath = path.resolve(base, vault);
+  const inside = compareContainment(base, vaultPath, path, fs);
+  if (inside === true) return { path: vaultPath };
+
+  let unresolved = inside === null || mayBeInside(base, vaultPath, path, null);
+  let alreadyChosen = false;
+  for (const readChoice of choices) {
+    const value = readChoice();
+    if (typeof value !== 'string' || !value) continue;
+    const choice = path.resolve(value);
+    const same = compareVaultLocations(choice, vaultPath, path, fs);
+    if (same === true) return { path: vaultPath };
+    if (same === null) unresolved = true;
+    if (path.relative(choice, vaultPath) === '') alreadyChosen = true;
+  }
+  return { reason: unresolved ? 'a vault that could not be resolved' : outside, alreadyChosen };
+}
+
 export function resolveVault(opts = {}) {
   const ctx = {
     flag: opts.flag ?? null,
@@ -46,9 +87,20 @@ export function resolveVault(opts = {}) {
   const project = readProjectConfig();
   // A relative vault (what `init --project --vault research` writes) is relative to the
   // config file's directory, never to wherever the process happens to run.
-  if (project && project.vault) {
-    const base = project.path ? path.dirname(project.path) : ctx.cwd;
-    return { path: path.resolve(base, project.vault), source: 'project' };
+  if (project?.vault) {
+    const binding = path.resolve(project.path || path.join(ctx.cwd, PROJECT_CONFIG_FILENAME));
+    const verdict = checkProjectVault(project.vault, binding, { ...ctx, readConfig, fs: opts.fs ?? nodeFs });
+    if (verdict.path) return { path: verdict.path, source: 'project' };
+
+    const location = binding.replace(/[\p{Cc}\p{Cf}\p{Cs}\u2028\u2029]/gu, ch => {
+      const hex = ch.codePointAt(0).toString(16);
+      return hex.length > 4 ? `\\u{${hex}}` : `\\u${hex.padStart(4, '0')}`;
+    });
+    const remedy = verdict.alreadyChosen ? 'Pass --vault to the command.'
+      : 'Set RESEARCH_VAULT_PATH to that folder or pass --vault to the command.';
+    const error = new Error(`The binding at ${location} names ${verdict.reason}. ${remedy}`);
+    error.code = OUTSIDE_PROJECT_VAULT;
+    throw error;
   }
   if (ctx.env.RESEARCH_VAULT_PATH) return { path: ctx.env.RESEARCH_VAULT_PATH, source: 'env' };
   const cfg = readConfig();

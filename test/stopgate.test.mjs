@@ -4,7 +4,7 @@ import { writeFileSync, appendFileSync, mkdirSync, utimesSync, cpSync } from 'no
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { tmpVault, testEnv } from './helpers.mjs';
+import { assertVaultUntouched, outsideVaultRepo, tmpVault, testEnv } from './helpers.mjs';
 import { recordVerdict, contentHash } from '../bin/lib/gate.mjs';
 import { missingGates, sinceFrom, TWELVE_HOURS } from '../hooks/stop-gate.mjs';
 
@@ -15,7 +15,7 @@ function repo() {
   const root = tmpVault('rv-stopgate-');
   const vault = join(root, 'research');
   mkdirSync(vault, { recursive: true });
-  writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault }) + '\n');
+  writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault: 'research' }) + '\n');
   mkdirSync(join(root, 'learn', 'lessons'), { recursive: true });
   writeFileSync(join(root, 'learn', 'MISSION.md'), '# m\n');
   writeFileSync(join(root, 'learn', 'lessons', 'a.html'), 'a\n');
@@ -121,6 +121,21 @@ test('CLI fails open with a systemMessage when the binding file is malformed', (
   assert.equal(r.code, 0);
   assert.equal(r.err, '');
   assert.match(JSON.parse(r.out).systemMessage, /^research-vault: stop-gate skipped \(.+\)$/);
+});
+
+test('Stop gives only a notice for a refused outside vault', (t) => {
+  const fixture = outsideVaultRepo(t);
+  const { cwd, binding, id, title } = fixture;
+  const result = hook({ cwd, stop_hook_active: false, transcript_path: join(cwd, 'missing.jsonl') });
+  assert.equal(result.code, 0, result.err);
+  assert.equal(result.err, '');
+  const output = JSON.parse(result.out);
+  assert.deepEqual(Object.keys(output), ['systemMessage']);
+  assert.match(output.systemMessage, /stop-gate skipped .*vault outside its repository/);
+  assert.ok(output.systemMessage.includes(binding));
+  assert.ok(!output.systemMessage.includes(id));
+  assert.ok(!output.systemMessage.includes(title));
+  assertVaultUntouched(fixture);
 });
 
 // ---- code links (spec 15 D3, D4) ----

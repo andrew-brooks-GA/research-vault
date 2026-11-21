@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync, cpSync, appendFileSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -16,6 +17,7 @@ import { writeEntry } from '../bin/lib/fsutil.mjs';
 import { fieldOrder } from '../bin/lib/schema.mjs';
 import { mkdirSync } from 'node:fs';
 import { boundRepo, fakeFetch } from './embed.test.mjs';
+import { assertVaultUntouched, outsideVaultRepo, testEnv } from './helpers.mjs';
 
 const VAULT = fileURLToPath(new URL('./fixtures/vault', import.meta.url));
 
@@ -24,6 +26,26 @@ function freshVault() {
   cpSync(VAULT, dir, { recursive: true });
   return dir;
 }
+
+test('CLI search reports a refused project vault and accepts an explicit --vault', (t) => {
+  const fixture = outsideVaultRepo(t);
+  const { cwd, binding, vault, id, title } = fixture;
+  const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+  const search = (...args) => spawnSync(process.execPath, [cli, 'search', '--type', 'note', '--json', ...args], {
+    cwd, env: testEnv(), encoding: 'utf8',
+  });
+  const refused = search();
+  assert.equal(refused.status, 2, refused.stderr);
+  assert.equal(refused.stdout, '');
+  assert.match(refused.stderr, /^error: .*vault outside its repository[^\r\n]+\n$/);
+  assert.ok(refused.stderr.includes(binding));
+  assertVaultUntouched(fixture);
+
+  const selected = search('--vault', vault);
+  assert.equal(selected.status, 0, selected.stderr);
+  assert.equal(selected.stderr, '');
+  assert.deepEqual(JSON.parse(selected.stdout).map(row => [row.id, row.title]), [[id, title]]);
+});
 
 test('search filters by type and topic', () => {
   const r = searchVault(VAULT, { type: 'source', topic: 'x' });
