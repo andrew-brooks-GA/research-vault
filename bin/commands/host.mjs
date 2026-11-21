@@ -8,7 +8,8 @@ export async function run(args) {
   const [, action, host] = args._;
   if (action === 'review' && host === 'codex') {
     if (!args.draft || !args.out) throw new Error('host review codex requires --draft and a new --out report path');
-    const report = runCodexReview({ draft: args.draft, out: args.out, vault: args.vault, extra: csvList(args.extra), ...(args.role ? { role: args.role } : {}), ...(args.model ? { model: args.model } : {}), ...(args.effort ? { effort: args.effort } : {}) });
+    if (Object.hasOwn(args, 'timeout') && (!/^\d+$/.test(args.timeout) || Number(args.timeout) < 1 || Number(args.timeout) > 3600)) throw new Error('--timeout must be a whole number of seconds from 1 to 3600');
+    const report = runCodexReview({ draft: args.draft, out: args.out, vault: args.vault, extra: csvList(args.extra), ...(args.role ? { role: args.role } : {}), ...(args.model ? { model: args.model } : {}), ...(args.effort ? { effort: args.effort } : {}), ...(Object.hasOwn(args, 'timeout') ? { timeout: Number(args.timeout) * 1000 } : {}) });
     console.log(report.response);
     console.error(`Codex review report: ${args.out}; ledger unchanged`);
     return ['PASS', 'READS'].includes(report.verdict) ? 0 : 1;
@@ -18,7 +19,7 @@ export async function run(args) {
     return 0;
   }
   if (host !== 'codex' || !['install', 'status', 'uninstall'].includes(action)) {
-    console.error('usage: research-vault host paths | install|status|uninstall codex [--at directory] [--dry-run] [--without-hooks] [--model name] [--effort high] | review codex --draft file --out report [--role claims-reviewer|lesson-reader] [--extra ids]');
+    console.error('usage: research-vault host paths | install|status|uninstall codex [--at directory] [--dry-run] [--without-hooks] [--model name] [--effort high] | review codex --draft file --out report [--role claims-reviewer|lesson-reader] [--extra ids] [--timeout seconds]');
     return 2;
   }
   const result = manageCodex(args.at ?? args.cwd ?? process.cwd(), action, { dryRun: args['dry-run'], withoutHooks: args['without-hooks'], ...(args.model ? { model: args.model } : {}), ...(args.effort ? { effort: args.effort } : {}) });
