@@ -370,7 +370,7 @@ function reads(text, ctx) {
 }
 
 function documents(file, text, ctx) {
-  const t = text.replaceAll('${CLAUDE_PLUGIN_ROOT}/', ' ');
+  const t = text.replaceAll('${CLAUDE_PLUGIN_ROOT}/', ' ').replaceAll('${CLAUDE_PROJECT_DIR}/', ' ');
   const dirs = ctx.topDirs.map(esc).join('|');
   const out = [...t.matchAll(new RegExp(`(?<![\\w./-])(?:${dirs})/[\\w./-]*\\.(?:${DOC_EXT})(?![\\w-])`, 'g'))].map(m => m[0]);
   out.push(...[...t.matchAll(new RegExp(`(?<![\\w./-])(?:${ctx.rootFiles.map(esc).join('|')})(?![\\w-])`, 'g'))].map(m => m[0]));

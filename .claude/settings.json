@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node scripts/deps.mjs --hook",
+            "command": "node",
+            "args": ["${CLAUDE_PROJECT_DIR}/scripts/deps.mjs", "--hook"],
             "timeout": 10
           }
         ]

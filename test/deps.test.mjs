@@ -34,6 +34,7 @@ const SAMPLES = [
   ['test/x.test.mjs', "readFileSync(join(ROOT, 'hooks', 'hooks.json'), 'utf8')", 'reads', 'hooks/hooks.json'],
   ['bin/commands/x.mjs', "readFileSync(join(repoRoot, 'vault-template', 'meta', 'entry-skeletons', `${type}.md`))", 'reads', 'vault-template/meta/entry-skeletons/note.md'],
   ['hooks/hooks.json', '"${CLAUDE_PLUGIN_ROOT}/hooks/pre-web.mjs"', 'registers', 'hooks/pre-web.mjs'],
+  ['.claude/settings.json', '"args": ["${CLAUDE_PROJECT_DIR}/scripts/deps.mjs", "--hook"]', 'documents', 'scripts/deps.mjs'],
   ['docs/X.md', 'edit `bin/lib/stale.mjs` first', 'documents', 'bin/lib/stale.mjs'],
   ['.github/workflows/ci.yml', '      - run: node scripts/check-encoding.mjs', 'documents', 'scripts/check-encoding.mjs'],
   ['docs/X.md', 'see [security](../SECURITY.md)', 'documents', 'SECURITY.md'],
