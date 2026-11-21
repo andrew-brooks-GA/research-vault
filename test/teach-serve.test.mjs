@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { request } from 'node:http';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { fixtureVault } from './helpers.mjs';
+import { fixtureVault, testEnv } from './helpers.mjs';
 import { createServer, ATTEMPT_BODY_MAX } from '../bin/lib/teach.mjs';
 import { resultsFile } from '../skills/research-teach/assets/quiz.js';
 import { footnoteCitations, markdownHtml } from '../bin/lib/teach.mjs';
@@ -255,7 +255,7 @@ test('GET /progress.json carries reviewDue null when the mission asks for no rem
 });
 
 const AT = '2026-10-26T20:57:00.690Z';
-const importCli = (file, ws) => spawnSync(process.execPath, [BIN, 'teach', 'attempt', 'import', file, ws], { encoding: 'utf8' });
+const importCli = (file, ws) => spawnSync(process.execPath, [BIN, 'teach', 'attempt', 'import', file, ws], { env: testEnv(), encoding: 'utf8' });
 const files = (ws) => (existsSync(join(ws, 'attempts')) ? readdirSync(join(ws, 'attempts')).sort() : []);
 const resultsAt = (ws, name, text) => { const f = join(dirname(ws), name); writeFileSync(f, text); return f; };
 
@@ -322,7 +322,7 @@ test('teach attempt import writes what POST /attempt writes at the same clock, s
   assert.equal(files(ws).length, n);
 
   // Exit 2: no file argument, a file that cannot be read, a file over 1 MiB.
-  assert.equal(spawnSync(process.execPath, [BIN, 'teach', 'attempt', 'import'], { encoding: 'utf8', cwd: ws }).status, 2);
+  assert.equal(spawnSync(process.execPath, [BIN, 'teach', 'attempt', 'import'], { env: testEnv(), encoding: 'utf8', cwd: ws }).status, 2);
   const missing = importCli(join(dirname(ws), 'nope.json'), ws);
   assert.equal(missing.status, 2);
   assert.match(missing.stderr, /^teach attempt import: cannot read .*nope\.json \(ENOENT\)\n$/);
@@ -371,7 +371,7 @@ test('serve writes and removes .teach-serve.json', async () => {
   const ws = copyFixture();
   const file = join(ws, '.teach-serve.json');
   const child = spawn(process.execPath, [BIN, 'teach', 'serve', ws], {
-    env: { ...process.env, RESEARCH_VAULT_PATH: fixtureVault() }, stdio: ['ignore', 'pipe', 'pipe'],
+    env: testEnv({ RESEARCH_VAULT_PATH: fixtureVault() }), stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stdout = '';
   child.stdout.setEncoding('utf8');
@@ -480,8 +480,8 @@ test('markdownHtml: headings, lists, fenced and inline code, tables and links, e
 test('teach serve --labs prints the lab address once, reusable; .teach-serve.json and pages never hold t; an invalid labs.json exits 2', async () => {
   const ws = copyFixture();
   const file = join(ws, '.teach-serve.json');
-  const env = { ...process.env, RESEARCH_VAULT_PATH: fixtureVault() };
-  const child = spawn(process.execPath, [BIN, 'teach', 'serve', '--labs', ws], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const overrides = { RESEARCH_VAULT_PATH: fixtureVault() };
+  const child = spawn(process.execPath, [BIN, 'teach', 'serve', '--labs', ws], { env: testEnv(overrides), stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '';
   child.stdout.setEncoding('utf8');
   await new Promise((resolve, reject) => {
@@ -506,7 +506,7 @@ test('teach serve --labs prints the lab address once, reusable; .teach-serve.jso
   }
   mkdirSync(join(ws, 'labs'));
   writeFileSync(join(ws, 'labs', 'labs.json'), '{"version": 2}');
-  const bad = spawnSync(process.execPath, [BIN, 'teach', 'serve', '--labs', ws], { env, encoding: 'utf8', timeout: 10000 });
+  const bad = spawnSync(process.execPath, [BIN, 'teach', 'serve', '--labs', ws], { env: testEnv(overrides), encoding: 'utf8', timeout: 10000 });
   console.log(`invalid labs.json: exit ${bad.status} ${JSON.stringify(bad.stderr)}`);
   assert.deepEqual([bad.status, bad.stdout, bad.stderr], [2, '', 'teach serve: labs/labs.json is invalid; run teach lint\n']);
   assert.equal(existsSync(file), false);

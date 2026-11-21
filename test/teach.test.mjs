@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { fixtureVault, put } from './helpers.mjs';
+import { fixtureVault, put, testEnv } from './helpers.mjs';
 import { workspaceBrief } from '../hooks/session-start.mjs';
 import { progress, progressHtml, progressText } from '../bin/lib/teach.mjs';
 
@@ -23,7 +23,7 @@ const copyFixture = () => {
   return dir;
 };
 const cli = (args, cwd = ROOT) => spawnSync(process.execPath, [BIN, 'teach', ...args], {
-  cwd, encoding: 'utf8', env: { ...process.env, RESEARCH_VAULT_PATH: VAULT },
+  cwd, encoding: 'utf8', env: testEnv({ RESEARCH_VAULT_PATH: VAULT }),
 });
 const attemptFiles = (ws) => readdirSync(join(ws, 'attempts')).sort();
 
@@ -123,14 +123,14 @@ test('CLI teach lint resolves the vault from the workspace, not the cwd; a missi
   }
   const other = mkdtempSync(join(tmpdir(), 'rv-teach-other-'));
   bind(other, join(other, 'no-vault'));
-  const env = { ...process.env, RESEARCH_VAULT_PATH: join(other, 'nowhere') };
-  const r = spawnSync(process.execPath, [BIN, 'teach', 'lint', ws], { cwd: other, env, encoding: 'utf8' });
+  const overrides = { RESEARCH_VAULT_PATH: join(other, 'nowhere') };
+  const r = spawnSync(process.execPath, [BIN, 'teach', 'lint', ws], { cwd: other, env: testEnv(overrides), encoding: 'utf8' });
   assert.equal(r.stderr, '');
   assert.equal(r.stdout, 'lint: clean\n');
   assert.equal(r.status, 0);
   // The workspace's own binding names a missing vault: exit 2, not a wall of LESSON_CITE_UNRESOLVED.
   bind(repo, join(repo, 'gone'));
-  const g = spawnSync(process.execPath, [BIN, 'teach', 'lint', ws], { cwd: other, env, encoding: 'utf8' });
+  const g = spawnSync(process.execPath, [BIN, 'teach', 'lint', ws], { cwd: other, env: testEnv(overrides), encoding: 'utf8' });
   assert.equal(g.status, 2);
   assert.equal(g.stdout, '');
   assert.equal(g.stderr, `teach lint: no vault at ${join(repo, 'gone')}\n`);
@@ -298,7 +298,7 @@ test('CLI teach path candidates: no topic exits 2; with --topic it prints the gr
   assert.equal(r0.stderr, 'teach path candidates: no topic (pass --topic a,b or set defaults.topics in .research-vault.json)\n');
   const vault = fixtureVault();
   put(vault, 'source', '2026-01-02-sextuple-doc', { title: 'The sextuple explained', topics: ['fx'], source_type: 'article', source_url: 'https://example.org/six' });
-  const r = spawnSync(process.execPath, [BIN, 'teach', 'path', 'candidates', '--topic', 'fx', ws], { encoding: 'utf8', env: { ...process.env, RESEARCH_VAULT_PATH: vault } });
+  const r = spawnSync(process.execPath, [BIN, 'teach', 'path', 'candidates', '--topic', 'fx', ws], { encoding: 'utf8', env: testEnv({ RESEARCH_VAULT_PATH: vault }) });
   assert.equal(r.stderr, '');
   assert.equal(r.status, 0);
   // The fixture's Known term "function" has no entry on topic fx, so it is not printed; the entry is a `fx` hit too (line 1), but line 4 wins the tie.
@@ -559,7 +559,7 @@ test('teach next prints readme: missing, ungated or ok after fringe: complete, a
   assert.equal(lines(), 'fringe: complete\nreadme: ungated', 'no binding, so no ledger');
   writeFileSync(join(ws, '.research-vault.json'), JSON.stringify({ vault: VAULT }) + '\n');
   assert.equal(lines(), 'fringe: complete\nreadme: ungated', 'no ledger row');
-  const gate = (...a) => spawnSync(process.execPath, [BIN, 'gate', ...a], { cwd: ws, encoding: 'utf8' });
+  const gate = (...a) => spawnSync(process.execPath, [BIN, 'gate', ...a], { env: testEnv(), cwd: ws, encoding: 'utf8' });
   assert.equal(gate('record', 'README.md', 'PASS').status, 0);
   assert.equal(lines(), 'fringe: complete\nreadme: ok');
   writeFileSync(join(ws, 'README.md'), README + 'One more line.\n');

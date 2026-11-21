@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync, cpSync, existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { testEnv } from './helpers.mjs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { captureEntry, run, runBatch } from '../bin/commands/capture.mjs';
@@ -494,7 +495,7 @@ test('capture refuses a blocklisted source, --force captures it with the overrid
 // Issue 72 item 7: a title that gives the id of another entry is an error, at the CLI and in --batch; a repeated URL is still a duplicate.
 test('a source whose title gives a taken id is refused as id taken, at the CLI and in --batch; a repeated entry is still a duplicate', () => {
   const dir = freshVault();
-  const cli = (...a) => spawnSync(process.execPath, ['bin/research-vault.mjs', 'capture', '--vault', dir, ...a], { encoding: 'utf8' });
+  const cli = (...a) => spawnSync(process.execPath, ['bin/research-vault.mjs', 'capture', '--vault', dir, ...a], { env: testEnv(), encoding: 'utf8' });
   assert.equal(cli('--type', 'source', '--title', 'Install guide', '--url', 'https://one.example/install').status, 0);
   const files = () => ['sources', 'questions'].flatMap(f => existsSync(join(dir, f)) ? readdirSync(join(dir, f)) : []).sort();
   const before = files();

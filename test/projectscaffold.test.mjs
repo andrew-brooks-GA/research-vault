@@ -43,6 +43,7 @@ import { tmpdir } from 'node:os';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { testEnv } from './helpers.mjs';
 
 const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'research-vault.mjs');
 
@@ -70,7 +71,7 @@ test('scaffoldProjectConfig without codeLinks writes today\'s file', () => {
 
 test('CLI init --project --code-links writes the block and prints where the versions key goes; a vault outside the repo exits 1', () => {
   const repo = mkdtempSync(join(tmpdir(), 'rv-init-code-'));
-  const run = (...args) => spawnSync(process.execPath, [CLI, 'init', '--project', ...args], { cwd: repo, encoding: 'utf8' });
+  const run = (...args) => spawnSync(process.execPath, [CLI, 'init', '--project', ...args], { env: testEnv(), cwd: repo, encoding: 'utf8' });
   let r = run('--vault', '../Research', '--code-links', 'src/**/*.lua');
   assert.equal(r.status, 1);
   assert.match(r.stderr, /^invalid \.research-vault\.json: code links need a project-specific vault inside the repo \(a relative vault path\); this binding points at \.\.\/Research$/m);

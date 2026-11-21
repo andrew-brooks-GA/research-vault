@@ -16,7 +16,7 @@ import { readLabs, labPin, lessonLab, lineRedactor, secretHits } from '../bin/li
 import { lintWorkspace } from '../bin/lib/lesson.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
-import { fixtureVault } from './helpers.mjs';
+import { fixtureVault, testEnv } from './helpers.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SCHEMA = loadTeachSchema(ROOT);
@@ -920,9 +920,9 @@ test('teach serve --labs: SIGTERM, SIGHUP and SIGINT during a run leave no proce
   const value = 'made-up-value-0123';
   const { ws } = runWs({ up: '#!/bin/sh\nsleep 61 &\necho "pid $$ child $!"\nwhile true; do sleep 0.1; done\n', env: ['LAB_TOKEN'] });
   writeFileSync(join(ws, 'lessons', '0002-leak.html'), `<p>${value}</p>\n`);
-  const env = { ...ENV, RESEARCH_VAULT_PATH: fixtureVault(), LAB_TOKEN: value };
+  const overrides = { ...ENV, RESEARCH_VAULT_PATH: fixtureVault(), LAB_TOKEN: value };
   for (const sig of ['SIGTERM', 'SIGHUP', 'SIGINT']) {
-    const child = spawn(process.execPath, [join(ROOT, 'bin', 'research-vault.mjs'), 'teach', 'serve', '--labs', ws], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [join(ROOT, 'bin', 'research-vault.mjs'), 'teach', 'serve', '--labs', ws], { env: testEnv(overrides), stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = '';
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
@@ -957,8 +957,8 @@ test('teach serve --labs: SIGTERM, SIGHUP and SIGINT during a run leave no proce
 
 test('SIGTERM to teach serve --labs runs the Stop sequence before exiting: up\'s own TERM trap runs', async () => {
   const { ws } = runWs({ up: '#!/bin/sh\ntrap \'echo cleaned > cleaned; exit 0\' TERM\necho "pid $$"\nwhile true; do sleep 0.1; done\n' });
-  const env = { ...ENV, RESEARCH_VAULT_PATH: fixtureVault() };
-  const child = spawn(process.execPath, [join(ROOT, 'bin', 'research-vault.mjs'), 'teach', 'serve', '--labs', ws], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const overrides = { ...ENV, RESEARCH_VAULT_PATH: fixtureVault() };
+  const child = spawn(process.execPath, [join(ROOT, 'bin', 'research-vault.mjs'), 'teach', 'serve', '--labs', ws], { env: testEnv(overrides), stdio: ['ignore', 'pipe', 'pipe'] });
   try {
     let stdout = '';
     child.stdout.setEncoding('utf8');

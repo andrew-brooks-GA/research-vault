@@ -10,7 +10,7 @@ import { request } from 'node:http';
 import { once } from 'node:events';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { fixtureVault, put } from './helpers.mjs';
+import { fixtureVault, put, testEnv } from './helpers.mjs';
 import { recordVerdict } from '../bin/lib/gate.mjs';
 import { createServer, exportWorkspace } from '../bin/lib/teach.mjs';
 import { readBrand, BRAND_TOKENS } from '../bin/lib/brand.mjs';
@@ -301,7 +301,7 @@ test('brand lint: each BRAND_ code an error naming the path, token, colour or te
       [`BRAND_VOICE  ${L}: uses "Zorblax"; use "the" (brand voice.avoid)`]);
     // teach lint exits 1 on an invalid brand.json and prints the code.
     setBrand(repo.ws, '{');
-    const r = spawnSync(process.execPath, [BIN, 'teach', 'lint', repo.ws], { encoding: 'utf8' });
+    const r = spawnSync(process.execPath, [BIN, 'teach', 'lint', repo.ws], { env: testEnv(), encoding: 'utf8' });
     assert.equal(r.status, 1);
     assert.ok(r.stdout.split('\n').includes(`BRAND_INVALID  ${J}: brand/brand.json is not JSON`), r.stdout);
     rmSync(join(repo.ws, 'brand'), { recursive: true });
@@ -357,9 +357,9 @@ test('an invalid brand.json: pages served unbranded with one start line from tea
     assert.deepEqual(Object.fromEntries(Object.entries(s).map(([p, t]) => [p, sha(t)])), BASE_SERVED);
     const ex = exported(repo);
     assert.deepEqual([ex.code, ex.lines.filter((l) => l.startsWith('brand'))], [1, ['brand brand/brand.json: invalid; run teach lint']]);
-    const r = spawnSync(process.execPath, [BIN, 'teach', 'export', repo.ws, '--out', out], { encoding: 'utf8' });
+    const r = spawnSync(process.execPath, [BIN, 'teach', 'export', repo.ws, '--out', out], { env: testEnv(), encoding: 'utf8' });
     assert.deepEqual([r.status, r.stdout.split('\n').filter((l) => l.startsWith('brand')), existsSync(out)], [1, ['brand brand/brand.json: invalid; run teach lint'], false]);
-    const child = spawn(process.execPath, [BIN, 'teach', 'serve', repo.ws], { env: { ...process.env, RESEARCH_VAULT_PATH: repo.vault }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [BIN, 'teach', 'serve', repo.ws], { env: testEnv({ RESEARCH_VAULT_PATH: repo.vault }), stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = '';
     child.stderr.setEncoding('utf8').on('data', (c) => { stderr += c; });
     child.stdout.setEncoding('utf8');

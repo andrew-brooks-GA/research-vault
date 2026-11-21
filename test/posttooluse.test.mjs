@@ -4,7 +4,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { tmpVault, put } from './helpers.mjs';
+import { tmpVault, put, testEnv } from './helpers.mjs';
 import { citationWarnings } from '../hooks/post-tool-use.mjs';
 
 const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'post-tool-use.mjs');
@@ -49,7 +49,7 @@ test('citationWarnings is empty for a file outside references.globs and gated fi
 
 test('CLI emits PostToolUse additionalContext for a doc edit and nothing for a vault edit', () => {
   const { root, vault } = repo();
-  const run = (file_path) => spawnSync(process.execPath, [HOOK], { cwd: root, input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path }, cwd: root }), encoding: 'utf8' });
+  const run = (file_path) => spawnSync(process.execPath, [HOOK], { env: testEnv(), cwd: root, input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path }, cwd: root }), encoding: 'utf8' });
   const doc = run(join(root, 'docs', 'a.md'));
   assert.equal(doc.status, 0, doc.stderr);
   const out = JSON.parse(doc.stdout);
@@ -98,7 +98,7 @@ test('citationWarnings reports code rows for a code.globs file and the unpinned 
 test('CLI emits additionalContext for a versions-file edit in a repo with a code block', () => {
   const { root } = codeRepo();
   writeFileSync(join(root, 'deps.txt'), 'dep 2.0.0\n');
-  const r = spawnSync(process.execPath, [HOOK], { cwd: root, input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: join(root, 'deps.txt') }, cwd: root }), encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [HOOK], { env: testEnv(), cwd: root, input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: join(root, 'deps.txt') }, cwd: root }), encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   assert.match(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /^research-vault: STALE 2026-01-01-fx-missing in src\/b\.lua:1 ns\.g {2}\(dep 1\.2\.3 -> 2\.0\.0\)$/m);
 });
@@ -107,7 +107,7 @@ test('CLI emits additionalContext for a versions-file edit in a repo with a code
 test('citationWarnings and the CLI are silent for a .lua edit in a repo without a code block', () => {
   const { root, vault } = codeRepo({ code: false });
   assert.equal(citationWarnings(join(root, 'src', 'a.lua'), root, vault, parsed(root), NOW), '');
-  const r = spawnSync(process.execPath, [HOOK], { cwd: root, input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: join(root, 'src', 'b.lua') }, cwd: root }), encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [HOOK], { env: testEnv(), cwd: root, input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: join(root, 'src', 'b.lua') }, cwd: root }), encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout, '');
 });

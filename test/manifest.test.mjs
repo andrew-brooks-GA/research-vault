@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildManifest, lastVerified, writeManifest, danglingEdges } from '../bin/lib/manifest.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
-import { tmpVault, put } from './helpers.mjs';
+import { tmpVault, put, testEnv } from './helpers.mjs';
 
 const VAULT = fileURLToPath(new URL('./fixtures/vault', import.meta.url));
 
@@ -161,7 +161,7 @@ test('manifest row carries per-type facets and superseded_by, null when absent (
 });
 
 const CLI = join(process.cwd(), 'bin', 'research-vault.mjs');
-const cli = (...args) => spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8' });
+const cli = (...args) => spawnSync(process.execPath, [CLI, ...args], { env: testEnv(), encoding: 'utf8' });
 
 test('writeManifest refuses to drop a listed entry whose folder is missing or whose file is present; a deleted file is gone; removing the manifest is the override (spec 18 D1)', () => {
   const dir = tmpVault('rv-shrink-');

@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, symlin
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { testEnv } from './helpers.mjs';
 import { manageCodex, installationFiles, shellQuote } from '../bin/lib/host-install.mjs';
 
 function project(t) {
@@ -29,7 +30,7 @@ test('Codex install is pinned, repeatable, works from nested directories, and pr
   const wrappers = ['research', 'research-init', 'research-search', 'research-related', 'research-lint', 'research-compile', 'research-obsidian'];
   for (const task of wrappers) assert.match(readFileSync(join(root, `.agents/skills/${task}/agents/openai.yaml`), 'utf8'), /allow_implicit_invocation: false/);
   const nested = join(root, 'nested'); mkdirSync(nested);
-  const run = args => spawnSync(process.execPath, [join(root, '.research-vault-host/codex/run.mjs'), ...args], { cwd: nested, encoding: 'utf8' });
+  const run = args => spawnSync(process.execPath, [join(root, '.research-vault-host/codex/run.mjs'), ...args], { env: testEnv(), cwd: nested, encoding: 'utf8' });
   const vault = join(root, 'research');
   assert.equal(run(['init', '--vault', vault]).status, 0);
   assert.equal(run(['lint', '--vault', vault, '--check']).status, 0);
@@ -57,7 +58,7 @@ test('edited installation files stop upgrade/uninstall, and pinned launcher reje
   assert.deepEqual(manageCodex(root, 'status').changed, ['.research-vault-host/codex/package/package.json']);
   assert.throws(() => manageCodex(root, 'install'), /owned files changed/);
   assert.throws(() => manageCodex(root, 'uninstall'), /owned files changed/);
-  const run = spawnSync(process.execPath, [join(root, '.research-vault-host/codex/run.mjs'), 'host', 'paths'], { encoding: 'utf8' });
+  const run = spawnSync(process.execPath, [join(root, '.research-vault-host/codex/run.mjs'), 'host', 'paths'], { env: testEnv(), encoding: 'utf8' });
   assert.equal(run.status, 2); assert.match(run.stderr, /installed package changed/);
 });
 

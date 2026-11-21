@@ -7,7 +7,7 @@ import { join, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import vm from 'node:vm';
-import { fixtureVault, put } from './helpers.mjs';
+import { fixtureVault, put, testEnv } from './helpers.mjs';
 import { recordVerdict } from '../bin/lib/gate.mjs';
 import { lessonIndex, serveFile, navHtml, extractCites, MENTION_RE, exportWorkspace } from '../bin/lib/teach.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
@@ -66,7 +66,7 @@ function exportRepo({ ungated = [], step = 'Run <code>fx(3)</code> and look for 
   }
   return { repo, vault, ws };
 }
-const cli = (...a) => spawnSync(process.execPath, [BIN, 'teach', 'export', ...a], { encoding: 'utf8' });
+const cli = (...a) => spawnSync(process.execPath, [BIN, 'teach', 'export', ...a], { env: testEnv(), encoding: 'utf8' });
 const outDir = () => join(mkdtempSync(join(tmpdir(), 'rv-teach-export-out-')), 'site');
 const tree = (dir, rel = '') => readdirSync(join(dir, rel), { withFileTypes: true })
   .flatMap((d) => (d.isDirectory() ? tree(dir, posix.join(rel, d.name)) : [posix.join(rel, d.name)])).sort();
@@ -236,7 +236,7 @@ test('a file name and a title from the workspace are escaped in the exported ind
 
 test('teach lint warns WARN_CONNECT_LEAD for a connect block that does not open with CONNECT_LEAD (spec 48 D7)', () => {
   const { ws } = exportRepo();
-  const lint = () => spawnSync(process.execPath, [BIN, 'teach', 'lint', ws], { encoding: 'utf8' }).stdout.split('\n').filter((l) => l.includes('WARN_CONNECT_LEAD'));
+  const lint = () => spawnSync(process.execPath, [BIN, 'teach', 'lint', ws], { env: testEnv(), encoding: 'utf8' }).stdout.split('\n').filter((l) => l.includes('WARN_CONNECT_LEAD'));
   assert.deepEqual(lint(), []);
   const f = join(ws, 'lessons', '0001-one.html');
   writeFileSync(f, readFileSync(f, 'utf8').replace(CONNECT_LEAD, 'Answer in the Claude Code terminal:'));

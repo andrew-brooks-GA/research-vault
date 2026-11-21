@@ -1,11 +1,44 @@
 // Shared temp-vault builder for graph tests: hand-writes lint-shaped entries by id.
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeEntry, TYPE_FOLDER } from '../bin/lib/fsutil.mjs';
 import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
 
 const schema = loadSchema(process.cwd());
+
+export const testHome = mkdtempSync(join(tmpdir(), 'rv-test-env-'));
+process.once('exit', () => {
+  try { rmSync(testHome, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
+});
+
+const gitConfig = join(testHome, 'gitconfig');
+writeFileSync(gitConfig, '');
+const isolatedEnv = { GIT_CONFIG_GLOBAL: gitConfig, GIT_CONFIG_NOSYSTEM: '1' };
+for (const key of ['HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME']) {
+  const dir = join(testHome, key);
+  mkdirSync(dir);
+  isolatedEnv[key] = dir;
+}
+
+const windows = process.platform === 'win32';
+const envKey = (key) => windows ? key.toUpperCase() : key;
+const inheritedEnv = ['PATH', 'PATHEXT', 'SystemRoot', 'windir', 'ComSpec', 'TEMP', 'TMP', 'TMPDIR', 'LANG', 'LC_ALL', 'SHELL', 'USER', 'LOGNAME'].map(envKey);
+
+export function testEnv(overrides = {}) {
+  const inherited = new Set(inheritedEnv);
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (inherited.delete(envKey(key))) env[key] = value;
+  }
+  Object.assign(env, isolatedEnv);
+  for (const [key, value] of Object.entries(overrides)) {
+    const target = windows ? Object.keys(env).find((k) => envKey(k) === envKey(key)) ?? key : key;
+    if (value === undefined) delete env[target];
+    else env[target] = value;
+  }
+  return env;
+}
 
 export function tmpVault(prefix = 'rv-graph-') { return mkdtempSync(join(tmpdir(), prefix)); }
 

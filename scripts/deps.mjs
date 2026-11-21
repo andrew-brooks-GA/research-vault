@@ -78,6 +78,7 @@ export const COUPLINGS = [
   ['schema/taxonomy.json', 'README.md', 'the volatility windows are written as prose', /\b90\b/],
   ['schema/taxonomy.json', 'test/helpers.mjs', 'put() hardcodes domain, method, by_type, result and volatility values', 'by_type'],
   ['schema/taxonomy.json', 'bin/commands/capture.mjs', 'the default domain, volatility, source_type, confidence, outcome, state and language values', 'source_type'],
+  ['test/helpers.mjs', 'test/isolation.test.mjs', 'the source guard matches the testEnv helper by name', 'testEnv'],
   ['schema/teach-taxonomy.json', 'skills/research-teach/LEARNING-RECORD-FORMAT.md', 'kind values, types and the learning-records folder are hand-copied', 'learning-records'],
   ['schema/frontmatter.schema.json', 'bin/lib/graph.mjs', 'DEPENDENCY_RELS must be a subset of edge_fields.backlink'],
   ['schema/frontmatter.schema.json', 'hooks/pre-web.mjs', 'title, topics, summary, source_url, status and type are read by name', 'source_url'],

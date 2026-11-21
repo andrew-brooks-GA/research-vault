@@ -4,7 +4,7 @@ import { writeFileSync, appendFileSync, mkdirSync, utimesSync, cpSync } from 'no
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { tmpVault } from './helpers.mjs';
+import { tmpVault, testEnv } from './helpers.mjs';
 import { recordVerdict, contentHash } from '../bin/lib/gate.mjs';
 import { missingGates, sinceFrom, TWELVE_HOURS } from '../hooks/stop-gate.mjs';
 
@@ -24,7 +24,7 @@ function repo() {
 }
 
 function hook(evt) {
-  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify(evt), encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [HOOK], { env: testEnv(), input: JSON.stringify(evt), encoding: 'utf8' });
   return { code: r.status, out: r.stdout, err: r.stderr };
 }
 
@@ -56,7 +56,7 @@ test('missingGates lists a lesson again after it changes post-record', () => {
 
 test('missingGates ignores a tracked file git reports clean, whatever its mtime, and lists it once edited', () => {
   const { root, vault } = repo();
-  const git = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' });
+  const git = (...a) => spawnSync('git', ['-C', root, ...a], { env: testEnv(), encoding: 'utf8' });
   git('init', '-q');
   git('add', '.');
   git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'fixtures');

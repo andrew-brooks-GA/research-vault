@@ -4,7 +4,7 @@ import { writeFileSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { tmpVault, put } from './helpers.mjs';
+import { tmpVault, put, testEnv } from './helpers.mjs';
 import { workspaceBrief } from '../hooks/session-start.mjs';
 
 const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'session-start.mjs');
@@ -86,9 +86,7 @@ test('workspaceBrief names a task attempt by its summary (issue 79 D6)', () => {
 
 test('CLI prints the workspace line after the summary line', () => {
   const { root } = repo();
-  const env = { ...process.env };
-  delete env.RESEARCH_VAULT_PATH;
-  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: root }), cwd: root, env, encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: root }), cwd: root, env: testEnv(), encoding: 'utf8' });
   assert.equal(r.status, 0);
   const lines = r.stdout.trim().split('\n');
   assert.match(lines[0], /^research-vault: 2 entries; 1 stale$/);
@@ -103,21 +101,20 @@ test('CLI outside a bound repo prints the summary line only', () => {
   mkdirSync(join(elsewhere, 'ws', 'learning-records'), { recursive: true });
   writeFileSync(join(elsewhere, 'ws', 'MISSION.md'), '# m\n');
   writeFileSync(join(elsewhere, 'ws', 'learning-records', '0001-a.md'), record(day(21 + 1)));
-  const env = { ...process.env, RESEARCH_VAULT_PATH: vault };
-  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: elsewhere }), cwd: elsewhere, env, encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: elsewhere }), cwd: elsewhere, env: testEnv({ RESEARCH_VAULT_PATH: vault }), encoding: 'utf8' });
   assert.equal(r.status, 0);
   assert.equal(r.stdout, 'research-vault: 2 entries; 1 stale\n');
 });
 
 // Issue 72 item 13: in a research-vault checkout whose claims reviewer is not the one of the running plugin, the hook says so.
 test('CLI names a checkout whose claims reviewer differs from the plugin running the session (issue 72 item 13)', () => {
-  const run = (cwd, vault) => spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd }), cwd, env: { ...process.env, RESEARCH_VAULT_PATH: vault }, encoding: 'utf8' });
+  const run = (cwd, vault) => spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd }), cwd, env: testEnv({ RESEARCH_VAULT_PATH: vault }), encoding: 'utf8' });
   const own = readFileSync(join(dirname(HOOK), '..', 'agents', 'claims-reviewer.md'));
   const checkout = (dir, name, body) => {
     mkdirSync(join(dir, 'agents'), { recursive: true });
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ name }) + '\n');
     writeFileSync(join(dir, 'agents', 'claims-reviewer.md'), body);
-    spawnSync('git', ['-C', dir, 'init', '-q']);
+    spawnSync('git', ['-C', dir, 'init', '-q'], { env: testEnv() });
   };
   for (const [name, body, notice] of [['research-vault', 'another reviewer\n', true], ['research-vault', own, false], ['something-else', 'another reviewer\n', false]]) {
     const { root, vault } = repo({ due: false });

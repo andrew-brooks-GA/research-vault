@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
-import { fixtureVault } from './helpers.mjs';
+import { fixtureVault, testEnv } from './helpers.mjs';
 import { scanCast, castTranscript, PLAYER_FILES } from '../bin/lib/cast.mjs';
 import { createServer, exportWorkspace } from '../bin/lib/teach.mjs';
 import { recordVerdict } from '../bin/lib/gate.mjs';
@@ -42,7 +42,7 @@ test('scanCast finds a needle whole, split across two events and coloured, at th
 });
 
 function tmp(prefix) { return mkdtempSync(join(tmpdir(), prefix)); }
-const cli = (...a) => spawnSync(process.execPath, [BIN, 'teach', ...a], { encoding: 'utf8' });
+const cli = (...a) => spawnSync(process.execPath, [BIN, 'teach', ...a], { env: testEnv(), encoding: 'utf8' });
 
 test('teach cast check exits 0 when clean, 1 with a hit line per needle that never holds the token, 2 on no asciicast; transcript is escaped', () => {
   const dir = tmp('rv-cast-cli-');

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { testEnv } from './helpers.mjs';
 import { ID_RE } from '../bin/lib/citations.mjs';
 import {
   LANGS, LINK_RE, langFor, codeFiles, extractCodeLinks, unitText, codeUnits, codeUnitHashes, readVersions, checkCodeLinks, worstStatus,
@@ -239,7 +240,7 @@ test('codeFiles is empty without a code block and refuses a bound vault outside 
   assert.deepEqual(codeFiles(null, repo), []);
   assert.deepEqual(codeFiles(cfg({ globs: ['src/*.lua'] }), repo), [join(repo, 'src', 'a.lua')]);
   const outside = mkdtempSync(join(tmpdir(), 'rv-outside-'));
-  execFileSync('ln', ['-s', outside, join(repo, 'linked')]);
+  execFileSync('ln', ['-s', outside, join(repo, 'linked')], { env: testEnv() });
   assert.throws(() => codeFiles(cfg({ globs: ['src/*.lua'] }, 'linked'), repo), /code links need a project-specific vault inside the repo; .* resolves outside /);
 });
 

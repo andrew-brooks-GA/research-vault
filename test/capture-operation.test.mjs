@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { testEnv } from './helpers.mjs';
 import { captureOperation } from '../bin/lib/capture-operation.mjs';
 import { walkEntries } from '../bin/lib/fsutil.mjs';
 import { defaultVaultPath } from '../bin/lib/resolve.mjs';
@@ -80,7 +81,7 @@ test('source dedup resolves actual ID and alias references reject whole plan', (
 test('process interruption after publication retains lock; explicit recovery reconciles prepared fingerprint', () => {
   const f = fixture(); const module = new URL('../bin/lib/capture-operation.mjs', import.meta.url).href;
   const code = `import { captureOperation } from ${JSON.stringify(module)}; captureOperation(${JSON.stringify(f.vault)},${JSON.stringify(f.path)},'stable_key',{now:${JSON.stringify(now)},event:e=>{if(e==='published')process.kill(process.pid,'SIGKILL')}})`;
-  const killed = spawnSync(process.execPath, ['--input-type=module', '-e', code]); assert.equal(killed.signal, 'SIGKILL'); assert.equal(bytes(f.vault).length, 1);
+  const killed = spawnSync(process.execPath, ['--input-type=module', '-e', code], { env: testEnv() }); assert.equal(killed.signal, 'SIGKILL'); assert.equal(bytes(f.vault).length, 1);
   const lock = join(f.vault, '.capture-operations/writer.lock'); const owner = JSON.parse(fs.readFileSync(join(lock, 'owner.json'))); assert.equal(owner.operationId, 'stable_key');
   const blocked = f.run(); assert.equal(blocked.errors[0].code, 'LOCK_BUSY'); assert.equal(blocked.errors[0].retryable, false);
   // Test owns and has waited for the killed child; manual recovery is explicit.
@@ -96,15 +97,15 @@ test('CLI explicit vault overrides binding/env from unrelated cwd with metachara
   const a = join(f.root, 'vault A'), d = join(f.root, 'default'), cwd = join(f.root, 'cwd'); for (const dir of [a, d, cwd]) fs.mkdirSync(dir);
   fs.writeFileSync(join(cwd, '.research-vault.json'), JSON.stringify({ vault: a }));
   const cli = resolve('bin/research-vault.mjs');
-  const env = { ...process.env, RESEARCH_VAULT_PATH: d, HOME: f.root, USERPROFILE: f.root, APPDATA: join(f.root, 'AppData', 'Roaming'), LOCALAPPDATA: join(f.root, 'AppData', 'Local'), XDG_CONFIG_HOME: join(f.root, 'config'), XDG_DATA_HOME: join(f.root, 'data') };
-  const osDefault = defaultVaultPath({ platform: process.platform, home: f.root, env });
+  const overrides = { RESEARCH_VAULT_PATH: d, HOME: f.root, USERPROFILE: f.root, APPDATA: join(f.root, 'AppData', 'Roaming'), LOCALAPPDATA: join(f.root, 'AppData', 'Local'), XDG_CONFIG_HOME: join(f.root, 'config'), XDG_DATA_HOME: join(f.root, 'data') };
+  const osDefault = defaultVaultPath({ platform: process.platform, home: f.root, env: overrides });
   const relativeDefault = relative(f.root, osDefault);
   assert.ok(relativeDefault && !isAbsolute(relativeDefault) && relativeDefault.split(sep)[0] !== '..', `Test refuses to write outside its root: ${osDefault}`);
   fs.mkdirSync(osDefault, { recursive: true }); fs.writeFileSync(join(osDefault, 'sentinel'), 'unchanged');
   const args = [cli, 'capture', '--batch', f.path, '--operation-id', 'explicit', '--vault', f.vault];
-  const r = spawnSync(process.execPath, args, { cwd, env, encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(JSON.parse(r.stdout).created.length, 1);
+  const r = spawnSync(process.execPath, args, { cwd, env: testEnv(overrides), encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(JSON.parse(r.stdout).created.length, 1);
   assert.deepEqual(fs.readdirSync(a), []); assert.deepEqual(fs.readdirSync(d), []); assert.equal(fs.existsSync(join(cwd, 'forbidden')), false); assert.deepEqual(fs.readdirSync(osDefault), ['sentinel']); assert.equal(fs.readFileSync(join(osDefault, 'sentinel'), 'utf8'), 'unchanged');
-  const bad = spawnSync(process.execPath, [...args, '--continue'], { cwd, env, encoding: 'utf8' }); assert.equal(bad.status, 2); assert.equal(JSON.parse(bad.stdout).recoveryStateCreated, false);
+  const bad = spawnSync(process.execPath, [...args, '--continue'], { cwd, env: testEnv(overrides), encoding: 'utf8' }); assert.equal(bad.status, 2); assert.equal(JSON.parse(bad.stdout).recoveryStateCreated, false);
 });
 test('adversarial: normalized empty references rejected and intra-plan source reuse completes', () => {
   for (const spec of [{ type: 'note', title: 'Bad', sources: ',' }, { type: 'synthesis', title: 'Bad', contributingIds: ',' }]) {
@@ -119,7 +120,7 @@ test('adversarial: reload receipt under lock; competing completed key cannot be 
   const r = f.run({ event: event => {
     if (event !== 'before-lock') return;
     const code = `import {captureOperation} from ${JSON.stringify(module)};const r=captureOperation(${JSON.stringify(f.vault)},${JSON.stringify(other)},'stable_key',{now:${JSON.stringify(now)}});process.exit(r.errors.length?1:0)`;
-    assert.equal(spawnSync(process.execPath, ['--input-type=module', '-e', code]).status, 0);
+    assert.equal(spawnSync(process.execPath, ['--input-type=module', '-e', code], { env: testEnv() }).status, 0);
   } });
   assert.equal(r.errors[0].code, 'INPUT_CHANGED'); assert.equal(bytes(f.vault).length, 1); assert.match(bytes(f.vault)[0][0], /-b.md$/);
   assert.equal(captureOperation(f.vault, other, 'stable_key', { now }).historical, true);
@@ -129,7 +130,7 @@ test('two live opt-in writers cannot share the vault lock', () => {
   f.run({ event: event => {
     if (event !== 'locked') return;
     const code = `import {captureOperation} from ${JSON.stringify(module)};console.log(JSON.stringify(captureOperation(${JSON.stringify(f.vault)},${JSON.stringify(f.path)},'competitor',{now:${JSON.stringify(now)}})))`;
-    const child = spawnSync(process.execPath, ['--input-type=module', '-e', code], { encoding: 'utf8' });
+    const child = spawnSync(process.execPath, ['--input-type=module', '-e', code], { env: testEnv(), encoding: 'utf8' });
     assert.equal(JSON.parse(child.stdout).errors[0].code, 'LOCK_BUSY'); assert.deepEqual(bytes(f.vault), []);
   } });
   assert.equal(bytes(f.vault).length, 2);
@@ -143,7 +144,7 @@ test('canonical object keys replay identically; array order and semantic options
 test('CLI historical flags, ingest/consent refusals, and validation/conflict/storage/finalization exits', () => {
   const cli = resolve('bin/research-vault.mjs');
   const run = (f, key, extra = [], nodeArgs = []) => {
-    const r = spawnSync(process.execPath, [...nodeArgs, cli, 'capture', '--batch', f.path, '--operation-id', key, '--vault', f.vault, ...extra], { encoding: 'utf8' });
+    const r = spawnSync(process.execPath, [...nodeArgs, cli, 'capture', '--batch', f.path, '--operation-id', key, '--vault', f.vault, ...extra], { env: testEnv(), encoding: 'utf8' });
     return { status: r.status, report: JSON.parse(r.stdout) };
   };
   const f = fixture(); assert.equal(run(f, 'key').status, 0); const before = bytes(f.vault);
@@ -178,7 +179,7 @@ test('actual temporary-write and rename failures preserve prior receipt bytes', 
   }
 });
 test('connected host paths output is explicit without installing a host', () => {
-  const f = fixture(); const r = spawnSync(process.execPath, [resolve('bin/research-vault.mjs'), 'host', 'paths', '--vault', f.vault], { encoding: 'utf8' });
+  const f = fixture(); const r = spawnSync(process.execPath, [resolve('bin/research-vault.mjs'), 'host', 'paths', '--vault', f.vault], { env: testEnv(), encoding: 'utf8' });
   assert.equal(r.status, 0); const result = JSON.parse(r.stdout);
   assert.equal(result.vault, f.vault); assert.equal(result.cli, resolve('bin/research-vault.mjs')); assert.equal(result.package, resolve('.')); assert.equal(result.assets, resolve('skills/research-teach/assets'));
 });
@@ -208,7 +209,7 @@ test('a lock whose owner file could not be written is removed, not left to block
 test('issue 72 item 1: the next lock holder removes the temporary link a killed writer left, and no other file', () => {
   const f = fixture(); const module = new URL('../bin/lib/capture-operation.mjs', import.meta.url).href;
   const code = `import { captureOperation } from ${JSON.stringify(module)}; captureOperation(${JSON.stringify(f.vault)},${JSON.stringify(f.path)},'stable_key',{now:${JSON.stringify(now)},event:e=>{if(e==='published')process.kill(process.pid,'SIGKILL')}})`;
-  assert.equal(spawnSync(process.execPath, ['--input-type=module', '-e', code]).signal, 'SIGKILL');
+  assert.equal(spawnSync(process.execPath, ['--input-type=module', '-e', code], { env: testEnv() }).signal, 'SIGKILL');
   const dir = join(f.vault, 'questions'), litter = () => fs.readdirSync(dir).filter(n => n.endsWith('.tmp'));
   assert.equal(litter().length, 1);
   fs.writeFileSync(join(dir, 'other.md.tmp'), 'not this protocol\'s');

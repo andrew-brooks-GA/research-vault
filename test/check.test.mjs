@@ -164,11 +164,11 @@ test('CLI reports a URL found only in code as skipped and --check still exits 0'
     runInit({ vaultPath: vault });
     writeFileSync(join(repo, 'doc.md'), 'run this:\n\n```\ncurl https://nobody.example/in-code\n```\n');
     const bin = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'research-vault.mjs');
-    const r = spawnSync(process.execPath, [bin, 'check', 'doc.md', '--vault', vault, '--check'], { cwd: repo, encoding: 'utf8' });
+    const r = spawnSync(process.execPath, [bin, 'check', 'doc.md', '--vault', vault, '--check'], { env: testEnv(), cwd: repo, encoding: 'utf8' });
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /^skipped \(in code\): doc\.md {2}https:\/\/nobody\.example\/in-code$/m);
     assert.doesNotMatch(r.stdout, /UNCOVERED/);
-    const j = spawnSync(process.execPath, [bin, 'check', 'doc.md', '--vault', vault, '--json'], { cwd: repo, encoding: 'utf8' });
+    const j = spawnSync(process.execPath, [bin, 'check', 'doc.md', '--vault', vault, '--json'], { env: testEnv(), cwd: repo, encoding: 'utf8' });
     assert.deepEqual(JSON.parse(j.stdout).skipped, [{ file: 'doc.md', type: 'url', value: 'https://nobody.example/in-code' }]);
   } finally {
     rmSync(vault, { recursive: true, force: true });
@@ -177,12 +177,12 @@ test('CLI reports a URL found only in code as skipped and --check still exits 0'
 });
 
 // ---- code links (spec 15) ----
-import { codeRepo } from './helpers.mjs';
+import { codeRepo, testEnv } from './helpers.mjs';
 import { parseProjectConfig } from '../bin/lib/projectconfig.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'research-vault.mjs');
-const cli = (cwd, ...args) => spawnSync(process.execPath, [BIN, 'check', ...args, '--now', '2026-06-01'], { cwd, encoding: 'utf8', env: { ...process.env, RESEARCH_VAULT_PATH: '/nonexistent-env-vault' } });
+const cli = (cwd, ...args) => spawnSync(process.execPath, [BIN, 'check', ...args, '--now', '2026-06-01'], { cwd, encoding: 'utf8', env: testEnv({ RESEARCH_VAULT_PATH: '/nonexistent-env-vault' }) });
 const C = [
   '-- per 2026-01-01-fx-doc@dep=1.2.3', 'function ns.pinned()', 'end', '',
   '-- per 2026-01-01-fx-doc@dep=1.0.0', 'function ns.behind()', 'end', '',

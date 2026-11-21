@@ -5,7 +5,7 @@ import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { tmpVault, put, fixtureVault } from './helpers.mjs';
+import { tmpVault, put, fixtureVault, testEnv } from './helpers.mjs';
 import { missingGates } from '../hooks/stop-gate.mjs';
 import {
   unitHashes, changedUnits, mdUnits,
@@ -185,7 +185,7 @@ const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'research
 
 function gateCli(cwd, vault, ...args) {
   const r = spawnSync(process.execPath, [CLI, 'gate', ...args], {
-    cwd, encoding: 'utf8', env: { ...process.env, RESEARCH_VAULT_PATH: vault },
+    cwd, encoding: 'utf8', env: testEnv({ RESEARCH_VAULT_PATH: vault }),
   });
   return { code: r.status, out: r.stdout, err: r.stderr };
 }
@@ -222,7 +222,7 @@ test('CLI gate staged lists staged gated files and --check exits 1 until each ha
   writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault, gates: { globs: ['docs/*.md'] } }) + '\n');
   writeFileSync(join(root, 'docs', 'second.md'), 'Second draft.\n');
   writeFileSync(join(root, 'README.md'), 'not gated\n');
-  const git = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' });
+  const git = (...a) => spawnSync('git', ['-C', root, ...a], { env: testEnv(), encoding: 'utf8' });
   git('init', '-q');
   git('add', 'docs/reply.md', 'docs/second.md', 'README.md');
   const missing = gateCli(root, vault, 'staged', '--check');
@@ -437,7 +437,7 @@ import { parseProjectConfig } from '../bin/lib/projectconfig.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
 
 function codeCli(cwd, ...args) {
-  const r = spawnSync(process.execPath, [CLI, 'gate', ...args], { cwd, encoding: 'utf8', env: { ...process.env, RESEARCH_VAULT_PATH: '/nonexistent-env-vault' } });
+  const r = spawnSync(process.execPath, [CLI, 'gate', ...args], { cwd, encoding: 'utf8', env: testEnv({ RESEARCH_VAULT_PATH: '/nonexistent-env-vault' }) });
   return { code: r.status, out: r.stdout, err: r.stderr };
 }
 
@@ -633,7 +633,7 @@ test('an <img> named in prose with no src is no unit', () => {
 test('gate status, gate staged and the stop hook see an image that changed or vanished, and a draft with no image keeps its exact-bytes verdict', () => {
   const { root, page, png } = imageRepo();
   const vault = fixtureVault();
-  const git = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' });
+  const git = (...a) => spawnSync('git', ['-C', root, ...a], { env: testEnv(), encoding: 'utf8' });
   git('init', '-q');
   gateCli(root, vault, 'record', 'ws/lessons/0001-x.html', 'PASS');
   git('add', 'ws/lessons/0001-x.html');
@@ -717,7 +717,7 @@ test('referencedImages lists an image by existence without reading it, and no im
 test('an unreadable gated page that is not staged does not stop gate staged, and a staged deletion of its image alone selects nothing', (t) => {
   const { root, page, png } = imageRepo();
   const vault = fixtureVault();
-  const git = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' });
+  const git = (...a) => spawnSync('git', ['-C', root, ...a], { env: testEnv(), encoding: 'utf8' });
   git('init', '-q');
   gateCli(root, vault, 'record', 'ws/lessons/0001-x.html', 'PASS');
   git('-c', 'user.email=a@b', '-c', 'user.name=t', 'add', '-A');
@@ -751,7 +751,7 @@ test('an image the gate cannot read is a missing image: status names its img: un
   if (process.getuid?.() === 0) return t.skip('root ignores mode bits');
   const { root, page, png } = imageRepo();
   const vault = fixtureVault();
-  const git = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' });
+  const git = (...a) => spawnSync('git', ['-C', root, ...a], { env: testEnv(), encoding: 'utf8' });
   t.after(() => chmodSync(png, 0o644));
   git('init', '-q');
   gateCli(root, vault, 'record', 'ws/lessons/0001-x.html', 'PASS');
@@ -854,7 +854,7 @@ test('gate staged and gate status count the cited ids of the changed units that 
   const root = boundRepo(vault);
   writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault, gates: { globs: ['docs/*.md'] } }) + '\n');
   writeFileSync(join(root, 'docs', 'elsewhere.md'), '# Elsewhere\n\n<!-- evidence: 2026-09-09-not-here 2026-09-10-nor-here 2026-01-01-fx-experiment -->\n\nA claim.\n');
-  const git = (...a) => spawnSync('git', ['-C', root, ...a], { encoding: 'utf8' });
+  const git = (...a) => spawnSync('git', ['-C', root, ...a], { env: testEnv(), encoding: 'utf8' });
   git('init', '-q');
   git('add', 'docs/reply.md', 'docs/elsewhere.md');
   const st = gateCli(root, vault, 'staged', '--check');
@@ -899,7 +899,7 @@ test('an edit to requirements.json reopens the step unit alone, and gate status 
 test('gate staged --check reports the lesson when only its requirements.json is staged', () => {
   const vault = fixtureVault();
   const { root, req } = taskRepo(vault);
-  const git = (...a) => spawnSync('git', ['-C', root, '-c', 'user.email=a@b', '-c', 'user.name=t', ...a], { encoding: 'utf8' });
+  const git = (...a) => spawnSync('git', ['-C', root, '-c', 'user.email=a@b', '-c', 'user.name=t', ...a], { env: testEnv(), encoding: 'utf8' });
   git('init', '-q');
   gateCli(root, vault, 'record', TASK_PAGE, 'PASS');
   git('add', '-A');

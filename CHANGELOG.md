@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Tests: every child process a test starts (the CLI, the hooks, git, lab and task scripts) now gets its environment from one helper, `testEnv` in `test/helpers.mjs`: an allow list of inherited variables, `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` under a temporary home, an empty global git config, and no `RESEARCH_VAULT_*` variable unless the test sets one. `test/host-install.test.mjs` used to write the user's default-vault pointer on a machine that had none, and git-using tests read the developer's global git config. `test/isolation.test.mjs` fails when a test file starts a child process without the helper. Not covered: code a test calls in-process still reads the test runner's own environment.
+
 - Tests: the capture test that checks an explicit `--vault` against the operating system's default vault now points `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` at its own temporary root and refuses to write when the computed default is outside it. On Windows it used to write a file named `sentinel` into the developer's real default vault.
 
 - The repository's own development hook in `.claude/settings.json` is registered in exec form, `node` with the argument `${CLAUDE_PROJECT_DIR}/scripts/deps.mjs`, so it no longer depends on the directory it is launched from. `scripts/deps.mjs` reads a path after `${CLAUDE_PROJECT_DIR}/` as a repository path, as it does after `${CLAUDE_PLUGIN_ROOT}/`, which keeps the graph's edge from the settings file to the script.

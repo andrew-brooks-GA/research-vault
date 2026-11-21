@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { testEnv } from './helpers.mjs';
 import { join, dirname } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -58,7 +59,7 @@ test('importing quiz.js in Node touches no DOM', () => {
     const m = await import(${JSON.stringify(QUIZ)});
     console.log(JSON.stringify({ touched, hasDocument: typeof document !== 'undefined', exports: Object.keys(m).sort() }));
   `;
-  const out = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' }));
+  const out = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { env: testEnv(), encoding: 'utf8' }));
   console.log(`exports=${out.exports.length} dom_accesses=${out.touched}`);
   assert.deepEqual(out.exports, ['LAB_ENDED_EARLY', 'answerLengthSpread', 'answerMark', 'grade', 'labStatus', 'lessonIdFrom', 'mergeQuizzes', 'mountReplays', 'neighbours', 'pathPosition', 'renderLab', 'renderQuiz', 'resultsFile', 'shuffleOptions']);
   assert.equal(out.touched, 0);

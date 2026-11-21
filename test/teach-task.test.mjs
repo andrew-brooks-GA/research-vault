@@ -15,7 +15,7 @@ import { parseFrontmatter } from '../bin/lib/frontmatter.mjs';
 import { lintWorkspace } from '../bin/lib/lesson.mjs';
 import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
-import { fixtureVault } from './helpers.mjs';
+import { fixtureVault, testEnv } from './helpers.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'research-vault.mjs');
@@ -27,8 +27,8 @@ const copy = () => {
   cpSync(FIX, dir, { recursive: true });
   return dir;
 };
-const script = (ws, name) => assert.equal(spawnSync(join(ws, 'evidence', '0001', name), [], { cwd: ws }).status, 0, name);
-const check = (ws, ...args) => spawnSync(process.execPath, [BIN, 'teach', 'check', ...args, ws], { encoding: 'utf8', timeout: 30000 });
+const script = (ws, name) => assert.equal(spawnSync(join(ws, 'evidence', '0001', name), [], { env: testEnv(), cwd: ws }).status, 0, name);
+const check = (ws, ...args) => spawnSync(process.execPath, [BIN, 'teach', 'check', ...args, ws], { env: testEnv(), encoding: 'utf8', timeout: 30000 });
 const editFile = (path, from, to) => writeFileSync(path, readFileSync(path, 'utf8').replace(from, to));
 const writeReqs = (ws, doc) => writeFileSync(join(ws, 'evidence', '0001', 'requirements.json'), typeof doc === 'string' ? doc : JSON.stringify(doc));
 const writeChecker = (ws, body, timeout) => {
@@ -243,7 +243,7 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   test(`the runner: ${sig} to teach check while the checker sleeps stops its group, exit 2`, async () => {
     const ws = copy();
     writeChecker(ws, 'echo $$ > checker.pid\nsleep 30 & sleep 30\n');
-    const child = spawn(process.execPath, [BIN, 'teach', 'check', '1', ws], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [BIN, 'teach', 'check', '1', ws], { env: testEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
     child.stderr.on('data', (b) => { stderr += b; });
     const exited = once(child, 'exit');
@@ -303,7 +303,7 @@ test('teach check arguments: no evidence folder, no number, and a flag before th
 // Issue 79 commit 4 (D5, D6, D7): a check records an attempt when its lists change, an answer is recorded, and every
 // view shows a task attempt as its summary, never as a score.
 const TODAY = new Date().toISOString().slice(0, 10);
-const teach = (ws, ...args) => spawnSync(process.execPath, [BIN, 'teach', ...args, ws], { encoding: 'utf8', timeout: 30000 });
+const teach = (ws, ...args) => spawnSync(process.execPath, [BIN, 'teach', ...args, ws], { env: testEnv(), encoding: 'utf8', timeout: 30000 });
 // In the order teachIndex reads them: a-...-0001.md before a-...-0001-2.md.
 const attemptFiles = (ws) => (existsSync(join(ws, 'attempts')) ? readdirSync(join(ws, 'attempts')).sort((x, y) => attemptOrder(x.slice(0, -3), y.slice(0, -3))) : []);
 const attemptAt = (ws, i) => parseFrontmatter(readFileSync(join(ws, 'attempts', attemptFiles(ws).at(i)), 'utf8')).data;
@@ -627,7 +627,7 @@ const { startRun, endRun, readRun, runLine, openLine, checkAttempt } = await imp
 const { certificationRuns, writeAttempt } = await import('../bin/lib/teach.mjs');
 const RUN = '.teach-certify.json';
 const ENDING = '.teach-certify.ending.json';
-const runScript = (ws, n, name) => assert.equal(spawnSync(join(ws, 'evidence', n, name), [], { cwd: ws }).status, 0, `${n} ${name}`);
+const runScript = (ws, n, name) => assert.equal(spawnSync(join(ws, 'evidence', n, name), [], { env: testEnv(), cwd: ws }).status, 0, `${n} ${name}`);
 const state = (ws) => JSON.parse(readFileSync(join(ws, RUN), 'utf8'));
 // An in-process start or end with the clock passed in; what they print is collected, not written.
 const io = (now) => { const out = [], err = []; return { now, out: (s) => out.push(s), err: (s) => err.push(s), lines: { out, err } }; };
@@ -718,7 +718,7 @@ test('certification start: task 2\'s setup.sh exits 3: exit 2, no state, and the
 test('certification start: SIGINT during a setup stops its group, removes the state and exits 2', async () => {
   const ws = copy();
   writeFileSync(join(ws, 'evidence', '0001', 'setup.sh'), '#!/usr/bin/env bash\necho $$ > setup.pid\nsleep 30 & sleep 30\n', { mode: 0o755 });
-  const child = spawn(process.execPath, [BIN, 'teach', 'check', '--start', '1', ws], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [BIN, 'teach', 'check', '--start', '1', ws], { env: testEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
   let stderr = '';
   child.stderr.on('data', (b) => { stderr += b; });
   const exited = once(child, 'exit');

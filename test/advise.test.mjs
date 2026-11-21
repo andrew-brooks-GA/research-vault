@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { advise, OPEN_QUESTION_DAYS } from '../bin/lib/advise.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
-import { tmpVault, put } from './helpers.mjs';
+import { tmpVault, put, testEnv } from './helpers.mjs';
 import { run as adviseRun } from '../bin/commands/advise.mjs';
 import { listStale } from '../bin/lib/stale.mjs';
 import { applyVerification } from '../bin/commands/verify.mjs';
@@ -219,7 +219,7 @@ test('advise lists active questions not yet answered and older than 60 days by t
     [{ id: '2026-01-01-i', state: 'investigating', ageDays: 73 }, { id: '2026-01-01-q', state: 'open', ageDays: 73 }]);
   assert.deepEqual(advise(dir, process.cwd(), { now: '2026-03-02' }).openQuestions, []);
   assert.equal(advise(dir, process.cwd(), { now: '2026-03-03' }).openQuestions.length, 2);
-  const out = execFileSync('node', ['bin/research-vault.mjs', 'advise', '--vault', dir], { encoding: 'utf8' });
+  const out = execFileSync(process.execPath, ['bin/research-vault.mjs', 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8' });
   assert.match(out, /^open questions over 60 days \(2\): 2026-01-01-i \(investigating, \d+d\), 2026-01-01-q \(open, \d+d\)$/m);
 });
 
@@ -244,7 +244,7 @@ test('advise pairs supersede suspects by source_url or subject at one version, o
   ]);
   applyVerification(dir, { id: '2026-01-01-a', method: 'cross-referenced', result: 'outdated', supersededBy: '2026-02-01-b', repoRoot: process.cwd() });
   assert.equal(advise(dir, process.cwd()).supersedeSuspects.length, 2);
-  const out = execFileSync('node', ['bin/research-vault.mjs', 'advise', '--vault', dir], { encoding: 'utf8' });
+  const out = execFileSync(process.execPath, ['bin/research-vault.mjs', 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8' });
   assert.match(out, /^supersede suspects \(2\): 2026-03-01-c -> 2026-04-01-d \(subject\), 2026-06-01-f -> 2026-07-01-g \(subject\)$/m);
 });
 
@@ -266,7 +266,7 @@ test('advise pairs near duplicates by host and path or by title terms, older fir
   assert.deepEqual(r.supersedeSuspects, [{ older: '2026-01-01-a', newer: '2026-05-01-e', by: 'source_url' }]);
   applyVerification(dir, { id: '2026-01-01-a', method: 'cross-referenced', result: 'outdated', supersededBy: '2026-05-01-e', repoRoot: process.cwd() });
   assert.ok(advise(dir, process.cwd()).nearDuplicates.every(p => p.older !== '2026-01-01-a' && p.newer !== '2026-01-01-a'));
-  const out = execFileSync('node', ['bin/research-vault.mjs', 'advise', '--vault', dir], { encoding: 'utf8' });
+  const out = execFileSync(process.execPath, ['bin/research-vault.mjs', 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8' });
   assert.match(out, /^near duplicates \(2\): 2026-02-01-b -> 2026-05-01-e \(url\), 2026-03-01-c -> 2026-05-01-e \(title\)$/m);
 });
 
@@ -292,7 +292,7 @@ test('advise reports usage from the log: surfaced and cited counts, topic counts
   const empty = tmpVault();
   put(empty, 'source', '2026-01-01-s', { source_type: 'article', source_url: 'https://example.com/s' });
   assert.deepEqual(advise(empty, process.cwd()).usage, { entries: [], topics: {}, cold: { queried: [], unqueried: ['2026-01-01-s'] } });
-  const out = execFileSync('node', ['bin/research-vault.mjs', 'advise', '--vault', dir], { encoding: 'utf8' });
+  const out = execFileSync(process.execPath, ['bin/research-vault.mjs', 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8' });
   assert.match(out, /^usage \(3\): 2026-01-01-a \(surfaced 2, cited 0\), 2026-02-01-b \(surfaced 0, cited 1\), 2026-05-01-n \(surfaced 1, cited 2\)$/m);
   assert.match(out, /^topics queried \(1\): kubernetes \(2 queried, 1 no-match\)$/m);
   assert.match(out, /^cold sources under a queried topic \(1\): 2026-01-01-a$/m);
@@ -316,6 +316,6 @@ test('advise pairs one source_url captured with a version and without one (issue
     { older: '2026-01-01-a', newer: '2026-02-01-b', by: 'source_url-unversioned' },
     { older: '2026-07-01-g', newer: '2026-08-01-h', by: 'source_url' },
   ]);
-  const out = execFileSync('node', ['bin/research-vault.mjs', 'advise', '--vault', dir], { encoding: 'utf8' });
+  const out = execFileSync(process.execPath, ['bin/research-vault.mjs', 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8' });
   assert.match(out, /^supersede suspects \(2\): 2026-01-01-a -> 2026-02-01-b \(source_url-unversioned\), 2026-07-01-g -> 2026-08-01-h \(source_url\)$/m);
 });

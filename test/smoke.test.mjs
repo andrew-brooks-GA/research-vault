@@ -5,10 +5,10 @@ import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { tmpVault, put } from './helpers.mjs';
+import { tmpVault, put, testEnv } from './helpers.mjs';
 
 test('CLI prints usage and exits 0 with no args', () => {
-  const out = execFileSync('node', ['bin/research-vault.mjs', '--help'], { encoding: 'utf8' });
+  const out = execFileSync(process.execPath, ['bin/research-vault.mjs', '--help'], { env: testEnv(), encoding: 'utf8' });
   assert.match(out, /research-vault/);
   assert.match(out, /init\|lint\|capture\|verify\|search\|related\|manifest/);
 });
@@ -16,7 +16,7 @@ test('CLI prints usage and exits 0 with no args', () => {
 test('CLI does not truncate large piped stdout (process.exit after write)', () => {
   const dir = tmpVault('rv-pipe-');
   for (let i = 0; i < 400; i++) put(dir, 'source', `2026-01-01-s${i}`, { source_type: 'article', source_url: `https://example.com/${i}` });
-  const out = execFileSync('node', ['bin/research-vault.mjs', 'manifest', '--vault', dir], { maxBuffer: 1 << 26 });
+  const out = execFileSync(process.execPath, ['bin/research-vault.mjs', 'manifest', '--vault', dir], { env: testEnv(), maxBuffer: 1 << 26 });
   assert.ok(out.length > 65536, `expected > 64 KB, got ${out.length}`);
   assert.doesNotThrow(() => JSON.parse(out.toString()));
 });
@@ -24,10 +24,10 @@ test('CLI does not truncate large piped stdout (process.exit after write)', () =
 // Issue 72 item 9: --help or -h after a command prints usage and runs nothing, even with no vault yet.
 test('a command given --help or -h prints its row of the command table and writes nothing', () => {
   const root = mkdtempSync(join(tmpdir(), 'rv-help-'));
-  const env = { PATH: process.env.PATH, HOME: root, XDG_CONFIG_HOME: join(root, 'config'), XDG_DATA_HOME: join(root, 'data'), RESEARCH_VAULT_PATH: join(root, 'vault') };
+  const overrides = { HOME: root, USERPROFILE: root, APPDATA: join(root, 'AppData', 'Roaming'), LOCALAPPDATA: join(root, 'AppData', 'Local'), XDG_CONFIG_HOME: join(root, 'config'), XDG_DATA_HOME: join(root, 'data'), RESEARCH_VAULT_PATH: join(root, 'vault') };
   const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
   const cli = join(repo, 'bin', 'research-vault.mjs');
-  const run = (...argv) => spawnSync(process.execPath, [cli, ...argv], { cwd: root, env, encoding: 'utf8', timeout: 20000 });
+  const run = (...argv) => spawnSync(process.execPath, [cli, ...argv], { cwd: root, env: testEnv(overrides), encoding: 'utf8', timeout: 20000 });
   const names = readFileSync(cli, 'utf8').match(/commands: ([\w|-]+)/)[1].split('|');
   const table = readFileSync(join(repo, 'docs', 'REFERENCE.md'), 'utf8');
   for (const [cmd, flag] of [...names.map((c) => [c, '--help']), ['init', '-h']]) {

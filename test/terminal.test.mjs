@@ -15,14 +15,14 @@ import { createServer } from '../bin/lib/teach.mjs';
 import { HELPER, ptyAvailable } from '../bin/lib/terminal.mjs';
 import { inputQueue, runText } from '../skills/research-teach/terminal/terminal.mjs';
 import { loadTeachSchema } from '../bin/lib/schema.mjs';
-import { fixtureVault } from './helpers.mjs';
+import { fixtureVault, testEnv } from './helpers.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'research-vault.mjs');
 const SCHEMA = loadTeachSchema(ROOT);
 const SHELL = ['/bin/bash', '--noprofile', '--norc', '-i'];
 const TERM_DIR = join(ROOT, 'skills', 'research-teach', 'terminal');
-const skip = spawnSync('python3', ['-c', 'import pty']).status !== 0 && 'needs python3 with its pty module';
+const skip = spawnSync('python3', ['-c', 'import pty'], { env: testEnv() }).status !== 0 && 'needs python3 with its pty module';
 const newT = () => randomBytes(32).toString('hex');
 const made = [];
 const tempDir = (prefix) => { const d = realpathSync(mkdtempSync(join(tmpdir(), prefix))); made.push(d); return d; };
@@ -30,7 +30,7 @@ const workspace = () => { const ws = tempDir('rv-term-'); writeFileSync(join(ws,
 const servers = [];
 
 async function start(ws, opts = {}) {
-  const server = createServer(ws, { schema: SCHEMA, shell: SHELL, ...opts });
+  const server = createServer(ws, { schema: SCHEMA, shell: SHELL, env: testEnv(), ...opts });
   servers.push(server);
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -144,7 +144,7 @@ before(async () => {
   if (skip) return;
   const t = newT();
   ws = workspace();
-  ({ port } = await start(ws, { terminal: true, t, env: { ...process.env, CLAUDE_TERM_TEST: 'agent' } }));
+  ({ port } = await start(ws, { terminal: true, t, env: testEnv({ CLAUDE_TERM_TEST: 'agent' }) }));
   cookie = await openCookie(port, t);
 });
 
@@ -313,7 +313,7 @@ test('with --labs and --terminal, one GET /labs/open sets one cookie that both a
 });
 
 test("closing the helper's standard input ends the shell", { skip }, async () => {
-  const child = spawn('python3', ['-c', HELPER, ...SHELL], { cwd: tempDir('rv-term-helper-'), stdio: ['pipe', 'pipe', 'ignore', 'pipe'], detached: true });
+  const child = spawn('python3', ['-c', HELPER, ...SHELL], { env: testEnv(), cwd: tempDir('rv-term-helper-'), stdio: ['pipe', 'pipe', 'ignore', 'pipe'], detached: true });
   let text = '';
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (c) => { text += c; });
@@ -334,7 +334,7 @@ test('ptyAvailable is false for a missing program; teach serve --terminal withou
   const ws = tempDir('rv-term-cli-');
   cpSync(join(ROOT, 'test', 'fixtures', 'teach'), ws, { recursive: true });
   const r = spawnSync(process.execPath, [BIN, 'teach', 'serve', '--terminal', ws],
-    { env: { ...process.env, PATH: tempDir('rv-term-path-'), RESEARCH_VAULT_PATH: fixtureVault() }, encoding: 'utf8', timeout: 10000 });
+    { env: testEnv({ PATH: tempDir('rv-term-path-'), RESEARCH_VAULT_PATH: fixtureVault() }), encoding: 'utf8', timeout: 10000 });
   assert.deepEqual([r.status, r.stdout, r.stderr], [2, '', 'teach serve: --terminal needs python3 with its pty module\n']);
 });
 
@@ -342,7 +342,7 @@ test('teach serve --terminal prints the terminal: open line; with --labs too, on
   for (const [flags, word] of [[['--terminal'], 'terminal'], [['--labs', '--terminal'], 'labs']]) {
     const ws = tempDir('rv-term-cli-');
     cpSync(join(ROOT, 'test', 'fixtures', 'teach'), ws, { recursive: true });
-    const child = spawn(process.execPath, [BIN, 'teach', 'serve', ...flags, ws], { env: { ...process.env, RESEARCH_VAULT_PATH: fixtureVault() }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [BIN, 'teach', 'serve', ...flags, ws], { env: testEnv({ RESEARCH_VAULT_PATH: fixtureVault() }), stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (c) => { stdout += c; });

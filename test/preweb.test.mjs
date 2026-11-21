@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { tmpVault, put } from './helpers.mjs';
+import { tmpVault, put, testEnv } from './helpers.mjs';
 import { vaultContext } from '../hooks/pre-web.mjs';
 import { writeBlocklist } from './blocklist.test.mjs';
 
@@ -23,7 +23,7 @@ test('pre-web hook surfaces matching entries and exact URL hits', () => {
 test('pre-web hook CLI emits PreToolUse additionalContext and exits 0', () => {
   const v = tmpVault('rv-preweb-');
   put(v, 'source', '2026-01-01-vcluster-sleep', { title: 'vcluster sleep mode', topics: ['vcluster'], source_url: 'https://docs.vcluster.com/sleep-mode', source_type: 'official-docs', subject: { name: 'vcluster', version: '0.20' } });
-  const r = spawnSync(process.execPath, ['hooks/pre-web.mjs'], { input: JSON.stringify({ tool_name: 'WebSearch', tool_input: { query: 'vcluster sleep mode' }, cwd: v }), env: { ...process.env, RESEARCH_VAULT_PATH: v }, encoding: 'utf8' });
+  const r = spawnSync(process.execPath, ['hooks/pre-web.mjs'], { input: JSON.stringify({ tool_name: 'WebSearch', tool_input: { query: 'vcluster sleep mode' }, cwd: v }), env: testEnv({ RESEARCH_VAULT_PATH: v }), encoding: 'utf8' });
   assert.equal(r.status, 0);
   const out = JSON.parse(r.stdout);
   assert.equal(out.hookSpecificOutput.hookEventName, 'PreToolUse');
