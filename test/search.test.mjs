@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, appendFileSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, cpSync, appendFileSync, writeFileSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { searchVault, matchRows, sortRows } from '../bin/commands/search.mjs';
@@ -14,6 +14,7 @@ import { run as searchRun, STALE_WEIGHT } from '../bin/commands/search.mjs';
 import { run as embedRun } from '../bin/commands/embed.mjs';
 import { applyVerification } from '../bin/commands/verify.mjs';
 import { writeEntry } from '../bin/lib/fsutil.mjs';
+import { PROJECT_CONFIG_FILENAME } from '../bin/lib/projectconfig.mjs';
 import { fieldOrder } from '../bin/lib/schema.mjs';
 import { mkdirSync } from 'node:fs';
 import { boundRepo, fakeFetch } from './embed.test.mjs';
@@ -29,7 +30,9 @@ function freshVault() {
 
 test('CLI search reports a refused project vault and accepts an explicit --vault', (t) => {
   const fixture = outsideVaultRepo(t);
-  const { cwd, binding, vault, id, title } = fixture;
+  const { vault, id, title } = fixture;
+  const cwd = realpathSync(fixture.cwd);
+  const binding = join(cwd, PROJECT_CONFIG_FILENAME);
   const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
   const search = (...args) => spawnSync(process.execPath, [cli, 'search', '--type', 'note', '--json', ...args], {
     cwd, env: testEnv(), encoding: 'utf8',

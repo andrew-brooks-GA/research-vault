@@ -38,7 +38,7 @@ test('scaffoldProjectConfig refuses to overwrite an existing binding', () => {
 });
 
 // ---- code links (spec 15 D7) ----
-import { mkdirSync, mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, existsSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,7 +49,7 @@ import { testEnv } from './helpers.mjs';
 const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'research-vault.mjs');
 
 test('init --project writes a relative vault that resolves from a nested working directory', (t) => {
-  const repo = mkdtempSync(join(tmpdir(), 'rv-init-project-'));
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'rv-init-project-')));
   t.after(() => rmSync(repo, { recursive: true, force: true }));
   const nested = join(repo, 'docs');
   mkdirSync(nested);
@@ -66,7 +66,7 @@ test('init --project writes a relative vault that resolves from a nested working
 });
 
 test('first-run project init binds the default vault and plain init creates it', (t) => {
-  const root = mkdtempSync(join(tmpdir(), 'rv-init-project-default-'));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'rv-init-project-default-')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const repo = join(root, 'repo');
   const home = join(root, 'home');
@@ -94,7 +94,7 @@ test('first-run project init binds the default vault and plain init creates it',
 });
 
 test('project init warns about an outside vault that search requires an override to use', (t) => {
-  const root = mkdtempSync(join(tmpdir(), 'rv-init-project-outside-'));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'rv-init-project-outside-')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const repo = join(root, 'repo');
   const vault = join(root, 'outside');
@@ -149,7 +149,7 @@ test('scaffoldProjectConfig without codeLinks writes today\'s file', () => {
 });
 
 test('CLI init --project --code-links writes the block and prints where the versions key goes; a vault outside the repo exits 1', () => {
-  const repo = mkdtempSync(join(tmpdir(), 'rv-init-code-'));
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'rv-init-code-')));
   const run = (...args) => spawnSync(process.execPath, [CLI, 'init', '--project', ...args], { env: testEnv(), cwd: repo, encoding: 'utf8' });
   let r = run('--vault', '../Research', '--code-links', 'src/**/*.lua');
   assert.equal(r.status, 1);
