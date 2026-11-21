@@ -26,7 +26,7 @@ const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.m
 // text itself, and the test fails when either file stops containing it. Give one only when the
 // literal really is in both files; a row about two values being equal stays prose.
 export const COUPLINGS = [
-  ['skills/research-teach/SKILL.md', 'skills/research-teach/MISSION-FORMAT.md', 'profile topic and draft/depth bullet markers shared by the interview and format', /teach-profile|- Draft:|- Depth:/],
+  ['skills/research-teach/SKILL.md', 'skills/research-teach/MISSION-FORMAT.md', 'profile search/capture topic and draft/depth bullet markers shared by the interview and format', /--topics? teach-profile|- Draft:|- Depth:/],
   ['bin/lib/capture-operation.mjs', 'bin/commands/capture.mjs', 'opt-in key syntax and structured validation error protocol', 'INPUT_INVALID'],
   ['bin/lib/capture-operation.mjs', 'docs/RELIABILITY.md', 'receipt v1, replay and lock recovery protocol', 'historical'],
   ['bin/commands/capture.mjs', 'docs/REFERENCE.md', 'opt-in operation-id and receipt output contract', 'operation-id'],

@@ -259,6 +259,8 @@ test('teach profile formats share their markers and interview references', () =>
     assert.ok(skill.includes(text), `skill lacks ${text}`);
     assert.ok(mission.includes(text), `mission format lacks ${text}`);
   }
+  assert.ok(skill.includes('--topic teach-profile'));
+  assert.ok(mission.includes('--topics teach-profile'));
   assert.ok(skill.includes('AUTHOR-INTERVIEW.md'));
   const rule = read('skills/research-teach/PATH-FORMAT.md').split('\n').find(line => line.startsWith('- **Cut a profile'));
   assert.ok(rule.includes('PATH_PROJECT_AFTER'));
