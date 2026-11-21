@@ -43,7 +43,9 @@ The nine full workflow skills retain their research names. Codex-generated instr
 There is no automatic interception guarantee for hosted web search. Search the vault explicitly before web research. The generated instructions and session hook repeat this requirement.
 
 ## Claims review and lesson reading
-<!-- evidence: 2026-11-13-codex-adapter-implementation 2026-11-13-codex-adapter-validation -->
+<!-- evidence: 2026-11-13-codex-adapter-implementation 2026-11-13-codex-adapter-validation 2026-11-21-probe-run-timeout-option-host-review 2026-11-21-probe-program-timeout-option-host-review -->
+
+Use `--timeout <seconds>` to set the review time limit to a whole number from 1 to 3600 seconds; the default is 180 seconds. When the time limit passes, the review stops with an error that names the limit and the flag; in one probe with `--timeout 1` it printed `Codex review timed out after 1 seconds; raise --timeout`.
 
 The generated workflows use a new Codex CLI session for every review rather than resuming or forking the author's conversation:
 

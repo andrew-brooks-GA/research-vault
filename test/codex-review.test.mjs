@@ -4,6 +4,8 @@ import { writeFileSync, readFileSync, mkdirSync, existsSync, rmSync } from 'node
 import { join, relative } from 'node:path';
 import { tmpVault, fixtureVault, put, codeRepo } from './helpers.mjs';
 import { reviewRequest, runCodexReview } from '../bin/lib/codex-review.mjs';
+import { run } from '../bin/commands/host.mjs';
+import { parseArgs } from '../bin/lib/args.mjs';
 
 function setup(t) {
   const root = tmpVault('rv-review-');
@@ -27,11 +29,38 @@ test('fresh Codex review declares exact evidence and preserves policy, without w
     assert.ok(!args.includes('resume')); assert.ok(!args.includes('fork'));
     assert.notEqual(opts.cwd, options.root);
     assert.equal(opts.input, request.prompt);
+    assert.equal(opts.timeout, 180000);
     return response('Evidence table\nVERDICT: PASS');
   } });
   assert.equal(r.verdict, 'PASS'); assert.equal(r.actualModel, null);
   assert.equal(JSON.parse(readFileSync(options.out)).configuredModel, 'gpt-6.1-sol');
   assert.equal(existsSync(join(options.root, '.research-vault-ledger.jsonl')), false);
+});
+
+test('review passes a custom timeout to spawn in milliseconds', t => {
+  const seconds = 3600;
+  runCodexReview({ ...setup(t), timeout: seconds * 1000 }, { spawn: (command, args, opts) => {
+    assert.equal(opts.timeout, seconds * 1000);
+    return response('VERDICT: PASS');
+  } });
+});
+
+test('review timeout names the time limit and flag, while other process errors keep their message', t => {
+  const o = setup(t);
+  for (const seconds of [180, 600]) {
+    assert.throws(() => runCodexReview({ ...o, ...(seconds === 180 ? {} : { timeout: seconds * 1000 }) }, { spawn: () => ({ error: { code: 'ETIMEDOUT', message: 'spawnSync codex ETIMEDOUT' } }) }),
+      { message: `Codex review timed out after ${seconds} seconds; raise --timeout` });
+    assert.equal(existsSync(o.out), false);
+  }
+  assert.throws(() => runCodexReview(o, { spawn: () => ({ error: { code: 'ENOENT', message: 'spawnSync codex ENOENT' } }) }),
+    { message: 'Codex review failed: spawnSync codex ENOENT' });
+});
+
+test('host review rejects invalid timeout arguments before reading a draft or calling Codex', async () => {
+  for (const value of ['0', '3601', '-1', '1.5', '1e2', 'abc', '', undefined]) {
+    const args = parseArgs(['host', 'review', 'codex', '--draft', 'missing-draft.md', '--out', 'unused-report.json', '--timeout', ...(value === undefined ? [] : [value])]);
+    await assert.rejects(run(args), { message: '--timeout must be a whole number of seconds from 1 to 3600' });
+  }
 });
 
 test('review rejects process failure, missing/conflicting verdicts and changed inputs', t => {

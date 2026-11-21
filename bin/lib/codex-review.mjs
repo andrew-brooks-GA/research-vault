@@ -66,7 +66,9 @@ export function runCodexReview(options, { spawn = spawnSync } = {}) {
       '-m', request.model, '-c', `model_reasoning_effort=${JSON.stringify(request.effort)}`, '-c', 'project_doc_max_bytes=0', '-c', 'web_search="disabled"',
       ...'hooks plugins apps memories image_generation browser_use computer_use'.split(' ').flatMap(f => ['--disable', f]),
       '--json', ...request.images.flatMap(p => ['--image', p]), '-'];
-    const result = spawn('codex', args, { input: request.prompt, cwd, encoding: 'utf8', timeout: options.timeout ?? 180000, maxBuffer: 16 * 1024 * 1024 });
+    const timeout = options.timeout ?? 180000;
+    const result = spawn('codex', args, { input: request.prompt, cwd, encoding: 'utf8', timeout, maxBuffer: 16 * 1024 * 1024 });
+    if (result.error?.code === 'ETIMEDOUT') throw new Error(`Codex review timed out after ${timeout / 1000} seconds; raise --timeout`);
     if (result.error || result.status !== 0) throw new Error(`Codex review failed: ${result.error?.message || result.stderr || `exit ${result.status}`}`);
     const events = result.stdout.split('\n').filter(Boolean).map(line => JSON.parse(line));
     if (events.some(e => ['turn.failed', 'error'].includes(e.type))) throw new Error('Codex review returned an error');

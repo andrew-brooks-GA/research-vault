@@ -347,9 +347,9 @@ npm test     # node --test; no test-framework dependencies
 CI runs the suite plus `init`, `lint --check`, the AGENTS.md drift check, an encoding check and `npm run lint:self` on Linux and macOS with Node 22 and 24.
 
 ## host
-<!-- evidence: 2026-11-13-codex-adapter-implementation 2026-11-13-codex-adapter-validation -->
+<!-- evidence: 2026-11-13-codex-adapter-implementation 2026-11-13-codex-adapter-validation 2026-11-21-probe-run-timeout-option-host-review 2026-11-21-probe-program-timeout-option-host-review -->
 
-`host install codex --at <project> [--dry-run] [--without-hooks] [--model <name>] [--effort <level>]` installs project-local Codex tasks, agents and optional hooks. `host status codex --at <project>` lists changed owned files; `host uninstall codex --at <project>` removes unchanged owned files. `host paths` prints package, CLI, asset and resolved vault paths. `host review codex --draft <file> --out <new-report> [--role claims-reviewer|lesson-reader] [--extra <ids>] [--model <name>] [--effort <level>]` runs a fresh read-only Codex review and leaves the claims ledger unchanged. See [Codex setup](CODEX.md) for trust, limitations and migration.
+`host install codex --at <project> [--dry-run] [--without-hooks] [--model <name>] [--effort <level>]` installs project-local Codex tasks, agents and optional hooks. `host status codex --at <project>` lists changed owned files; `host uninstall codex --at <project>` removes unchanged owned files. `host paths` prints package, CLI, asset and resolved vault paths. `host review codex --draft <file> --out <new-report> [--role claims-reviewer|lesson-reader] [--extra <ids>] [--model <name>] [--effort <level>] [--timeout <seconds>]` runs a fresh read-only Codex review and leaves the claims ledger unchanged. See [Codex setup](CODEX.md) for trust, limitations and migration.
 
 ## Resumable capture (opt-in)
 <!-- evidence: 2026-11-17-capture-operation-lines-research-vault-issue 2026-11-17-probe-capture-verify-capture-operation-gate 2026-11-17-second-probe-log-capture-verify-writes -->
