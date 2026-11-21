@@ -92,8 +92,9 @@ export function compilePattern(field, source, { groups = 1, flags = '' } = {}) {
   return re;
 }
 
-// A path relative to the binding file with no `..` segment.
-const isRelativeInside = (p) => !isAbsolute(p) && !p.split(/[\\/]/).includes('..');
+// A non-empty path relative to the binding file with no `..` segment.
+export const isRelativeInside = (p) => typeof p === 'string' && p.length > 0 && !isAbsolute(p)
+  && !/^[a-z]:/i.test(p) && !p.split(/[\\/]/).includes('..');
 
 // Issue 60: the optional `lab` block `{ docs, uses, bypass }`: `docs` are files explaining the repo's lab
 // (relative to the binding, no `..`), `uses` strings that show a script stands on the lab, `bypass` strings
@@ -137,6 +138,7 @@ function validateCode(code, vault) {
   const versions = {};
   for (const [key, row] of Object.entries(table('versions'))) {
     if (row === null || typeof row !== 'object' || typeof row.file !== 'string') throw bad(`code.versions.${key} must be { file, pattern }`);
+    if (!isRelativeInside(row.file)) throw bad(`code.versions.${key}.file must be a relative path inside the repository with no .. segment`);
     versions[key] = { file: row.file, pattern: compilePattern(`code.versions.${key}.pattern`, row.pattern, { flags: 'm' }) };
   }
   return { globs, languages, versions };

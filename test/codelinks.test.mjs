@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, readdirSync, statSync, symlinkSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -168,6 +168,92 @@ test('readVersions reads the first capture of the first match per key; a missing
   assert.throws(() => readVersions(cfg({ versions: { dep: { file: 'deps.txt', pattern: '^nothing (\\d+)' } } }), repo), /^Error: versions\.dep: pattern matched nothing in deps\.txt$/);
   assert.deepEqual(readVersions(cfg({}), repo), {});
   assert.deepEqual(readVersions({}, repo), {});
+});
+
+function versionCanary() {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-version-file-'));
+  const repo = join(dir, 'repo');
+  const outsideDir = join(dir, 'outside');
+  const outside = join(outsideDir, 'outside.txt');
+  mkdirSync(repo);
+  mkdirSync(outsideDir);
+  writeFileSync(outside, 'dep s02-version-canary\n');
+  return { repo, outsideDir, outside };
+}
+
+function assertVersionFileRefused(repo, file, message) {
+  const config = { code: { versions: { dep: { file, pattern: /^dep (\S+)/m } } } };
+  let versions;
+  assert.throws(() => { versions = readVersions(config, repo); }, { message });
+  assert.equal(versions, undefined);
+}
+
+for (const kind of ['absolute', 'parent']) {
+  test(`readVersions refuses an outside ${kind} path`, () => {
+    const { repo, outside } = versionCanary();
+    const file = kind === 'absolute' ? outside : '../outside/outside.txt';
+    assertVersionFileRefused(repo, file, `versions.dep: ${file} must be relative and contain no .. segment`);
+  });
+}
+
+for (const kind of ['file', 'directory']) {
+  test(`readVersions refuses a ${kind} link outside the repository`, (t) => {
+    const { repo, outsideDir, outside } = versionCanary();
+    const link = join(repo, 'linked');
+    const windows = process.platform === 'win32';
+    try {
+      if (kind === 'file') symlinkSync(outside, link, 'file');
+      else symlinkSync(outsideDir, link, windows ? 'junction' : 'dir');
+    } catch (err) {
+      if (windows && ['EPERM', 'EACCES'].includes(err.code)) return t.skip(`cannot create ${kind} link (${err.code})`);
+      throw err;
+    }
+    const file = kind === 'file' ? 'linked' : 'linked/outside.txt';
+    assertVersionFileRefused(repo, file, `versions.dep: ${file} resolves outside the repository`);
+  });
+}
+
+test('readVersions refuses paths with a drive specifier', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'rv-version-file-'));
+  for (const file of ['C:..\\outside.txt', 'C:name.txt', 'c:/name.txt']) {
+    assertVersionFileRefused(repo, file, `versions.dep: ${file} must be relative and contain no .. segment`);
+  }
+});
+
+test('readVersions refuses a file that native resolution places outside the repository', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-version-file-'));
+  const repo = join(root, 'repo');
+  const file = 'versions.txt';
+  const candidate = join(repo, file);
+  mkdirSync(repo);
+  writeFileSync(candidate, 'dep s02-version-canary\n');
+  const native = realpathSync.native;
+  t.mock.method(realpathSync, 'native', (p) => p === candidate ? join(root, file) : native(p));
+  assertVersionFileRefused(repo, file, `versions.dep: ${file} resolves outside the repository`);
+});
+
+test('readVersions refuses a file link with a parent traversal after a directory link', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-version-file-'));
+  const repo = join(root, 'repo');
+  const outside = join(root, 'outside');
+  mkdirSync(repo);
+  mkdirSync(join(outside, 'deep'), { recursive: true });
+  writeFileSync(join(repo, 'x'), 'dep inside\n');
+  writeFileSync(join(outside, 'x'), 'dep outside\n');
+  const link = join(repo, 'ver');
+  try {
+    symlinkSync('../outside/deep', join(repo, 'd'), 'dir');
+    symlinkSync('d/../x', link, 'file');
+  } catch (err) {
+    if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(err.code)) {
+      return t.skip('cannot create links (' + err.code + ')');
+    }
+    throw err;
+  }
+  if (process.platform === 'win32' && realpathSync.native(link) === realpathSync.native(join(repo, 'x'))) {
+    return t.skip('Windows resolves this link to the file inside the repository');
+  }
+  assertVersionFileRefused(repo, 'ver', 'versions.dep: ver resolves outside the repository');
 });
 
 // ---- D0 contracts ----

@@ -17,6 +17,7 @@ import { ID_RE } from './citations.mjs';
 import { staleness } from './stale.mjs';
 import { expandFiles } from './files.mjs';
 import { isInsideVault } from './containment.mjs';
+import { isRelativeInside } from './projectconfig.mjs';
 
 // ---- shipped language rows ----
 // Each row is two regexes and nothing else (spec 15 D0): `comment` matches one whole comment line and
@@ -159,8 +160,11 @@ export function codeUnitHashes(text, lang) {
 export function readVersions(cfg, repoRoot) {
   const out = {};
   for (const [key, { file, pattern }] of Object.entries(cfg?.code?.versions ?? {})) {
+    if (!isRelativeInside(file)) throw new Error(`versions.${key}: ${file} must be relative and contain no .. segment`);
+    const path = resolve(repoRoot, file);
+    if (!isInsideVault(repoRoot, path)) throw new Error(`versions.${key}: ${file} resolves outside the repository`);
     let text;
-    try { text = readFileSync(resolve(repoRoot, file), 'utf8'); } catch { throw new Error(`versions.${key}: cannot read ${file}`); }
+    try { text = readFileSync(path, 'utf8'); } catch { throw new Error(`versions.${key}: cannot read ${file}`); }
     const m = pattern.exec(text);
     if (!m) throw new Error(`versions.${key}: pattern matched nothing in ${file}`);
     out[key] = m[1];

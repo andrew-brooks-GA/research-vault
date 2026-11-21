@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import {
   PROJECT_CONFIG_FILENAME,
   findProjectConfig,
@@ -92,6 +92,36 @@ test('loadProjectConfig finds, parses, and validates in one call', () => {
 
 test('loadProjectConfig returns null when no config is found', () => {
   assert.equal(loadProjectConfig('/repo/plan', { schema: SCHEMA, ...fakeFs([]) }), null);
+});
+
+function loadWithVersionFile(file) {
+  const root = resolve('/repo');
+  const raw = JSON.stringify({ vault: 'v', code: { versions: { dep: { file, pattern: '^dep (\\S+)' } } } });
+  return loadProjectConfig(root, { schema: SCHEMA, ...fakeFs([root], { [root]: raw }) });
+}
+
+const refusedVersionFiles = [
+  ['a parent path', '../outside.txt'],
+  ['an absolute path', resolve('outside.txt')],
+  ['an empty path', ''],
+  ['a path with a middle .. segment', 'a/../../b'],
+  ['a drive-relative parent path', 'C:..\\outside.txt'],
+  ['a drive-relative file path', 'C:name.txt'],
+  ['a drive-qualified absolute path', 'c:/name.txt'],
+];
+const otherAbsolute = process.platform === 'win32' ? '/outside.txt' : 'C:\\outside.txt';
+if (isAbsolute(otherAbsolute)) refusedVersionFiles.push(['an alternate absolute path', otherAbsolute]);
+
+for (const [name, file] of refusedVersionFiles) {
+  test(`loadProjectConfig refuses ${name} in code.versions`, () => {
+    assert.throws(() => loadWithVersionFile(file), {
+      message: `invalid ${PROJECT_CONFIG_FILENAME}: code.versions.dep.file must be a relative path inside the repository with no .. segment`,
+    });
+  });
+}
+
+test('loadProjectConfig accepts a relative path in code.versions', () => {
+  assert.equal(loadWithVersionFile('config/deps.txt').config.code.versions.dep.file, 'config/deps.txt');
 });
 
 // --- taxonomy_extensions ---

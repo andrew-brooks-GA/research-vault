@@ -6,7 +6,7 @@ import { entryNote, codeNote, moc, graphSettings } from '../lib/obsidianview.mjs
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { codeFiles, extractCodeLinks, langFor } from '../lib/codelinks.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
-import { isInsideVault } from '../lib/containment.mjs';
+import { isInsideVault, mayBeInside } from '../lib/containment.mjs';
 import { ENTRY_FOLDERS } from '../lib/fsutil.mjs';
 import { loadSchema } from '../lib/schema.mjs';
 
@@ -29,7 +29,7 @@ export function obsidianView(vaultPath, outDir = '_obsidian', { now = new Date()
   const out = join(vaultPath, outDir);
   if (!isInsideVault(vaultPath, out)) throw new Error(`obsidian refused: --out must be inside the vault (got ${outDir})`);
   if (resolve(out) === resolve(vaultPath)) throw new Error('obsidian refused: --out must not be the vault root');
-  for (const f of ENTRY_FOLDERS) if (isInsideVault(join(vaultPath, f), out)) throw new Error(`obsidian refused: --out must not be inside canonical folder ${f}`);
+  for (const f of ENTRY_FOLDERS) if (mayBeInside(join(vaultPath, f), out)) throw new Error(`obsidian refused: --out must not be inside canonical folder ${f}`);
   const m = buildManifest(vaultPath);
   const schema = loadSchema(REPO_ROOT, { vaultPath });
   mkdirSync(out, { recursive: true });

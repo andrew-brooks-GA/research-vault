@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { win32, posix } from 'node:path';
 import path from 'node:path';
-import { mkdtempSync, mkdirSync, symlinkSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, symlinkSync, realpathSync, writeFileSync, existsSync, lstatSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isInsideVault } from '../bin/lib/containment.mjs';
+import { isInsideVault, mayBeInside } from '../bin/lib/containment.mjs';
 
 test('nested child is inside (win32 + posix)', () => {
   assert.equal(isInsideVault('C:\\Users\\me\\vault', 'C:\\Users\\me\\vault\\sources\\a.md', win32), true);
@@ -71,4 +71,275 @@ test('symlink escaping the boundary is resolved and rejected', { skip: process.p
   assert.equal(isInsideVault(vault, join(link, 'x.md'), path), false);
   // A plain nested child (no symlink) stays inside.
   assert.equal(isInsideVault(vault, join(vault, 'sources', 'a.md'), path), true);
+});
+
+test('native resolution checks both paths and refuses a child resolved outside', () => {
+  const fs = { realpathSync: (p) => p };
+  fs.realpathSync.native = (p) => ({
+    '/repo': '/resolved/repo',
+    '/repo/inside': '/resolved/repo/versions.txt',
+    '/repo/outside': '/resolved/versions.txt',
+  })[p];
+  assert.equal(isInsideVault('/repo', '/repo/inside', posix, fs), true);
+  assert.equal(isInsideVault('/repo', '/repo/outside', posix, fs), false);
+});
+
+test('resolution without a native method uses the longest existing prefix', () => {
+  const fs = {
+    realpathSync(p) {
+      if (p === '/repo') return '/resolved/repo';
+      if (p === '/repo/versions.txt') return '/resolved/versions.txt';
+      const code = p.startsWith('/repo/versions.txt/') ? 'ENOTDIR' : 'ENOENT';
+      throw Object.assign(new Error(code), { code });
+    },
+  };
+  assert.equal(isInsideVault('/repo', '/repo/missing/child', posix, fs), true);
+  assert.equal(isInsideVault('/repo', '/repo/versions.txt/child', posix, fs), false);
+});
+
+test('an overlong tail follows its resolved parent for containment', () => {
+  const fs = { realpathSync: (p) => p };
+  fs.realpathSync.native = (p) => {
+    if (p === '/repo') return '/resolved/repo';
+    if (p === '/repo/inside') return '/resolved/repo/inside';
+    if (p === '/repo/outside') return '/resolved/outside';
+    throw Object.assign(new Error('ENAMETOOLONG'), { code: 'ENAMETOOLONG' });
+  };
+  assert.equal(isInsideVault('/repo', '/repo/inside/child', posix, fs), true);
+  assert.equal(isInsideVault('/repo', '/repo/outside/child', posix, fs), false);
+});
+
+test('a child path longer than the filesystem limit is contained', () => {
+  const vault = mkdtempSync(join(tmpdir(), 'rv-contain-'));
+  const limit = process.platform === 'win32' ? 32767 : 4096;
+  const segment = 'd'.repeat(200);
+  const child = join(vault, ...Array(Math.ceil(limit / segment.length)).fill(segment));
+  assert.equal(isInsideVault(vault, child), true);
+});
+
+test('resolution errors other than missing path components refuse containment', () => {
+  for (const code of ['ELOOP', 'EACCES']) {
+    for (const failing of ['/repo', '/repo/child']) {
+      const fs = {
+        realpathSync(p) {
+          if (p === failing) throw Object.assign(new Error(code), { code });
+          return p;
+        },
+      };
+      assert.equal(isInsideVault('/repo', '/repo/child', posix, fs), false, code + ' at ' + failing);
+    }
+  }
+});
+
+test('a file link with a parent traversal after a directory link is refused', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-contain-'));
+  const repo = join(root, 'repo');
+  const outside = join(root, 'outside');
+  mkdirSync(repo);
+  mkdirSync(join(outside, 'deep'), { recursive: true });
+  writeFileSync(join(repo, 'x'), 'inside\n');
+  writeFileSync(join(outside, 'x'), 'outside\n');
+  const file = join(repo, 'ver');
+  try {
+    symlinkSync('../outside/deep', join(repo, 'd'), 'dir');
+    symlinkSync('d/../x', file, 'file');
+  } catch (err) {
+    if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(err.code)) {
+      return t.skip('cannot create links (' + err.code + ')');
+    }
+    throw err;
+  }
+  if (process.platform === 'win32' && realpathSync.native(file) === realpathSync.native(join(repo, 'x'))) {
+    return t.skip('Windows resolves this link to the file inside the repository');
+  }
+  assert.equal(isInsideVault(repo, file), false);
+});
+
+test('a file link through a directory link inside the vault is accepted', (t) => {
+  const vault = mkdtempSync(join(tmpdir(), 'rv-contain-'));
+  const versions = join(vault, 'versions');
+  mkdirSync(versions);
+  writeFileSync(join(versions, 'versions.txt'), 'dep 1.0.0\n');
+  const file = join(vault, 'current');
+  try {
+    symlinkSync(versions, join(vault, 'alias'), process.platform === 'win32' ? 'junction' : 'dir');
+    symlinkSync(join('alias', 'versions.txt'), file, 'file');
+  } catch (err) {
+    if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(err.code)) {
+      return t.skip('cannot create links (' + err.code + ')');
+    }
+    throw err;
+  }
+  assert.equal(isInsideVault(vault, file), true);
+});
+
+test('a link loop is refused', (t) => {
+  const vault = mkdtempSync(join(tmpdir(), 'rv-contain-'));
+  const a = join(vault, 'a');
+  try {
+    symlinkSync('b', a, 'file');
+    symlinkSync('a', join(vault, 'b'), 'file');
+  } catch (err) {
+    if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(err.code)) {
+      return t.skip('cannot create file links (' + err.code + ')');
+    }
+    throw err;
+  }
+  assert.equal(isInsideVault(vault, a), false);
+  assert.equal(mayBeInside(vault, a), true);
+});
+
+for (const location of ['outside', 'inside']) {
+  test(`a dangling file link to a target ${location} the vault is refused`, (t) => {
+    const root = mkdtempSync(join(tmpdir(), 'rv-contain-'));
+    const vault = join(root, 'vault');
+    mkdirSync(vault);
+    const outside = join(root, 'outside');
+    mkdirSync(outside);
+    const target = join(location === 'inside' ? vault : outside, 'missing.txt');
+    const link = join(vault, 'pending');
+    try {
+      symlinkSync(target, link, 'file');
+    } catch (err) {
+      if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(err.code)) {
+        return t.skip('cannot create file links (' + err.code + ')');
+      }
+      throw err;
+    }
+    // Linux, macOS, and Windows native resolution require the file target to
+    // exist. The link entry exists, so containment is unknown on each platform.
+    assert.throws(() => realpathSync.native(link));
+    assert.equal(isInsideVault(vault, link), false);
+    assert.equal(mayBeInside(vault, link), true);
+  });
+}
+
+test('missing children under existing and missing directories are contained', () => {
+  const vault = mkdtempSync(join(tmpdir(), 'rv-contain-'));
+  for (const child of [join(vault, 'missing.txt'), join(vault, 'missing', 'child.txt')]) {
+    assert.equal(isInsideVault(vault, child), true);
+    assert.equal(mayBeInside(vault, child), true);
+  }
+});
+
+test('an existing entry whose resolution fails leaves containment unknown', () => {
+  for (const code of ['ENAMETOOLONG', 'EACCES', 'ELOOP']) {
+    for (const failing of ['/repo', '/repo/child']) {
+      const fs = {
+        realpathSync(p) {
+          if (p === failing) throw Object.assign(new Error(code), { code });
+          return p;
+        },
+        lstatSync() { return {}; },
+      };
+      assert.equal(isInsideVault('/repo', '/repo/child', posix, fs), false, code + ' at ' + failing);
+      assert.equal(mayBeInside('/repo', '/repo/child', posix, fs), true, code + ' at ' + failing);
+    }
+  }
+});
+
+test('an overlong entry path reported by both operations uses its resolved parent', () => {
+  const fs = {
+    realpathSync(p) {
+      if (p === '/repo') return '/resolved/repo';
+      throw Object.assign(new Error('ENAMETOOLONG'), { code: 'ENAMETOOLONG' });
+    },
+    lstatSync() { throw Object.assign(new Error('ENAMETOOLONG'), { code: 'ENAMETOOLONG' }); },
+  };
+  assert.equal(isInsideVault('/repo', '/repo/child', posix, fs), true);
+  assert.equal(mayBeInside('/repo', '/repo/child', posix, fs), true);
+});
+
+test('an entry that cannot be inspected leaves containment unknown', () => {
+  const fs = {
+    realpathSync(p) {
+      if (p === '/repo') return p;
+      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    },
+    lstatSync() { throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); },
+  };
+  assert.equal(isInsideVault('/repo', '/repo/child', posix, fs), false);
+  assert.equal(mayBeInside('/repo', '/repo/child', posix, fs), true);
+});
+
+test('native resolution uses the on-disk spelling on a case-insensitive directory', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-contain-'));
+  const parent = join(root, 'MixedCase');
+  const otherName = join(root, 'mixedcase');
+  mkdirSync(parent);
+  try {
+    mkdirSync(otherName);
+    return t.skip('temp directory allows distinct names that differ only in case');
+  } catch (err) {
+    if (err.code !== 'EEXIST') throw err;
+  }
+  const child = join(parent, 'child');
+  mkdirSync(child);
+  const canonical = realpathSync.native(otherName);
+  t.diagnostic(`canonical ${otherName} => ${canonical}`);
+  assert.equal(path.basename(canonical), 'MixedCase');
+  assert.equal(canonical, realpathSync.native(parent));
+  assert.equal(isInsideVault(otherName, child), true);
+});
+
+test('resolved Windows paths that differ in case are outside each other', () => {
+  const fs = { realpathSync: (p) => p };
+  const parent = 'C:\\Resolved\\Vault';
+  const child = 'C:\\Resolved\\vault';
+  assert.equal(isInsideVault(parent, child, win32, fs), false);
+  assert.equal(isInsideVault(child, parent, win32, fs), false);
+  assert.equal(mayBeInside(parent, child, win32, fs), true);
+});
+
+test('a differently cased missing parent may contain a destination on disk', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-contain-'));
+  if (process.platform !== 'win32') {
+    mkdirSync(join(root, 'CaseProbe'));
+    if (!existsSync(join(root, 'caseprobe'))) return t.skip('temp directory is case-sensitive outside Windows');
+  }
+  // On non-Windows, use Windows lexical comparison with native filesystem paths.
+  const p = process.platform === 'win32' ? path : {
+    ...path,
+    relative: (from, to) => win32.relative(from, to).replaceAll(win32.sep, path.sep),
+  };
+  const fs = { realpathSync, lstatSync };
+  const parent = join(root, 'assets');
+  const child = join(root, 'Assets', 'x');
+  assert.equal(mayBeInside(parent, child, p, fs), true);
+  assert.equal(isInsideVault(parent, child), false);
+});
+
+test('win32 lexical comparison includes a differently cased missing parent', () => {
+  const root = 'C:\\Workspace';
+  const fs = {
+    realpathSync(p) {
+      if (p === root) return root;
+      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    },
+  };
+  const parent = win32.join(root, 'assets');
+  const child = win32.join(root, 'Assets', 'x');
+  assert.equal(mayBeInside(parent, child, win32, fs), true);
+  assert.equal(isInsideVault(parent, child, win32, fs), false);
+});
+
+test('distinct on-disk sibling directories with different casing are outside each other', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-contain-'));
+  const parent = join(root, 'MixedCase');
+  const sibling = join(root, 'mixedcase');
+  mkdirSync(parent);
+  try {
+    mkdirSync(sibling);
+  } catch (err) {
+    if (err.code === 'EEXIST') return t.skip('temp directory is case-insensitive');
+    throw err;
+  }
+  assert.equal(isInsideVault(parent, sibling), false);
+  assert.equal(isInsideVault(sibling, parent), false);
+});
+
+test('a filesystem root contains an existing child', () => {
+  const child = realpathSync.native(tmpdir());
+  const { root } = path.parse(child);
+  assert.equal(isInsideVault(root, child), true);
 });

@@ -230,6 +230,17 @@ test('check reports every code status with its reason, in text and JSON', () => 
   assert.match(md, /\nversions: dep=1\.2\.3\n$/);
 });
 
+test('check exits 2 when the binding names a drive-relative versions file', () => {
+  const { root, cfg } = codeRepo();
+  writeFileSync(join(root, 'deps.txt'), 'dep s02-version-canary\n');
+  cfg.code.versions.dep.file = 'C:deps.txt';
+  writeFileSync(join(root, '.research-vault.json'), JSON.stringify(cfg));
+  const r = cli(root, 'src/a.lua');
+  assert.equal(r.status, 2);
+  assert.equal(r.stderr, 'error: invalid .research-vault.json: code.versions.dep.file must be a relative path inside the repository with no .. segment\n');
+  assert.equal(r.stdout, '');
+});
+
 test('check exits 2 on a versions file that is missing or unmatched and on a glob with no language row', () => {
   const { root } = codeRepo();
   writeFileSync(join(root, 'deps.txt'), 'nothing here\n');

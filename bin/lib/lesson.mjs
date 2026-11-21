@@ -6,7 +6,7 @@ import { parseFrontmatter } from './frontmatter.mjs';
 import { checkCitations } from '../commands/check.mjs';
 import { matchRows } from '../commands/search.mjs';
 import { extractCitations, SPAN_RE } from './citations.mjs';
-import { isInsideVault } from './containment.mjs';
+import { mayBeInside } from './containment.mjs';
 import { traverse } from './graph.mjs';
 import {
   extractQuizJson, extractCites, serveFile, validateEntry, ENUM_CODES, LESSON_ID_RE, RECORD_ID_RE, missionPrefs,
@@ -958,8 +958,8 @@ function lintReadme(ws, ctx) {
   for (const href of new Set([...prose.replace(SPAN_RE, ' ').matchAll(/\]\(\s*<?([^)\s>]+)/g)].map((m) => m[1]))) {
     if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('#')) continue;
     const target = resolve(ws, href.split(/[?#]/)[0]);
-    if (isInsideVault(join(ws, 'evidence'), target)) add('WARN_README_EVIDENCE_LINK', `links ${href}, which is under evidence/ and for the author`);
-    else if (ctx.vaultPath && isInsideVault(ctx.vaultPath, target)) add('WARN_README_EVIDENCE_LINK', `links ${href}, which is in the vault and for the author`);
+    if (mayBeInside(join(ws, 'evidence'), target)) add('WARN_README_EVIDENCE_LINK', `links ${href}, which is under evidence/ and for the author`);
+    else if (ctx.vaultPath && mayBeInside(ctx.vaultPath, target)) add('WARN_README_EVIDENCE_LINK', `links ${href}, which is in the vault and for the author`);
   }
   const heads = new Set([...text.matchAll(/^##\s+(.+?)\s*#*\s*$/gm)].map((m) => m[1].toLowerCase()));
   for (const s of README_SECTIONS) if (!heads.has(s.toLowerCase())) add('WARN_README_SECTION_MISSING', `no "## ${s}" section (README-FORMAT.md)`);

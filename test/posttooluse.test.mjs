@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { tmpVault, put, testEnv } from './helpers.mjs';
@@ -101,6 +101,28 @@ test('CLI emits additionalContext for a versions-file edit in a repo with a code
   const r = spawnSync(process.execPath, [HOOK], { env: testEnv(), cwd: root, input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: join(root, 'deps.txt') }, cwd: root }), encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   assert.match(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /^research-vault: STALE 2026-01-01-fx-missing in src\/b\.lua:1 ns\.g {2}\(dep 1\.2\.3 -> 2\.0\.0\)$/m);
+});
+
+test('PostToolUse stays silent when a binding names an outside versions file', () => {
+  const { root, cfg } = codeRepo();
+  const file_path = join(root, 'src', 'a.lua');
+  writeFileSync(file_path, '-- per 2026-01-01-fx-doc@dep=1.2.3\nfunction ns.f()\nend\n');
+  const run = () => spawnSync(process.execPath, [HOOK], { env: testEnv(), cwd: root, input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path }, cwd: root }), encoding: 'utf8' });
+  const version = 'dep s02-version-canary\n';
+  writeFileSync(join(root, 'deps.txt'), version);
+  const allowed = run();
+  assert.equal(allowed.status, 0, allowed.stderr);
+  assert.match(JSON.parse(allowed.stdout).hookSpecificOutput.additionalContext,
+    /^research-vault: STALE 2026-01-01-fx-doc in src\/a\.lua:1 ns\.f {2}\(dep 1\.2\.3 -> s02-version-canary\)$/m);
+
+  const outside = join(tmpVault('rv-posttooluse-version-'), 'outside.txt');
+  writeFileSync(outside, version);
+  cfg.code.versions.dep.file = relative(root, outside);
+  writeFileSync(join(root, '.research-vault.json'), JSON.stringify(cfg) + '\n');
+  const r = run();
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, '');
+  assert.equal(r.stderr, '');
 });
 
 // Absent state (spec 15 D7): without a code block a .lua file is neither referenced nor gated.
