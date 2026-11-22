@@ -494,11 +494,11 @@ test('in the serve path only labs.mjs, task.mjs and terminal.mjs import child_pr
   assert.match(runGroup, /spawn\(join\(ws, 'evidence', nnnn, name\), \[\], \{ cwd: ws, env, shell: false, detached: true, stdio: \['ignore', inherit \? 'inherit' : 'pipe', inherit \? 'inherit' : 'pipe'\] \}\)/);
   assert.deepEqual([...task.matchAll(/runGroup\(/g)].length, 3);
   assert.deepEqual([...task.matchAll(/runGroup\(ws, nnnn, '([^']+)'/g)].map((m) => m[1]), ['check.sh', 'setup.sh']);
-  // Plan 2026-11-18 D2: terminal.mjs runs python3 twice: `-c "import pty"` in ptyAvailable, and the helper in startShell.
+  // Plan 2026-11-18 D2: terminal.mjs runs python3 twice: `-I -c "import pty"` in ptyAvailable, and the helper in startShell.
   const term = readFileSync(join(ROOT, 'bin/lib/terminal.mjs'), 'utf8');
   assert.deepEqual(term.match(/^import .*child_process.*$/gm), ["import { spawn, spawnSync } from 'node:child_process';"]);
   assert.ok(!/(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function|shell:\s*true/.test(term));
-  assert.deepEqual(term.match(/\bspawn(Sync)?\([^)]*/g), ["spawnSync(python, ['-c', 'import pty'], { stdio: 'ignore' }", "spawn(python, ['-c', HELPER, ...shell], { cwd, env: shellEnv, stdio: ['pipe', 'pipe', 'ignore', 'pipe'], detached: true }"]);
+  assert.deepEqual(term.match(/\bspawn(Sync)?\([^)]*/g), ["spawnSync(python, ['-I', '-c', 'import pty'], { cwd: PYTHON_CWD, env: pythonEnv, stdio: 'ignore' }", "spawn(python, ['-I', '-c', HELPER, workspace, ...launcherArgs, '--', ...shell], { cwd: PYTHON_CWD, env: pythonEnv, stdio: ['pipe', 'pipe', 'ignore', 'pipe'], detached: true }"]);
   const src = readFileSync(join(ROOT, 'bin/lib/labs.mjs'), 'utf8');
   assert.deepEqual(src.match(/^import .*child_process.*$/gm), ["import { spawn } from 'node:child_process';"]);
   assert.ok(!/(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function|shell:\s*true/.test(src));

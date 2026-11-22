@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { cpSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { delimiter, join, dirname, parse } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { request } from 'node:http';
 import { once } from 'node:events';
@@ -18,11 +18,12 @@ import { loadTeachSchema } from '../bin/lib/schema.mjs';
 import { fixtureVault, testEnv } from './helpers.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const PYTHON_CWD = parse(ROOT).root;
 const BIN = join(ROOT, 'bin', 'research-vault.mjs');
 const SCHEMA = loadTeachSchema(ROOT);
 const SHELL = ['/bin/bash', '--noprofile', '--norc', '-i'];
 const TERM_DIR = join(ROOT, 'skills', 'research-teach', 'terminal');
-const skip = spawnSync('python3', ['-c', 'import pty'], { env: testEnv() }).status !== 0 && 'needs python3 with its pty module';
+const skip = spawnSync('python3', ['-I', '-c', 'import pty'], { cwd: PYTHON_CWD, env: testEnv() }).status !== 0 && 'needs python3 with its pty module';
 const newT = () => randomBytes(32).toString('hex');
 const made = [];
 const tempDir = (prefix) => { const d = realpathSync(mkdtempSync(join(tmpdir(), prefix))); made.push(d); return d; };
@@ -69,7 +70,7 @@ function openStream(port, cookie) {
       Object.assign(s, { status: res.statusCode, headers: res.headers });
       res.setEncoding('utf8');
       res.on('data', (c) => { s.text += c; });
-      res.on('end', () => { s.ended = true; });
+      res.on('end', () => { s.complete = res.complete; s.ended = true; });
       res.on('error', () => { s.ended = true; });
       resolve(s);
     });
@@ -353,8 +354,136 @@ test('with --labs and --terminal, one GET /labs/open sets one cookie that both a
   await waitFor(s, shellOutput(/one-cookie\r?\n/));
 });
 
+test('terminal source uses the file-system root and isolated mode for both Python starts and changes directory after the fork', () => {
+  const source = readFileSync(new URL('../bin/lib/terminal.mjs', import.meta.url), 'utf8');
+  assert.match(source, /const PYTHON_CWD = parse\(fileURLToPath\(import\.meta\.url\)\)\.root;/);
+  assert.match(source, /\bspawnSync\(python, \['-I', '-c', 'import pty'\], \{ cwd: PYTHON_CWD,/);
+  assert.match(source, /\bspawn\(python, \['-I', '-c', HELPER, workspace, \.\.\.launcherArgs, '--', \.\.\.shell\], \{ cwd: PYTHON_CWD,/);
+  assert.match(HELPER, /pid, fd = pty\.fork\(\)\nif pid == 0:\n    os\.close\(3\)\n    try: os\.chdir\(sys\.argv\[1\]\)\n    except OSError: os\._exit\(1\)\n[\s\S]*?\n    os\.execvp\(shell\[0\], shell\)\n/);
+});
+
+test('both Python starts refuse the workspace directory and launcher variables', { skip }, async () => {
+  const ws = workspace();
+  const dir = tempDir('rv-term-python-');
+  const entry = join(dir, 'check.mjs');
+  writeFileSync(entry, "import assert from 'node:assert/strict';\n" +
+    "import { ptyAvailable } from " + JSON.stringify(new URL('../bin/lib/terminal.mjs', import.meta.url).href) + ";\n" +
+    "assert.equal(ptyAvailable('python3'), true);\n");
+  writeFileSync(join(dir, 'python3'), '#!/bin/sh\n' +
+    'printf "%s\\000" "$(pwd -P)" "${PYTHONEXECUTABLE+PYTHONEXECUTABLE=$PYTHONEXECUTABLE}" "${__PYVENV_LAUNCHER__+__PYVENV_LAUNCHER__=$__PYVENV_LAUNCHER__}" "$@" > "$RV_TERM_PYTHON_START"\n',
+  { mode: 0o700 });
+  const overrides = {
+    PATH: [dir, testEnv().PATH].filter(Boolean).join(delimiter),
+    PYTHONEXECUTABLE: join(ws, 'recorded-python'),
+    __PYVENV_LAUNCHER__: join(ws, 'recorded-launcher'),
+  };
+  const probe = join(dir, 'probe');
+  const result = spawnSync(process.execPath, [entry], {
+    cwd: ws, env: testEnv({ ...overrides, RV_TERM_PYTHON_START: probe }), encoding: 'utf8', timeout: 8000,
+  });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, result.stderr);
+
+  const helper = join(dir, 'helper');
+  const t = newT();
+  const { port } = await start(ws, { terminal: true, t, env: testEnv({ ...overrides, RV_TERM_PYTHON_START: helper }) });
+  const s = await openStream(port, await openCookie(port, t));
+  assert.equal(s.status, 200);
+  await until(() => s.ended, 'the stand-in Python helper to exit');
+
+  for (const [name, path] of [['probe', probe], ['helper', helper]]) {
+    const [cwd, executable, launcher, firstArg] = readFileSync(path, 'utf8').split('\0');
+    assert.equal(cwd, PYTHON_CWD, name + ' working directory');
+    assert.equal(firstArg, '-I', name + ' first argument');
+    assert.equal(executable, '', name + ' must omit PYTHONEXECUTABLE');
+    assert.equal(launcher, '', name + ' must omit __PYVENV_LAUNCHER__');
+  }
+});
+
+test('the probe refuses Python environment settings when called from a workspace', { skip }, () => {
+  const ws = workspace();
+  const entry = join(tempDir('rv-term-probe-'), 'check.mjs');
+  writeFileSync(entry, "import assert from 'node:assert/strict';\n" +
+    "import { ptyAvailable } from " + JSON.stringify(new URL('../bin/lib/terminal.mjs', import.meta.url).href) + ";\n" +
+    "assert.equal(ptyAvailable('python3'), true);\n");
+  for (const overrides of [{}, { PYTHONHOME: join(ws, 'absent-home'), PYTHONPATH: ws, PYTHONSTARTUP: join(ws, 'absent-startup.py') }]) {
+    const result = spawnSync(process.execPath, [entry], { cwd: ws, env: testEnv(overrides), encoding: 'utf8', timeout: 8000 });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
+  }
+});
+
+test('the helper refuses Python environment settings and the shell receives them in the workspace', { skip }, async () => {
+  const ws = workspace();
+  const t = newT();
+  const pythonEnv = { PYTHONHOME: join(ws, 'absent-home'), PYTHONPATH: ws, PYTHONSTARTUP: join(ws, 'absent-startup.py') };
+  const { port } = await start(ws, { terminal: true, t, env: testEnv(pythonEnv) });
+  const cookie = await openCookie(port, t);
+  const s = await openStream(port, cookie);
+  assert.equal(s.status, 200);
+  const r = await post(port, 'input', { data: 'pwd -P\nprintf "%s\\n" "$PYTHONHOME" "$PYTHONPATH" "$PYTHONSTARTUP"\n' }, { cookie });
+  assert.deepEqual([r.status, r.text], [200, 'ok\n']);
+  await waitFor(s, workspaceOutput(ws));
+  await waitFor(s, shellOutput(new RegExp(Object.values(pythonEnv).map(esc).join('\\r?\\n') + '\\r?\\n')));
+});
+
+test('the shell receives PYTHONEXECUTABLE and omits __PYVENV_LAUNCHER__', { skip }, async () => {
+  const ws = workspace();
+  const t = newT();
+  const launcherEnv = {
+    PYTHONEXECUTABLE: join(ws, 'python executable'),
+    __PYVENV_LAUNCHER__: join(ws, 'launcher=value'),
+  };
+  const shell = ['/bin/sh', '-c', 'printf "%s\\n" "$PYTHONEXECUTABLE" "${__PYVENV_LAUNCHER__+set}"'];
+  const { port } = await start(ws, { terminal: true, t, shell, env: testEnv(launcherEnv) });
+  const s = await openStream(port, await openCookie(port, t));
+  assert.equal(s.status, 200);
+  await until(() => s.ended, 'the shell to exit');
+  assert.equal(s.text.replace(/\r\n/g, '\n'), launcherEnv.PYTHONEXECUTABLE + '\n\n');
+});
+
+test('a throwing Python start ends the stream and leaves the server answering', async () => {
+  const t = newT();
+  // Node rejects a NUL in the executable name before creating a child.
+  const { port } = await start(workspace(), { terminal: true, t, python: 'python\0' });
+  const cookie = await openCookie(port, t);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const s = await openStream(port, cookie);
+    await until(() => s.ended, 'the failed shell stream to end');
+    assert.deepEqual([s.status, s.text, s.complete], [200, '', true]);
+    const r = await post(port, 'input', { data: 'exit\n' }, { cookie });
+    assert.deepEqual([r.status, r.text], [409, 'terminal not running\n']);
+  }
+});
+
+test('ptyAvailable returns false when the Python start throws or returns an error', () => {
+  assert.equal(ptyAvailable('python\0'), false);
+  assert.equal(ptyAvailable(join(tempDir('rv-term-probe-'), 'missing-python')), false);
+});
+
+test('a missing workspace refuses the shell start, ends the stream and leaves no helper', { skip }, async () => {
+  const dir = tempDir('rv-term-missing-');
+  const pidFile = join(dir, 'helper-pid');
+  const python = join(dir, 'python');
+  // Record the helper's PID before exec keeps it for Python.
+  writeFileSync(python, '#!/bin/sh\nprintf "%s\\n" "$$" > "$RV_TERM_HELPER_PID_FILE"\nexec python3 "$@"\n', { mode: 0o700 });
+  const t = newT();
+  const shell = ['/bin/sh', '-c', 'echo "shell""-started"'];
+  const { port } = await start(join(dir, 'absent-workspace'), { terminal: true, t, shell, python, env: testEnv({ RV_TERM_HELPER_PID_FILE: pidFile }) });
+  const cookie = await openCookie(port, t);
+  const s = await openStream(port, cookie);
+  await until(() => s.ended, 'the refused shell stream to end');
+  assert.deepEqual([s.status, s.text], [200, '']);
+  const r = await post(port, 'input', { data: 'exit\n' }, { cookie });
+  assert.deepEqual([r.status, r.text], [409, 'terminal not running\n']);
+  const pid = Number(readFileSync(pidFile, 'utf8').trim());
+  assert.ok(Number.isSafeInteger(pid) && pid > 0, 'the helper PID was recorded');
+  assert.equal(alive(pid), false, 'the helper has ended');
+});
+
 test("closing the helper's standard input ends the shell", { skip }, async () => {
-  const child = spawn('python3', ['-c', HELPER, ...SHELL], { env: testEnv(), cwd: tempDir('rv-term-helper-'), stdio: ['pipe', 'pipe', 'ignore', 'pipe'], detached: true });
+  const child = spawn('python3', ['-I', '-c', HELPER, workspace(), '--', ...SHELL],
+    { env: testEnv(), cwd: PYTHON_CWD, stdio: ['pipe', 'pipe', 'ignore', 'pipe'], detached: true });
   const s = { text: '' };
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (c) => { s.text += c; });

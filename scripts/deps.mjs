@@ -345,6 +345,8 @@ export const COUPLINGS = [
   ['bin/lib/teach.mjs', 'SECURITY.md', "the Terminal section states createServer's /term/ routes, their checks, bodies and refusals, next=/term/lessons/ and the --terminal framing headers", 'no terminal cookie; open the address teach serve printed'],
   ['bin/lib/teach.mjs', 'SECURITY.md', "the Terminal section states createServer's GET /term/lessons/<lesson id>.html (termPage) and GET /terminal/<file> (TERMINAL_FILES by name)", '/terminal/'],
   ['bin/lib/terminal.mjs', 'SECURITY.md', "the Terminal section states the helper's pty, the shell's environment, KEPT_MAX, UNSENT_MAX and the SIGHUP and SIGKILL to the helper's group", 'xterm-256color'],
+  ['bin/lib/terminal.mjs', 'test/teach-labs.test.mjs', 'the serve source scan pins the Python arguments and spawn options', "['-I', '-c', 'import pty']"],
+  ['bin/lib/terminal.mjs', 'test/terminal.test.mjs', 'the terminal tests pin both isolated starts at the file-system root, the workspace and launcher arguments, and the shell environment for both launcher variables', /PYTHONEXECUTABLE|__PYVENV_LAUNCHER__/],
   ['bin/lib/teach.mjs', 'skills/research-teach/terminal/terminal.mjs', 'the page reads the shell\'s output on the route createServer answers', '/term/stream'],
   ['bin/lib/teach.mjs', 'skills/research-teach/terminal/terminal.mjs', 'the page posts what is typed to the route createServer answers', '/term/input'],
   ['bin/lib/teach.mjs', 'skills/research-teach/terminal/terminal.mjs', 'the page posts its size to the route createServer answers', '/term/resize'],
