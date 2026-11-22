@@ -1,5 +1,5 @@
 // research-teach workspace verbs: record, attempt, lint and next (spec 12 "Workspace store").
-import { existsSync, readdirSync, readFileSync, writeFileSync, rmSync, statSync, lstatSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync, unlinkSync, realpathSync, statSync, lstatSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,14 +9,14 @@ import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
 import { TYPE_FOLDER, walkEntries } from '../lib/fsutil.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
-import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatter, teachIndex, createServer, progress, progressText, readmeDraft, exportWorkspace, writeExport, lessonIndex, escapeHtml, missionPrefs, taskSummary, isTaskAttempt, certificationRuns, LESSON_ID_RE } from '../lib/teach.mjs';
+import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatters, teachIndex, createServer, progress, progressText, readmeDraft, exportWorkspace, writeExport, lessonIndex, escapeHtml, missionPrefs, taskSummary, previousTaskAttempt, certificationRuns, LESSON_ID_RE } from '../lib/teach.mjs';
 import { readRequirements, reportLines, checkAttempt, answeredAttempt, taskLesson, checkTask, readRun, runLine, openLine, startRun, endRun, cancelRun } from '../lib/task.mjs';
 import { scanCast, castTranscript } from '../lib/cast.mjs';
 import { hasVerdict } from '../lib/gate.mjs';
 import { readLabs, secretHits } from '../lib/labs.mjs';
 import { readBrand } from '../lib/brand.mjs';
 import { ptyAvailable } from '../lib/terminal.mjs';
-import { isInsideVault, isInsideWorkspaceFolder, mayBeInside } from '../lib/containment.mjs';
+import { assertInsideWorkspaceFolder, isInsideVault, isInsideWorkspaceFolder, mayBeInside, VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
 import { lintWorkspace, proseMetrics, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -44,8 +44,9 @@ function lint(ws, args) {
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws });
   if (args.fix) {
     const dir = join(ws, 'learning-records');
+    assertInsideWorkspaceFolder(ws, dir);
     const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md')) : [];
-    out(`fixed ${files.filter((f) => fixRecordFrontmatter(ws, f, new Date())).length} record(s)`);
+    out(`fixed ${fixRecordFrontmatters(ws, files)} record(s)`);
   }
   if (!existsSync(vaultPath)) {
     process.stderr.write(`teach lint: no vault at ${vaultPath}\n`);
@@ -208,13 +209,14 @@ async function check(words, args, schema) {
   if (open.problem) return refuse(open.problem);
   const run = open.state?.tasks.includes(nnnn) ? open.state : null;
   if (run && !run.hints && args.hints === true) return refuse(`hints are held back in certification run ${run.id}`);
+  if (lesson && !run) assertInsideWorkspaceFolder(ws, join(ws, 'attempts'));
   const c = await checkTask(ws, nnnn);
   if (c.problem) return refuse(c.problem);
   const { requirements, parsed } = c;
   // The attempt is written before the report, so a write that fails leaves nothing on stdout.
   if (lesson && !run) {
     const task = checkAttempt(requirements, parsed);
-    const prev = teachIndex(ws, { now: new Date() }).attempts.filter((a) => a.lesson === lesson && isTaskAttempt(a)).at(-1);
+    const prev = previousTaskAttempt(ws, lesson);
     if (!prev || ['passed', 'failed', 'unreached'].some((k) => JSON.stringify(task[k]) !== JSON.stringify(prev[k]))) writeAttempt(ws, { lesson, task, now: new Date() }, schema);
   }
   const held = run?.hints === false;
@@ -296,6 +298,23 @@ function edges(ws) {
 // without --labs, prints the terminal: open line in place of the labs: open one; SIGINT, SIGTERM and SIGHUP send SIGHUP
 // to the shell's helper group before exiting, and exit sends it SIGKILL.
 async function serve(ws, teachSchema, titles, labs, terminal) {
+  const name = '.teach-serve.json';
+  const stateError = `${name}: cannot use as a regular workspace state file`;
+  const invalidState = () => Object.assign(new Error(stateError), { code: VAULT_PATH_OUTSIDE });
+  const refuseState = () => { process.stderr.write(`teach serve: ${stateError}\n`); return 2; };
+  let root;
+  try { root = realpathSync.native(ws); } catch { return refuseState(); }
+  const file = join(root, name);
+  const checkState = () => {
+    try {
+      if (realpathSync.native(root) === root) {
+        const stat = lstatSync(file, { throwIfNoEntry: false });
+        if ((!stat || stat.isFile()) && isInsideVault(root, file)) return stat;
+      }
+    } catch { /* refuse an unavailable workspace state path */ }
+    throw invalidState();
+  };
+  try { checkState(); } catch { return refuseState(); }
   if (readBrand(ws).problems.length) process.stderr.write('brand: brand/brand.json is invalid; run teach lint\n');
   if (labs) {
     let manifest;
@@ -318,9 +337,22 @@ async function serve(ws, teachSchema, titles, labs, terminal) {
   const server = createServer(ws, { schema: teachSchema, titles, labs, terminal, t, log: out });
   await new Promise((ok, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', ok); });
   const { port } = server.address();
-  const file = join(ws, '.teach-serve.json');
-  writeFileSync(file, JSON.stringify({ port, pid: process.pid }) + '\n');
-  process.on('exit', () => rmSync(file, { force: true }));
+  const state = JSON.stringify({ port, pid: process.pid }) + '\n';
+  try {
+    if (checkState()) {
+      unlinkSync(file);
+      checkState();
+    }
+    writeFileSync(file, state, { flag: 'wx' });
+  } catch (e) {
+    server.close();
+    if (e.code === VAULT_PATH_OUTSIDE || e.code === 'EEXIST') return refuseState();
+    throw e;
+  }
+  process.on('exit', () => {
+    // Check the directory holding the name. Unlink the name even if it has become a link.
+    try { if (realpathSync.native(root) === root) unlinkSync(file); } catch { /* allow the remaining exit handlers to run */ }
+  });
   if (labs || terminal) {
     let stopping = false;
     for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {

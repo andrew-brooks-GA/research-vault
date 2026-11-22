@@ -1,6 +1,6 @@
 // research-teach workspace store: learning records, attempts and the derived index.
 // Pure logic over a workspace directory; the verbs live in bin/commands/teach.mjs.
-import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, statSync, lstatSync, rmSync, openSync, closeSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, statSync, lstatSync, realpathSync, rmSync, openSync, closeSync } from 'node:fs';
 import { join, resolve, basename, dirname, extname, relative } from 'node:path';
 import http from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -10,7 +10,7 @@ import { writeEntry } from './fsutil.mjs';
 import { loadTeachSchema } from './schema.mjs';
 import { allowedValues } from './validate.mjs';
 import { slugify } from './ids.mjs';
-import { isInsideVault, isInsideWorkspaceFolder } from './containment.mjs';
+import { assertInsideWorkspaceFolder, escapePathControls, isInsideVault, isInsideWorkspaceFolder } from './containment.mjs';
 import { expandFiles } from './files.mjs';
 import { grade, neighbours, pathPosition } from '../../skills/research-teach/assets/quiz.js';
 import { lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWUP, CONNECT_LEAD, imageTarget } from './lesson.mjs';
@@ -92,28 +92,42 @@ export function lessonTitle(html, id) {
 }
 
 export function nextRecordId(workspaceDir, slug) {
-  const nums = mdFiles(join(workspaceDir, 'learning-records')).map((f) => /^(\d{4})-/.exec(f)).filter(Boolean).map((m) => Number(m[1]));
+  const dir = join(workspaceDir, 'learning-records');
+  assertInsideWorkspaceFolder(workspaceDir, dir);
+  const nums = mdFiles(dir).map((f) => /^(\d{4})-/.exec(f)).filter(Boolean).map((m) => Number(m[1]));
   const next = (nums.length ? Math.max(...nums) : 0) + 1;
   return `${String(next).padStart(4, '0')}-${slug}`;
 }
 
 export function writeRecord(workspaceDir, { title, kind, lesson, body, now }, schema) {
+  const dir = join(workspaceDir, 'learning-records');
   const id = nextRecordId(workspaceDir, slugify(title ?? ''));
   if (!RECORD_ID_RE.test(id)) throw new Error(`title gives no valid record id: ${id} (the slug must start with a letter)`);
   const data = { title, type: 'learning-record', date: isoDate(now), status: 'active', ...(lesson ? { lesson } : {}), kind };
   assertValid(data, schema);
-  const dir = join(workspaceDir, 'learning-records');
+  assertInsideWorkspaceFolder(workspaceDir, dir);
   mkdirSync(dir, { recursive: true });
   const path = join(dir, `${id}.md`);
   const text = `# ${title}\n` + (body ? `\n${body.trimEnd()}\n` : '');
-  writeFileSync(path, serializeFrontmatter(data, text, order(schema, 'learning-record')), { flag: 'wx' });
+  const record = serializeFrontmatter(data, text, order(schema, 'learning-record'));
+  assertInsideWorkspaceFolder(workspaceDir, dir, path);
+  writeFileSync(path, record, { flag: 'wx' });
   return { id, path };
+}
+
+function assertRecordWrite(workspaceDir, dir, path) {
+  assertInsideWorkspaceFolder(workspaceDir, dir, path, { regular: true });
+  assertInsideWorkspaceFolder(workspaceDir, dir, path + '.tmp', { regular: true });
 }
 
 export function supersedeRecord(workspaceDir, id, byId, reason, schema) {
   const dir = join(workspaceDir, 'learning-records');
+  assertInsideWorkspaceFolder(workspaceDir, dir);
   for (const x of [id, byId]) {
-    if (!RECORD_ID_RE.test(String(x)) || !existsSync(join(dir, `${x}.md`))) throw new Error(`no learning record: ${x}`);
+    if (!RECORD_ID_RE.test(String(x))) throw new Error(`no learning record: ${x}`);
+    const entry = join(dir, `${x}.md`);
+    assertInsideWorkspaceFolder(workspaceDir, dir, entry, { regular: true });
+    if (!existsSync(entry)) throw new Error(`no learning record: ${x}`);
   }
   if (id === byId) throw new Error(`a record cannot supersede itself: ${id}`);
   const path = join(dir, `${id}.md`);
@@ -123,7 +137,8 @@ export function supersedeRecord(workspaceDir, id, byId, reason, schema) {
   data.superseded_by = byId;
   assertValid(data, schema);
   const line = reason ? `Superseded by ${byId}: ${reason}` : `Superseded by ${byId}.`;
-  writeEntry(path, data, `${body}${body.endsWith('\n') || body === '' ? '' : '\n'}\n${line}\n`, order(schema, 'learning-record'));
+  assertRecordWrite(workspaceDir, dir, path);
+  writeEntry(path, data, `${body}${body.endsWith('\n') || body === '' ? '' : '\n'}\n${line}\n`, order(schema, 'learning-record'), workspaceDir);
   return { path };
 }
 
@@ -142,6 +157,17 @@ export function attemptId(now, lessonNumber, exists) {
   let id = base;
   for (let n = 2; exists(id); n++) id = `${base}-${n}`;
   return id;
+}
+
+function attemptExists(workspaceDir, dir, id) {
+  const path = join(dir, `${id}.md`);
+  assertInsideWorkspaceFolder(workspaceDir, dir, path);
+  return existsSync(path);
+}
+
+export function nextAttemptId(workspaceDir, lesson, now) {
+  const dir = join(workspaceDir, 'attempts');
+  return attemptId(now, lesson.slice(0, 4), (id) => attemptExists(workspaceDir, dir, id));
 }
 
 // One in-range integer per quiz item: what gradeAttempt accepts, and the import's test of a changed lesson.
@@ -171,12 +197,14 @@ export function writeAttempt(workspaceDir, { lesson, answers, result, task, now 
   const { total, wrong } = data;
   assertValid(data, schema);
   const dir = join(workspaceDir, 'attempts');
+  assertInsideWorkspaceFolder(workspaceDir, dir);
   mkdirSync(dir, { recursive: true });
   const text = serializeFrontmatter(data, '', order(schema, 'attempt'));
   for (;;) {
-    const id = attemptId(now, lesson.slice(0, 4), (x) => existsSync(join(dir, `${x}.md`)));
+    const id = nextAttemptId(workspaceDir, lesson, now);
     const path = join(dir, `${id}.md`);
     try {
+      assertInsideWorkspaceFolder(workspaceDir, dir, path);
       writeFileSync(path, text, { flag: 'wx' });
     } catch (e) {
       if (e.code === 'EEXIST') continue; // lost a race to another writer; the next id is free
@@ -230,12 +258,14 @@ export function importAttempts(workspaceDir, text, { schema, now }) {
   if (!Array.isArray(list) || !list.length) problems.push('file: attempts is not a non-empty array');
   else list.forEach((a, i) => { for (const p of attemptProblems(workspaceDir, a, now)) problems.push(`attempt ${i + 1}: ${p}`); });
   if (problems.length) return { code: 1, lines: problems };
+  const dir = join(workspaceDir, 'attempts');
+  assertInsideWorkspaceFolder(workspaceDir, dir);
   const planned = new Set();
   const plan = list.map((a) => {
     const base = attemptId(new Date(a.at), a.lesson.slice(0, 4), () => false);
     // ponytail: a task attempt of the same second and lesson holds this base id too, so the quiz attempt is skipped
     // (issue 79 D5, R17); the fix is to compare only with attempts that have no `tested` list.
-    if (planned.has(base) || existsSync(join(workspaceDir, 'attempts', `${base}.md`))) return { line: `skipped ${base}: already recorded` };
+    if (planned.has(base) || attemptExists(workspaceDir, dir, base)) return { line: `skipped ${base}: already recorded` };
     let items = [];
     try { ({ items } = readQuiz(workspaceDir, a.lesson)); } catch { items = []; } // no quiz that parses: now -/0
     const g = items.length && fits(items, a.answers) ? grade(items, a.answers) : null;
@@ -257,9 +287,10 @@ export function importAttempts(workspaceDir, text, { schema, now }) {
 // `teach lint --fix` upgrade for a legacy record: no frontmatter, or frontmatter without `type`
 // (the old `Status:` line). Malformed frontmatter is left alone (the lint reports PARSE) and a
 // record that carries `type` is untouched. `now` is unused, the date is the mtime.
-export function fixRecordFrontmatter(workspaceDir, file, now) {
+function recordFrontmatterFix(workspaceDir, file) {
   const dir = join(workspaceDir, 'learning-records');
   const path = resolve(dir, file);
+  assertInsideWorkspaceFolder(workspaceDir, dir, path, { regular: true });
   let text = readFileSync(path, 'utf8');
   let old = {};
   if (/^\uFEFF?---\r?\n/.test(text)) {
@@ -270,7 +301,7 @@ export function fixRecordFrontmatter(workspaceDir, file, now) {
   const data = {
     title: empty(old.title) ? (/^#\s+(.+?)\s*$/m.exec(text)?.[1] ?? slug) : old.title,
     type: 'learning-record',
-    date: isoDate(statSync(path).mtime),
+    date: isoDate(lstatSync(path).mtime),
     status: 'active',
     kind: 'understanding',
   };
@@ -280,8 +311,23 @@ export function fixRecordFrontmatter(workspaceDir, file, now) {
     data.status = 'superseded';
     data.superseded_by = target.slice(0, -3);
   }
-  writeEntry(path, data, text, order(TEACH_SCHEMA, 'learning-record'));
-  return true;
+  assertRecordWrite(workspaceDir, dir, path);
+  return () => {
+    assertRecordWrite(workspaceDir, dir, path);
+    writeEntry(path, data, text, order(TEACH_SCHEMA, 'learning-record'), workspaceDir);
+    return true;
+  };
+}
+
+export function fixRecordFrontmatter(workspaceDir, file) {
+  const fix = recordFrontmatterFix(workspaceDir, file);
+  return fix ? fix() : false;
+}
+
+export function fixRecordFrontmatters(workspaceDir, files) {
+  const fixes = files.map((file) => recordFrontmatterFix(workspaceDir, file)).filter(Boolean);
+  for (const fix of fixes) fix();
+  return fixes.length;
 }
 
 function missionCriteria(workspaceDir) {
@@ -354,6 +400,12 @@ export function attemptOrder(a, b) {
   const key = (id) => { const m = /^(.*-\d{4})(?:-(\d+))?$/.exec(id); return [m[1], Number(m[2] ?? 1)]; };
   const [ab, an] = key(a), [bb, bn] = key(b);
   return ab < bb ? -1 : ab > bb ? 1 : an - bn;
+}
+
+export function previousTaskAttempt(ws, lesson) {
+  assertInsideWorkspaceFolder(ws, join(ws, 'attempts'));
+  return parsedRows(ws, 'attempts', ATTEMPT_ID_RE).filter((a) => a.lesson === lesson && isTaskAttempt(a))
+    .sort((a, b) => attemptOrder(a.id, b.id)).at(-1);
 }
 
 // Issue 79 D5, D6: an attempt with a `tested` list is a task attempt, and every view prints it as this text.
@@ -861,10 +913,7 @@ function walk(ws, root, rel, refused) {
 }
 const urlOf = (p) => '/' + p.split('/').map(encodeURIComponent).join('/');
 export function unservableLine(path) {
-  // Escape supplementary format characters as two JSON-compatible UTF-16 escapes.
-  const quoted = JSON.stringify(path).replace(/[\p{Cc}\p{Cf}\p{Cs}\u2028\u2029]/gu, (ch) =>
-    ch.split('').map((unit) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, '0')}`).join(''));
-  return `unservable ${quoted}`;
+  return `unservable ${escapePathControls(JSON.stringify(path))}`;
 }
 
 // A fixed sentence matched with any run of whitespace between its words, so a sentence wrapped in the source matches.
@@ -1011,7 +1060,11 @@ function readBody(req, res, max, done) {
   req.on('end', () => done(Buffer.concat(chunks).toString('utf8')));
 }
 
-function postAttempt(req, res, workspaceDir, origin, schema, now) {
+function realWorkspaceLocation(workspaceDir) {
+  try { return realpathSync.native(workspaceDir); } catch { return null; }
+}
+
+function postAttempt(req, res, workspaceDir, workspaceRoot, origin, schema, now) {
   const type = req.headers['content-type'];
   const length = req.headers['content-length'];
   if (req.headers.origin !== origin || !/^application\/json(;\s*charset=utf-8)?$/i.test(type ?? '') ||
@@ -1025,7 +1078,11 @@ function postAttempt(req, res, workspaceDir, origin, schema, now) {
       return send(req, res, 400, 'body must be {"lesson": "<id>", "answers": [integers]}\n');
     }
     try {
-      const { id, score, total, wrong } = writeAttempt(workspaceDir, { lesson: body.lesson, answers: body.answers, now: now() }, schema);
+      const at = now();
+      if (!workspaceRoot || realWorkspaceLocation(workspaceDir) !== workspaceRoot) {
+        return send(req, res, 500, '.: workspace location changed or cannot be resolved\n');
+      }
+      const { id, score, total, wrong } = writeAttempt(workspaceDir, { lesson: body.lesson, answers: body.answers, now: at }, schema);
       send(req, res, 200, JSON.stringify({ id, score, total, wrong }), 'application/json');
     } catch (e) {
       // A malformed quiz or a failed write is the server's problem; nothing was written on a 400.
@@ -1087,6 +1144,7 @@ const same = (a, b) => {
 export function createServer(workspaceDir, { schema, now = () => new Date(), titles = {}, labs = false, terminal = false, t, env = process.env, log = () => {}, limits,
   shell = env.SHELL ? [env.SHELL, '-l'] : ['/bin/bash', '-l'], python = 'python3' } = {}) {
   const ws = resolve(workspaceDir);
+  const workspaceRoot = realWorkspaceLocation(ws);
   const clock = typeof now === 'function' ? now : () => now;
   if ((labs || terminal) && !/^[0-9a-f]{64}$/.test(t ?? '')) throw new Error('teach serve --labs or --terminal needs a lab address value of 64 hex characters');
   let session = null;
@@ -1174,7 +1232,7 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
     const path = req.url.split('?')[0];
     const port = server.address().port;
     if (req.method === 'POST') {
-      if (path === '/attempt') return postAttempt(req, res, ws, `http://${base}`, schema, clock);
+      if (path === '/attempt') return postAttempt(req, res, ws, workspaceRoot, `http://${base}`, schema, clock);
       const action = /^\/lab\/([a-z]+)$/.exec(path)?.[1];
       if (labs && LAB_ACTIONS.includes(action)) return postLab(req, res, action, port);
       const route = { '/term/input': 'input', '/term/resize': 'resize' }[path];

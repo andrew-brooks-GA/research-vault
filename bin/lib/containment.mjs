@@ -67,6 +67,33 @@ export function isInsideWorkspaceFolder(workspace, folder, target = folder) {
 
 export const VAULT_PATH_OUTSIDE = 'VAULT_PATH_OUTSIDE';
 
+export function escapePathControls(path) {
+  // Escape supplementary format characters as two JSON-compatible UTF-16 escapes.
+  return path.replace(/[\p{Cc}\p{Cf}\p{Cs}\u2028\u2029]/gu, (ch) =>
+    ch.split('').map((unit) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, '0')}`).join(''));
+}
+
+function missingOr(workspacePath, type) {
+  try {
+    const entry = nodeFs.lstatSync(workspacePath, { throwIfNoEntry: false });
+    return !entry || entry[type]();
+  } catch { return false; }
+}
+
+export function assertInsideWorkspaceFolder(workspace, folder, target = folder, { regular = false } = {}) {
+  const name = nodePath.basename(folder) + '/';
+  const refuse = (place) => {
+    throw Object.assign(new Error(`${escapePathControls(place)}: path is outside its workspace folder or cannot be resolved`), { code: VAULT_PATH_OUTSIDE });
+  };
+  if (!isInsideWorkspaceFolder(workspace, folder) || !missingOr(folder, 'isDirectory')) refuse(name);
+  if (target === folder) return;
+  if (!isInsideWorkspaceFolder(workspace, folder, target) || !isInsideVault(folder, nodePath.dirname(target))
+      || (regular && !missingOr(target, 'isFile'))) {
+    const rel = isInsideVault(folder, target, nodePath, null) ? nodePath.relative(folder, target) : '';
+    refuse(name + rel.split(nodePath.sep).join('/'));
+  }
+}
+
 export function assertInsideVault(vaultPath, path) {
   const rel = nodePath.relative(vaultPath, path);
   // Rename and removal also modify the directory holding the name.
