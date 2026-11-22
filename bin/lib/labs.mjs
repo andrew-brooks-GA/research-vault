@@ -2,11 +2,11 @@
 // `launch` is the one function that calls spawn. task.mjs also imports node:child_process: it starts a checked
 // task's checker for `teach check` (issue 79 D4), and stops its group with stopGroup.
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
-import { isInsideVault } from './containment.mjs';
+import { isInsideVault, isInsideWorkspaceFolder } from './containment.mjs';
 import { parseBlocks } from './lesson.mjs';
 import { show, LESSON_ID_RE } from './teach.mjs';
 
@@ -45,11 +45,13 @@ function scriptProblem(ws, path) {
 // Throws with one line per problem.
 export function readLabs(ws) {
   const file = join(ws, LAB_MANIFEST);
-  const st = lstatSync(file, { throwIfNoEntry: false });
-  if (!st) return { version: 1, labs: {} };
   const problems = [];
   const fail = () => { const e = new Error(problems.join('\n')); e.problems = problems; throw e; };
-  if (!st.isFile() || !isInsideVault(ws, file)) { problems.push(`${LAB_MANIFEST} is not a regular file inside the workspace`); fail(); }
+  const outside = () => { problems.push(`${LAB_MANIFEST} is not a regular file inside the workspace`); fail(); };
+  if (!isInsideVault(ws, dirname(file))) outside();
+  const st = lstatSync(file, { throwIfNoEntry: false });
+  if (!st) return { version: 1, labs: {} };
+  if (!st.isFile() || !isInsideVault(ws, file)) outside();
   let raw, doc;
   try { raw = readFileSync(file, 'utf8'); } catch { problems.push(`${LAB_MANIFEST} cannot be read`); fail(); }
   try { doc = JSON.parse(raw); } catch { problems.push(`${LAB_MANIFEST} is not JSON`); fail(); }
@@ -127,12 +129,14 @@ export const labCookie = (port) => `rv-labs-${port}`;
 // Check 9: a regular file lessons/<lesson id>.html whose lab block names `id` and stores `pin`.
 function lessonStoresPin(ws, id, pin) {
   const dir = join(ws, 'lessons');
+  if (!isInsideWorkspaceFolder(ws, dir)) return false;
   let names = [];
   try { names = readdirSync(dir).filter((f) => f.endsWith('.html') && LESSON_ID_RE.test(f.slice(0, -5))); } catch { return false; }
   return names.some((f) => {
+    const file = join(dir, f);
     try {
-      if (!lstatSync(join(dir, f)).isFile()) return false;
-      const l = lessonLab(readFileSync(join(dir, f), 'utf8'));
+      if (!lstatSync(file).isFile() || !isInsideWorkspaceFolder(ws, dir, file)) return false;
+      const l = lessonLab(readFileSync(file, 'utf8'));
       return l?.id === id && l.pin === pin;
     } catch { return false; }
   });

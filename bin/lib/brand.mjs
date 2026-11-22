@@ -1,6 +1,7 @@
 // Spec 50: a workspace's brand package, brand/brand.json and the files it names, put on every served and exported page.
-import { existsSync, readFileSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { isInsideWorkspaceFolder } from './containment.mjs';
 import { escapeHtml } from './teach.mjs';
 
 // D2: the tokens a brand may set are the custom properties of lesson.css's first :root block.
@@ -47,11 +48,19 @@ function lookup(tokens, ref) {
 // The brand of workspace `ws`: { brand: null, problems: [] } with no brand/ folder; else the brand with every reference
 // resolved, or brand null and one { code, message } per problem of brand/brand.json (D1, D5, D6).
 export function readBrand(ws) {
-  if (!existsSync(join(ws, 'brand'))) return { brand: null, problems: [] };
+  const dir = join(ws, 'brand');
   const problems = [];
   const bad = (message, code = 'BRAND_INVALID') => { problems.push({ code, message }); return false; };
+  const read = (name) => {
+    const file = join(dir, name);
+    if (!isInsideWorkspaceFolder(ws, dir, file)) throw new Error('brand file is outside brand/ or cannot be resolved');
+    return JSON.parse(readFileSync(file, 'utf8'));
+  };
   let b;
-  try { b = JSON.parse(readFileSync(join(ws, 'brand', 'brand.json'), 'utf8')); } catch (e) {
+  try {
+    if (!lstatSync(dir, { throwIfNoEntry: false })) return { brand: null, problems: [] };
+    b = read('brand.json');
+  } catch (e) {
     bad(`brand/brand.json is ${e.code === 'ENOENT' ? 'missing' : 'not JSON'}`);
     return { brand: null, problems };
   }
@@ -65,7 +74,7 @@ export function readBrand(ws) {
   if (!keys(b, 'brand.json', KEYS)) return { brand: null, problems };
   let tokens = null;
   if (b.tokens !== undefined && path(b.tokens, 'tokens')) {
-    try { tokens = JSON.parse(readFileSync(join(ws, 'brand', b.tokens), 'utf8')); } catch { bad(`tokens: brand/${b.tokens} is not a JSON file`); }
+    try { tokens = read(b.tokens); } catch { bad(`tokens: brand/${b.tokens} is not a JSON file`); }
   }
   // A value written as a {reference} is looked up, then `fromTokens` turns the token's $value into the form `ok` takes.
   const value = (v, where, ok, what, fromTokens) => {

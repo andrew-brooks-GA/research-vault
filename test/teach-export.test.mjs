@@ -1,7 +1,7 @@
 // Spec 48 Tests items 1, 3, 4, 5 and 6: `teach export`, on workspaces built here (nothing under test/fixtures/teach/).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, statSync, symlinkSync, rmSync, lstatSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, statSync, symlinkSync, rmSync, lstatSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +17,7 @@ import { CONNECT_LEAD } from '../bin/lib/lesson.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'research-vault.mjs');
 const ASSETS = join(ROOT, 'skills', 'research-teach', 'assets');
+const tempRoot = (prefix) => realpathSync(mkdtempSync(join(tmpdir(), prefix)));
 
 const quiz = (correct) => `<section data-block="quiz" aria-label="check yourself"><script type="application/json" data-quiz>${
   JSON.stringify({ items: correct.map((c, i) => ({ q: `q${i}`, options: ['a', 'b', 'c'], correct: c, why: ['1', '2', '3'] })) })}</script></section>`;
@@ -36,7 +37,7 @@ const README = ['# Learn fx', '', '## What this is for', 'Predicting fx.', '', '
 
 // A bound repo holding a workspace named learn-ws, every gated page passed by the gate unless `ungated` names it.
 function exportRepo({ ungated = [], step = 'Run <code>fx(3)</code> and look for 18.', cite = '2026-01-01-fx-experiment', edit = () => {} } = {}) {
-  const repo = mkdtempSync(join(tmpdir(), 'rv-teach-export-'));
+  const repo = tempRoot('rv-teach-export-');
   const vault = fixtureVault(join(repo, 'research'));
   put(vault, 'source', '2026-02-02-tricky', { source_type: 'article', source_url: 'javascript:alert(1)', summary: 'A <b>bold</b> & "quoted" summary', title: 'Tricky <script>alert(1)</script>' });
   writeFileSync(join(repo, '.research-vault.json'), JSON.stringify({ vault: 'research' }) + '\n');
@@ -67,7 +68,7 @@ function exportRepo({ ungated = [], step = 'Run <code>fx(3)</code> and look for 
   return { repo, vault, ws };
 }
 const cli = (...a) => spawnSync(process.execPath, [BIN, 'teach', 'export', ...a], { env: testEnv(), encoding: 'utf8' });
-const outDir = () => join(mkdtempSync(join(tmpdir(), 'rv-teach-export-out-')), 'site');
+const outDir = () => join(tempRoot('rv-teach-export-out-'), 'site');
 const tree = (dir, rel = '') => readdirSync(join(dir, rel), { withFileTypes: true })
   .flatMap((d) => (d.isDirectory() ? tree(dir, posix.join(rel, d.name)) : [posix.join(rel, d.name)])).sort();
 const read = (out, p) => readFileSync(join(out, p), 'utf8');
@@ -212,7 +213,7 @@ test('teach export refuses a bad --out with exit 2 and writes nothing', () => {
     assert.equal(r.stdout, '');
   }
   assert.deepEqual(tree(repo), before);
-  const empty = mkdtempSync(join(tmpdir(), 'rv-teach-export-empty-'));
+  const empty = tempRoot('rv-teach-export-empty-');
   assert.equal(cli(ws, '--out', empty).status, 0, 'an empty directory is taken');
   assert.ok(statSync(join(empty, 'index.html')).isFile());
 });
@@ -263,17 +264,43 @@ test('a phrase wrapped across a source line or joined by &nbsp; is refused; a wr
   assert.ok(one.includes('You can ask your instructor follow-up questions.') && one.includes('Write your answer down, or send it to your instructor, in a few sentences:'));
 });
 
-test('GLOSSARY.md is checked as Markdown text; a symlinked GLOSSARY.md is neither served nor exported', () => {
+function glossaryLink(t, target, ws) {
+  const file = join(ws, 'GLOSSARY.md');
+  rmSync(file);
+  try { symlinkSync(target, file, 'file'); } catch (e) {
+    if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(e.code)) throw e;
+    t.skip(`Windows file links are unavailable (${e.code})`);
+    return false;
+  }
+  return true;
+}
+
+test('GLOSSARY.md is checked as Markdown text and an outside symlink returns 404 and refuses export', (t) => {
   const { ws } = exportRepo({ edit: (w) => writeFileSync(join(w, 'GLOSSARY.md'), '# Glossary\n\n## Term\n\nType it in the\nterminal.\n') });
   const r = cli(ws, '--out', outDir());
   assert.equal(r.status, 1);
   assert.deepEqual(lines(r, 'mention'), ['mention GLOSSARY.md: Type it in the terminal.']);
-  const secret = join(mkdtempSync(join(tmpdir(), 'rv-teach-export-secret-')), 'notes.md');
+  const secret = join(tempRoot('rv-teach-export-secret-'), 'notes.md');
   writeFileSync(secret, 'outside the workspace\n');
-  const s = exportRepo({ edit: (w) => { rmSync(join(w, 'GLOSSARY.md')); symlinkSync(secret, join(w, 'GLOSSARY.md')); } });
+  const s = exportRepo();
+  if (!glossaryLink(t, secret, s.ws)) return;
   assert.equal(serveFile(s.ws, '/GLOSSARY.md').status, 404);
   const out = outDir();
-  assert.equal(cli(s.ws, '--out', out).status, 0);
+  const refused = cli(s.ws, '--out', out);
+  assert.equal(refused.status, 1);
+  assert.deepEqual(lines(refused, 'unservable'), ['unservable "GLOSSARY.md"']);
+  assert.equal(refused.stderr, 'teach export: paths resolve outside their allowed locations or cannot be resolved; nothing written\n');
+  assert.ok(!existsSync(out));
+});
+
+test('GLOSSARY.md symlinked inside the workspace returns 404 and is omitted from a successful export', (t) => {
+  const { ws } = exportRepo();
+  const target = join(ws, 'terms.md');
+  writeFileSync(target, '# Glossary\n\n## Term\n\nA word.\n');
+  if (!glossaryLink(t, target, ws)) return;
+  assert.equal(serveFile(ws, '/GLOSSARY.md').status, 404);
+  const out = outDir();
+  assert.equal(cli(ws, '--out', out).status, 0);
   assert.ok(!existsSync(join(out, 'GLOSSARY.md')));
 });
 
@@ -334,7 +361,7 @@ test('a write that fails part way removes what the run wrote and exits 2', () =>
   const limit = process.platform === 'darwin' ? 1024 : 4096;
   const long = 'f'.repeat(200);
   const { ws } = exportRepo({ edit: (w) => writeFileSync(join(w, 'lessons', 'files', '0002-lab', `${long}.txt`), 'x\n') });
-  let dir = mkdtempSync(join(tmpdir(), 'rv-teach-export-long-'));
+  let dir = tempRoot('rv-teach-export-long-');
   while (dir.length < limit - 120) dir = join(dir, 'd'.repeat(Math.min(200, limit - 120 - dir.length)));
   for (const pre of [false, true]) {
     const out = join(dir, pre ? 'pre' : 'new');
@@ -349,7 +376,7 @@ test('a write that fails part way removes what the run wrote and exits 2', () =>
 
 test('an --out that is a symlink, even a dangling one, is refused with exit 2 and left in place', () => {
   const { ws } = exportRepo();
-  const link = join(mkdtempSync(join(tmpdir(), 'rv-teach-export-link-')), 'site');
+  const link = join(tempRoot('rv-teach-export-link-'), 'site');
   symlinkSync(join(tmpdir(), 'rv-teach-export-no-such-target'), link);
   const r = cli(ws, '--out', link);
   assert.equal(r.status, 2);

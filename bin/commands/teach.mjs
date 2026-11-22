@@ -16,7 +16,7 @@ import { hasVerdict } from '../lib/gate.mjs';
 import { readLabs, secretHits } from '../lib/labs.mjs';
 import { readBrand } from '../lib/brand.mjs';
 import { ptyAvailable } from '../lib/terminal.mjs';
-import { mayBeInside } from '../lib/containment.mjs';
+import { isInsideVault, isInsideWorkspaceFolder, mayBeInside } from '../lib/containment.mjs';
 import { lintWorkspace, proseMetrics, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -26,9 +26,10 @@ const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
 const out = (s) => process.stdout.write(s + '\n');
 
 // The positional path, else the cwd; either must hold MISSION.md, else null (usage).
-function workspace(pos) {
+function workspace(pos, checkMission = false) {
   const ws = pos ? resolve(pos) : process.cwd();
-  return existsSync(join(ws, 'MISSION.md')) ? ws : null;
+  const mission = join(ws, 'MISSION.md');
+  return (!checkMission || isInsideVault(ws, mission)) && existsSync(mission) ? ws : null;
 }
 
 function parseAnswers(list) {
@@ -74,9 +75,10 @@ const fmt = (l) => `${l.n}. ${l.title}` + [['terms', l.terms.join(', ')], ['tool
 // current content, by gate status's own rule and ledger) or ungated (none, or no ledger resolves).
 function readmeLine(ws, args) {
   const file = join(ws, 'README.md');
-  if (!statSync(file, { throwIfNoEntry: false })?.isFile()) return 'readme: missing';
+  if (!isInsideVault(ws, file) || !statSync(file, { throwIfNoEntry: false })?.isFile()) return 'readme: missing';
   try {
-    return hasVerdict(file, resolveVault({ flag: args.vault ?? null, cwd: ws }).path) ? 'readme: ok' : 'readme: ungated';
+    const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws, workspaceDir: ws });
+    return hasVerdict(file, vaultPath, ws) ? 'readme: ok' : 'readme: ungated';
   } catch (err) {
     if (err.code === OUTSIDE_PROJECT_VAULT) throw err;
     return 'readme: ungated';
@@ -88,7 +90,7 @@ function readmeLine(ws, args) {
 function exportCopy(ws, args) {
   if (typeof args.out !== 'string') return usage();
   const dir = resolve(args.out);
-  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws });
+  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws, workspaceDir: ws });
   const refuse = (why) => { process.stderr.write(`teach export: ${why}\n`); return 2; };
   if (!existsSync(vaultPath)) return refuse(`no vault at ${vaultPath}`);
   if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) return refuse(`--out ${dir} is a symlink`);
@@ -302,7 +304,10 @@ async function serve(ws, teachSchema, titles, labs, terminal) {
       return 2;
     }
     const { lessons, reference } = lessonIndex(ws);
-    const pages = [...lessons, ...reference].map((p) => [p.path.slice(1), readFileSync(join(ws, p.path), 'utf8')]);
+    const pages = [...lessons, ...reference].flatMap(({ path }) => {
+      const file = join(ws, path);
+      return isInsideWorkspaceFolder(ws, dirname(file), file) ? [[path.slice(1), readFileSync(file, 'utf8')]] : [];
+    });
     for (const [p, name] of secretHits(pages, manifest, process.env)) process.stderr.write(`warning: ${p} holds the value of ${name}\n`);
   }
   if (terminal && !ptyAvailable('python3')) {
@@ -418,17 +423,17 @@ export async function run(args) {
   if (verb === 'cast') return cast(sub, rest[0], args);
   if (verb === 'check') return check([sub, ...rest].filter((w) => w !== undefined), args, teachSchema);
   if (verb === 'export') {
-    const ws = workspace(sub);
+    const ws = workspace(sub, true);
     if (!ws) return usage();
     return exportCopy(ws, args);
   }
   if (verb === 'serve') {
-    const ws = workspace(sub);
+    const ws = workspace(sub, true);
     if (!ws) return usage();
     // Vault titles for the footnote rendering; a missing vault just leaves ids as titles.
     let titles = {};
     try {
-      const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws });
+      const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd: ws, workspaceDir: ws });
       if (existsSync(vaultPath)) titles = Object.fromEntries(buildManifest(vaultPath).entries.map((e) => [e.id, e.title ?? e.id]));
     } catch (err) {
       if (err.code === OUTSIDE_PROJECT_VAULT) throw err;

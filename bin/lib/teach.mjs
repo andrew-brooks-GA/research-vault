@@ -1,7 +1,7 @@
 // research-teach workspace store: learning records, attempts and the derived index.
 // Pure logic over a workspace directory; the verbs live in bin/commands/teach.mjs.
-import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, statSync, lstatSync, rmSync } from 'node:fs';
-import { join, resolve, basename, dirname, extname } from 'node:path';
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, statSync, lstatSync, rmSync, openSync, closeSync } from 'node:fs';
+import { join, resolve, basename, dirname, extname, relative } from 'node:path';
 import http from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +10,7 @@ import { writeEntry } from './fsutil.mjs';
 import { loadTeachSchema } from './schema.mjs';
 import { allowedValues } from './validate.mjs';
 import { slugify } from './ids.mjs';
-import { isInsideVault } from './containment.mjs';
+import { isInsideVault, isInsideWorkspaceFolder } from './containment.mjs';
 import { expandFiles } from './files.mjs';
 import { grade, neighbours, pathPosition } from '../../skills/research-teach/assets/quiz.js';
 import { lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWUP, CONNECT_LEAD, imageTarget } from './lesson.mjs';
@@ -36,6 +36,21 @@ const empty = (v) => v === undefined || v === null || v === '';
 const order = (schema, type) => [...schema.common, ...(schema.by_type[type] || [])];
 const mdFiles = (dir) => (existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md')).sort() : []);
 const uniq = (xs) => [...new Set(xs)];
+
+function listedPages(ws, dir, nameMatches) {
+  if (!isInsideWorkspaceFolder(ws, dir) || !statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return [];
+  return readdirSync(dir).sort().filter((f) => {
+    if (!nameMatches(f)) return false;
+    const file = join(dir, f);
+    return isInsideVault(dir, file) && statSync(file, { throwIfNoEntry: false })?.isFile();
+  });
+}
+
+function lessonFile(ws, id) {
+  const dir = join(ws, 'lessons');
+  const file = join(dir, `${id}.html`);
+  return isInsideWorkspaceFolder(ws, dir, file) ? file : null;
+}
 
 export function validateEntry(data, schema) {
   const msgs = [];
@@ -114,7 +129,9 @@ export function supersedeRecord(workspaceDir, id, byId, reason, schema) {
 
 // The predict item (when the lesson has one) is item 0 of the one attempt, then the quiz items.
 export function readQuiz(workspaceDir, lessonId) {
-  const { items } = lessonItems(readFileSync(join(workspaceDir, 'lessons', `${lessonId}.html`), 'utf8'));
+  const file = lessonFile(workspaceDir, lessonId);
+  if (!file) throw new Error(`no lesson: ${lessonId}`);
+  const { items } = lessonItems(readFileSync(file, 'utf8'));
   if (!items) throw new Error(`quiz JSON invalid in ${lessonId}`);
   return { items };
 }
@@ -148,7 +165,8 @@ function gradeAttempt(workspaceDir, lesson, answers, result) {
 // Issue 79 D5: `task` holds a task attempt's fields ready-made (task.mjs's checkAttempt or answeredAttempt).
 export function writeAttempt(workspaceDir, { lesson, answers, result, task, now }, schema) {
   if (!LESSON_ID_RE.test(String(lesson))) throw new Error(`invalid lesson id: ${lesson}`);
-  if (!existsSync(join(workspaceDir, 'lessons', `${lesson}.html`))) throw new Error(`no lesson: ${lesson}`);
+  const file = lessonFile(workspaceDir, lesson);
+  if (!file || !existsSync(file)) throw new Error(`no lesson: ${lesson}`);
   const data = { type: 'attempt', date: isoDate(now), lesson, ...(task ?? gradeAttempt(workspaceDir, lesson, answers, result)) };
   const { total, wrong } = data;
   assertValid(data, schema);
@@ -268,7 +286,7 @@ export function fixRecordFrontmatter(workspaceDir, file, now) {
 
 function missionCriteria(workspaceDir) {
   const p = join(workspaceDir, 'MISSION.md');
-  if (!existsSync(p)) return [];
+  if (!isInsideVault(workspaceDir, p) || !existsSync(p)) return [];
   const out = [];
   let inSection = false;
   for (const line of readFileSync(p, 'utf8').split(/\r?\n/)) {
@@ -296,7 +314,7 @@ export function missionPrefs(workspaceDir) {
   const got = {};
   const invalid = [];
   let inSection = false;
-  (existsSync(p) ? readFileSync(p, 'utf8').split(/\r?\n/) : []).forEach((line, i) => {
+  (isInsideVault(workspaceDir, p) && existsSync(p) ? readFileSync(p, 'utf8').split(/\r?\n/) : []).forEach((line, i) => {
     if (/^#{1,6}\s/.test(line)) { inSection = /^#{1,6}\s+constraints\b/i.test(line); return; }
     const text = inSection && /^\s*(?:[-*]|\d+\.)\s+(.+?)\s*$/.exec(line)?.[1];
     const pref = text && PREFS.find(([name]) => text.split(':')[0].trim().toLowerCase() === name);
@@ -317,12 +335,16 @@ export function missionPrefs(workspaceDir) {
   };
 }
 
-function parsedRows(dir, nameRe) {
+function parsedRows(ws, folder, nameRe) {
+  const dir = join(ws, folder);
+  if (!isInsideVault(ws, dir)) return [];
   const rows = [];
   for (const f of mdFiles(dir)) {
     const id = f.slice(0, -3);
     if (nameRe && !nameRe.test(id)) continue;
-    try { rows.push({ id, ...parseFrontmatter(readFileSync(join(dir, f), 'utf8')).data }); } catch { /* the lint reports it */ }
+    const file = join(dir, f);
+    if (!isInsideVault(ws, file)) continue;
+    try { rows.push({ id, ...parseFrontmatter(readFileSync(file, 'utf8')).data }); } catch { /* the lint reports it */ }
   }
   return rows;
 }
@@ -362,24 +384,23 @@ export function certificationRuns(attempts) {
 
 export function teachIndex(workspaceDir, { now }) {
   const lessonsDir = join(workspaceDir, 'lessons');
-  const lessons = (existsSync(lessonsDir) ? readdirSync(lessonsDir).sort() : [])
-    .filter((f) => f.endsWith('.html') && LESSON_ID_RE.test(f.slice(0, -5)))
+  const lessons = listedPages(workspaceDir, lessonsDir, (f) => f.endsWith('.html') && LESSON_ID_RE.test(f.slice(0, -5)))
     .map((f) => {
       const id = f.slice(0, -5);
       const html = readFileSync(join(lessonsDir, f), 'utf8');
       let records = [];
-      try { records = uniq(readQuiz(workspaceDir, id).items.map((it) => it.record).filter(Boolean)); } catch { /* malformed quiz */ }
+      try { records = uniq(lessonItems(html).items?.map((it) => it.record).filter(Boolean) ?? []); } catch { /* malformed quiz */ }
       return { id, number: id.slice(0, 4), class: id.slice(5).startsWith('review-') ? 'review' : 'lesson', title: lessonTitle(html, id), cites: extractCites(html), records };
     });
   const tests = Object.fromEntries(lessons.map((l) => [l.id, l.records]));
-  const attempts = parsedRows(join(workspaceDir, 'attempts'), ATTEMPT_ID_RE).sort((a, b) => attemptOrder(a.id, b.id));
+  const attempts = parsedRows(workspaceDir, 'attempts', ATTEMPT_ID_RE).sort((a, b) => attemptOrder(a.id, b.id));
   const backlinks = {};
   for (const a of attempts) for (const r of (Array.isArray(a.records) ? a.records : [])) (backlinks[r] ??= []).push(a.id);
 
   // Issue 79 D2: review-due only when the mission asks for reminders, every N days.
   const prefs = missionPrefs(workspaceDir);
   const cutoff = prefs.reminders ? isoDate(new Date(now.getTime() - prefs.reminders * DAY_MS)) : null;
-  const records = parsedRows(join(workspaceDir, 'learning-records')).map((r) => {
+  const records = parsedRows(workspaceDir, 'learning-records').map((r) => {
     const wrongIn = (a) => Array.isArray(a.records) && a.records.includes(r.id);
     // A task attempt counts for a record only when its `tested` list names it, never through the lesson's quiz.
     const last = attempts.filter((a) => (isTaskAttempt(a) ? a.tested.includes(r.id) : wrongIn(a) || (tests[a.lesson] || []).includes(r.id))).at(-1);
@@ -399,7 +420,7 @@ export function teachIndex(workspaceDir, { now }) {
     };
   });
   const refDir = join(workspaceDir, 'reference');
-  const reference = (existsSync(refDir) ? readdirSync(refDir).sort() : []).filter((f) => f.endsWith('.html'))
+  const reference = listedPages(workspaceDir, refDir, (f) => f.endsWith('.html'))
     .map((f) => ({ slug: f.slice(0, -5), file: `reference/${f}`, cites: extractCites(readFileSync(join(refDir, f), 'utf8')) }));
   return { criteria: missionCriteria(workspaceDir), prefs, lessons, reference, records, attempts, backlinks };
 }
@@ -559,13 +580,17 @@ function withLabSteps(ws, html, mode) {
 export function serveFile(workspaceDir, urlPath, { titles, sourceHref, bytes = true, lab } = {}) {
   let decoded;
   try { decoded = decodeURIComponent(urlPath); } catch { return { status: 400 }; }
-  if (decoded.includes('\0') || decoded.split('/').some((seg) => seg.startsWith('.'))) return { status: 404 };
+  if (decoded.includes('\0') || decoded.includes('\\') || decoded.split('/').some((seg) => seg.startsWith('.'))) return { status: 404 };
   const target = join(workspaceDir, decoded);
   const glossary = target === join(workspaceDir, 'GLOSSARY.md');
-  const allowed = glossary || STATIC_DIRS.some((d) => isInsideVault(join(workspaceDir, d), target));
+  // Check the URL's own folder before following its links.
+  const allowed = glossary || STATIC_DIRS.some((d) => {
+    const folder = join(workspaceDir, d);
+    return relative(folder, target) !== '' && isInsideVault(folder, target, undefined, null) && isInsideWorkspaceFolder(workspaceDir, folder, target);
+  });
   if (!allowed) return { status: 404 };
   try {
-    if (glossary && lstatSync(target).isSymbolicLink()) return { status: 404 }; // allowed by name only: not followed
+    if (glossary && (!lstatSync(target).isFile() || !isInsideVault(workspaceDir, target))) return { status: 404 };
     if (!statSync(target).isFile()) return { status: 404 };
     if (!bytes) return { status: 200 };
     const body = readFileSync(target);
@@ -591,8 +616,7 @@ export function lessonIndex(ws) {
   const lessonLine = (id) => path?.findIndex((l) => l.lesson === id) ?? -1;
   const read = (dir, isLesson) => {
     const d = join(ws, dir);
-    return (existsSync(d) ? readdirSync(d).sort() : [])
-      .filter((f) => f.endsWith('.html') && (!isLesson || LESSON_ID_RE.test(f.slice(0, -5))))
+    return listedPages(ws, d, (f) => f.endsWith('.html') && (!isLesson || LESSON_ID_RE.test(f.slice(0, -5))))
       .map((f) => {
         const id = f.slice(0, -5);
         const html = readFileSync(join(d, f), 'utf8');
@@ -685,7 +709,7 @@ export function markdownHtml(md) {
 function readmeText(ws) {
   const readme = join(ws, 'README.md');
   try {
-    if (lstatSync(readme).isFile()) return readFileSync(readme, 'utf8');
+    if (lstatSync(readme).isFile() && isInsideVault(ws, readme)) return readFileSync(readme, 'utf8');
   } catch { /* absent or unreadable: the page has no README */ }
   return null;
 }
@@ -821,14 +845,28 @@ function exportReadme(text) {
   return start === -1 ? text : [...lines.slice(0, start + 1), '', EXPORT_TEXT.howToTake, '', ...lines.slice(end)].join('\n');
 }
 
-// Workspace-relative files under a directory; a symlinked directory is listed as a file, not followed, so
-// serveFile (which stats it as no regular file) leaves it out.
-function walk(ws, rel) {
+// Only descend into contained directories. A nested link is listed for serveFile to check as a file.
+function walk(ws, root, rel, refused) {
+  const path = join(ws, rel);
+  if (!isInsideWorkspaceFolder(ws, root, path)) { refused.push(rel); return []; }
   let ents;
-  try { ents = readdirSync(join(ws, rel), { withFileTypes: true }); } catch { return []; }
-  return ents.sort((a, b) => (a.name < b.name ? -1 : 1)).flatMap((d) => (d.isDirectory() ? walk(ws, `${rel}/${d.name}`) : [`${rel}/${d.name}`]));
+  try { ents = readdirSync(path, { withFileTypes: true }); } catch { return []; }
+  return ents.sort((a, b) => (a.name < b.name ? -1 : 1)).flatMap((d) => {
+    if (d.name.startsWith('.')) return [];
+    const child = `${rel}/${d.name}`;
+    if (d.isDirectory()) return walk(ws, root, child, refused);
+    if (!isInsideVault(root, join(ws, child))) { refused.push(child); return []; }
+    return [child];
+  });
 }
 const urlOf = (p) => '/' + p.split('/').map(encodeURIComponent).join('/');
+export function unservableLine(path) {
+  // Escape supplementary format characters as two JSON-compatible UTF-16 escapes.
+  const quoted = JSON.stringify(path).replace(/[\p{Cc}\p{Cf}\p{Cs}\u2028\u2029]/gu, (ch) =>
+    ch.split('').map((unit) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, '0')}`).join(''));
+  return `unservable ${quoted}`;
+}
+
 // A fixed sentence matched with any run of whitespace between its words, so a sentence wrapped in the source matches.
 const loose = (s) => new RegExp(s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+'), 'g');
 // D7: a page's rendered text: the sources block (vault titles, as on sources.html), <pre> and <code> removed, a
@@ -865,18 +903,31 @@ const withCastText = (ws, p, html) => html.replace(/<[a-z][a-z0-9]*\b[^>]*?\sdat
 // `entries` is the vault manifest's; nothing is written here.
 export function exportWorkspace(ws, { vaultPath, entries, skipUngated = false, env = process.env }) {
   const key = workspaceKey(ws);
-  const gated = new Set(expandFiles(WORKSPACE_GATES, ws));
-  const found = STATIC_DIRS.flatMap((d) => walk(ws, d)).filter((p) => serveFile(ws, urlOf(p), { bytes: false }).status === 200);
+  const refused = [];
+  const paths = STATIC_DIRS.flatMap((d) => walk(ws, join(ws, d), d, refused));
+  for (const name of ['PATH.md', 'README.md', 'GLOSSARY.md']) {
+    const file = join(ws, name);
+    try {
+      if (lstatSync(file, { throwIfNoEntry: false }) && !isInsideVault(ws, file)) refused.push(name);
+    } catch { refused.push(name); }
+  }
+  if (refused.length) return {
+    code: 1,
+    lines: refused.map(unservableLine),
+    error: 'teach export: paths resolve outside their allowed locations or cannot be resolved; nothing written',
+  };
+  const gated = new Set(expandFiles(WORKSPACE_GATES.filter((p) => p.includes('/')), ws));
+  const found = paths.filter((p) => serveFile(ws, urlOf(p), { bytes: false }).status === 200);
   const notGated = [], pages = [], raw = [], ungated = [];
   for (const p of found) {
     // The plugin's copies go out, under any case of the name (a case-insensitive disk serves Quiz.js as quiz.js).
     if (['assets/quiz.js', 'assets/reading.html'].includes(p.toLowerCase())) continue;
     if (!/\.html?$/i.test(p)) raw.push(p);
     else if (!gated.has(join(ws, p))) notGated.push(p);
-    else (hasVerdict(join(ws, p), vaultPath) ? pages : ungated).push(p);
+    else (hasVerdict(join(ws, p), vaultPath, ws) ? pages : ungated).push(p);
   }
   let readme = readmeText(ws);
-  if (readme !== null && !hasVerdict(join(ws, 'README.md'), vaultPath)) ungated.push('README.md');
+  if (readme !== null && !hasVerdict(join(ws, 'README.md'), vaultPath, ws)) ungated.push('README.md');
   if (skipUngated && ungated.includes('README.md')) readme = null;
   if (!skipUngated) pages.push(...ungated.filter((p) => p !== 'README.md')); // checked too, so one run lists every refusal
   const kept = new Set(pages);
@@ -1006,6 +1057,16 @@ const termPage = (ws, id) => `<!doctype html>
 </body></html>
 `;
 
+export function terminalLessonPage(ws, id) {
+  if (!id || !LESSON_ID_RE.test(id)) return null;
+  try {
+    const file = lessonFile(ws, id);
+    if (!file || !statSync(file, { throwIfNoEntry: false })?.isFile()) return null;
+    closeSync(openSync(file, 'r'));
+    return termPage(ws, id);
+  } catch { return null; }
+}
+
 // Spec 49 D4: equal strings, compared in constant time once their byte lengths match.
 const same = (a, b) => {
   const x = Buffer.from(String(a)), y = Buffer.from(String(b));
@@ -1129,8 +1190,8 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
     if (terminal && path.startsWith('/term/lessons/')) {
       if (!hasCookie(req, port)) return send(req, res, 403, NO_TERM_COOKIE);
       const id = /^\/term\/lessons\/([^/]+)\.html$/.exec(path)?.[1];
-      const lesson = id && LESSON_ID_RE.test(id) && statSync(join(ws, 'lessons', `${id}.html`), { throwIfNoEntry: false });
-      return lesson && lesson.isFile() ? send(req, res, 200, termPage(ws, id), 'text/html; charset=utf-8') : send(req, res, 404, 'not found\n');
+      const page = terminalLessonPage(ws, id);
+      return page === null ? send(req, res, 404, 'not found\n') : send(req, res, 200, page, 'text/html; charset=utf-8');
     }
     if (terminal && path.startsWith('/terminal/')) {
       const name = path.slice('/terminal/'.length);

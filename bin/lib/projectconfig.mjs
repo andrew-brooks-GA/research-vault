@@ -4,6 +4,7 @@
 // lives in the file, never here. Validated against the single schema/taxonomy.json.
 import { existsSync as realExists, lstatSync as realLstat, readFileSync as realRead, writeFileSync as realWrite } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { isInsideVault } from './containment.mjs';
 
 export const PROJECT_CONFIG_FILENAME = '.research-vault.json';
 
@@ -26,10 +27,13 @@ export const EXTENSIBLE_TAXONOMY_FIELDS = [
 export function findProjectConfig(startDir, hooks = {}) {
   const exists = hooks.existsSync ?? realExists;
   const read = hooks.readFileSync ?? realRead;
+  const ws = hooks.workspaceDir;
   let dir = startDir;
   for (;;) {
     const candidate = join(dir, PROJECT_CONFIG_FILENAME);
-    if (exists(candidate)) return { path: candidate, raw: read(candidate, 'utf8') };
+    // Configs inherited from above the workspace are still discovered normally.
+    const inside = !ws || !isInsideVault(ws, candidate, undefined, null) || isInsideVault(ws, candidate);
+    if (inside && exists(candidate)) return { path: candidate, raw: read(candidate, 'utf8') };
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;

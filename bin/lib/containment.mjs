@@ -50,6 +50,21 @@ export function isInsideVault(parent, child, p = nodePath, fs = p === nodePath ?
   return compareContainment(parent, child, p, fs) === true;
 }
 
+// An allowlisted folder must resolve to its own place under the workspace.
+export function isInsideWorkspaceFolder(workspace, folder, target = folder) {
+  const realWorkspace = realResolve(workspace, nodePath, nodeFs)?.path;
+  const realFolder = realResolve(folder, nodePath, nodeFs)?.path;
+  const name = nodePath.basename(folder);
+  if (!realWorkspace || !realFolder || !name || nodePath.dirname(realFolder) !== realWorkspace) return false;
+  if (realFolder !== nodePath.join(realWorkspace, name)) {
+    if (nodePath.basename(realFolder).toLowerCase() !== name.toLowerCase()) return false;
+    // A case-insensitive lookup can return the stored spelling of a real directory.
+    // On a case-sensitive volume, a link to a differently spelled sibling is refused.
+    try { if (!nodeFs.lstatSync(folder).isDirectory()) return false; } catch { return false; }
+  }
+  return target === folder || isInsideVault(realFolder, target);
+}
+
 export const VAULT_PATH_OUTSIDE = 'VAULT_PATH_OUTSIDE';
 
 export function assertInsideVault(vaultPath, path) {

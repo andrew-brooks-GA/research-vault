@@ -1,12 +1,12 @@
 // research-teach lesson parser and the `teach lint` checks for lessons, reference docs and the
 // workspace store (spec 12 "Lesson lint"). Pure over files; the verb lives in bin/commands/teach.mjs.
 import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { parseFrontmatter } from './frontmatter.mjs';
 import { checkCitations } from '../commands/check.mjs';
 import { matchRows } from '../commands/search.mjs';
 import { extractCitations, SPAN_RE } from './citations.mjs';
-import { mayBeInside } from './containment.mjs';
+import { isInsideVault, mayBeInside } from './containment.mjs';
 import { traverse } from './graph.mjs';
 import {
   extractQuizJson, extractCites, serveFile, validateEntry, ENUM_CODES, LESSON_ID_RE, RECORD_ID_RE, missionPrefs,
@@ -186,7 +186,7 @@ export function missionFloor(workspaceDir) {
 // PATH.md lines: `N. <title> | terms: a, b | tool: x | after: 1, 2 | lesson: <id>`.
 export function readPath(workspaceDir) {
   const p = join(workspaceDir, 'PATH.md');
-  if (!existsSync(p)) return null;
+  if (!isInsideVault(workspaceDir, p) || !existsSync(p)) return null;
   const lines = [];
   for (const raw of readFileSync(p, 'utf8').split(/\r?\n/)) {
     const m = /^\s*(\d+)\.\s+([^|]+?)\s*((?:\|[^|]*)*)$/.exec(raw);
@@ -386,7 +386,9 @@ export const imgAttr = (attrs, name) => new RegExp(`\\s${name}\\s*=\\s*(["'])(.*
 // (serveFile decodes, refuses a dot segment and a non-file): its workspace-relative path, ok, and the bytes (body null when
 // there is no such file; with bytes false the file is only stat-ed and body is undefined).
 export function imageTarget(ws, fromDir, src, { bytes = true } = {}) {
-  const raw = relative(ws, src.startsWith('/') ? join(ws, src.split(/[?#]/)[0]) : resolve(fromDir, src.split(/[?#]/)[0])).replace(/\\/g, '/');
+  const path = src.split(/[?#]/)[0];
+  if (path.includes('\\')) return { path, ok: false, body: null };
+  const raw = relative(ws, src.startsWith('/') ? join(ws, path) : resolve(fromDir, path)).split(sep).join('/');
   const served = !raw.startsWith('..') && ['lessons', 'reference', 'assets'].includes(raw.split('/')[0]) ? serveFile(ws, `/${raw}`, { bytes }) : { status: 404 };
   return served.status === 200 ? { path: decodeURIComponent(raw), ok: true, body: served.body } : { path: raw, ok: false, body: null };
 }

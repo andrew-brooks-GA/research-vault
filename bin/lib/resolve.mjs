@@ -80,7 +80,7 @@ export function resolveVault(opts = {}) {
   };
   const readConfig = opts.readConfig ?? (() => readConfigPath(ctx));
   const readProjectConfig = opts.readProjectConfig ?? (() => {
-    const hit = loadProjectConfig(ctx.cwd, { schema: loadSchema(REPO_ROOT) });
+    const hit = loadProjectConfig(ctx.cwd, { schema: loadSchema(REPO_ROOT), workspaceDir: opts.workspaceDir });
     return hit ? { ...hit.config, path: hit.path } : null;
   });
   if (ctx.flag) return { path: ctx.flag, source: 'flag' };

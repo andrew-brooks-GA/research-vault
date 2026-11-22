@@ -38,9 +38,9 @@ const counts = (r, file, reviewer) => r.event === 'claims' && r.file === file &&
 export function contentHash(data) { return createHash('sha256').update(data).digest('hex'); }
 
 // The ledger root for a file: the repo bound above it, else the vault when the file is inside it, else null.
-export function ledgerRoot(abs, vaultPath) {
+export function ledgerRoot(abs, vaultPath, opts) {
   if (compareContainment(vaultPath, abs, undefined, null)) assertInsideVault(vaultPath, abs);
-  const cfg = findProjectConfig(dirname(abs));
+  const cfg = findProjectConfig(dirname(abs), opts);
   return cfg ? dirname(cfg.path) : isInsideVault(vaultPath, abs) ? resolve(vaultPath) : null;
 }
 
@@ -181,14 +181,15 @@ export function taskFile(page) {
   const abs = resolve(page);
   const nnnn = /^(\d{4})-.*\.html$/.exec(basename(abs))?.[1];
   if (!nnnn || basename(dirname(abs)) !== 'lessons') return null;
-  const file = join(workspaceOf(abs), 'evidence', nnnn, 'requirements.json');
-  return existsSync(file) ? file : null;
+  const ws = workspaceOf(abs);
+  const file = join(ws, 'evidence', nnnn, 'requirements.json');
+  return isInsideVault(ws, file) && existsSync(file) ? file : null;
 }
 
 // The binding of this repo root and the language of a code.globs file under it, else null. A
 // binding found above the root belongs to another repo and is not read.
-export function codeLang(repoRoot, filePath) {
-  const hit = loadProjectConfig(resolve(repoRoot), { schema: loadSchema(REPO_ROOT) });
+export function codeLang(repoRoot, filePath, opts) {
+  const hit = loadProjectConfig(resolve(repoRoot), { ...opts, schema: loadSchema(REPO_ROOT) });
   const cfg = hit && dirname(hit.path) === resolve(repoRoot) ? hit.config : null;
   const abs = resolve(repoRoot, filePath);
   // ponytail: expands code.globs per call; switch to path.matchesGlob if large repos make this slow.
@@ -204,9 +205,9 @@ function ledgerRows(repoRoot) {
 
 // Units of the draft's current content that no PASS or MERIT row for this file has covered,
 // by unit id: the reviewer's worklist after an edit.
-export function changedUnits(repoRoot, filePath) {
+export function changedUnits(repoRoot, filePath, opts) {
   const file = ledgerKey(repoRoot, filePath);
-  const units = unitHashes(readFileSync(resolve(repoRoot, filePath)), codeLang(repoRoot, filePath)?.lang, resolve(repoRoot, filePath));
+  const units = unitHashes(readFileSync(resolve(repoRoot, filePath)), codeLang(repoRoot, filePath, opts)?.lang, resolve(repoRoot, filePath));
   const covered = new Set();
   const reviewer = reviewerHash();
   for (const r of ledgerRows(repoRoot)) {
@@ -233,13 +234,13 @@ export function recordVerdict(repoRoot, filePath, verdict, note) {
   return row;
 }
 
-export function gateStatus(repoRoot, filePath) {
+export function gateStatus(repoRoot, filePath, opts) {
   const file = ledgerKey(repoRoot, filePath);
   const sha256 = contentHash(readFileSync(resolve(repoRoot, filePath)));
   const rows = ledgerRows(repoRoot);
   const reviewer = reviewerHash();
   const hit = rows.findLast((r) => counts(r, file, reviewer) && r.sha256 === sha256);
-  const pending = changedUnits(repoRoot, filePath);
+  const pending = changedUnits(repoRoot, filePath, opts);
   // The page's exact bytes were passed, unless an image it references or its requirements file (taskFile) has changed
   // since (only an img: unit, or the step unit, can differ). A row written before units has no step hash to compare.
   if (hit && !pending.some((u) => u.startsWith('img:') || (u === 'step' && hit.units?.step))) return { file, sha256, verdict: hit.verdict, ts: hit.ts, units: [] };
@@ -255,10 +256,11 @@ export function gateStatus(repoRoot, filePath) {
 
 // A PASS or MERIT for the file's current content, by gate status's rule and the ledger ledgerRoot finds;
 // false when no ledger resolves or the file cannot be read. `teach next` and `teach export` ask this.
-export function hasVerdict(file, vaultPath) {
+export function hasVerdict(file, vaultPath, workspaceDir) {
   try {
-    const root = ledgerRoot(file, vaultPath);
-    return Boolean(root && gateStatus(root, file).verdict);
+    const opts = { workspaceDir };
+    const root = ledgerRoot(file, vaultPath, opts);
+    return Boolean(root && gateStatus(root, file, opts).verdict);
   } catch { return false; }
 }
 
