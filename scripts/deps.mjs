@@ -174,6 +174,8 @@ export const COUPLINGS = [
   ['bin/lib/task.mjs', 'skills/research-teach/LESSON-FORMAT.md', "readRequirements's and parseChecker's words for LAB_TEXT_BAD_RE", 'control, line-separator or bidi character'],
   ['bin/lib/task.mjs', 'skills/research-teach/SKILL.md', "section 3 states the checker's output form and run.sh's ./check --dry-run --hints N; section 1 writes the ./check wrapper that runs teach check", './check'],
   ['bin/lib/task.mjs', 'docs/REFERENCE.md', "the teach check section quotes reportLines's lines and runChecker's and parseChecker's problems", 'output past 1 MiB'],
+  ['bin/lib/task.mjs', 'test/teach-task.test.mjs', 'the checker announcement on standard error', 'check: evidence/${nnnn}/check.sh'],
+  ['bin/lib/task.mjs', 'bin/commands/teach.mjs', 'endRun passes the environment to the command checker that writes the announcement synchronously', /checker\(ws, t, env\)|checker: checkWithAnnouncement/],
   ['bin/commands/teach.mjs', 'docs/REFERENCE.md', 'the teach check usage', 'check [--dry-run] [--hints] <N> [workspace]'],
   ['bin/commands/teach.mjs', 'docs/REFERENCE.md', "next's answered: line, after review-failed:", 'answered:'],
   ['bin/commands/teach.mjs', 'skills/research-teach/SKILL.md', "next's answered: line, which section 4 names", 'answered:'],

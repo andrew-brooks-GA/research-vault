@@ -183,10 +183,11 @@ export function taskLesson(ws, nnnn) {
 
 // One run of a task's checker read against its file: { requirements, parsed } or { problem }; a problem with the
 // checker's output carries its last non-empty stderr line.
-export async function checkTask(ws, nnnn, env = process.env) {
+export async function checkTask(ws, nnnn, { err, env = process.env, runner = runChecker }) {
   const { timeout, requirements, problems } = readRequirements(ws, nnnn);
   if (problems.length) return { problem: problems[0] };
-  const run = await runChecker(ws, nnnn, { timeoutMs: timeout * 1000, env });
+  try { err(`check: evidence/${nnnn}/check.sh`); } catch { /* The announcement is best effort. */ }
+  const run = await runner(ws, nnnn, { timeoutMs: timeout * 1000, env });
   if (run.problem) return run;
   const parsed = parseChecker(requirements, run);
   if (!parsed.problem) return { requirements, parsed };
@@ -324,7 +325,7 @@ export async function startRun(ws, nums, { minutes, pass, hints }, { now, out, e
 // D8's end. Every task's checker runs first; a problem in any keeps the run open and writes nothing. Then the state is
 // renamed to ENDING_FILE, one attempt is written for each task with the run id, the renamed file is removed, and the
 // grade is printed. The grade counts each requirement once, an unreached one as not met.
-export async function endRun(ws, schema, { now, out, err, env = process.env, checker = checkTask }) {
+export async function endRun(ws, schema, { now, out, err, env = process.env, checker = (workspace, task) => checkTask(workspace, task, { err, env }) }) {
   const refuse = (why) => { err(`teach check: ${why}`); return 2; };
   const none = 'no certification run is open; start one with ./check --start <N>';
   const r = readRun(ws);

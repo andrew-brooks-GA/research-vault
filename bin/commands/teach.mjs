@@ -179,6 +179,11 @@ function next(ws, args) {
 // there is none. D8: `--start <N>... [--minutes <M>] [--pass <P>] [--no-hints]`, `--certify` and `--cancel` start, end
 // and drop a certification run; a check of a task in an open run records nothing and ends with the run's line.
 const RUN_ONLY = ['minutes', 'pass', 'no-hints'];
+const checkWithAnnouncement = (ws, nnnn, env) => checkTask(ws, nnnn, {
+  // Accessing the stream initializes POSIX pipes as nonblocking before writing directly to the descriptor.
+  err: (line) => writeFileSync(process.stderr.fd, line + '\n'),
+  env,
+});
 async function check(words, args, schema) {
   const nums = words.filter((w) => /^\d{1,4}$/.test(w));
   const other = words.filter((w) => !/^\d{1,4}$/.test(w));
@@ -194,7 +199,7 @@ async function check(words, args, schema) {
   // A flag given with no value is '', which startRun refuses as out of range.
   const given = (k, v) => (k in args ? v ?? '' : null);
   if (mode[0] === 'start') return startRun(ws, nums, { minutes: given('minutes', args.minutes), pass: given('pass', args.pass), hints: args['no-hints'] !== true }, io);
-  if (mode[0] === 'certify') return endRun(ws, schema, io);
+  if (mode[0] === 'certify') return endRun(ws, schema, { ...io, checker: checkWithAnnouncement });
   if (mode[0] === 'cancel') return cancelRun(ws, io);
   const nnnn = nums[0].padStart(4, '0');
   const refuse = (why) => { process.stderr.write(`teach check: ${nnnn}: ${why}\n`); return 2; };
@@ -210,7 +215,7 @@ async function check(words, args, schema) {
   const run = open.state?.tasks.includes(nnnn) ? open.state : null;
   if (run && !run.hints && args.hints === true) return refuse(`hints are held back in certification run ${run.id}`);
   if (lesson && !run) assertInsideWorkspaceFolder(ws, join(ws, 'attempts'));
-  const c = await checkTask(ws, nnnn);
+  const c = await checkWithAnnouncement(ws, nnnn);
   if (c.problem) return refuse(c.problem);
   const { requirements, parsed } = c;
   // The attempt is written before the report, so a write that fails leaves nothing on stdout.
