@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, appendFileSync, writeFileSync, readFileSync, realpathSync } from 'node:fs';
+import { mkdtempSync, cpSync, appendFileSync, existsSync, writeFileSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { searchVault, matchRows, sortRows } from '../bin/commands/search.mjs';
+import { searchVault, matchRows, semanticSearch, sortRows } from '../bin/commands/search.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { relatedTo } from '../bin/commands/related.mjs';
@@ -15,9 +15,13 @@ import { run as embedRun } from '../bin/commands/embed.mjs';
 import { applyVerification } from '../bin/commands/verify.mjs';
 import { writeEntry } from '../bin/lib/fsutil.mjs';
 import { PROJECT_CONFIG_FILENAME } from '../bin/lib/projectconfig.mjs';
+import { INDEX } from '../bin/lib/embed.mjs';
 import { fieldOrder } from '../bin/lib/schema.mjs';
 import { mkdirSync } from 'node:fs';
-import { boundRepo, fakeFetch } from './embed.test.mjs';
+import {
+  assertEmbeddingRefusal, assertEmbeddingReplyRefusal, boundRepo, embeddingEnv, fakeFetch, HTTPS_ENDPOINT,
+  LOOPBACK_ENDPOINT, normalisedEndpoints, recordEmbeddingRun, refusedEmbeddingReplies, refusedEndpoints, unapprovedUrls,
+} from './embed.test.mjs';
 import { assertVaultUntouched, outsideVaultRepo, testEnv } from './helpers.mjs';
 
 const VAULT = fileURLToPath(new URL('./fixtures/vault', import.meta.url));
@@ -51,7 +55,7 @@ test('CLI search reports a refused project vault and accepts an explicit --vault
 });
 
 test('search filters by type and topic', () => {
-  const r = searchVault(VAULT, { type: 'source', topic: 'x' });
+  const r = searchVault(freshVault(), { type: 'source', topic: 'x' });
   assert.ok(r.some(e => e.id === '2026-01-01-a'));
   assert.ok(!r.some(e => e.type === 'synthesis'));
 });
@@ -121,7 +125,7 @@ test('search hides superseded entries unless --include-superseded (spec 09)', as
   const cli = async args => {
     const out = [];
     const so = process.stdout.write; process.stdout.write = c => { out.push(String(c)); return true; };
-    try { await run({ _: ['search'], vault: dir, type: 'source', ...args }); } finally { process.stdout.write = so; }
+    try { await run({ _: ['search'], vault: dir, cwd: dir, type: 'source', ...args }); } finally { process.stdout.write = so; }
     return out.join('');
   };
   const text = await cli({});
@@ -135,9 +139,10 @@ test('search hides superseded entries unless --include-superseded (spec 09)', as
 });
 
 test('matchRows is searchVault without the body walk and the superseded gate (spec 20 D0)', () => {
-  const rows = buildManifest(VAULT).entries.filter(e => e.status !== 'superseded');
+  const vault = freshVault();
+  const rows = buildManifest(vault).entries.filter(e => e.status !== 'superseded');
   for (const q of [{ type: 'source', topic: 'x' }, { text: 'a' }, { topic: 'tdd' }]) {
-    assert.deepEqual(matchRows(rows, q, { tdd: 'test-driven-development' }).map(e => e.id), searchVault(VAULT, q).map(e => e.id));
+    assert.deepEqual(matchRows(rows, q, { tdd: 'test-driven-development' }).map(e => e.id), searchVault(vault, q).map(e => e.id));
   }
 });
 
@@ -174,7 +179,7 @@ test('search --sort authority through a vault, default order unchanged, text ann
   const { run } = await import('../bin/commands/search.mjs');
   const out = [];
   const so = process.stdout.write; process.stdout.write = c => { out.push(String(c)); return true; };
-  try { await run({ _: ['search'], vault: dir, now: '2026-01-05' }); } finally { process.stdout.write = so; }
+  try { await run({ _: ['search'], vault: dir, cwd: dir, now: '2026-01-05' }); } finally { process.stdout.write = so; }
   const text = out.join('');
   assert.match(text, /^2026-01-03-p {2}\[source\] {2}P {2}\(primary, fresh\)$/m);
   assert.match(text, /^2026-01-02-n {2}\[source\] {2}N {2}\(no tier, fresh\)$/m);
@@ -203,7 +208,7 @@ test('search logs a queried event with its facets and the ids returned, no text 
   assert.deepEqual([e.kind, e.via, e.type, e.outcome, e.ids, 'text' in e], ['queried', 'search', 'source', 'hits', ['2026-01-01-first'], false]);
 });
 
-test('search --semantic ranks by cosine over the index, weights stale rows down, drops superseded rows, honours --limit and refuses as the plan says (spec 34 D3)', async () => {
+test('search --semantic ranks by cosine over the index, weights stale rows down, drops superseded rows, honours --limit and refuses as the plan says (spec 34 D3)', async (t) => {
   const dir = freshVault();
   const schema = loadSchema(process.cwd());
   const src = (id, body, extra = {}) => {
@@ -217,8 +222,7 @@ test('search --semantic ranks by cosine over the index, weights stale rows down,
   src('2026-01-01-k8s-stale', 'kubernetes kubernetes', { volatility: 'fast', verifications: [{ date: '2026-01-01', by_type: 'human', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }] });
   src('2026-01-01-zig-old', 'zig zig');
   const repo = boundRepo(dir);
-  const saved = process.env.RESEARCH_VAULT_ALLOW_NETWORK;
-  process.env.RESEARCH_VAULT_ALLOW_NETWORK = '1';
+  embeddingEnv(t);
   const out = [], errs = [];
   const so = process.stdout.write.bind(process.stdout), se = process.stderr.write.bind(process.stderr);
   process.stdout.write = (s) => { out.push(s); return true; }; process.stderr.write = (s) => { errs.push(s); return true; };
@@ -250,6 +254,140 @@ test('search --semantic ranks by cosine over the index, weights stale rows down,
     assert.match(errs.at(-1), /--ack-data-egress/);
   } finally {
     process.stdout.write = so; process.stderr.write = se;
-    if (saved === undefined) delete process.env.RESEARCH_VAULT_ALLOW_NETWORK; else process.env.RESEARCH_VAULT_ALLOW_NETWORK = saved;
   }
+});
+
+test('search --semantic refuses an unset, empty, invalid or different approved URL before reading the index', async (t) => {
+  embeddingEnv(t);
+  const vault = freshVault();
+  const cwd = boundRepo(vault, { url: HTTPS_ENDPOINT });
+  for (const [label, url] of unapprovedUrls) await t.test(label, async () => {
+    if (url === undefined) delete process.env.RESEARCH_VAULT_EMBED_URL;
+    else process.env.RESEARCH_VAULT_EMBED_URL = url;
+    assertEmbeddingRefusal(await recordEmbeddingRun(searchRun, { vault, cwd, semantic: 'zig' }), 'search', `set RESEARCH_VAULT_EMBED_URL to ${HTTPS_ENDPOINT} to allow this embedding endpoint`);
+    assert.equal(existsSync(join(vault, INDEX)), false);
+  });
+});
+
+function writeEmptyIndex(vault) {
+  mkdirSync(join(vault, '_index'), { recursive: true });
+  writeFileSync(join(vault, INDEX), '{}\n');
+}
+
+test('search --semantic sends the query to approved HTTPS or loopback HTTP and shows the destination before fetching', async (t) => {
+  embeddingEnv(t, LOOPBACK_ENDPOINT, 'test-key');
+  const vault = freshVault();
+  writeEmptyIndex(vault);
+  for (const address of ['HTTPS://EMBED.EXAMPLE.TEST:443', 'http://127.0.0.1:1/', 'http://localhost:1/', 'http://[::1]:1/']) {
+    const url = new URL(address).href;
+    process.env.RESEARCH_VAULT_EMBED_URL = url;
+    const result = await recordEmbeddingRun(searchRun, { vault, cwd: boundRepo(vault, { url: address }), semantic: 'zig', json: true });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, '[]\n');
+    assert.equal(result.stderr, `search: sending the query to ${url}\n`);
+    assert.equal(result.calls.length, 1);
+    const [call] = result.calls;
+    assert.equal(call.url, url);
+    assert.equal(call.init.headers.Authorization, 'Bearer test-key');
+    assert.deepEqual(JSON.parse(call.init.body), { input: ['zig'] });
+    assert.equal(call.stderr, result.stderr);
+  }
+});
+
+test('search --semantic refuses non-loopback HTTP and URLs with user-info, including in direct calls', async (t) => {
+  embeddingEnv(t);
+  const vault = freshVault();
+  for (const [url, reason] of refusedEndpoints) {
+    process.env.RESEARCH_VAULT_EMBED_URL = url;
+    assertEmbeddingRefusal(await recordEmbeddingRun(searchRun, { vault, cwd: boundRepo(vault, { url }), semantic: 'zig' }), 'search', reason);
+    const calls = [];
+    await assert.rejects(semanticSearch(vault, { url }, 'zig', {}, { fetch: fakeFetch(calls) }), { message: reason });
+    assert.deepEqual(calls, []);
+    assert.equal(existsSync(join(vault, INDEX)), false);
+  }
+});
+
+test('semanticSearch refuses an unapproved address before reading the index', async (t) => {
+  embeddingEnv(t);
+  const vault = freshVault();
+  mkdirSync(join(vault, INDEX), { recursive: true });
+  const calls = [];
+  await assert.rejects(semanticSearch(vault, { url: HTTPS_ENDPOINT }, 'zig', {}, { fetch: fakeFetch(calls) }), {
+    message: `set RESEARCH_VAULT_EMBED_URL to ${HTTPS_ENDPOINT} to allow this embedding endpoint`,
+  });
+  assert.deepEqual(calls, []);
+});
+
+test('search --semantic prints the normalised address in the refusal and before fetching', async (t) => {
+  const vault = freshVault();
+  writeEmptyIndex(vault);
+  for (const [label, address, url] of normalisedEndpoints) await t.test(label, async (t) => {
+    embeddingEnv(t, '');
+    const args = { vault, cwd: boundRepo(vault, { url: address }), semantic: 'zig' };
+    const refused = await recordEmbeddingRun(searchRun, args);
+    assertEmbeddingRefusal(refused, 'search', `set RESEARCH_VAULT_EMBED_URL to ${url} to allow this embedding endpoint`);
+    process.env.RESEARCH_VAULT_EMBED_URL = refused.stderr.match(/ to (\S+) to allow this embedding endpoint\n$/)[1];
+    const allowed = await recordEmbeddingRun(searchRun, args);
+    assert.equal(allowed.status, 0, allowed.stderr);
+    assert.equal(allowed.stderr, `search: sending the query to ${url}\n`);
+    assert.equal(allowed.calls.length, 1);
+    assert.equal(allowed.calls[0].url, url);
+    assert.equal(allowed.calls[0].stderr, allowed.stderr);
+  });
+});
+
+test('search --semantic refuses unusable replies with one fixed error line and leaves the index intact', async (t) => {
+  embeddingEnv(t, HTTPS_ENDPOINT);
+  const vault = freshVault();
+  writeEmptyIndex(vault);
+  const cwd = boundRepo(vault, { url: HTTPS_ENDPOINT });
+  for (const [label, reply, reason] of refusedEmbeddingReplies) await t.test(label, async () => {
+    const result = await recordEmbeddingRun(searchRun, { vault, cwd, semantic: 'zig', fetch: async () => reply(1) });
+    assertEmbeddingReplyRefusal(result, 'search', reason);
+    assert.equal(readFileSync(join(vault, INDEX), 'utf8'), '{}\n');
+  });
+});
+
+test('search --semantic refuses a rejected redirect without printing its location or writing the index', async (t) => {
+  embeddingEnv(t, HTTPS_ENDPOINT);
+  const vault = freshVault();
+  writeEmptyIndex(vault);
+  const result = await recordEmbeddingRun(searchRun, { vault, cwd: boundRepo(vault, { url: HTTPS_ENDPOINT }), semantic: 'zig', fetch: async () => {
+    throw new Error('redirect to https://redirect.example.test/');
+  } });
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.equal(result.calls.length, 1);
+  assert.equal(result.calls[0].init.redirect, 'error');
+  assert.equal(result.stderr, `${result.calls[0].stderr}search refused: embedding endpoint request failed\n`);
+  assert.equal(readFileSync(join(vault, INDEX), 'utf8'), '{}\n');
+});
+
+test('CLI search --semantic refuses an endpoint without URL approval', () => {
+  // There is no index, so this fixture cannot reach fetch even if the refusal is absent.
+  const vault = freshVault();
+  const cwd = boundRepo(vault, { url: HTTPS_ENDPOINT });
+  const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+  const result = spawnSync(process.execPath, [cli, 'search', '--vault', vault, '--semantic', 'zig', '--ack-data-egress'], {
+    cwd, env: testEnv({ RESEARCH_VAULT_ALLOW_NETWORK: '1' }), encoding: 'utf8',
+  });
+  assert.equal(result.stderr, `search refused: set RESEARCH_VAULT_EMBED_URL to ${HTTPS_ENDPOINT} to allow this embedding endpoint\n`);
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.equal(existsSync(join(vault, INDEX)), false);
+});
+
+test('CLI search --semantic refuses an unapproved address before resolving the bound vault', () => {
+  const cwd = boundRepo('missing\0vault', { url: HTTPS_ENDPOINT });
+  const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+  const run = approved => spawnSync(process.execPath, [cli, 'search', '--semantic', 'zig', '--ack-data-egress'], {
+    cwd, env: testEnv({ RESEARCH_VAULT_ALLOW_NETWORK: '1', RESEARCH_VAULT_EMBED_URL: approved }), encoding: 'utf8',
+  });
+  const refused = run();
+  assert.equal(refused.stderr, `search refused: set RESEARCH_VAULT_EMBED_URL to ${HTTPS_ENDPOINT} to allow this embedding endpoint\n`);
+  assert.equal(refused.status, 1);
+  assert.equal(refused.stdout, '');
+  const approved = run(HTTPS_ENDPOINT);
+  assert.equal(approved.status, 2, approved.stderr);
+  assert.match(approved.stderr, /vault that could not be resolved/);
 });

@@ -8,7 +8,7 @@ import { staleness } from '../lib/stale.mjs';
 import { appendUsage, USAGE_LOG } from '../lib/usagelog.mjs';
 import { VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
-import { cosine, embedTexts, readIndex } from '../lib/embed.mjs';
+import { cosine, embeddingDestination, embedTexts, readIndex } from '../lib/embed.mjs';
 import { embeddingGate } from './embed.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -68,10 +68,13 @@ export const STALE_WEIGHT = 0.8;
 
 // Spec 34: rank the facet-filtered, non-superseded rows by the best cosine over their windows.
 export async function semanticSearch(vaultPath, cfg, query, q, { fetch, repoRoot = REPO_ROOT } = {}) {
+  const { display, refusal } = embeddingDestination(cfg.url);
+  if (refusal) throw new Error(refusal);
   const index = readIndex(vaultPath);
   if (!index) throw new Error('no embedding index; run embed first');
   const schema = loadSchema(repoRoot, { vaultPath });
   const rows = matchRows(buildManifest(vaultPath).entries.filter(e => e.status !== 'superseded'), q, schema.taxonomy.topic_aliases);
+  process.stderr.write(`search: sending the query to ${display}\n`);
   const [qv] = await embedTexts(cfg, [query], { fetch });
   const best = new Map();
   for (const r of index.rows) {
@@ -92,9 +95,9 @@ function warnUsageRefusal(error) {
 }
 
 export async function run(args) {
-  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
   const now = args.now || new Date().toISOString().slice(0, 10);
-  if (args.semantic !== undefined) return runSemantic(vaultPath, args, now);
+  if (args.semantic !== undefined) return runSemantic(args, now);
+  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
   const rows = searchVault(vaultPath, { type: args.type, domain: args.domain, topic: args.topic, series: args.series, text: args.text, body: args.body, includeSuperseded: !!args['include-superseded'], sort: args.sort, now });
   // The usage log (spec 29): the facets and the ids returned; --text only behind usage.text.
   try {
@@ -109,14 +112,15 @@ export async function run(args) {
   return 0;
 }
 
-async function runSemantic(vaultPath, args, now) {
+async function runSemantic(args, now) {
   for (const f of ['sort', 'text', 'body']) if (args[f] !== undefined) { process.stderr.write(`search refused: --semantic cannot be combined with --${f}\n`); return 1; }
   if (!args.semantic) { process.stderr.write('search refused: --semantic needs a query\n'); return 1; }
-  const cfg = embeddingGate('search', { cwd: args.cwd, 'ack-data-egress': !!args['ack-data-egress'] });
-  if (!cfg) return 1;
+  const gate = embeddingGate('search', { cwd: args.cwd, 'ack-data-egress': !!args['ack-data-egress'] });
+  if (!gate) return 1;
+  const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
   let rows;
   try {
-    rows = await semanticSearch(vaultPath, cfg, args.semantic, { type: args.type, domain: args.domain, topic: args.topic, series: args.series, limit: args.limit, now }, { fetch: typeof args.fetch === 'function' ? args.fetch : undefined });
+    rows = await semanticSearch(vaultPath, gate.cfg, args.semantic, { type: args.type, domain: args.domain, topic: args.topic, series: args.series, limit: args.limit, now }, { fetch: typeof args.fetch === 'function' ? args.fetch : undefined });
   } catch (e) { process.stderr.write(`search refused: ${e.message}\n`); return 1; }
   try {
     const usage = loadProjectConfig(args.cwd ?? process.cwd(), { schema: loadSchema(REPO_ROOT) })?.config?.usage;
