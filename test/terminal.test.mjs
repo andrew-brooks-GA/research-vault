@@ -222,6 +222,68 @@ test('a wrong Origin, a wrong Content-Type or a body over 65536 bytes is 403 bef
   assert.ok(!first.text.includes('refused-input'), 'no refused body reached the shell');
 });
 
+test('input refused for a missing or wrong cookie, wrong Host, oversized body or invalid body never reaches the running shell', { skip, timeout: 15000 }, async () => {
+  const offset = first.text.length;
+  const noCookie = 'no terminal cookie; open the address teach serve printed\n';
+  const cases = [
+    ['missing-cookie', { cookie: undefined }, 403, noCookie],
+    ['wrong-cookie', { cookie: `rv-labs-${port}=${newT()}` }, 403, noCookie],
+    ['wrong-host', { headers: { Host: 'localhost' } }, 403, 'forbidden\n'],
+    ['oversized-body', {}, 403, 'forbidden\n'],
+    ['extra-key', {}, 400, 'body must be {"data": "<text>"}\n'],
+  ];
+  for (const [label, opts, status, text] of cases) {
+    let body = { data: `echo "refused-input""-${label}"\n` };
+    if (label === 'extra-key') body.extra = true;
+    if (label === 'oversized-body') {
+      // JSON whitespace makes the actual body exceed the cap while keeping the command short.
+      body = JSON.stringify(body) + ' '.repeat(65537);
+      assert.ok(Buffer.byteLength(body) > 65536, `${label}: actual body exceeds the cap`);
+    }
+    const r = await post(port, 'input', body, { cookie, ...opts });
+    assert.deepEqual([r.status, r.text], [status, text], label);
+  }
+  await type('echo "cookie-input""-done"\n');
+  await waitFor(first, shellOutput(/cookie-input-done\r?\n/));
+  const output = first.text.slice(offset);
+  for (const [label] of cases) {
+    assert.ok(!output.includes(`refused-input-${label}`), `${label}: no refused input reached the shell`);
+  }
+});
+
+test('resize refused for a missing or wrong cookie, wrong Host, missing or wrong Origin, wrong Content-Type, oversized Content-Length or invalid body leaves the shell size unchanged', { skip, timeout: 120000 }, async () => {
+  const size = async (label) => {
+    const offset = first.text.length;
+    await type(`stty size; echo "size-${label}""-done"\n`);
+    await waitFor(first, shellOutput(new RegExp(`size-${label}-done\\r?\\n`)));
+    const match = shellOutput(/(\d+) (\d+)\r?\n/).exec(first.text.slice(offset));
+    assert.ok(match, `${label}: stty size returned dimensions`);
+    return match.slice(1);
+  };
+  const before = await size('before-refusals');
+  const noCookie = 'no terminal cookie; open the address teach serve printed\n';
+  const badBody = 'body must be {"rows": <1 to 500>, "cols": <1 to 1000>}\n';
+  const cases = [
+    ['missing-cookie', { cookie: undefined }, 403, noCookie],
+    ['wrong-cookie', { cookie: `rv-labs-${port}=${newT()}` }, 403, noCookie],
+    ['another-origin', { origin: `http://127.0.0.1:${port + 1}` }, 403, 'forbidden\n'],
+    ['wrong-content-type', { headers: { 'Content-Type': 'text/plain' } }, 403, 'forbidden\n'],
+    ['wrong-host', { headers: { Host: 'localhost' } }, 403, 'forbidden\n'],
+    ['missing-origin', { headers: { Origin: undefined } }, 403, 'forbidden\n'],
+    ['oversized-content-length', { headers: { 'Content-Length': 65537 } }, 403, 'forbidden\n'],
+    ['zero-rows', {}, 400, badBody, { rows: 0, cols: 91 }],
+    ['rows-over-max', {}, 400, badBody, { rows: 501, cols: 91 }],
+    ['zero-cols', {}, 400, badBody, { rows: 31, cols: 0 }],
+    ['cols-over-max', {}, 400, badBody, { rows: 31, cols: 1001 }],
+    ['extra-key', {}, 400, badBody, { rows: 31, cols: 91, extra: true }],
+  ];
+  for (const [label, opts, status, text, body = { rows: 31, cols: 91 }] of cases) {
+    const r = await post(port, 'resize', body, { cookie, ...opts });
+    assert.deepEqual([r.status, r.text], [status, text], label);
+    assert.deepEqual(await size(label), before, `${label}: refused resize did not change the shell size`);
+  }
+});
+
 test('pwd, typed through /term/input, comes back on the stream as the workspace root; the shell gets TERM and no CLAUDE names', { skip }, async () => {
   const r = await post(port, 'input', { data: 'pwd\n' }, { cookie });
   assert.deepEqual([r.status, r.text], [200, 'ok\n']);

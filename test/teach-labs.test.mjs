@@ -234,6 +234,46 @@ test('without --labs every lab path is as before: POST 404 not found, /labs/open
   assert.throws(() => createServer(ws, { schema: SCHEMA, labs: true, t: 'short' }), /64 hex/);
 });
 
+test('lab POSTs refused before the runner start no script and log no action', { timeout: 15000 }, async () => {
+  const { ws, entry, script } = labWorkspace();
+  entry.up = script('lessons/files/0001-lab/up.sh', '#!/bin/sh\necho up >> starts\n');
+  writeFileSync(join(ws, 'labs', 'labs.json'), JSON.stringify({ version: 1, labs: { demo: entry } }));
+  writeLesson(ws, '0001-lab', 'demo', sha(JSON.stringify(['demo', entry])));
+  const logs = [];
+  const t = newT();
+  const { server, port } = await start(ws, { labs: true, t, log: (line) => logs.push(line) });
+  try {
+    const { cookie } = await openLab(port, t);
+    const headers = { Origin: `http://127.0.0.1:${port}`, 'Content-Type': 'application/json', Cookie: cookie };
+    const body = '{"lab":"demo"}';
+    const noCookie = 'no lab cookie; open the lab address teach serve printed\n';
+    const badBody = 'body must be {"lab": "<id>"}\n';
+    const cases = [
+      ['wrong Host', { headers: { Host: `localhost:${port}` } }],
+      ['no Origin', { headers: { Origin: undefined } }],
+      ['another Origin', { headers: { Origin: `http://127.0.0.1:${port + 1}` } }],
+      ['wrong Content-Type', { headers: { 'Content-Type': 'text/plain' } }],
+      ['Content-Length over 256', { body: body.padEnd(257) }],
+      ['chunked body over 256', { body: body.padEnd(257), chunked: true }],
+      ['no cookie', { headers: { Cookie: undefined } }, 403, noCookie],
+      ['wrong cookie', { headers: { Cookie: `rv-labs-${port}=${newT()}` } }, 403, noCookie],
+      ['body with an extra key', { body: '{"lab":"demo","extra":true}' }, 400, badBody],
+    ];
+    for (const [label, opts, status = 403, text = 'forbidden\n'] of cases) {
+      const refused = await req(port, { method: 'POST', path: '/lab/run', body, ...opts, headers: { ...headers, ...opts.headers } });
+      assert.deepEqual([refused.status, refused.text], [status, text], label);
+      // The runner takes the slot and spawns synchronously. A refused run either still
+      // occupies that slot or has finished and left its append and log behind.
+      const allowed = await post(port, 'run', { lab: 'demo' }, { cookie });
+      assert.deepEqual([allowed.status, allowed.text], [200, 'lab: exit 0\n'], `${label}: the allowed run finishes, not already running`);
+      assert.equal(readFileSync(join(ws, 'starts'), 'utf8'), 'up\n', `${label}: only the allowed script started`);
+      assert.deepEqual(logs, ['lab demo run: 200 lab: exit 0'], `${label}: no refused action was logged`);
+      writeFileSync(join(ws, 'starts'), '');
+      logs.length = 0;
+    }
+  } finally { await server.stopLabs(); server.close(); }
+});
+
 test('every refusal of checks 1 to 11 and 13, in order, with its status and body; nothing echoes the request; past them the action runs', async () => {
   const { ws, script } = labWorkspace({ extra: { env: ['LAB_TOKEN'], checks: [] } });
   // A second lab with a verify and a check; a third lab no lesson stores the pin of.
