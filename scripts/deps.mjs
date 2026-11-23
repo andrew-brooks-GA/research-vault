@@ -26,6 +26,7 @@ const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.m
 // text itself, and the test fails when either file stops containing it. Give one only when the
 // literal really is in both files; a row about two values being equal stays prose.
 export const COUPLINGS = [
+  ['skills/research-teach/assets/quiz.js', 'test/teach-export.test.mjs', 'the delivered classic script emits the attempts-file protocol', 'research-vault-attempts'],
   ['scripts/run-tests.mjs', 'test/npm-test.test.mjs', 'runner timeout options, defaults and whole-run timeout diagnostic'],
   ['scripts/run-tests.mjs', '.github/workflows/ci.yml', 'CI job limit must exceed the default whole-run limit'],
   ['scripts/run-tests.mjs', 'AGENTS.md', 'npm test environment isolation and default test, test-file and whole-run limits'],
@@ -114,7 +115,7 @@ export const COUPLINGS = [
   ['schema/taxonomy.json', 'test/helpers.mjs', 'put() hardcodes domain, method, by_type, result and volatility values', 'by_type'],
   ['schema/taxonomy.json', 'bin/commands/capture.mjs', 'the default domain, volatility, source_type, confidence, outcome, state and language values', 'source_type'],
   ['test/helpers.mjs', 'test/isolation.test.mjs', 'the source guard matches the testEnv helper by name', 'testEnv'],
-  ['bin/lib/git.mjs', 'test/git.test.mjs', 'the invocation test checks the fixed Git overrides and their order', "'-c', 'hook.post-index-change.enabled=false'"],
+  ['bin/lib/git.mjs', 'test/git.test.mjs', 'the invocation test checks the fixed Git overrides and their order', /['"]-c['"]\s*,\s*['"]hook\.post-index-change\.enabled=false['"]/],
   ['bin/lib/git.mjs', 'SECURITY.md', 'the Git overrides, supported versions and limits are restated', 'safe.bareRepository=explicit'],
   ['bin/lib/git.mjs', 'test/teach-labs.test.mjs', 'the process guard checks the child_process import and sole Git launch', 'execFileSync'],
   ['schema/teach-taxonomy.json', 'skills/research-teach/LEARNING-RECORD-FORMAT.md', 'kind values, types and the learning-records folder are hand-copied', 'learning-records'],

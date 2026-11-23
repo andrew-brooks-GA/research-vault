@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { testEnv } from './helpers.mjs';
 import { join, dirname } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { shuffleOptions, grade, answerLengthSpread, lessonIdFrom, neighbours, pathPosition, mergeQuizzes, answerMark, renderQuiz, resultsFile, renderLab, labStatus, LAB_ENDED_EARLY } from '../skills/research-teach/assets/quiz.js';
+import { renderNav, shuffleOptions, grade, answerLengthSpread, lessonIdFrom, neighbours, pathPosition, mergeQuizzes, answerMark, renderQuiz, resultsFile, renderLab, labStatus, LAB_ENDED_EARLY } from '../skills/research-teach/assets/quiz.js';
 
 const QUIZ = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills/research-teach/assets/quiz.js');
 
@@ -47,7 +48,7 @@ test('lessonIdFrom prefers the served path, falls back to data-lesson, else null
   assert.equal(lessonIdFrom(undefined, undefined), null);
 });
 
-test('importing quiz.js in Node touches no DOM', () => {
+test('importing quiz.js in Node touches no DOM', (t) => {
   // A child process with no document and counting getters on window, location and fetch.
   // document stays undefined so the module's typeof guard is what is under test.
   const script = `
@@ -59,9 +60,13 @@ test('importing quiz.js in Node touches no DOM', () => {
     const m = await import(${JSON.stringify(QUIZ)});
     console.log(JSON.stringify({ touched, hasDocument: typeof document !== 'undefined', exports: Object.keys(m).sort() }));
   `;
-  const out = JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], { env: testEnv(), encoding: 'utf8' }));
+  const dir = mkdtempSync(join(tmpdir(), 'rv-quiz-import-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const entry = join(dir, 'check.mjs');
+  writeFileSync(entry, script);
+  const out = JSON.parse(execFileSync(process.execPath, [entry], { env: testEnv(), encoding: 'utf8', timeout: 10000 }));
   console.log(`exports=${out.exports.length} dom_accesses=${out.touched}`);
-  assert.deepEqual(out.exports, ['LAB_ENDED_EARLY', 'answerLengthSpread', 'answerMark', 'grade', 'labStatus', 'lessonIdFrom', 'mergeQuizzes', 'mountReplays', 'neighbours', 'pathPosition', 'renderLab', 'renderQuiz', 'resultsFile', 'shuffleOptions']);
+  assert.deepEqual(out.exports, ['LAB_ENDED_EARLY', 'answerLengthSpread', 'answerMark', 'grade', 'labStatus', 'lessonIdFrom', 'mergeQuizzes', 'mountReplays', 'neighbours', 'pathPosition', 'renderLab', 'renderNav', 'renderQuiz', 'resultsFile', 'shuffleOptions']);
   assert.equal(out.touched, 0);
   assert.equal(out.hasDocument, false);
 });
@@ -104,6 +109,7 @@ function fakeDocument(dataset = {}) {
       classList: { add(c) { node.className += ` ${c}`; } },
       setAttribute(k, v) { node.attrs[k] = v; },
       append(...c) { node.children.push(...c); },
+      prepend(...c) { node.children.unshift(...c); },
       addEventListener(t, f) { node.listeners[t] = f; },
       click() { node.clicked = true; }, remove() { node.removed = true; },
       querySelectorAll(sel) { const out = []; const walk = (n) => n.children.forEach((c) => { if (c.tag === sel) out.push(c); walk(c); }); walk(node); return out; },
@@ -391,12 +397,28 @@ test('renderLab adds nothing without data-lab-live, on an exported page, off the
   } finally {
     for (const k of ['document', 'location']) delete globalThis[k];
   }
-  // The widget writes the reply only as text.
-  const src = readFileSync(QUIZ, 'utf8');
-  const widget = src.slice(src.indexOf('export const LAB_ENDED_EARLY'), src.indexOf("if (typeof document !== 'undefined')"));
-  assert.doesNotMatch(widget, /innerHTML|outerHTML|insertAdjacent|document\.write|DOMParser|createContextualFragment|\beval\b/);
 });
 
-test('the navigation bar links the reading page (spec 38)', () => {
-  assert.match(readFileSync(QUIZ, 'utf8'), /link\('\/assets\/reading\.html', 'How to read', 'lesson-nav-reading'\)/);
+// Guard all lab widget branches against HTML/code sinks; exercising replies cannot prove
+// that an unvisited branch never interprets a reply as markup or code.
+// This scan includes comments, so a comment that names a sink fails it.
+test('source scan: the lab widget has no unsafe DOM or code sinks', () => {
+  const src = readFileSync(QUIZ, 'utf8');
+  const start = src.search(/\bexport\s+const\s+LAB_ENDED_EARLY\b/);
+  const end = src.search(/\bif\s*\(\s*typeof\s+document\s*!==\s*['"]undefined['"]\s*\)/);
+  assert.ok(start >= 0 && end > start, 'widget boundaries');
+  const widget = src.slice(start, end);
+  assert.doesNotMatch(widget, /\b(?:innerHTML|outerHTML|srcdoc|setHTMLUnsafe|insertAdjacent\w*|DOMParser|createContextualFragment|eval|Function)\b|\bdocument\s*\.\s*write\b|\b(?:setTimeout|setInterval)\s*\(\s*['"`]/);
+});
+
+test('the navigation bar links the reading page (spec 38)', async (t) => {
+  globalThis.document = fakeDocument();
+  globalThis.location = { origin: 'http://127.0.0.1:8080', pathname: '/lessons/0001-one.html' };
+  t.after(() => { delete globalThis.document; delete globalThis.location; });
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ lessons: [] }) });
+  t.after(() => { if (previousFetch === undefined) delete globalThis.fetch; else globalThis.fetch = previousFetch; });
+  await renderNav();
+  const links = document.body.querySelectorAll('a').filter((a) => a.className === 'lesson-nav-reading');
+  assert.deepEqual(links.map((a) => [a.href, a.textContent]), [['/assets/reading.html', 'How to read']]);
 });

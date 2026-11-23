@@ -72,6 +72,13 @@ const outDir = () => join(tempRoot('rv-teach-export-out-'), 'site');
 const tree = (dir, rel = '') => readdirSync(join(dir, rel), { withFileTypes: true })
   .flatMap((d) => (d.isDirectory() ? tree(dir, posix.join(rel, d.name)) : [posix.join(rel, d.name)])).sort();
 const read = (out, p) => readFileSync(join(out, p), 'utf8');
+// Execute the delivered classic script and check its results-file contract.
+function assertExportedQuiz(out) {
+  const context = vm.createContext({});
+  new vm.Script(read(out, 'assets/quiz.js')).runInContext(context, { timeout: 1000 });
+  const result = vm.runInContext("resultsFile('example', [{ lesson: '0001-one', answers: [1], at: '2026-01-01', total: 1, wrong: [], extra: true }])", context, { timeout: 1000 });
+  assert.deepEqual(JSON.parse(result), { format: 'research-vault-attempts', version: 1, workspace: 'example', attempts: [{ lesson: '0001-one', answers: [1], at: '2026-01-01', total: 1, wrong: [] }] });
+}
 const lines = (r, prefix) => r.stdout.split('\n').filter((l) => l.startsWith(prefix));
 
 test('teach export writes a copy that opens from file://: the served file set, deferred classic quiz tags, built-in navs, relative links only (spec 48 test 1)', () => {
@@ -92,9 +99,7 @@ test('teach export writes a copy that opens from file://: the served file set, d
   assert.deepEqual(lines(r, 'not gated'), ['not gated lessons/files/0002-lab/page.html']);
   assert.equal(lines(r, 'wrote').join(), `wrote ${expected.length} files to ${out}`);
   assert.equal(read(out, 'assets/lesson.css'), readFileSync(join(ASSETS, 'lesson.css'), 'utf8'), 'no workspace lesson.css: the plugin\'s');
-  const quizJs = read(out, 'assets/quiz.js');
-  assert.ok(!/^export /m.test(quizJs) && quizJs.includes('function resultsFile('), 'the plugin\'s quiz.js, not the workspace\'s');
-  new vm.Script(quizJs); // a classic script compiles
+  assertExportedQuiz(out);
   const pages = expected.filter((p) => p.endsWith('.html'));
   for (const p of pages) {
     const h = read(out, p);
@@ -344,7 +349,8 @@ test('a case variant of quiz.js, reading.html or lesson.css in assets/ is decide
   assert.equal(r.status, 0, r.stdout + r.stderr);
   const assets = readdirSync(join(out, 'assets')).sort();
   assert.deepEqual(assets, ['LESSON.CSS', 'fig.svg', 'quiz.js', 'reading.html']);
-  assert.ok(read(out, 'assets/reading.html').includes('How to read a lesson') && read(out, 'assets/quiz.js').includes('function resultsFile('));
+  assert.ok(read(out, 'assets/reading.html').includes('How to read a lesson'));
+  assertExportedQuiz(out);
   // Only a case-sensitive disk can hold both names; there the export refuses before writing.
   const c = exportRepo({ edit: (w) => { writeFileSync(join(w, 'lessons', 'files', '0002-lab', 'a.txt'), '1\n'); writeFileSync(join(w, 'lessons', 'files', '0002-lab', 'A.txt'), '2\n'); } });
   if (readdirSync(join(c.ws, 'lessons', 'files', '0002-lab')).length === 4) {

@@ -309,7 +309,7 @@ test('brand lint: each BRAND_ code an error naming the path, token, colour or te
   } finally { rmSync(repo.repo, { recursive: true, force: true }); }
 });
 
-test('two unrelated brands serve, export and lint through the same code; neither brand\'s name, colours or terms are in bin/ or the plugin\'s assets (spec 50 test 8)', async () => {
+test('two unrelated brands serve, export and lint through the same code (spec 50 test 8)', async () => {
   const brands = [
     { name: 'Quillfeather Guild', color: { light: { '--ink': '#1a2b3c' }, dark: { '--ink': '#d4e5f6' } }, font: { body: 'Gill Sans, sans-serif' }, voice: { avoid: [{ term: 'Frobnicator', use: 'tool' }] } },
     { name: 'Brightmoor Assembly', color: { light: { '--mark': '#f1e2d3' } }, font: { code: 'Courier New' }, voice: { avoid: [{ term: 'Wibblewidget' }] } },
@@ -337,15 +337,20 @@ test('two unrelated brands serve, export and lint through the same code; neither
         'BRAND_CONTRAST  brand/brand.json: dark: --link #0a1b2c on --card #131a33 is 1.01:1, under 4.5:1',
         'BRAND_VOICE  lessons/0001-good.html: uses "Wibblewidget" (brand voice.avoid)'],
     ]);
-    const needles = ['Quillfeather', 'Brightmoor', '1a2b3c', 'd4e5f6', 'f1e2d3', 'Frobnicator', 'Wibblewidget', 'Gill Sans', 'Courier New', 'c9d8e7', '0a1b2c'];
-    for (const dir of [join(ROOT, 'bin'), ASSETS]) {
-      for (const f of readdirSync(dir, { recursive: true })) {
-        let text;
-        try { text = readFileSync(join(dir, f), 'utf8').toLowerCase(); } catch { continue; }
-        for (const n of needles) assert.ok(!text.includes(n.toLowerCase()), `${n} in ${f}`);
-      }
-    }
   } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+// Guard brand independence throughout the implementation and shipped assets; serving two brands
+// cannot show that an unvisited branch or asset never hardcodes their names, colours or terms.
+test('source scan: fixture brand names, colours and terms stay out of bin and plugin assets', () => {
+  const needles = ['Quillfeather', 'Brightmoor', '1a2b3c', 'd4e5f6', 'f1e2d3', 'Frobnicator', 'Wibblewidget', 'Gill Sans', 'Courier New', 'c9d8e7', '0a1b2c'];
+  for (const dir of [join(ROOT, 'bin'), ASSETS]) {
+    for (const f of readdirSync(dir, { recursive: true })) {
+      let text;
+      try { text = readFileSync(join(dir, f), 'utf8').toLowerCase(); } catch { continue; }
+      for (const n of needles) assert.ok(!text.includes(n.toLowerCase()), `${n} in ${f}`);
+    }
+  }
 });
 
 test('an invalid brand.json: pages served unbranded with one start line from teach serve; teach export refuses and writes nothing', async () => {

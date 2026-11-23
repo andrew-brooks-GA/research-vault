@@ -24,7 +24,9 @@ function hasTestEnv(code, start) {
   return false;
 }
 
-test('direct child process calls in tests pass env: testEnv(...)', () => {
+// Guard isolation on every direct process call; running tests cannot establish that unvisited
+// branches pass the isolated environment. The lexical limits are documented above.
+test('source scan: direct child process calls in tests pass env: testEnv(...)', () => {
   const dir = new URL('./', import.meta.url);
   const missing = [];
   for (const file of readdirSync(dir, { recursive: true }).filter((name) => name.endsWith('.test.mjs')).sort()) {

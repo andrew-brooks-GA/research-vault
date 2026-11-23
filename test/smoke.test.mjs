@@ -28,7 +28,9 @@ test('a command given --help or -h prints its row of the command table and write
   const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
   const cli = join(repo, 'bin', 'research-vault.mjs');
   const run = (...argv) => spawnSync(process.execPath, [cli, ...argv], { cwd: root, env: testEnv(overrides), encoding: 'utf8', timeout: 20000 });
-  const names = readFileSync(cli, 'utf8').match(/commands: ([\w|-]+)/)[1].split('|');
+  const usage = run('--help');
+  assert.equal(usage.status, 0, usage.stderr);
+  const names = usage.stdout.match(/commands: ([\w|-]+)/)[1].split('|');
   const table = readFileSync(join(repo, 'docs', 'REFERENCE.md'), 'utf8');
   for (const [cmd, flag] of [...names.map((c) => [c, '--help']), ['init', '-h']]) {
     const r = run(cmd, flag);

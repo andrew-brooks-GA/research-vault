@@ -128,7 +128,7 @@ function renderLocalProgress(section) {
   section.append(attempts.length ? table : el('p', null, 'No attempts saved in this browser.'), exportButton());
 }
 
-async function renderNav() {
+export async function renderNav() {
   if (exportKey() !== undefined) return; // an exported page carries its nav built in; never fetch /lessons.json
   if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(location.origin)) return;
   let index;

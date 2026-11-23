@@ -260,7 +260,9 @@ test('Git reports a missing object without starting a lazy fetch', {
   assert.doesNotMatch(readFileSync(trace, 'utf8'), /"event":"child_start"/, 'no child Git process was started');
 });
 
-test('only the shared wrapper starts Git', () => {
+// Guard direct Git launches outside the wrapper; a run cannot visit every launch branch.
+// This sees literals, simple conditionals, constants and shell commands, not aliases or computed names.
+test('source scan: only the shared wrapper starts Git', () => {
   const root = fileURLToPath(new URL('../', import.meta.url));
   // This scan sees direct literals, simple conditionals, constants and simple shell commands.
   // It cannot follow aliases, computed command names or shell indirection.

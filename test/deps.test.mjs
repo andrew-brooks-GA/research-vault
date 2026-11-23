@@ -12,7 +12,9 @@ test('no reference points at something that no longer exists (spec 14)', () => {
   assert.equal(broken.length, 0, `broken edges; update every dependent listed or add the file back:\n${list}`);
 });
 
-test('every COUPLINGS literal is still in both files (spec 14)', () => {
+// Guard shared vocabulary and quoted contracts at both ends of every declared coupling;
+// a run cannot establish that documentation and unvisited code still contain each contract.
+test('source scan: every COUPLINGS literal is still in both files (spec 14)', () => {
   for (const [a, b, why, literal] of COUPLINGS) {
     if (literal === undefined) continue;
     for (const f of [a, b]) {

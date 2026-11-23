@@ -419,14 +419,6 @@ test('with --labs and --terminal, one GET /labs/open sets one cookie that both a
   await waitFor(s, shellOutput(/one-cookie\r?\n/));
 });
 
-test('terminal source uses the file-system root and isolated mode for both Python starts and changes directory after the fork', () => {
-  const source = readFileSync(new URL('../bin/lib/terminal.mjs', import.meta.url), 'utf8');
-  assert.match(source, /const PYTHON_CWD = parse\(fileURLToPath\(import\.meta\.url\)\)\.root;/);
-  assert.match(source, /\bspawnSync\(python, \['-I', '-c', 'import pty'\], \{ cwd: PYTHON_CWD,/);
-  assert.match(source, /\bspawn\(python, \['-I', '-c', HELPER, workspace, \.\.\.launcherArgs, '--', \.\.\.shell\], \{ cwd: PYTHON_CWD,/);
-  assert.match(HELPER, /pid, fd = pty\.fork\(\)\nif pid == 0:\n    os\.close\(3\)\n    try: os\.chdir\(sys\.argv\[1\]\)\n    except OSError: os\._exit\(1\)\n[\s\S]*?\n    os\.execvp\(shell\[0\], shell\)\n/);
-});
-
 test('both Python starts refuse the workspace directory and launcher variables', { skip }, async () => {
   const ws = workspace();
   const dir = tempDir('rv-term-python-');
@@ -612,7 +604,7 @@ test('/terminal/<file> sends each file of the terminal folder with its type, wit
   const off = await start(workspace(), { labs: true, t, env: {} });
   for (const [f, type] of Object.entries(types)) {
     const r = await req(on.port, { path: `/terminal/${f}` });
-    assert.deepEqual([r.status, r.headers['content-type'], r.text === readFileSync(join(TERM_DIR, f), 'utf8')], [200, type, true], f);
+    assert.deepEqual([r.status, r.headers['content-type'], Buffer.from(r.text).equals(readFileSync(join(TERM_DIR, f)))], [200, type, true], f);
     assert.equal((await req(off.port, { path: `/terminal/${f}` })).status, 404, `${f} without --terminal`);
   }
   for (const p of ['/terminal/', '/terminal/nope.mjs', '/terminal/../terminal.mjs', '/terminal/%2e%2e/assets/quiz.js', '/terminal/xterm.mjs/x', '/terminal/../../bin/lib/teach.mjs']) {
