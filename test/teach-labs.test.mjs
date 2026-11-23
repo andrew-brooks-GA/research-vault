@@ -506,48 +506,88 @@ test('teach readme prints one Labs row per manifest lab after the lessons/files/
   assert.ok(!readmeDraft(ws).includes('labs/labs.json'));
 });
 
-test('in the serve path only labs.mjs, task.mjs and terminal.mjs import child_process, and spawn is called once in each, in launch, runGroup and startShell, with no shell; no exec, execFile or eval (spec 49 D5, issue 79 D4, D8, plan 2026-11-18 browser terminal D2)', () => {
-  const serve = ['bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/teach.mjs', 'bin/lib/lesson.mjs', 'bin/commands/teach.mjs', 'bin/lib/args.mjs', 'skills/research-teach/assets/quiz.js'];
-  const RUNS = /child_process|\bspawn\b|(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function/;
-  for (const f of serve.slice(2)) assert.ok(!RUNS.test(readFileSync(join(ROOT, f), 'utf8')), f);
-  // gate.mjs starts Git through runGit. The Codex installer and reviewer have separate entry points.
+// Balance delimiters without counting braces in comments, strings or regex literals.
+// This is a boundary finder for named source guards, not a JavaScript parser.
+function balanced(source, start, open, close) {
+  const tokens = /\/\/[^\n]*|\/\*[\s\S]*?\*\/|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\[\s\S]|[^`\\])*`|\/(?![/*])(?:\\.|\[(?:\\.|[^\]\\])*\]|[^/\n\\])+\/[dgimsuvy]*|[\s\S]/g;
+  tokens.lastIndex = start;
+  let depth = 0;
+  for (let m; (m = tokens.exec(source));) {
+    if (m[0] === open) depth++;
+    if (m[0] === close && --depth === 0) return tokens.lastIndex;
+  }
+  assert.fail(`unclosed ${open} at ${start}`);
+}
+
+function functionBody(source, name) {
+  const declaration = new RegExp(`\\b(?:function\\s+${name}\\s*|(?:const|let)\\s+${name}\\s*=\\s*)\\(`).exec(source);
+  assert.ok(declaration, `missing function ${name}`);
+  const params = source.indexOf('(', declaration.index);
+  const start = source.indexOf('{', balanced(source, params, '(', ')'));
+  assert.ok(start >= 0, `missing body ${name}`);
+  return source.slice(start, balanced(source, start, '{', '}'));
+}
+
+// Guard the serve-path process boundary and checked launch sites: exercising a finite set of
+// requests cannot establish that no other branch imports or starts a process, or bypasses a check.
+test('source scan: serve-path process imports, call sites and launch options stay confined', () => {
+  const serve = ['bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/terminal.mjs', 'bin/lib/git.mjs', 'bin/lib/gate.mjs', 'bin/lib/teach.mjs', 'bin/lib/lesson.mjs', 'bin/commands/teach.mjs', 'bin/lib/args.mjs', 'skills/research-teach/assets/quiz.js'];
+  const read = (f) => readFileSync(join(ROOT, f), 'utf8');
+  const count = (src, name) => [...src.matchAll(new RegExp('\\b' + name + '\\s*\\(', 'g'))].length;
   const walk = (d) => readdirSync(join(ROOT, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith('.mjs') ? [join(d, e.name)] : []));
-  assert.deepEqual(walk('bin').filter((f) => readFileSync(join(ROOT, f), 'utf8').includes('child_process')).sort(), ['bin/lib/codex-review.mjs', 'bin/lib/git.mjs', 'bin/lib/host-install.mjs', 'bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/terminal.mjs']);
-  for (const file of serve) assert.doesNotMatch(readFileSync(join(ROOT, file), 'utf8'), /from ['"][^'"]*(?:codex-review|host-install)\.mjs['"]/);
-  const gate = readFileSync(join(ROOT, 'bin/lib/gate.mjs'), 'utf8');
-  assert.doesNotMatch(gate, RUNS);
-  assert.equal(gate.match(/^import .*['"]\.\/git\.mjs['"].*$/gm)?.length, 1);
-  assert.match(gate, /^import \{ runGit \} from '\.\/git\.mjs';$/m);
+  assert.deepEqual(walk('bin').filter((f) => read(f).includes('child_process')).sort(), ['bin/lib/codex-review.mjs', 'bin/lib/git.mjs', 'bin/lib/host-install.mjs', 'bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/terminal.mjs']);
+  for (const file of serve) {
+    const src = read(file);
+    assert.doesNotMatch(src, /from\s*['"][^'"]*(?:codex-review|host-install)\.mjs['"]/, file);
+    assert.doesNotMatch(src, /\bshell\s*:\s*true\b|(?<![.\w])(?:exec|execSync|execFile|eval)\s*\(|\bnew\s+Function\b/, file);
+    const expected = file === 'bin/lib/git.mjs' ? [0, 0, 1] : file === 'bin/lib/terminal.mjs' ? [1, 1, 0] : /\/(?:labs|task)\.mjs$/.test(file) ? [1, 0, 0] : [0, 0, 0];
+    assert.deepEqual(['spawn', 'spawnSync', 'execFileSync'].map((name) => count(src, name)), expected, file);
+    if (expected.some((n) => n !== 0)) {
+      const imports = [...src.matchAll(/\bimport\s*(?:([^;'"]*?)\s*from\s*)?(['"])(?:node:)?child_process\2/g)];
+      assert.equal(imports.length, 1, file);
+      assert.match(imports[0][1] ?? '', /^\{\s*\w+(?:\s*,\s*\w+)*\s*,?\s*\}$/, file);
+      const names = imports[0][1].slice(1, -1).split(',').map((name) => name.trim()).filter(Boolean).sort();
+      assert.deepEqual(names, ['spawn', 'spawnSync', 'execFileSync'].filter((_, i) => expected[i]).sort(), file);
+    }
+    if (expected.every((n) => n === 0)) assert.doesNotMatch(src, /child_process|\bspawn\b/, file);
+  }
+  const gate = read('bin/lib/gate.mjs');
+  assert.match(gate, /import\s*\{[^}]*\brunGit\b[^}]*\}\s*from\s*['"]\.\/git\.mjs['"]/);
   assert.match(gate, /\brunGit\s*\(/);
-  const git = readFileSync(join(ROOT, 'bin/lib/git.mjs'), 'utf8');
-  assert.deepEqual(git.match(/^import .*child_process.*$/gm), ["import { execFileSync } from 'node:child_process';"]);
-  assert.equal([...git.matchAll(/\bexecFileSync\s*\(/g)].length, 1);
-  assert.match(git, /\bexecFileSync\(\s*'git'\s*,/);
-  assert.doesNotMatch(git, /shell:\s*true|\b(?:exec|execSync|eval)\s*\(|\bspawn(?:Sync)?\b/);
-  // Issue 79 D4, D8: task.mjs starts a checked task's checker and, at a certification run's start, its setup.sh; its
-  // one spawn call is in runGroup, which runChecker and runSetup call with those two script names only.
-  const task = readFileSync(join(ROOT, 'bin/lib/task.mjs'), 'utf8');
-  assert.deepEqual(task.match(/^import .*child_process.*$/gm), ["import { spawn } from 'node:child_process';"]);
-  assert.ok(!/(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function|shell:\s*true/.test(task));
-  assert.equal([...task.matchAll(/\bspawn\(/g)].length, 1);
-  const runGroup = task.slice(task.indexOf('function runGroup('), task.indexOf('\n}\n', task.indexOf('function runGroup(')));
-  assert.match(runGroup, /spawn\(join\(ws, 'evidence', nnnn, name\), \[\], \{ cwd: ws, env, shell: false, detached: true, stdio: \['ignore', inherit \? 'inherit' : 'pipe', inherit \? 'inherit' : 'pipe'\] \}\)/);
-  assert.deepEqual([...task.matchAll(/runGroup\(/g)].length, 3);
-  assert.deepEqual([...task.matchAll(/runGroup\(ws, nnnn, '([^']+)'/g)].map((m) => m[1]), ['check.sh', 'setup.sh']);
-  // Plan 2026-11-18 D2: terminal.mjs runs python3 twice: `-I -c "import pty"` in ptyAvailable, and the helper in startShell.
-  const term = readFileSync(join(ROOT, 'bin/lib/terminal.mjs'), 'utf8');
-  assert.deepEqual(term.match(/^import .*child_process.*$/gm), ["import { spawn, spawnSync } from 'node:child_process';"]);
-  assert.ok(!/(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function|shell:\s*true/.test(term));
-  assert.deepEqual(term.match(/\bspawn(Sync)?\([^)]*/g), ["spawnSync(python, ['-I', '-c', 'import pty'], { cwd: PYTHON_CWD, env: pythonEnv, stdio: 'ignore' }", "spawn(python, ['-I', '-c', HELPER, workspace, ...launcherArgs, '--', ...shell], { cwd: PYTHON_CWD, env: pythonEnv, stdio: ['pipe', 'pipe', 'ignore', 'pipe'], detached: true }"]);
-  const src = readFileSync(join(ROOT, 'bin/lib/labs.mjs'), 'utf8');
-  assert.deepEqual(src.match(/^import .*child_process.*$/gm), ["import { spawn } from 'node:child_process';"]);
-  assert.ok(!/(?<![.\w])(exec|execFile|execSync|execFileSync|eval)\s*\(|new Function|shell:\s*true/.test(src));
-  const calls = [...src.matchAll(/\bspawn\(/g)];
-  assert.equal(calls.length, 1);
-  assert.match(src, /spawn\(join\(ws, cmd\.script\), \[\], \{ cwd: ws, env, shell: false, detached: true, stdio: \['ignore', 'pipe', 'pipe'\] \}\)/);
-  // The one spawn sits in launch, right after the path check and the hash, with nothing awaited between.
-  const launch = src.slice(src.indexOf('function launch('), src.indexOf('\n}\n', src.indexOf('function launch(')));
-  assert.ok(launch.includes('scriptProblem(ws, cmd.script)') && launch.includes('sha256(bytes) !== cmd.sha256') && launch.includes('spawn(') && !launch.includes('await'));
+  assert.match(read('bin/lib/git.mjs'), /\bexecFileSync\s*\(\s*['"]git['"]\s*,/);
+  for (const [file, name] of [['task', 'runGroup'], ['labs', 'launch'], ['terminal', 'startShell']]) {
+    const body = functionBody(read('bin/lib/' + file + '.mjs'), name);
+    assert.equal(count(body, 'spawn'), 1, name);
+    assert.match(body, /\bdetached\s*:\s*true\b/);
+    if (file !== 'terminal') {
+      assert.match(body, /\bshell\s*:\s*false\b/);
+      assert.match(body, /\bcwd\s*:\s*ws\b/);
+      assert.match(body, /\benv\b/);
+      assert.match(body, /\bstdio\s*:\s*\[\s*['"]ignore['"]/);
+      assert.match(body, /['"]pipe['"]/);
+    }
+  }
+  const task = read('bin/lib/task.mjs');
+  const group = functionBody(task, 'runGroup');
+  assert.match(group, /\bspawn\s*\(\s*join\s*\(\s*ws\s*,\s*['"]evidence['"]\s*,\s*nnnn\s*,\s*name\s*,?\s*\)\s*,\s*\[\s*\]\s*,/);
+  assert.equal([...group.matchAll(/\binherit\s*\?\s*['"]inherit['"]\s*:\s*['"]pipe['"]/g)].length, 2);
+  assert.equal(count(task, 'runGroup'), 3);
+  assert.deepEqual([...task.matchAll(/\brunGroup\s*\(\s*ws\s*,\s*nnnn\s*,\s*['"]([^'"]+)['"]/g)].map((m) => m[1]), ['check.sh', 'setup.sh']);
+  const terminal = read('bin/lib/terminal.mjs');
+  assert.equal(count(functionBody(terminal, 'ptyAvailable'), 'spawnSync'), 1);
+  for (const name of ['ptyAvailable', 'startShell']) {
+    const body = functionBody(terminal, name);
+    for (const token of [/['"]-I['"]/, /['"]-c['"]/, /\bcwd\s*:\s*PYTHON_CWD\b/, /\benv\s*:\s*pythonEnv\b/]) assert.match(body, token, name);
+  }
+  assert.match(functionBody(terminal, 'ptyAvailable'), /['"]import pty['"]/);
+  assert.match(functionBody(terminal, 'ptyAvailable'), /\bstdio\s*:\s*['"]ignore['"]/);
+  const shell = functionBody(terminal, 'startShell');
+  for (const token of [/\bHELPER\b/, /\bworkspace\b/, /\.\.\.\s*launcherArgs\b/, /['"]--['"]/, /\.\.\.\s*shell\b/, /\bstdio\s*:\s*\[\s*['"]pipe['"]\s*,\s*['"]pipe['"]\s*,\s*['"]ignore['"]\s*,\s*['"]pipe['"]\s*,?\s*\]/]) assert.match(shell, token);
+  const launch = functionBody(read('bin/lib/labs.mjs'), 'launch');
+  assert.match(launch, /\bscriptProblem\s*\(\s*ws\s*,\s*cmd\s*\.\s*script\s*,?\s*\)/);
+  assert.match(launch, /\bsha256\s*\(\s*bytes\s*,?\s*\)\s*!==\s*cmd\s*\.\s*sha256/);
+  assert.match(launch, /\bspawn\s*\(\s*join\s*\(\s*ws\s*,\s*cmd\s*\.\s*script\s*,?\s*\)\s*,\s*\[\s*\]\s*,/);
+  assert.doesNotMatch(launch, /\bawait\b/);
 });
 
 const ENV = { PATH: `${dirname(process.execPath)}:/usr/bin:/bin`, HOME: tmpdir(), LANG: 'C' };
@@ -616,7 +656,7 @@ function read(reply) {
 }
 const text = async (reply) => { const res = await reply; return [res.status, await res.text()]; };
 
-test('spec 49 test 1: two unrelated labs on the same code; no topic-specific word in the runner or the widget', async () => {
+test('spec 49 test 1: two unrelated labs on the same code', async () => {
   // A: up keeps a background sleep, a stand-in service, in its foreground; verify checks it while up runs.
   const a = runWs({
     // The shell's own stderr goes to /dev/null: under load it can report the stopped sleep ("Terminated") before it is stopped itself.
@@ -651,8 +691,12 @@ test('spec 49 test 1: two unrelated labs on the same code; no topic-specific wor
     assert.deepEqual(await text(s2.act('verify')), [200, 'lab: verify fail (exit 1)\n']);
     console.log(`B: ${s2.logs.join(' | ')}`);
   } finally { await s2.close(); }
+});
+
+// Guard topic independence across all branches; running two labs cannot exclude a hidden topic special case.
+test('source scan: no topic-specific word in the runner or the lab widget', () => {
   const quiz = readFileSync(join(ROOT, 'skills/research-teach/assets/quiz.js'), 'utf8');
-  const widget = quiz.slice(quiz.indexOf('export const LAB_ENDED_EARLY'), quiz.indexOf("if (typeof document !== 'undefined')"));
+  const widget = quiz.slice(quiz.search(/export\s+const\s+LAB_ENDED_EARLY\b/), quiz.search(/if\s*\(\s*typeof\s+document\s*!==/));
   for (const [f, src] of [['bin/lib/labs.mjs', readFileSync(join(ROOT, 'bin/lib/labs.mjs'), 'utf8')], ['quiz.js renderLab and labStatus', widget]]) {
     assert.ok(src.length > 1000, f);
     assert.doesNotMatch(src, /\b(docker|podman|kubectl|helm|kubernetes|vcluster|python|pip|venv)\b/i, f);

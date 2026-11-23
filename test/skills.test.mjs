@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { FLOATING } from '../bin/lib/fill.mjs';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -206,7 +207,7 @@ test('the orchestrate script hands the Write step https addresses and no version
     ['https://example.com?x=1', null, null, 1],
   ]);
   // The script's word list is a copy of FLOATING in bin/lib/fill.mjs.
-  const inFill = read('bin/lib/fill.mjs').match(/const FLOATING = new Set\(\[([^\]]*)\]\)/)[1].replace(/['\s]/g, '').split(',');
+  const inFill = [...FLOATING];
   const inScript = script.match(/const FLOATING = \/\\\/\(([^)]*)\)/)[1].split('|');
   assert.deepEqual(inScript, inFill);
   for (const s of ['[--subject-name <subjectName>] [--subject-version <subjectVersion>]', 'Pass each of the two only when the page has that field; never make up a version.', 'A PDF may give no text to check (the one PDF probed gave none): where a paper or a report has an HTML page of its full text, read that page and give its address; give a PDF address only when there is none, and its quotes may then stay unchecked.']) assert.ok(script.includes(s), s);

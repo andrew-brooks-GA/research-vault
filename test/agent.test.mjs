@@ -1,10 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseFrontmatter } from '../bin/lib/frontmatter.mjs';
-import { VERDICTS } from '../bin/lib/gate.mjs';
+import { spawnSync } from 'node:child_process';
+import { tmpVault, testEnv } from './helpers.mjs';
+import { VERDICTS, renderEvidence } from '../bin/lib/gate.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FIXTURES = join(ROOT, 'test', 'fixtures', 'gate');
@@ -27,8 +29,15 @@ test('claims-reviewer body carries the no-body, omitted-entry and GATE-LOG rules
   assert.match(body, /GATE-LOG\.md/);
 });
 
-test('claims-reviewer keys on the changed-units line the gate prints (spec 14 D6)', () => {
-  const printed = readFileSync(join(ROOT, 'bin', 'commands', 'gate.mjs'), 'utf8').match(/`(changed units:)/)[1];
+test('claims-reviewer keys on the changed-units line the gate prints (spec 14 D6)', (t) => {
+  const vault = tmpVault('rv-agent-');
+  t.after(() => rmSync(vault, { recursive: true, force: true }));
+  const draft = join(vault, 'draft.md');
+  writeFileSync(draft, '# Claim\nA claim.\n');
+  const result = spawnSync(process.execPath, [join(ROOT, 'bin/research-vault.mjs'), 'gate', 'evidence', draft, '--changed', '--vault', vault], { env: testEnv(), encoding: 'utf8', timeout: 10000 });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /^changed units: sec:claim$/m);
+  const printed = 'changed units:';
   assert.ok(agent().body.includes(`\`${printed}\``), `agent body lacks \`${printed}\``);
 });
 
@@ -40,7 +49,8 @@ test('gate fixtures carry a gold verdict per draft', () => {
 });
 
 test('claims-reviewer may open the image files the evidence lists, and only those (issue 58)', () => {
-  const printed = readFileSync(join(ROOT, 'bin', 'lib', 'gate.mjs'), 'utf8').match(/`(image:) \$\{/)[1];
+  assert.equal(renderEvidence({ entries: [], uncovered: [], images: [{ path: 'assets/chart.png', sha256: 'fixture-hash' }] }), 'image: assets/chart.png sha256:fixture-hash\n');
+  const printed = 'image:';
   const { body } = agent();
   assert.ok(body.includes(`\`${printed} <path> sha256:<hash>\``), 'agent body lacks the image line format');
   assert.match(body, /open only those image files with Read/);

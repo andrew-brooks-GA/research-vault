@@ -12,7 +12,7 @@ import { sha256 } from './ids.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const FILL_MAX_BYTES = 300000;
-const FLOATING = new Set(['latest', 'master', 'main', 'stable', 'current', 'head', 'nightly', 'dev', 'trunk']);
+export const FLOATING = new Set(['latest', 'master', 'main', 'stable', 'current', 'head', 'nightly', 'dev', 'trunk']);
 const FILE_TYPES = /\.(html?|txt|md)$/i;
 const isFill = v => /^filled(-from-file)?:/.test(v.notes || '');
 

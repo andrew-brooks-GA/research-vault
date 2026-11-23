@@ -305,14 +305,20 @@ test('every shipped language row attaches a link to each of its declaration form
   assert.equal(langFor('.bash', null).decl.source, langFor('.sh', null).decl.source);
 });
 
-test('D0: codelinks.mjs names no language outside LANGS, and LINK_RE is built from ID_RE', () => {
+// Guard language independence outside the shipped rows; executions cannot exclude unused language special cases.
+test('source scan: codelinks names no language outside the shipped rows', () => {
   const src = readFileSync(join(ROOT, 'bin', 'lib', 'codelinks.mjs'), 'utf8');
-  const start = src.indexOf('// ---- shipped language rows ----');
-  const end = src.indexOf('\n};\n', start);
+  const start = src.search(/const\s+hashComment\s*=/);
+  const rows = /\bexport\s+const\s+LANGS\s*=\s*\{[\s\S]*?\}\s*;/.exec(src);
+  assert.ok(rows, 'shipped language rows');
+  const end = rows.index + rows[0].length;
   assert.ok(start > 0 && end > start);
-  const outside = src.slice(0, start) + src.slice(end + 4);
+  const outside = src.slice(0, start) + src.slice(end);
   assert.doesNotMatch(outside, /\b(lua|python|zig|rust|typescript|javascript|java|ruby|perl|swift|kotlin|cpp|c\+\+)\b/i);
   assert.doesNotMatch(outside, /['"]\.(lua|py|zig|rs|ts|js|java|rb|go|c|h|cpp)['"]/);
+});
+
+test('LINK_RE is built from ID_RE with global matching', () => {
   assert.ok(LINK_RE.source.startsWith(`(${ID_RE.source})`), LINK_RE.source);
   assert.equal(LINK_RE.flags, 'g');
 });
@@ -330,8 +336,8 @@ test('codeFiles is empty without a code block and refuses a bound vault outside 
   assert.throws(() => codeFiles(cfg({ globs: ['src/*.lua'] }, 'linked'), repo), /code links need a project-specific vault inside the repo; .* resolves outside /);
 });
 
-// No project-specific name ships in the plugin: those stay in the spec, the vault and the acceptance clone.
-test('bin/ and hooks/ carry no project name, language name outside LANGS or version format', () => {
+// Guard against project-specific names throughout bin and hooks; executions cannot cover every dormant branch.
+test('source scan: bin/ and hooks/ carry no project name or version format', () => {
   const walk = (d) => readdirSync(d).flatMap((n) => { const p = join(d, n); return statSync(p).isDirectory() ? walk(p) : [p]; });
   for (const f of [...walk(join(ROOT, 'bin')), ...walk(join(ROOT, 'hooks'))].filter((f) => ['.mjs', ''].includes(extname(f)))) {
     const text = readFileSync(f, 'utf8');
