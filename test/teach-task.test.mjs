@@ -9,7 +9,7 @@ import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readRequirements, parseChecker, checkTask } from '../bin/lib/task.mjs';
+import { readRequirements, parseChecker, checkTask, runChecker } from '../bin/lib/task.mjs';
 import { teachIndex, progress, progressHtml, workspaceKey, attemptOrder } from '../bin/lib/teach.mjs';
 import { parseFrontmatter } from '../bin/lib/frontmatter.mjs';
 import { lintWorkspace } from '../bin/lib/lesson.mjs';
@@ -266,6 +266,40 @@ test('teach check exits 2 without a report for invalid requirements or a checker
   writeChecker(w, 'echo "ok a-exists"\necho "first" >&2\necho "the last line" >&2\nexit 1\n');
   const p = check(w, '1');
   assert.deepEqual([p.status, p.stdout, p.stderr], [2, '', CHECK_LINE() + 'teach check: 0001: check.sh exited 1 with no FAIL line; stderr: the last line\n']);
+});
+
+test('the runner: no signal handlers are left behind when a checker run resolves after failing to start or exiting normally', SHELL_TEST, async (t) => {
+  const ws = copy();
+  const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+  const listeners = signals.map((sig) => process.listeners(sig));
+  const counts = () => signals.map((sig) => process.listenerCount(sig));
+  const before = counts();
+  t.after(() => {
+    for (const [i, sig] of signals.entries()) {
+      for (const listener of process.listeners(sig)) {
+        if (!listeners[i].includes(listener)) process.off(sig, listener);
+      }
+    }
+    rmSync(ws, { recursive: true, force: true });
+  });
+
+  chmodSync(join(ws, 'evidence', '0001', 'check.sh'), 0o644);
+  const denied = await runChecker(ws, '0001', { timeoutMs: 5000, env: testEnv() });
+  assert.deepEqual(counts(), before, 'after EACCES');
+  assert.deepEqual(denied, { problem: 'check.sh could not start (EACCES)' });
+
+  const invalid = await runChecker(ws, '0001\0', { timeoutMs: 5000, env: testEnv() });
+  assert.deepEqual(counts(), before, 'after synchronous spawn failure');
+  assert.deepEqual(invalid, { problem: 'check.sh could not start (ERR_INVALID_ARG_VALUE)' });
+
+  writeChecker(ws, 'exit 0\n');
+  chmodSync(join(ws, 'evidence', '0001', 'check.sh'), 0o755);
+  const running = runChecker(ws, '0001', { timeoutMs: 5000, env: testEnv() });
+  const during = counts();
+  const result = await running;
+  assert.deepEqual(counts(), before, 'after normal exit');
+  assert.deepEqual(during, before.map((count) => count + 1), 'while the run is pending');
+  assert.deepEqual(result, { code: 0, stdout: '', stderr: '' });
 });
 
 test('the runner: a checker that hangs is stopped at the timeout, exit 2, and no process of its group is left', () => {

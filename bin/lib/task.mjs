@@ -97,19 +97,25 @@ function runGroup(ws, nnnn, name, { timeoutMs, env, limits, inherit = false }) {
   const L = { STOP_GRACE, KILL_WAIT, OUTPUT_MAX: LAB_OUTPUT_MAX, ...limits };
   const cannot = (e) => ({ problem: `${name} could not start (${e.code ?? e.message})` });
   let child;
+  let size = 0, why = null, code = null, stopping = null;
+  const stop = (reason) => { why ??= reason; return (stopping ??= stopGroup(pgid, L)); };
+  const onSignal = ['SIGINT', 'SIGTERM', 'SIGHUP'].map((sig) => [sig, () => stop(`stopped by ${sig}`)]);
+  for (const [sig, f] of onSignal) process.on(sig, f);
   try {
     child = spawn(join(ws, 'evidence', nnnn, name), [], { cwd: ws, env, shell: false, detached: true, stdio: ['ignore', inherit ? 'inherit' : 'pipe', inherit ? 'inherit' : 'pipe'] });
-  } catch (e) { return Promise.resolve(cannot(e)); }
+  } catch (e) {
+    for (const [sig, f] of onSignal) process.off(sig, f);
+    return Promise.resolve(cannot(e));
+  }
   // A file that cannot be executed (EACCES, ENOENT) gives no pid and an error event.
-  if (child.pid === undefined) return new Promise((done) => child.once('error', (e) => done(cannot(e))));
+  if (child.pid === undefined) {
+    for (const [sig, f] of onSignal) process.off(sig, f);
+    return new Promise((done) => child.once('error', (e) => done(cannot(e))));
+  }
+  const pgid = child.pid;
   return new Promise((done) => {
-    const pgid = child.pid;
     const out = { stdout: [], stderr: [] };
-    let size = 0, why = null, code = null, stopping = null;
-    const stop = (reason) => { why ??= reason; return (stopping ??= stopGroup(pgid, L)); };
     const timer = timeoutMs === null ? null : setTimeout(() => stop(`ran past ${timeoutMs / 1000} seconds`), timeoutMs);
-    const onSignal = ['SIGINT', 'SIGTERM', 'SIGHUP'].map((sig) => [sig, () => stop(`stopped by ${sig}`)]);
-    for (const [sig, f] of onSignal) process.on(sig, f);
     if (!inherit) {
       for (const s of ['stdout', 'stderr']) {
         child[s].on('data', (b) => {
