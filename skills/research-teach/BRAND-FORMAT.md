@@ -4,7 +4,7 @@ A brand puts an organisation's name, logo, colours, fonts and footer on every HT
 
 ## Files
 
-`brand/brand.json` and the files it names. A file is a path under `brand/` whose segments are made of letters, digits, `.`, `_` and `-`, none starting with `.`. `teach serve` serves `/brand/<file>`, and `teach export` copies the files under `brand/`, `brand.json` included.
+`brand/brand.json` and the files it names. `brand/` must resolve to its own place in the workspace, under the [path-check limits](../../SECURITY.md#threat-model-in-one-line). Files must resolve inside it. A file is a path under `brand/` whose segments are made of letters, digits, `.`, `_` and `-`, none starting with `.`. `teach serve` serves `/brand/<file>`, and `teach export` copies the served files its walk finds under `brand/`, `brand.json` included, except `.html` and `.htm` files, which it leaves out as not gated; it skips names starting with `.` and does not descend through nested linked directories.
 
 ## Keys
 
@@ -35,7 +35,7 @@ A token is one of the custom properties of the first `:root` block of the plugin
 - `<header class="brand-header">` when `name` or `logo` is set: the logo, linked to the index, then the name. It follows the navigation bar.
 - `<footer class="brand-footer">` before `</body>` when a classification or a copyright is set: the classification, the copyright and, on a lesson, `lesson N of M`, where N is the lesson's place in the lesson index and M the number of lessons in it (in an export, the exported lessons).
 
-The name, the alt text, the classification and the copyright are written escaped. In an exported page the logo and icon paths are relative. `teach serve` reads `brand.json` on every request, so an edit shows on reload.
+The name, the alt text, the classification and the copyright are written escaped. In an exported page the logo and icon paths are relative. `teach serve` reads `brand.json` on every request, so an edit shows on reload. Reading the brand checks the resolved paths of `brand.json` and its tokens file; logo, favicon and divider-image paths are checked for syntax then, and for containment when requested as files.
 
 ## Audience
 
@@ -63,7 +63,7 @@ Without `dividers`, there is no divider page and `/dividers/<k>.html` is 404.
 
 ## An invalid brand
 
-`teach serve` prints one line at start and serves every page without the brand; `teach export` prints one line, writes nothing and exits 1.
+`teach serve` prints one line at start and serves every page without the brand. A containment failure in `brand.json` or its tokens file makes the brand invalid. `teach export` checks containment first: a walk that finds a path outside its allowed location or one it cannot resolve prints `unservable "<path>"` on stdout and refuses the copy with exit 1 before brand validation; this includes `brand/` resolving away from its own place. When containment checks pass and the brand is invalid, export prints one brand diagnostic, writes nothing and exits 1.
 
 ## Lint
 

@@ -21,7 +21,7 @@ research-vault gives the agent a folder of Markdown notes and instructions to se
 - **Your code can cite it too.** In a repo bound to a vault inside it, a comment above a function names the entry the function was written against, optionally pinned to the dependency version your project declares. When that version changes, `check` reports exactly those functions as stale and `check --check` exits 1; the review gate re-checks only the functions that changed.
 - **Plain files and a CLI.** A Claude Code plugin and a Node command-line tool. Other agents can use the files and instructions with an appropriate host integration; this is not an arbitrary-host compatibility guarantee.
 
-Plain Markdown. Nothing to install beyond Node. Source ingest and embedding have explicit network opt-ins.
+Plain Markdown. Nothing to install beyond Node. Source ingest and embedding have explicit network opt-ins. Embedding requires `RESEARCH_VAULT_ALLOW_NETWORK=1`, `--ack-data-egress` and `RESEARCH_VAULT_EMBED_URL` matching the binding's endpoint.
 
 ## What it looks like
 
@@ -80,7 +80,7 @@ node research-vault/bin/research-vault.mjs init
 
 For Codex, install the project-local integration with `node research-vault/bin/research-vault.mjs host install codex --at /absolute/path/to/project`. See [Codex setup, review workflows, hooks, and uninstall](docs/CODEX.md). This keeps the existing Claude plugin configuration intact.
 
-In a repo you work in, `research-vault init --project` writes a `.research-vault.json` that points the repo at a vault, so commands run inside it resolve there unless `--vault` is passed. To keep the vault inside the repo and let its code cite entries, run `research-vault init --vault research` first, then `research-vault init --project --vault research --code-links 'src/**/*.ts'`; the plugin ships comment and declaration patterns for Lua, JavaScript and TypeScript, Python, Go, Rust, Zig, Ruby, shell and C/C++, and a project adds or overrides a language as two regexes in that file. [Adopting in a code project](docs/ADOPTING.md) walks the whole path from first link to CI to graph.
+In a repo you work in, `research-vault init --project` writes a `.research-vault.json` that points commands run inside the repo at a vault. `--vault` takes precedence. A vault outside the binding's folder is accepted only when it matches your `RESEARCH_VAULT_PATH`, config pointer or OS default under the [binding rule](SECURITY.md#repository-bindings). To keep the vault inside the repo and let its code cite entries, run `research-vault init --vault research` first, then `research-vault init --project --vault research --code-links 'src/**/*.ts'`; the plugin ships comment and declaration patterns for Lua, JavaScript and TypeScript, Python, Go, Rust, Zig, Ruby, shell and C/C++, and a project adds or overrides a language as two regexes in that file. [Adopting in a code project](docs/ADOPTING.md) walks the whole path from first link to CI to graph.
 
 ## Day to day
 
@@ -105,7 +105,7 @@ This section is for someone learning a topic rather than building software, and 
 
 Start Claude Code in a project folder (a repo) you want the lessons kept in and say "teach me X". The teaching skill instructs the agent to bind the folder to your vault, then ask an interview as multiple-choice questions in its dialog, one per term or tool it needs to know about, in groups of up to four, and write a mission and a path of lessons from your answers. Each lesson is a web page served on your own machine, with an index of every lesson and a navigation bar. Concept, diagnose and review lessons carry a quiz; answered on the served page, it records your score. The lesson format requires a reminder to ask follow-up questions in the terminal; answering them remains an agent task.
 
-For the terminal workflow described here, start Claude Code in the project folder before beginning.
+For the terminal workflow described here, start Claude Code in the project folder before beginning. Use `teach serve --terminal` or `teach serve --labs` only with workspaces whose pages you trust; see [SECURITY.md](SECURITY.md#threat-model-in-one-line) for the limits. `teach serve` serves static files from the workspace's own `lessons/`, `reference/`, `assets/` and `brand/` folders. `teach export` makes a copy for opening from disk and refuses paths that resolve outside their allowed locations.
 
 ## How a vault is organized
 

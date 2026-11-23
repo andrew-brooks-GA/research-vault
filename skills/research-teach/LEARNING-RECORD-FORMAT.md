@@ -2,7 +2,7 @@
 
 # Learning Record Format
 
-Learning records live in `./learning-records/`, one file per record. The id is the file name without `.md`, of the form `NNNN-slug` (`0001-fx-multiplies-by-six`); the slug starts with a letter. The directory is created with the first record.
+Learning records live in `./learning-records/`, one file per record. The id is the file name without `.md`, of the form `NNNN-slug` (`0001-fx-multiplies-by-six`); the slug starts with a letter. The directory is created with the first record. If present, it must be a real directory at its own place in the workspace.
 
 They are the teaching equivalent of ADRs: they capture non-obvious lessons, key insights, and stated prior knowledge that will steer future sessions. They are used to calculate the zone of proximal development.
 
@@ -14,7 +14,7 @@ Never write a record by hand. Put the body in a file and run:
 node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" teach record add --title "<title>" --kind <kind> [--lesson <lesson id>] [--body-file <path>]
 ```
 
-It takes the next number, writes the frontmatter, validates it against the teach schema, and prints the new id. An invalid value is an error and nothing is written.
+It takes the next number, writes the frontmatter, validates it against the teach schema, and prints the new id. An invalid value or a refused destination is an error and no record is written; a destination refusal exits 2 with its path and reason on stderr. These are the [path checks described in SECURITY.md](../../SECURITY.md#local-writers).
 
 ## Template
 
@@ -68,8 +68,8 @@ A record is superseded, never rewritten or deleted. When a later record contradi
 node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" teach record supersede <old id> --by <new id> [--reason "<text>"]
 ```
 
-It sets `status: superseded` and `superseded_by` on the old record and appends `Superseded by <new id>: <reason>` to its body. After `teach lint --fix`'s one-off migration, that is the only edit a record receives. The history of how understanding evolved is itself useful signal.
+It sets `status: superseded` and `superseded_by` on the old record and appends `Superseded by <new id>: <reason>` to its body. After `teach lint --fix`'s one-off migration, that is the only edit a record receives. Both record files and the temporary file for the rewrite must resolve inside `learning-records/`. Links at those names are refused. The history of how understanding evolved is itself useful signal.
 
 ## Upgrading older records
 
-Records written before this format have no frontmatter and may carry a `Status: superseded by LR-NNNN` line. Run `teach lint --fix` once in the workspace: it adds the frontmatter (`kind: understanding`, `date` from the file's modification time) and, when the record numbered `LR-NNNN` exists, sets `status: superseded` and `superseded_by`; otherwise the record stays `active` and the old line stays in the body. A second run changes nothing.
+Records written before this format have no frontmatter and may carry a `Status: superseded by LR-NNNN` line. Run `teach lint --fix` once in the workspace: it adds the frontmatter (`kind: understanding`, `date` from the file's modification time) and, when the record numbered `LR-NNNN` exists, sets `status: superseded` and `superseded_by`; otherwise the record stays `active` and the old line stays in the body. A second run changes nothing. The fix checks and reads all records before rewriting any. It refuses a linked record or a linked temporary file for a rewrite.

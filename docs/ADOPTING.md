@@ -9,13 +9,13 @@ research-vault init --vault research
 research-vault init --project --vault research --code-links 'src/**/*.ts,src/**/*.js'
 ```
 
-The first command scaffolds `research/` (entry folders, `taxonomy.json`, a generated `AGENTS.md`, a `.gitignore` for the derived caches). The second writes `.research-vault.json` at the repo root, binding the repo to that vault and naming which files are code. Commit both. Code links need the vault inside the repo; a shared vault elsewhere can still be cited from prose, not from code.
+The first command scaffolds `research/` (entry folders, `taxonomy.json`, a generated `AGENTS.md`, a `.gitignore` for the derived caches). The second writes `.research-vault.json` at the repo root, binding the repo to that vault and naming which files are code. Commit both. Code links need the vault inside the repo; a shared vault elsewhere can be cited from prose when it matches your `RESEARCH_VAULT_PATH`, config pointer or OS default under the [binding rule](../SECURITY.md#repository-bindings).
 
 The plugin ships comment and declaration patterns for Lua, the JavaScript and TypeScript family, Python, Go, Rust, Zig, Ruby, shell and C/C++. Another language, or a stricter rule, is two regexes under `code.languages` in that file; see the Reference, "Code links".
 
 ## 2. Say where the dependency version lives
 
-Add a `versions` key for each dependency your code is checked against. The pattern's first capture group, matched against the whole file, is the declared version:
+Add a `versions` key for each dependency your code is checked against. Its `file` must be a non-empty path relative to the repository, with no drive specifier or `..` segment, and resolve inside it with links followed. The pattern's first capture group, matched against the whole file, is the declared version:
 
 ```json
 "versions": {
