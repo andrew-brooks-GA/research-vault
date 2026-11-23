@@ -345,7 +345,7 @@ A vault is a folder of Markdown, so a shared team vault is one kept in a git rep
 npm test     # isolated environment; a test or a test file may run 10 minutes and the whole run 20; no test-framework dependencies
 ```
 
-CI runs the suite plus `init`, `lint --check`, the AGENTS.md drift check, an encoding check and `npm run lint:self` on Linux and macOS with Node 22 and 24.
+CI runs the suite plus `init`, `lint --check`, the AGENTS.md drift check, an encoding check and `npm run lint:self` on Linux and macOS with Node 26.
 
 ## host
 <!-- evidence: 2026-11-13-codex-adapter-implementation 2026-11-13-codex-adapter-validation -->

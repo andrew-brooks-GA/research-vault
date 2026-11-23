@@ -4,7 +4,7 @@ A research notes folder with provenance and freshness metadata for your coding a
 
 ![CI](https://github.com/andrew-brooks-GA/research-vault/actions/workflows/ci.yml/badge.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
-![Node ≥22](https://img.shields.io/badge/node-%E2%89%A522-brightgreen.svg)
+![Node ≥24](https://img.shields.io/badge/node-%E2%89%A524-brightgreen.svg)
 ![dependencies: 0](https://img.shields.io/badge/dependencies-0-brightgreen.svg)
 
 ## The problem
@@ -101,7 +101,7 @@ Explicit commands are listed in the reference. Agent workflows such as teaching 
 
 ## Learning something
 
-This section is for someone learning a topic rather than building software, and it assumes Claude Code. You need Node 22 or newer; the four install lines above are typed into Claude Code, and the command file of the last of them tells the agent to run `init`, which prints a `RESEARCH_VAULT_PATH` line. On a first install, when no default vault is recorded yet, adding that line to your shell profile is optional: `init` also records this vault as the default, and a later process outside a bound repo, with the variable unset, resolves it from there (checked on macOS).
+This section is for someone learning a topic rather than building software, and it assumes Claude Code. You need Node 24 or newer; the four install lines above are typed into Claude Code, and the command file of the last of them tells the agent to run `init`, which prints a `RESEARCH_VAULT_PATH` line. On a first install, when no default vault is recorded yet, adding that line to your shell profile is optional: `init` also records this vault as the default, and a later process outside a bound repo, with the variable unset, resolves it from there (checked on macOS).
 
 Start Claude Code in a project folder (a repo) you want the lessons kept in and say "teach me X". The teaching skill instructs the agent to bind the folder to your vault, then ask an interview as multiple-choice questions in its dialog, one per term or tool it needs to know about, in groups of up to four, and write a mission and a path of lessons from your answers. Each lesson is a web page served on your own machine, with an index of every lesson and a navigation bar. Concept, diagnose and review lessons carry a quiz; answered on the served page, it records your score. The lesson format requires a reminder to ask follow-up questions in the terminal; answering them remains an agent task.
 

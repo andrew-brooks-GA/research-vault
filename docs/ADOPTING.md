@@ -52,9 +52,9 @@ research-vault check --json     # the rows, for tools
 research-vault:
   runs-on: ubuntu-latest
   steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
-      with: { node-version: 22 }
+    - uses: actions/checkout@v7
+    - uses: actions/setup-node@v7
+      with: { node-version: 26 }
     - run: git clone --depth 1 https://github.com/andrew-brooks-GA/research-vault.git /tmp/research-vault
     - run: node /tmp/research-vault/bin/research-vault.mjs lint --vault research
     - run: node /tmp/research-vault/bin/research-vault.mjs lint --vault research --check

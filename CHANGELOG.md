@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (breaking for Node 22 users):** the supported floor is Node 24 (`package.json` `engines` is `>=24`; the README, its badge, `docs/CODEX.md` and `AGENTS.md` say so). Node 22 is no longer supported or tested. Nothing checks the version at run time.
+
+- CI (R-29, R-30, R-68): the suite runs on the current Node Active LTS only, Node 26, on Linux and macOS (two jobs in place of four). Both workflows reference their actions by full commit SHA (`actions/checkout` v7.0.1, `actions/setup-node` v7.1.0) with `persist-credentials: false`; the CI job has `fail-fast: false`, and a newer push to a branch other than `master` cancels that branch's older run. A test fails when a workflow uses an action not pinned by a full SHA, or when a document's stated floor differs from `package.json`. The CI example in `docs/ADOPTING.md` uses Node 26.
+
 - Tests (R-24, second part): the remaining tests that matched code as printed. How the terminal starts Python (the file-system root as working directory, isolated mode, the helper's fork, close and change of directory in that order) is now tested by running it with the process calls recorded (`test/terminal-launch.test.mjs`); the exported classic `quiz.js` is run, not searched; the navigation's reading link is rendered (`renderNav` in `skills/research-teach/assets/quiz.js` is exported for that; the exported classic script's bytes are unchanged); the smoke test takes the command names from the CLI's own usage line. Five guards that must read code are named `source scan: ...` with a comment saying what they guard: only the wrapper starts git, test child processes get `testEnv`, the coupling literals, the lab widget's unsafe DOM and code sinks (now also `Function`, `setHTMLUnsafe`, `srcdoc` and string timers), and fixture brand words outside the fixtures. No behaviour changes.
 
 - `AGENTS.md`, "New tests": the rule against reading a source file as text now says "code file", so that a test may still read shipped Markdown (skill text, documents) as text.

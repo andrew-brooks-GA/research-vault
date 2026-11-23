@@ -2,8 +2,8 @@ import { spawn } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { testEnv, testHome } from '../test/helpers.mjs';
 
-// A test or a test file may run 10 minutes; this script bounds the whole run to 20 on both
-// Node 22 and 24, including files with open handles or synchronous loops.
+// A test or a test file may run 10 minutes; this script bounds the whole run to 20 on
+// Node 24 and later, including files with open handles or synchronous loops.
 let runTimeout = 1200000;
 const input = process.argv.slice(2);
 const args = [];

@@ -26,6 +26,9 @@ const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.m
 // text itself, and the test fails when either file stops containing it. Give one only when the
 // literal really is in both files; a row about two values being equal stays prose.
 export const COUPLINGS = [
+  ['package.json', 'AGENTS.md', 'the supported Node floor is repeated in contributor instructions', '>=24'],
+  ['package.json', 'README.md', 'the supported Node floor is repeated in installation instructions and the badge; workflow-config.test.mjs compares the values'],
+  ['package.json', 'docs/CODEX.md', 'the supported Node floor is repeated in Codex installation instructions; workflow-config.test.mjs compares the values'],
   ['skills/research-teach/assets/quiz.js', 'test/teach-export.test.mjs', 'the delivered classic script emits the attempts-file protocol', 'research-vault-attempts'],
   ['scripts/run-tests.mjs', 'test/npm-test.test.mjs', 'runner timeout options, defaults and whole-run timeout diagnostic'],
   ['scripts/run-tests.mjs', '.github/workflows/ci.yml', 'CI job limit must exceed the default whole-run limit'],
@@ -348,7 +351,8 @@ export const COUPLINGS = [
   ['bin/lib/agentsmd.mjs', 'skills/research-review/SKILL.md', 'AGENTS.md §2.6 is cited by number', '§2.6'],
   ['bin/lib/agentsmd.mjs', 'vault-template/meta/freshness-policy.md', 'freshness-policy §8 is cited by number', '§8'],
   ['vault-template/meta/freshness-policy.md', 'vault-template/meta/prompt-templates/probe-tool.md', 'freshness-policy §8 is cited by number', '§8'],
-  ['.github/workflows/ci.yml', 'docs/REFERENCE.md', 'the CI matrix and steps are restated'],
+  ['.github/workflows/ci.yml', 'docs/ADOPTING.md', 'the adopter CI example repeats the CI Node line (26)', /node: \[26\]|node-version: 26/],
+  ['.github/workflows/ci.yml', 'docs/REFERENCE.md', 'the CI matrix Node line (26), operating systems and steps are restated', /node: \[26\]|Node 26/],
   ['.gitattributes', 'scripts/check-encoding.mjs', 'eol=lf keeps the CR gate green on Windows'],
   ['scripts/check-encoding.mjs', 'test/git.test.mjs', 'the encoding regression asserts the CRLF diagnostic and encoding ok output'],
   ['bin/commands/teach.mjs', 'docs/REFERENCE.md', "the teach section states next's readme: line, its three values and when each is printed, and teach attempt import's exit 2 lines, cannot read and over 1 MiB, and teach export's exit 2 lines (no vault, inside the vault or a workspace directory, not an empty directory), its stderr refusal line, its cannot write line and its wrote line", 'readme: ungated'],

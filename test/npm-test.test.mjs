@@ -232,9 +232,8 @@ test('selected fail', () => assert.fail('selected-failure-ran'));
 });
 
 test('default test discovery matches only files under test/', (t) => {
-  // Node 22 and 24 docs: "Running tests from the command line" and
+  // Node 24 docs: "Running tests from the command line" and
   // "Test runner execution model". Include TypeScript defaults (strip types enabled).
-  // https://nodejs.org/download/release/v22.21.1/docs/api/test.html#test-runner-execution-model
   // https://nodejs.org/docs/latest-v24.x/api/test.html#test-runner-execution-model
   const patterns = [
     /(?:^|\/)[^/]*\.test\.(?:cjs|mjs|js)$/, // **/*.test.{cjs,mjs,js}
