@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { writeFileSync, appendFileSync, existsSync, readFileSync, mkdirSync, chmodSync, mkdtempSync, rmSync, utimesSync, cpSync, realpathSync, readdirSync, symlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -415,6 +416,12 @@ test('a Markdown table row is its own unit keyed by its first cell, and gate evi
   assert.deepEqual(changedUnits(root, join(root, 'docs', 'ref.md')), ['sec:commands']);
 });
 
+// Exact unit bytes are a persisted ledger contract: changing these hashes reopens previously reviewed units.
+// To print these pins, save the following as /tmp/rv-unit-pins.mjs and run from the repo: node /tmp/rv-unit-pins.mjs
+// import { readFileSync } from 'node:fs';
+// const { unitHashes } = await import(process.cwd() + '/bin/lib/gate.mjs');
+// console.log(unitHashes(readFileSync('test/fixtures/teach/lessons/0001-good.html')));
+// console.log(unitHashes('# A\n\ntext\n\n## B\n\n| k | v |\n|---|---|\n| x | y |\n', null, 'a.md'));
 test('unitHashes over the shared parseBlocks keeps the hashes ledger rows were keyed to (spec 13)', () => {
   const f = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'teach', 'lessons', '0001-good.html');
   assert.deepEqual(unitHashes(readFileSync(f)), {
@@ -445,6 +452,7 @@ test('a Markdown draft is cut into its own sections whatever data-block HTML it 
   assert.deepEqual(changedUnits(root, file), ['sec:rules']);
   const r = gateCli(root, vault, 'evidence', 'docs/format.md', '--changed');
   assert.equal(r.out, 'changed units: sec:rules\nunit sec:rules docs/format.md:12-14 prose\n', r.err);
+  // Regenerate the persisted ledger pins: node /tmp/rv-unit-pins.mjs (script above the spec 13 test).
   // A Markdown file with no data-block text keeps the hashes its ledger rows were keyed to.
   assert.deepEqual(unitHashes('# A\n\ntext\n\n## B\n\n| k | v |\n|---|---|\n| x | y |\n', null, join(root, 'a.md')), {
     'sec:a': 'd22b769515dfe6ca62b802e396c03708b2d0992608de48bbdcaf3544a31e4f12',
@@ -534,7 +542,7 @@ test('CLI gate evidence --changed on a code file prints the entry lines, the cha
 // Absent state (spec 15 D7): one argument is today's { all }; a .lua file in a repo without a code
 // block is one unit; evidence --changed on a markdown draft is today's output with no unit line.
 test('unitHashes and gate evidence without a code block are today\'s', () => {
-  assert.deepEqual(unitHashes(Buffer.from(LUA_A)), { all: '08a740866bb6fbb6fa7810b5f84c52a7904346fd5adb38391f979829afdf18d2' });
+  assert.deepEqual(unitHashes(Buffer.from(LUA_A)), { all: createHash('sha256').update(LUA_A).digest('hex') });
   const { root } = codeRepo({ code: false });
   assert.deepEqual(changedUnits(root, join(root, 'src', 'a.lua')), ['all']);
   assert.equal(codeLang(root, join(root, 'src', 'a.lua')), null);
@@ -646,6 +654,7 @@ test('a reference page shares the path: its images are img: units too', () => {
 test('a lesson with no image has the units and hashes it had before image units', () => {
   const f = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'teach', 'lessons', '0001-good.html');
   const u = unitHashes(readFileSync(f), null, f);
+  // Persisted ledger compatibility; regenerate: node /tmp/rv-unit-pins.mjs (script above the spec 13 test).
   assert.equal(u.mission, '1e495a726619cc2b3d278a380870119ef5c906d411b8aa374c949af8c4093b9d');
   assert.equal(u['fact:0'], 'ad47b501da76642ec606c953af1346f5bff9952302b527710a56a33a5d2de653');
   assert.equal(u.step, 'ac86fe13d81803cbc782f402f66bffc4dba25a91e1d21505b1c0a61c38dcff30');

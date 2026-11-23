@@ -588,6 +588,7 @@ test('teach serve --terminal prints the terminal: open line; with --labs too, on
 
 // Commit 2: the terminal page (D4 to D6). These start no shell, so they run without python3.
 test('the vendored xterm.js files and their licences are the npm files, pinned by SHA-256', () => {
+  // After an intentional vendor update: shasum -a 256 skills/research-teach/terminal/{xterm.mjs,xterm.css,addon-fit.mjs,LICENSE-xterm,LICENSE-addon-fit}
   for (const [f, sha] of [['xterm.mjs', 'b336ec65a086c056d4804b3d4c2347da5663d3f23c3f25be866467bd8857ad59'],
     ['xterm.css', '854a7c0fb70e8b1a083c16797ab827299fb18744f5ad34f227b48337e33293c6'], ['addon-fit.mjs', '2d87e1bddc73be9111de8beee5370c3bb7aac9c94e18e6f245f02ca741ef1769'],
     ['LICENSE-xterm', 'b569f629d00f2626a8100df2a1798210535621e42164dfd426a6fe5aac7b0ccd'], ['LICENSE-addon-fit', 'e256f01188af527e4d06d21d06fbf785ae9c50d4b328bf03cbe0ba7f0aa4228f']]) {

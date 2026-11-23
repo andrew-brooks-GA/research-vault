@@ -1,6 +1,7 @@
 // Spec 50 commit 1: a workspace's brand/ on every served and exported page, on workspaces built here (nothing under
 // test/fixtures/teach/); each test removes the directories it makes.
 import { test } from 'node:test';
+import { runInNewContext } from 'node:vm';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, cpSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -55,22 +56,22 @@ const HTML_PATHS = ['/', '/progress', ...LESSONS, '/reference/good.html', '/asse
 const get = (port, path) => new Promise((res) => request({ host: '127.0.0.1', port, path, headers: { Host: `127.0.0.1:${port}` }, setHost: false }, (r) => {
   const c = [];
   r.on('data', (d) => c.push(d));
-  r.on('end', () => res({ status: r.statusCode, body: Buffer.concat(c) }));
+  r.on('end', () => res({ status: r.statusCode, contentType: r.headers['content-type'], body: Buffer.concat(c) }));
 }).end());
-// Each path's reply from a server on `ws` at NOW: { path: text }.
-async function served(ws, paths = HTML_PATHS) {
+// Each path's reply from a server on `ws` at NOW: text, or status, content type and bytes with raw.
+async function served(ws, paths = HTML_PATHS, { raw = false } = {}) {
   const server = createServer(ws, { schema: loadTeachSchema(ROOT), now: () => NOW });
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
   try {
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
     const out = {};
     for (const p of paths) {
       const r = await get(server.address().port, p);
       assert.equal(r.status, 200, p);
-      out[p] = r.body.toString('utf8');
+      out[p] = raw ? r : r.body.toString('utf8');
     }
     return out;
-  } finally { server.close(); }
+  } finally { await new Promise((resolve) => server.close(resolve)); }
 }
 const exported = (repo) => exportWorkspace(join(repo.repo, 'learn-ws'), { vaultPath: repo.vault, entries: buildManifest(repo.vault).entries, env: {} });
 const styleOf = (html) => /<style>\n([\s\S]*?)<\/style><\/head>/.exec(html)?.[1];
@@ -87,38 +88,23 @@ const edit = (ws, rel, from, to) => {
 };
 const treeHash = (dir) => readdirSync(dir, { recursive: true }).sort().map((p) => { try { return `${p} ${sha(readFileSync(join(dir, p)))}`; } catch { return p; } }).join('\n');
 
-// Computed at dffe549, the parent commit, by this file's brandRepo with no brand/ (scratch t11b/base-hashes.mjs); lesson 0004's two
-// values taken again, and assets/fxctl.cast added, when the fixture lesson gained its replay (#65).
-const BASE_SERVED = {
-  '/': 'c111d4926863e9ca09f35e69a57aac4547f3ee0b57ee648a81e6d5195e3245f2',
-  '/progress': 'f637a583e3766f32883b8983e92a55845f246cab93c50582aca7bfb554652dc8',
-  '/lessons.json': '062c18d9a1f28ee43ae29a952950a5ae199d69806f71ecdb278569b12b026f52',
-  '/lessons/0001-good.html': '4dbd823d9927d5de1fc4074c6ca0dc6f921178480e7fbd5b1f5e49a44dca51b2',
-  '/lessons/0002-bad.html': '6d016155a2fb4b0cdfac5d02b5d5c385a5ae9d9d81a6474aaf14d82cd7ba4b7e',
-  '/lessons/0003-review-good.html': '16fab265248a5c7a1faad1cfabc5859fb7b219a4ba8ce61a33da12d6e89a87fa',
-  '/lessons/0004-tool-fxctl.html': 'a50015f8d7b71bac5a48573341d55864a97ab5464265ff017e82e27fd7657a34',
-  '/lessons/0005-diagnose-fx.html': 'af262c45ebeb079578a48df2157d41d9344012d163d4160a9550da459a9bc6f2',
-  '/lessons/0006-project-fx.html': '47cf09e698eb9a107e2688745faa845bd809cbf45c75125846819544b690523c',
-  '/reference/good.html': '0dcec77cfe8fe264f8c6ab0d67a1dc4997733f6b8aee98e1f544326310b287dd',
-  '/assets/reading.html': 'aca943f8815f66d03d8b2e3cb35faee92aac427636effedae9019d4b2ce97a1e',
-};
-const BASE_EXPORTED = {
-  'lessons/0001-good.html': '9d12d40a12a086869ecfc2dd450c8a0cac96568c97bb4088e3e7c5ef51432295',
-  'lessons/0002-bad.html': 'bfdbeafc0ebe1a80f001a4411dadbbfbe8c702748f77b89419abff08d86a21e9',
-  'lessons/0003-review-good.html': '4185234629aa33e94196e99fc9d1eeac53b94a9b20125f6fffcb63b7de3f4b32',
-  'lessons/0004-tool-fxctl.html': '87ebe4185b48364873eadb19cb692e46418c0f542b585c165c8ac77a574b7a55',
-  'lessons/0005-diagnose-fx.html': '2eac32fa2425c7c769f5bed8de6a8135949a90433421aae4d9a500b7784ed27f',
-  'lessons/0006-project-fx.html': '03fec945b3fa74ba0bca441c614c9d81da5ce075b3af57d6cef48748388d3978',
-  'reference/good.html': '93759de0f2042134079b0c91b073a35d71762572fa5a005730448eea056b1c2c',
-  'index.html': '6b4966adf46d9d0a5bc8e34e7bc9655a8588f99753198924502ff56753f31f5e',
-  'progress.html': 'f8685389274ac9669710265d851e66beeb002ca5a1bef6329cedf05a92c30603',
-  'assets/reading.html': '52fd319a6d394e5524f362404f97f919633fe46a8a7b00003437ab9a9eed0b4a',
-  'assets/quiz.js': 'eda7aa95b6cd79d14cc9eb0cfd2e28a217c118d6677049a15b60c0719f4d0e60',
-  'assets/lesson.css': '87df4742d8ec6d84251e0f7a199e41826b9692aa13c949fb2352b6cc5ee7802e',
-  'assets/fxctl.cast': 'f4a49620ad4cbf2e69a6035bcd756da2946cf4b4db27e1ac9d080bcebbc0894f',
-  'GLOSSARY.md': 'efcfcb71409f5fb07a868cbf663d9d284bfd66c61fa96d4592b2976277edf920',
-  'sources.html': 'e4fabb4e2cab93fcd5e939bf5937c49e4df93f6aea816269f43f14e5c700c6d2',
-};
+const BASE_EXPORTED = [
+  'lessons/0001-good.html',
+  'lessons/0002-bad.html',
+  'lessons/0003-review-good.html',
+  'lessons/0004-tool-fxctl.html',
+  'lessons/0005-diagnose-fx.html',
+  'lessons/0006-project-fx.html',
+  'reference/good.html',
+  'index.html',
+  'progress.html',
+  'assets/reading.html',
+  'assets/quiz.js',
+  'assets/lesson.css',
+  'assets/fxctl.cast',
+  'GLOSSARY.md',
+  'sources.html',
+];
 
 const SVG = (fill) => `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="${fill}"/></svg>`;
 const LOGO_FILES = { 'logo.svg': SVG('#c2410c'), 'img/logo-dark.svg': SVG('#fdba74'), 'favicon.png': 'png' };
@@ -128,15 +114,44 @@ const TWO_COLOURS = {
   color: { light: { '--link': '#c2410c', '--bg': '#fafaf0' } },
 };
 
-test('with no brand/ folder every served reply and every exported file has its bytes at the parent commit (spec 50 test 1)', async () => {
+// These pages promise usable unbranded output, not a particular HTML serialization.
+function unbranded(html, path) {
+  assert.match(html, /<body\b/, path);
+  assert.doesNotMatch(html, /<(?:header|footer)\b[^>]*class=["'][^"']*brand-/, path);
+  assert.doesNotMatch(html, /(?:href|src)=["'][^"']*brand\//, path);
+}
+
+test('with no brand folder exported pages stay unbranded and workspace assets are copied (spec 50 test 1)', () => {
   const repo = brandRepo();
   try {
-    const s = await served(repo.ws, Object.keys(BASE_SERVED));
-    assert.deepEqual(Object.fromEntries(Object.entries(s).map(([p, t]) => [p, sha(t)])), BASE_SERVED);
     const ex = exported(repo);
     assert.equal(ex.code, 0, ex.lines.join('\n'));
-    assert.deepEqual(Object.fromEntries([...ex.files].map(([p, b]) => [p, sha(b)])), BASE_EXPORTED);
+    assert.deepEqual([...ex.files.keys()].sort(), [...BASE_EXPORTED].sort());
+    assert.equal(/<title>[\s\S]*?<\/title>/.exec(ex.files.get('index.html').toString('utf8'))?.[0], '<title>Lessons</title>');
+    for (const [p, bytes] of ex.files) {
+      if (p.endsWith('.html')) {
+        const html = bytes.toString('utf8');
+        unbranded(html, p);
+        assert.match(html, /<body\b[^>]*\bdata-export=["'][^"']+["']/, p);
+      } else if (p === 'assets/quiz.js') {
+        // Source-copy guard: export must preserve the whole plugin runtime except line-leading export keywords.
+        const classic = readFileSync(join(ASSETS, 'quiz.js'), 'utf8').replace(/^export /gm, '');
+        assert.deepEqual(Buffer.from(bytes), Buffer.from(classic), p);
+        // The exported classic script must execute without module syntax and grade a known answer.
+        assert.equal(runInNewContext(bytes + '\ngrade([{ correct: 1 }], [1]).wrong.length', {}, { timeout: 1000 }), 0);
+      } else assert.deepEqual(Buffer.from(bytes), readFileSync(join(repo.ws, p)), p);
+    }
     assert.deepEqual(readBrand(repo.ws), { brand: null, problems: [] });
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('with no brand folder served pages stay unbranded and the lesson index keeps its paths (spec 50 test 1)', { timeout: 10000 }, async () => {
+  const repo = brandRepo();
+  try {
+    const s = await served(repo.ws, [...HTML_PATHS, '/lessons.json']);
+    assert.equal(/<title>[\s\S]*?<\/title>/.exec(s['/'])?.[0], '<title>Lessons</title>');
+    for (const p of HTML_PATHS) unbranded(s[p], p);
+    assert.deepEqual(JSON.parse(s['/lessons.json']).lessons.map((l) => l.path), LESSONS);
   } finally { rmSync(repo.repo, { recursive: true, force: true }); }
 });
 
@@ -353,18 +368,27 @@ test('source scan: fixture brand names, colours and terms stay out of bin and pl
   }
 });
 
-test('an invalid brand.json: pages served unbranded with one start line from teach serve; teach export refuses and writes nothing', async () => {
-  const repo = brandRepo({ name: 'X', colour: {} });
+test('an invalid brand.json: pages served unbranded with one start line from teach serve; teach export refuses and writes nothing', { timeout: 10000 }, async (t) => {
+  const repo = brandRepo();
   const out = join(repo.repo, 'site');
   try {
+    const paths = [...HTML_PATHS, '/lessons.json'];
+    const baseline = await served(repo.ws, paths, { raw: true });
+    setBrand(repo.ws, { name: 'X', colour: {} });
     assert.deepEqual(readBrand(repo.ws).problems, [{ code: 'BRAND_INVALID', message: 'brand.json: unknown key colour' }]);
-    const s = await served(repo.ws, Object.keys(BASE_SERVED));
-    assert.deepEqual(Object.fromEntries(Object.entries(s).map(([p, t]) => [p, sha(t)])), BASE_SERVED);
+    const s = await served(repo.ws, paths, { raw: true });
+    for (const p of paths) assert.deepEqual(s[p], baseline[p], p);
     const ex = exported(repo);
     assert.deepEqual([ex.code, ex.lines.filter((l) => l.startsWith('brand'))], [1, ['brand brand/brand.json: invalid; run teach lint']]);
     const r = spawnSync(process.execPath, [BIN, 'teach', 'export', repo.ws, '--out', out], { env: testEnv(), encoding: 'utf8' });
     assert.deepEqual([r.status, r.stdout.split('\n').filter((l) => l.startsWith('brand')), existsSync(out)], [1, ['brand brand/brand.json: invalid; run teach lint'], false]);
     const child = spawn(process.execPath, [BIN, 'teach', 'serve', repo.ws], { env: testEnv({ RESEARCH_VAULT_PATH: repo.vault }), stdio: ['ignore', 'pipe', 'pipe'] });
+    t.after(async () => {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill('SIGTERM');
+        await once(child, 'exit');
+      }
+    });
     let stdout = '', stderr = '';
     child.stderr.setEncoding('utf8').on('data', (c) => { stderr += c; });
     child.stdout.setEncoding('utf8');
@@ -418,7 +442,6 @@ const GROUP_LESSONS = [...LESSONS, '/lessons/0007-extra.html'];
 const DIVIDED = { ...TWO_COLOURS, footer: { copyright: '(c) {year} Acme' }, dividers: { image: 'divider.svg', alt: 'Section <art> & "co"' } };
 const DIVIDER_FILES = { ...LOGO_FILES, 'divider.svg': SVG('#fdba74') };
 const TITLE_1 = 'Project: Use fx on &lt;one&gt; &amp; &quot;two&quot;';
-const hashes = (o) => Object.fromEntries(Object.entries(o).map(([p, t]) => [p, sha(t)]));
 // Each path's status from a server on `ws`.
 async function statuses(ws, paths) {
   const server = createServer(ws, { schema: loadTeachSchema(ROOT), now: () => NOW });
@@ -433,52 +456,64 @@ async function statuses(ws, paths) {
 const bar = (html) => /<nav class="lesson-nav">[\s\S]*?<\/nav>/.exec(html)[0];
 const hrefOf = (html, cls) => new RegExp(`<a class="${cls}" href="([^"]*)"`).exec(html)?.[1] ?? null;
 
-// Computed at 0c508f9 (the code as at 07f3974) by groupRepo(TWO_COLOURS, LOGO_FILES), a brand with no dividers key (scratch t15b/base-hashes.mjs);
-// lesson 0004's two values taken again, and assets/fxctl.cast added, when the fixture lesson gained its replay (#65).
-const GROUP_SERVED = {
-  '/': '64786b10c7e7525d8a516961bbd6c401a3c0d9f78484308dc738824c7acafac8',
-  '/progress': 'e6c8ed4de6f1d5de215eecccbe73d0a4ecfc549cabcf1e094023dd4e718a3a0a',
-  '/lessons.json': 'd0415d78ac15c4c77f5fcb96b39620e87ebd8d2aa217a151db0b4d99834d63ad',
-  '/lessons/0001-good.html': '2ad921aadcbc8f38444e3dcee1dbd3ace82e30db760fb165174b698147c3f81e',
-  '/lessons/0002-bad.html': '24c7e2a22eb9cdf8c5f4e5044ed7abb6a7e676ed8465ab70d7a24cd1765e1ce2',
-  '/lessons/0003-review-good.html': '2effe215225a0f581e82e2296d69ff195ba20cff7153361ae8a3d616729e1727',
-  '/lessons/0004-tool-fxctl.html': '3715954603faea03b52b56b63dde0753a4767beb5eebebc6235f3531a7e701bf',
-  '/lessons/0005-diagnose-fx.html': '1049876dade61d8969771d3f92fd610d8137d70dcbbdb49961b29656bf6a0740',
-  '/lessons/0006-project-fx.html': '6cc3aa798f780f319aa1018b37699aea89e2df1db5a57871a2b187aaf8c7f461',
-  '/lessons/0007-extra.html': '488cea2d7fafd92b8d345acbfb7b95b64c5c73ae4bd926e0ea9611d36c09b199',
-  '/reference/good.html': '32962fc65d7ddac46a4d79512cbdb2914774bc1d5cf686b23c0c252516704f51',
-  '/assets/reading.html': 'cb0a1ec538d40b30be0a1233bd09596a19b28ebd4ed88662988f005a60f1d126',
-};
-const GROUP_EXPORTED = {
-  'lessons/0001-good.html': '1f81dd1af172050c066d363ec88ae1d4e9591f9fd3515e0c2d4df94dd75a1b5e',
-  'lessons/0002-bad.html': 'bf5242bd4b2cb84c8df817a10444d487c82ebdc0188134daab67cfd48542a423',
-  'lessons/0003-review-good.html': '6c0f208a5bbed685f5882ea076edc165cf257ffb02cfb6bd4149df7bca414bb4',
-  'lessons/0004-tool-fxctl.html': '80856d9203d1e217b69525951f831f54f33dd16d35fb2d8a89927d116b126f0a',
-  'lessons/0005-diagnose-fx.html': '78fa68f073e6fcf00ebc14aea6e5064eeff155f38bdf2c666bb543ff506b196f',
-  'lessons/0006-project-fx.html': '99db7df25d4a5ab0d8725f9a0e91c8cd82caa15045c7097a4bd9d3c0ec51ab1a',
-  'lessons/0007-extra.html': 'b79ac37d7fc9c854778a9a0f801a56bfe86a7532780c155c8182c2dec9db1530',
-  'reference/good.html': '774f257500febf4568513c60e0f546225b643724fd36641e598ceb730bcdec88',
-  'index.html': '7c2afa487b3d6945c33ae75962af464f3dc67c7e392dad0e8ff2a21f3cb0f9fb',
-  'progress.html': '026b4ea2582b0e4ca7342029695387ecc36b7098537ed87b16c22993cf0c392f',
-  'assets/reading.html': '87cd8cfc8b3e828aeb2af506efdbc6aa4d9f0e7b3f64d7dc879ffa78ee114ed8',
-  'assets/quiz.js': 'eda7aa95b6cd79d14cc9eb0cfd2e28a217c118d6677049a15b60c0719f4d0e60',
-  'assets/lesson.css': '87df4742d8ec6d84251e0f7a199e41826b9692aa13c949fb2352b6cc5ee7802e',
-  'assets/fxctl.cast': 'f4a49620ad4cbf2e69a6035bcd756da2946cf4b4db27e1ac9d080bcebbc0894f',
-  'brand/brand.json': '9efa3996b6a9671035070f1eee6393c01d0ad1664dac375247ef8138b22d7da1',
-  'brand/favicon.png': '8f8cbb7dcf46e0bc7d53265749a6c17d116093a6ba95e442764060c76fd4a86c',
-  'brand/img/logo-dark.svg': 'f25ed9604a4c2fb1c962ec373c1aaf9ef7939d724aa6dc41873224e610143834',
-  'brand/logo.svg': 'e2154c8869c410e8eeb158de8a6d76da1d18f3fa4be730b61aca85916b303be0',
-  'GLOSSARY.md': 'efcfcb71409f5fb07a868cbf663d9d284bfd66c61fa96d4592b2976277edf920',
-  'sources.html': '267ab2e88a94e968e6547469cfbe28dc22cb49619212794e1afcd095a888bc24',
-};
+const GROUP_EXPORTED = [
+  'lessons/0001-good.html',
+  'lessons/0002-bad.html',
+  'lessons/0003-review-good.html',
+  'lessons/0004-tool-fxctl.html',
+  'lessons/0005-diagnose-fx.html',
+  'lessons/0006-project-fx.html',
+  'lessons/0007-extra.html',
+  'reference/good.html',
+  'index.html',
+  'progress.html',
+  'assets/reading.html',
+  'assets/quiz.js',
+  'assets/lesson.css',
+  'assets/fxctl.cast',
+  'brand/brand.json',
+  'brand/favicon.png',
+  'brand/img/logo-dark.svg',
+  'brand/logo.svg',
+  'GLOSSARY.md',
+  'sources.html',
+];
 
-test('a brand with no dividers key: every served reply and exported file has its bytes at the parent commit, and /dividers/1.html is 404 (spec 51 test 1)', async () => {
+test('a brand with no dividers key exports branded pages without divider files or links (spec 51 test 1)', () => {
   const repo = groupRepo(TWO_COLOURS, LOGO_FILES);
   try {
-    assert.deepEqual(hashes(await served(repo.ws, Object.keys(GROUP_SERVED))), GROUP_SERVED);
     const ex = exported(repo);
     assert.equal(ex.code, 0, ex.lines.join('\n'));
-    assert.deepEqual(Object.fromEntries([...ex.files].map(([p, b]) => [p, sha(b)])), GROUP_EXPORTED);
+    assert.deepEqual([...ex.files.keys()].sort(), [...GROUP_EXPORTED].sort());
+    assert.equal(/<title>[\s\S]*?<\/title>/.exec(ex.files.get('index.html').toString('utf8'))?.[0], '<title>Lessons</title>');
+    for (const [p, bytes] of ex.files) {
+      if (p.endsWith('.html')) {
+        const html = bytes.toString('utf8');
+        assert.match(html, /<header\b[^>]*class="brand-header"/, p);
+        assert.match(html, /<img\b[^>]*src="(?:\.\.\/)*brand\/logo\.svg"/, p);
+        assert.doesNotMatch(html, /(?:href|src)=["'][^"']*dividers\//, p);
+      } else if (p === 'assets/quiz.js') {
+        // Source-copy guard: export must preserve the whole plugin runtime except line-leading export keywords.
+        const classic = readFileSync(join(ASSETS, 'quiz.js'), 'utf8').replace(/^export /gm, '');
+        assert.deepEqual(Buffer.from(bytes), Buffer.from(classic), p);
+        // The exported classic script must execute without module syntax and grade a known answer.
+        assert.equal(runInNewContext(bytes + '\ngrade([{ correct: 1 }], [1]).wrong.length', {}, { timeout: 1000 }), 0);
+      } else assert.deepEqual(Buffer.from(bytes), readFileSync(join(repo.ws, p)), p);
+    }
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('a brand with no dividers key serves only lesson entries and /dividers/1.html is 404 (spec 51 test 1)', { timeout: 10000 }, async () => {
+  const repo = groupRepo(TWO_COLOURS, LOGO_FILES);
+  try {
+    const s = await served(repo.ws, [...HTML_PATHS, '/lessons/0007-extra.html', '/lessons.json']);
+    assert.equal(/<title>[\s\S]*?<\/title>/.exec(s['/'])?.[0], '<title>Lessons</title>');
+    assert.deepEqual(JSON.parse(s['/lessons.json']).lessons.map((l) => l.path), GROUP_LESSONS);
+    for (const [p, html] of Object.entries(s)) {
+      if (p === '/lessons.json') continue;
+      assert.match(html, /<header\b[^>]*class="brand-header"/, p);
+      assert.doesNotMatch(html, /(?:href|src)=["'][^"']*dividers\//, p);
+    }
     assert.deepEqual(await statuses(repo.ws, ['/dividers/1.html']), [404]);
   } finally { rmSync(repo.repo, { recursive: true, force: true }); }
 });

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Tests (R-24, third part): the SHA-256 literals in tests, 82 before and 23 now. The 58 hashes of whole served replies and exported files in the brand tests are replaced by assertions on what those tests are about (unbranded pages stay unbranded, a brand without dividers adds no divider entry, file or link, the exported file set, each copied asset byte for byte, the exported `quiz.js` equal to the plugin's with its `export` keywords removed, the index title, the lesson index); a reformatted template no longer fails them. Kept, each with a comment that gives the command to regenerate it: the five pins of the vendored terminal files, and 18 unit hashes that ledger rows written by earlier versions are keyed to. One hash a test took from the function under test is now computed from the known input. No behaviour changes.
+
 - **Changed (breaking for Node 22 users):** the supported floor is Node 24 (`package.json` `engines` is `>=24`; the README, its badge, `docs/CODEX.md` and `AGENTS.md` say so). Node 22 is no longer supported or tested. Nothing checks the version at run time.
 
 - CI (R-29, R-30, R-68): the suite runs on the current Node Active LTS only, Node 26, on Linux and macOS (two jobs in place of four). Both workflows reference their actions by full commit SHA (`actions/checkout` v7.0.1, `actions/setup-node` v7.1.0) with `persist-credentials: false`; the CI job has `fail-fast: false`, and a newer push to a branch other than `master` cancels that branch's older run. A test fails when a workflow uses an action not pinned by a full SHA, or when a document's stated floor differs from `package.json`. The CI example in `docs/ADOPTING.md` uses Node 26.
