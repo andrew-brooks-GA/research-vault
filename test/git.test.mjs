@@ -1,7 +1,7 @@
 import { beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gitInvocation, GIT_TIMEOUT_MS, runGit } from '../bin/lib/git.mjs';
@@ -46,6 +46,74 @@ function commitDraft(cwd, ...options) {
   fixtureGit(cwd, ...options, 'add', '--', 'draft.md');
   fixtureGit(cwd, ...options, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'fixture');
 }
+
+test('text files check out with LF even with core.autocrlf enabled', (t) => {
+  const cwd = tempDirectory(t);
+  fixtureGit(cwd, 'init', '-q', '--template=');
+  fixtureGit(cwd, 'config', 'core.autocrlf', 'true');
+  copyFileSync(new URL('../.gitattributes', import.meta.url), join(cwd, '.gitattributes'));
+  const names = ['page.html', 'style.css', 'run.sh', 'browser.js', 'session.cast', 'future.ts', 'LICENSE'];
+  const expected = Buffer.from('first line\nsecond line\n');
+  for (const name of names) writeFileSync(join(cwd, name), expected);
+  fixtureGit(cwd, 'add', '.');
+  fixtureGit(cwd, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'fixture');
+  for (const name of names) rmSync(join(cwd, name));
+  fixtureGit(cwd, 'checkout', '--', '.');
+  for (const name of names) assert.deepEqual(readFileSync(join(cwd, name)), expected, name);
+});
+
+test('encoding gate reports a CR byte in any tracked text file without changing files', (t) => {
+  const cwd = tempDirectory(t);
+  fixtureGit(cwd, 'init', '-q', '--template=');
+  fixtureGit(cwd, 'config', 'core.autocrlf', 'false');
+  mkdirSync(join(cwd, 'scripts'));
+  mkdirSync(join(cwd, 'bin/lib'), { recursive: true });
+  copyFileSync(new URL('../scripts/check-encoding.mjs', import.meta.url), join(cwd, 'scripts/check-encoding.mjs'));
+  copyFileSync(new URL('../bin/lib/git.mjs', import.meta.url), join(cwd, 'bin/lib/git.mjs'));
+  const file = join(cwd, 'page.html');
+  const markdown = join(cwd, 'lonecr.md');
+  const clean = Buffer.from('<p>clean</p>\n');
+  writeFileSync(file, clean);
+  writeFileSync(markdown, 'a clean line\n');
+  writeFileSync(join(cwd, '.gitattributes'), '* text=auto eol=lf\n');
+  fixtureGit(cwd, 'add', '.');
+  const run = () => spawnSync(process.execPath, ['scripts/check-encoding.mjs'], {
+    cwd, env: testEnv(), encoding: 'utf8', timeout: GIT_TIMEOUT_MS,
+  });
+  const ok = run();
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.equal(ok.stdout, 'encoding ok\n');
+  const dirty = Buffer.from('<p>dirty</p>\r\n');
+  writeFileSync(file, dirty);
+  writeFileSync(markdown, 'a line\rwith a lone CR\n');
+  const names = fixtureGit(cwd, 'ls-files', '--cached', '--others', '--exclude-standard');
+  const before = names.trimEnd().split('\n').map((name) => readFileSync(join(cwd, name)));
+  const bad = run();
+  assert.equal(bad.status, 1, bad.stderr);
+  assert.equal(bad.stderr, 'CRLF: lonecr.md\nCRLF: page.html\nencoding gate: 2 issue(s)\n');
+  assert.equal(fixtureGit(cwd, 'ls-files', '--cached', '--others', '--exclude-standard'), names);
+  assert.deepEqual(names.trimEnd().split('\n').map((name) => readFileSync(join(cwd, name))), before);
+});
+
+test('encoding gate skips tracked binary files containing CR bytes', (t) => {
+  const cwd = tempDirectory(t);
+  fixtureGit(cwd, 'init', '-q', '--template=');
+  fixtureGit(cwd, 'config', 'core.autocrlf', 'false');
+  mkdirSync(join(cwd, 'scripts'));
+  mkdirSync(join(cwd, 'bin/lib'), { recursive: true });
+  copyFileSync(new URL('../scripts/check-encoding.mjs', import.meta.url), join(cwd, 'scripts/check-encoding.mjs'));
+  copyFileSync(new URL('../bin/lib/git.mjs', import.meta.url), join(cwd, 'bin/lib/git.mjs'));
+  writeFileSync(join(cwd, '.gitattributes'), '* text=auto eol=lf\nexplicit.md -text\n');
+  writeFileSync(join(cwd, 'explicit.md'), 'a line\rwith a lone CR\n');
+  writeFileSync(join(cwd, 'nul.md'), Buffer.from([0x61, 0x00, 0x0d, 0x0a]));
+  fixtureGit(cwd, 'add', '.');
+  const result = spawnSync(process.execPath, ['scripts/check-encoding.mjs'], {
+    cwd, env: testEnv(), encoding: 'utf8', timeout: GIT_TIMEOUT_MS,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, 'encoding ok\n');
+  assert.equal(result.stderr, '');
+});
 
 test('Git refuses implicit bare repositories', {
   skip: gitOlderThan(2, 38) && 'Requires Git 2.38 for safe.bareRepository.',

@@ -348,6 +348,7 @@ export const COUPLINGS = [
   ['vault-template/meta/freshness-policy.md', 'vault-template/meta/prompt-templates/probe-tool.md', 'freshness-policy §8 is cited by number', '§8'],
   ['.github/workflows/ci.yml', 'docs/REFERENCE.md', 'the CI matrix and steps are restated'],
   ['.gitattributes', 'scripts/check-encoding.mjs', 'eol=lf keeps the CR gate green on Windows'],
+  ['scripts/check-encoding.mjs', 'test/git.test.mjs', 'the encoding regression asserts the CRLF diagnostic and encoding ok output'],
   ['bin/commands/teach.mjs', 'docs/REFERENCE.md', "the teach section states next's readme: line, its three values and when each is printed, and teach attempt import's exit 2 lines, cannot read and over 1 MiB, and teach export's exit 2 lines (no vault, inside the vault or a workspace directory, not an empty directory), its stderr refusal line, its cannot write line and its wrote line", 'readme: ungated'],
   ['bin/commands/teach.mjs', 'skills/research-teach/README-FORMAT.md', "the Gated like a lesson rule states next's readme: line and its three values", 'readme: ungated'],
   ['bin/lib/labs.mjs', 'skills/research-teach/LESSON-FORMAT.md', "the Labs section states readLabs's manifest keys, limits (cost 200, timeout 7200, checks 10), LAB_TEXT_BAD_RE as words, the three roots, the id, env and path patterns, and labPin's key order", '^[A-Za-z0-9._/-]+$'],
