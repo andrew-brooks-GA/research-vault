@@ -2,8 +2,8 @@ name: ci
 on: [push, pull_request]
 permissions:
   contents: read
-# macOS runners queue; replace older runs on the same ref except on master.
-# Preserve each master commit's CI run for release verification.
+# On master, a run in progress is never cancelled. A queued run can be replaced
+# by a newer run, whose commit then carries the release.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}

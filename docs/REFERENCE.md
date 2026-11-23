@@ -6,6 +6,12 @@ The README explains what research-vault is. This page is for looking things up. 
 
 research-vault is for *external* facts: documentation, API behaviour, tool-version claims and the decisions you made because of them. It is not a code indexer beyond the comments that cite the vault, and does not replace the agent's view of your repo. Without Node, an agent can still read a vault by globbing and grepping the folders; the CLI is the checked path.
 
+## Releases
+
+`.github/workflows/release.yml` runs after the `ci` workflow completes. Only a successful push run on `master` in `andrew-brooks-GA/research-vault` can release; pull-request runs cannot. Checkout and the release target use that CI run's `head_sha`. `package.json` and `.claude-plugin/plugin.json` must carry the same non-empty version. The plugin's entry in `.claude-plugin/marketplace.json` must match that version only when it carries a version; an absent marketplace version is accepted and logged. After that check, an existing `v<version>` release ends the job successfully; otherwise the job creates it using the nonempty matching section of `CHANGELOG.md`. This check runs after every eligible CI completion, even when `package.json` did not change.
+
+GitHub uses the default branch's copy of a `workflow_run` workflow. Changes on another branch therefore need their first live verification after reaching `master`.
+
 ## Where the vault lives
 
 Tooling and vault data are separate by default. The vault is discovered in order:

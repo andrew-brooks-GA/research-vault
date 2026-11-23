@@ -26,6 +26,11 @@ const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.m
 // text itself, and the test fails when either file stops containing it. Give one only when the
 // literal really is in both files; a row about two values being equal stays prose.
 export const COUPLINGS = [
+  ['.github/workflows/ci.yml', '.github/workflows/release.yml', 'release subscribes to the ci workflow name and requires successful master push runs', /^(?:name: ci|    workflows: \[ci\])$/m],
+  ['.github/workflows/release.yml', 'test/workflow-config.test.mjs', 'configuration scans guard release triggers, job eligibility and CI commit identity', 'head_sha'],
+  ['.github/workflows/release.yml', 'test/workflow-config.test.mjs', 'the extracted version step and its diagnostics are exercised with fixture manifests', 'Check release versions'],
+  ['package.json', '.claude-plugin/marketplace.json', 'manifests.test.mjs requires an entry matching the package name and, when present, its version'],
+  ['.github/workflows/release.yml', 'docs/REFERENCE.md', 'release eligibility, manifest versions, existing-release no-op and CI commit identity', 'head_sha'],
   ['bin/commands/gate.mjs', 'test/gate-precommit.test.mjs', 'the unreadable binding entry diagnostic', 'binding exists but cannot be read'],
   ['bin/commands/gate.mjs', 'test/gate-precommit.test.mjs', 'the unbound staged gate diagnostic', 'staged gated files: none (no .research-vault.json binding here, so nothing is gated)'],
   ['bin/commands/gate.mjs', 'docs/REFERENCE.md', 'the unbound staged gate diagnostic', 'staged gated files: none (no .research-vault.json binding here, so nothing is gated)'],

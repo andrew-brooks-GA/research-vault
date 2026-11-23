@@ -1,25 +1,46 @@
 name: release
-# When a push to master changes package.json, tag v<version> and create the GitHub release
-# from that version's CHANGELOG.md section, unless the release exists. Main repo only.
+# After every successful push CI run on master, tag v<version> and create the GitHub
+# release from that version's CHANGELOG.md section. The release-exists check makes
+# runs without a new version a no-op. Main repo only.
 on:
-  push:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
     branches: [master]
-    paths: [package.json]
 permissions:
   contents: write
 jobs:
   release:
-    if: github.repository == 'andrew-brooks-GA/research-vault'
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'master' && github.repository == 'andrew-brooks-GA/research-vault'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           persist-credentials: false
+      - name: Check release versions
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const read = (path) => JSON.parse(readFileSync(path, 'utf8'));
+          const pkg = read('package.json');
+          const plugin = read('.claude-plugin/plugin.json').version;
+          const marketplace = read('.claude-plugin/marketplace.json').plugins.find((entry) => entry.name === pkg.name)?.version;
+          const compared = `package.json=${pkg.version}, plugin.json=${plugin}`
+            + (marketplace === undefined ? '' : `, marketplace.json=${marketplace}`);
+          if (marketplace === undefined) console.log('No marketplace version to compare.');
+          if (!pkg.version || pkg.version !== plugin || (marketplace !== undefined && pkg.version !== marketplace)) {
+            console.error(`Release versions differ: ${compared}`);
+            process.exit(1);
+          }
+          NODE
       - env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           v=$(node -p "require('./package.json').version")
           if gh release view "v$v" >/dev/null 2>&1; then echo "v$v exists"; exit 0; fi
           awk -v v="$v" 'index($0, "## [" v "]") == 1 { on = 1; next } /^## \[/ { on = 0 } on' CHANGELOG.md > notes.md
           test -s notes.md
-          gh release create "v$v" --target "$GITHUB_SHA" --title "v$v" --notes-file notes.md
+          # For workflow_run, GITHUB_SHA is the default branch head, not necessarily CI's commit.
+          gh release create "v$v" --target "$RELEASE_SHA" --title "v$v" --notes-file notes.md
