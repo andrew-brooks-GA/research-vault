@@ -26,6 +26,13 @@ const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.m
 // text itself, and the test fails when either file stops containing it. Give one only when the
 // literal really is in both files; a row about two values being equal stays prose.
 export const COUPLINGS = [
+  ['bin/commands/gate.mjs', 'test/gate-precommit.test.mjs', 'the unreadable binding entry diagnostic', 'binding exists but cannot be read'],
+  ['bin/commands/gate.mjs', 'test/gate-precommit.test.mjs', 'the unbound staged gate diagnostic', 'staged gated files: none (no .research-vault.json binding here, so nothing is gated)'],
+  ['bin/commands/gate.mjs', 'docs/REFERENCE.md', 'the unbound staged gate diagnostic', 'staged gated files: none (no .research-vault.json binding here, so nothing is gated)'],
+  ['bin/commands/gate.mjs', 'AGENTS.md', 'an unbound clone gates nothing and passes'],
+  ['.github/workflows/ci.yml', 'AGENTS.md', 'CI does not run the staged gate check'],
+  ['bin/lib/projectconfig.mjs', 'test/gate-precommit.test.mjs', 'malformed binding JSON remains an error with the binding filename'],
+  ['bin/lib/resolve.mjs', 'test/gate-precommit.test.mjs', 'an unapproved binding vault remains an error', 'a vault outside its repository that is not one of your own'],
   ['package.json', 'AGENTS.md', 'the supported Node floor is repeated in contributor instructions', '>=24'],
   ['package.json', 'README.md', 'the supported Node floor is repeated in installation instructions and the badge; workflow-config.test.mjs compares the values'],
   ['package.json', 'docs/CODEX.md', 'the supported Node floor is repeated in Codex installation instructions; workflow-config.test.mjs compares the values'],

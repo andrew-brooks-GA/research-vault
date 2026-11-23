@@ -2,4 +2,5 @@
 # Refuse a commit that stages a gated file (lessons, reference docs, gates.globs, linked code)
 # without a PASS or MERIT claims verdict for its current content. Enable once per clone with
 #   git config core.hooksPath .githooks
+# A clone with no .research-vault.json binding gates nothing and passes.
 exec node "$(dirname "$0")/../bin/research-vault.mjs" gate staged --check

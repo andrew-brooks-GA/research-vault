@@ -1,9 +1,10 @@
 // Claims-gate CLI: derive a draft's evidence list, record a reviewer verdict keyed to the
 // draft's content hash, and report whether the current content carries a passing verdict.
 import { resolve, dirname, join } from 'node:path';
+import { lstatSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../lib/resolve.mjs';
-import { loadProjectConfig } from '../lib/projectconfig.mjs';
+import { loadProjectConfig, PROJECT_CONFIG_FILENAME } from '../lib/projectconfig.mjs';
 import { loadSchema } from '../lib/schema.mjs';
 import { csvList } from '../lib/args.mjs';
 import { VERDICTS, recordVerdict, gateStatus, evidenceFor, renderEvidence, changedUnits, codeLang, ledgerKey, ledgerRoot, stagedGates, missingEvidence } from '../lib/gate.mjs';
@@ -30,7 +31,17 @@ export async function run(args) {
   // The pre-commit form: every staged gated file and its verdict; --check exits 1 while one has none.
   if (sub === 'staged') {
     const hit = loadProjectConfig(cwd, { schema: loadSchema(REPO_ROOT) });
-    if (!hit) { process.stderr.write('gate: not inside a repo bound with .research-vault.json\n'); return 2; }
+    if (!hit) {
+      for (let dir = resolve(cwd); ; dir = dirname(dir)) {
+        const candidate = join(dir, PROJECT_CONFIG_FILENAME);
+        if (lstatSync(candidate, { throwIfNoEntry: false })) {
+          process.stderr.write(`gate: ${candidate}: binding exists but cannot be read\n`);
+          return 2;
+        }
+        if (dirname(dir) === dir) break;
+      }
+      process.stdout.write('staged gated files: none (no .research-vault.json binding here, so nothing is gated)\n'); return 0;
+    }
     const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd });
     const rows = stagedGates(dirname(hit.path), vaultPath, hit.config, cwd);
     if (!rows.length) process.stdout.write('staged gated files: none\n');
