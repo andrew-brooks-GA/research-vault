@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `AGENTS.md`, "New tests": the rule against reading a source file as text now says "code file", so that a test may still read shipped Markdown (skill text, documents) as text.
+
 - Tests (R-24, first part): tests in four files no longer match code as it is printed. The check that only the lab runner, the task runner, the terminal helper and the git wrapper start a process, each from one call with no shell, is now a named source scan (`source scan: ...`) that matches the imported names, call counts and option tokens, so reformatting the code does not fail it and breaking the property does; the scans for a topic-specific word and for a language or project name are named the same way. Three tests that took their expected value out of the source they tested now run the code: the `changed units:` and `image:` lines the claims gate prints, and the floating version words (`FLOATING` in `bin/lib/fill.mjs` is exported for that). No behaviour changes.
 
 - Fixed (R-03): every text file now checks out with LF line ends. `.gitattributes` is one line, `* text=auto eol=lf`, in place of seven per-extension lines; with Git for Windows' default `core.autocrlf=true`, 28 tracked files (`.html`, `.css`, `.sh`, `.js`, `.cast`, the licences, the pre-commit hook, `.gitattributes` itself) used to check out with CRLF, and a new `.ts` file would have too. No file's content changes. `node scripts/check-encoding.mjs` now checks every tracked file, not only `.md`, `.mjs` and `.json`; it skips a file only when it carries an explicit `-text` or `binary` attribute or holds a NUL byte.

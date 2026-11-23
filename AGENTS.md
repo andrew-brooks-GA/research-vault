@@ -16,7 +16,7 @@ This repo is the research-vault plugin: a zero-dependency Node CLI (`bin/`, `eng
 - A test of a refusal asserts what did not happen (no file changed by name or bytes, no process started, nothing sent), not only the message or status.
 - A test of a path check builds the real layout (a link, a folder that is a link, a file that is a link) and compares the outside location before and after.
 - A test does not compute its expected value with the function under test or a helper the code under test calls.
-- A test does not read a source file as text, except a named source-scan guard whose comment says what it guards.
+- A test does not read a code file as text, except a named source-scan guard whose comment says what it guards.
 - A test that starts a process or a server has a time limit and compares only the output it is about.
 - No test count is reported as evidence. A report says what would be caught.
 - One new test per behaviour; a batch of tests for one change is split by the behaviours it claims.
