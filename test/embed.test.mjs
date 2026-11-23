@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, cpSync, writeFileSync, existsSync, readFileSync, mkdirSync, readdirSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { embedTexts, cosine, readIndex, INDEX } from '../bin/lib/embed.mjs';
@@ -10,6 +10,7 @@ import { run as embedRun } from '../bin/commands/embed.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
 import { applyVerification } from '../bin/commands/verify.mjs';
 import { testEnv } from './helpers.mjs';
+import { VAULT_PATH_OUTSIDE } from '../bin/lib/containment.mjs';
 
 export const LOOPBACK_ENDPOINT = 'http://127.0.0.1:1/v1/embeddings';
 export const HTTPS_ENDPOINT = 'https://embed.example.test/';
@@ -44,6 +45,38 @@ function withNetwork(fn) {
   process.env.RESEARCH_VAULT_ALLOW_NETWORK = '1';
   return fn().finally(() => { if (saved === undefined) delete process.env.RESEARCH_VAULT_ALLOW_NETWORK; else process.env.RESEARCH_VAULT_ALLOW_NETWORK = saved; });
 }
+
+test('embed refuses an index file linked outside an ordinary index folder', async (t) => {
+  embeddingEnv(t);
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'rv-embed-link-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const vault = join(root, 'vault');
+  cpSync(fileURLToPath(new URL('./fixtures/vault', import.meta.url)), vault, { recursive: true });
+  const outside = join(root, 'outside');
+  mkdirSync(outside);
+  mkdirSync(join(vault, '_index'));
+  const other = join(outside, 'index.jsonl');
+  const bytes = Buffer.from('outside index fixture\r\n');
+  writeFileSync(other, bytes);
+  try {
+    symlinkSync(other, join(vault, INDEX), 'file');
+  } catch (err) {
+    if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'ENOSYS', 'ENOTSUP'].includes(err.code)) throw err;
+    t.skip(`File symlink unavailable (${err.code})`);
+    return;
+  }
+  const names = readdirSync(outside).sort();
+  const cwd = boundRepo(vault);
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const calls = [];
+  try {
+    await assert.rejects(recordEmbeddingRun(embedRun, { vault, cwd, fetch: fakeFetch(calls) }), { code: VAULT_PATH_OUTSIDE });
+    assert.ok(calls.length > 0, 'the injected endpoint supplied the vectors');
+  } finally {
+    assert.deepEqual(readdirSync(outside).sort(), names, 'outside folder names are unchanged');
+    assert.deepEqual(readFileSync(other), bytes, 'outside index bytes are unchanged');
+  }
+});
 
 export function embeddingEnv(t, approved = LOOPBACK_ENDPOINT, key) {
   for (const [name, value] of Object.entries({ RESEARCH_VAULT_ALLOW_NETWORK: '1', RESEARCH_VAULT_EMBED_URL: approved, RESEARCH_VAULT_EMBED_KEY: key })) {

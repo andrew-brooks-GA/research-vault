@@ -1,12 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, appendFileSync, existsSync, readFileSync, mkdirSync, chmodSync, mkdtempSync, rmSync, utimesSync, cpSync } from 'node:fs';
+import { writeFileSync, appendFileSync, existsSync, readFileSync, mkdirSync, chmodSync, mkdtempSync, rmSync, utimesSync, cpSync, realpathSync, readdirSync, symlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { tmpVault, put, fixtureVault, testEnv } from './helpers.mjs';
 import { missingGates } from '../hooks/stop-gate.mjs';
+import { run as gateRun } from '../bin/commands/gate.mjs';
+import { VAULT_PATH_OUTSIDE } from '../bin/lib/containment.mjs';
 import {
   unitHashes, changedUnits, mdUnits,
   LEDGER_FILENAME, contentHash, ledgerKey, recordVerdict, gateStatus, reviewerHash,
@@ -14,6 +16,32 @@ import {
 } from '../bin/lib/gate.mjs';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'gate');
+
+test('gate record refuses a draft linked outside the vault', async (t) => {
+  const root = realpathSync(codeRepo({ code: false }).root);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const vault = join(root, 'research');
+  const outside = join(root, 'outside');
+  mkdirSync(outside);
+  const other = join(outside, 'draft.md');
+  const bytes = Buffer.from('# Outside draft fixture\r\n');
+  writeFileSync(other, bytes);
+  const file = join(vault, 'draft.md');
+  try {
+    symlinkSync(other, file, 'file');
+  } catch (err) {
+    if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'ENOSYS', 'ENOTSUP'].includes(err.code)) throw err;
+    t.skip(`File symlink unavailable (${err.code})`);
+    return;
+  }
+  const names = readdirSync(outside).sort();
+  try {
+    await assert.rejects(gateRun({ _: ['gate', 'record', file, 'PASS'], cwd: vault, vault }), { code: VAULT_PATH_OUTSIDE });
+  } finally {
+    assert.deepEqual(readdirSync(outside).sort(), names, 'outside folder names are unchanged');
+    assert.deepEqual(readFileSync(other), bytes, 'outside draft bytes are unchanged');
+  }
+});
 
 function draft(content = 'draft body\n') {
   const root = tmpVault('rv-gate-');
