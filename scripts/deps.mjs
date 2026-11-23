@@ -123,7 +123,7 @@ export const COUPLINGS = [
   ['bin/lib/usagelog.mjs', 'vault-template/.gitignore', 'the log lives under _index/, which the template ignores', '_index'],
   ['bin/lib/projectconfig.mjs', 'commands/research-init.md', "the config keys and 'volatility defaults to fast'"],
   ['bin/commands/obsidian.mjs', 'commands/research-obsidian.md', "the '_obsidian' default", '_obsidian'],
-  ['bin/commands/obsidian.mjs', 'SECURITY.md', 'the Obsidian view checks the output directory before generating files'],
+  ['bin/commands/obsidian.mjs', 'SECURITY.md', 'the Obsidian view checks every destination against the resolved output directory', 'outside the output directory or cannot be resolved'],
   ['bin/lib/files.mjs', 'vault-template/.gitignore', 'SKIP_DIRS and the ignore list both name _index and _obsidian', '_obsidian'],
   ['bin/lib/capture-operation.mjs', 'vault-template/.gitignore', 'the receipt and lock directory the opt-in path writes is ignored', '.capture-operations'],
   ['skills/research-orchestrate/SKILL.md', 'vault-template/.gitignore', 'the run directory the Write step writes plans to is ignored', '.research-tasks'],

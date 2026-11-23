@@ -1,12 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, realpathSync, rmSync, symlinkSync, mkdtempSync, cpSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, relative, join } from 'node:path';
 import { obsidianView } from '../bin/commands/obsidian.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
-import { tmpVault, put, codeRepo } from './helpers.mjs';
+import { escapePathControls, VAULT_PATH_OUTSIDE } from '../bin/lib/containment.mjs';
+import { tmpVault, put, codeRepo, testEnv } from './helpers.mjs';
 
 const NOW = new Date('2026-06-01');
 
@@ -126,3 +128,252 @@ test('obsidian seeds .obsidian/graph.json once and never overwrites it', () => {
   obsidianView(dir);
   assert.equal(readFileSync(p, 'utf8'), '{"search":"mine"}', 'a user-edited graph.json is kept');
 });
+
+function viewFixture(t, bound = false) {
+  const repo = bound ? codeRepo() : null;
+  const root = realpathSync(repo?.root ?? tmpVault('rv-view-links-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const vault = join(root, 'research');
+  const id = bound ? '2026-01-01-fx-doc' : '2026-01-01-view';
+  if (!bound) put(vault, 'source', id, { source_type: 'article', source_url: 'https://example.org/view' });
+  const out = join(vault, '_obsidian');
+  const outside = join(root, 'outside');
+  mkdirSync(out);
+  mkdirSync(outside);
+  const sentinel = join(outside, 'sentinel');
+  writeFileSync(sentinel, Buffer.from('unchanged\r\n\0fixture'));
+  return { root, vault, out, outside, sentinel, id };
+}
+
+function viewLink(t, target, path, type = 'file') {
+  try { symlinkSync(target, path, type); }
+  catch (err) {
+    if (process.platform !== 'win32' || !['EPERM', 'EACCES'].includes(err.code)) throw err;
+    if (type === 'dir') symlinkSync(target, path, 'junction');
+    else { t.skip(`File symlink unavailable (${err.code})`); return false; }
+  }
+  return true;
+}
+
+function unchanged(folder, file) {
+  const names = readdirSync(folder).sort();
+  const bytes = readFileSync(file);
+  return () => {
+    assert.deepEqual(readFileSync(file), bytes);
+    assert.deepEqual(readdirSync(folder).sort(), names);
+  };
+}
+
+const refusalMessage = (vault, path) => `${escapePathControls(relative(vault, path))}: path is outside the output directory or cannot be resolved`;
+const viewRefused = (vault, path) => err => err.code === VAULT_PATH_OUTSIDE && err.message === refusalMessage(vault, path);
+
+for (const layout of ['MOC', 'entry', 'settings directory', 'existing settings directory', 'dangling graph', 'existing graph', 'code directory', 'canonical entry']) {
+  test(`obsidian destination refuses ${layout} resolving outside the output directory`, t => {
+    const { vault, out, outside, sentinel, id } = viewFixture(t, layout === 'code directory');
+    let target = sentinel;
+    let path = join(out, layout === 'entry' || layout === 'canonical entry' ? `${id}.md` : 'MOC.md');
+    let checked = path;
+    let type = 'file';
+    if (layout.includes('settings directory')) {
+      target = outside;
+      path = join(out, '.obsidian');
+      checked = join(path, 'graph.json');
+      type = 'dir';
+      if (layout.startsWith('existing')) writeFileSync(join(outside, 'graph.json'), 'existing graph\r\n');
+    } else if (layout.includes('graph')) {
+      mkdirSync(join(out, '.obsidian'));
+      path = checked = join(out, '.obsidian', 'graph.json');
+      target = layout === 'dangling graph' ? join(outside, 'missing.json') : sentinel;
+    } else if (layout === 'code directory') {
+      target = outside;
+      path = join(out, 'code');
+      checked = join(path, 'src');
+      type = 'dir';
+    } else if (layout === 'canonical entry') {
+      target = join(vault, 'sources', `${id}.md`);
+    }
+    if (!viewLink(t, target, path, type)) return;
+    const checkOutside = unchanged(outside, sentinel);
+    const checkTarget = layout === 'canonical entry' ? unchanged(dirname(target), target)
+      : layout === 'existing settings directory' ? unchanged(outside, join(outside, 'graph.json')) : () => {};
+    assert.throws(() => obsidianView(vault), viewRefused(vault, checked));
+    checkOutside();
+    checkTarget();
+    if (layout === 'MOC') {
+      assert.ok(existsSync(join(out, `${id}.md`)), 'earlier derived note remains');
+      assert.equal(existsSync(join(out, '.obsidian')), false);
+    }
+  });
+}
+
+test('obsidian destination refuses a code note path leaving the output directory', t => {
+  const { root, vault, outside, sentinel } = viewFixture(t, true);
+  const nested = join(root, 'nested', 'repo');
+  mkdirSync(nested, { recursive: true });
+  const nestedVault = join(nested, 'research');
+  cpSync(vault, nestedVault, { recursive: true });
+  const code = join(outside, 'linked.lua');
+  writeFileSync(code, '-- per 2026-01-01-fx-doc\nlocal function f()\nend\n');
+  writeFileSync(join(nested, '.research-vault.json'), JSON.stringify({ vault: 'research', code: { globs: ['../../outside/*.lua'] } }));
+  const checkOutside = unchanged(outside, sentinel);
+  const checkVault = unchanged(nestedVault, join(nestedVault, 'sources', '2026-01-01-fx-doc.md'));
+  // Two parent segments escape code/ and then the output directory.
+  const destination = join(nestedVault, '_obsidian', 'code', '../../outside/linked.lua.md');
+  assert.throws(() => obsidianView(nestedVault), viewRefused(nestedVault, dirname(destination)));
+  checkOutside();
+  checkVault();
+  assert.equal(existsSync(destination), false);
+  assert.deepEqual(readdirSync(join(nestedVault, '_obsidian')).sort(), buildManifest(nestedVault).entries.map(e => `${e.id}.md`).sort());
+});
+
+test('obsidian destination refuses an outside MOC through the CLI', t => {
+  const { vault, out, outside, sentinel, id } = viewFixture(t);
+  const path = join(out, 'MOC.md');
+  if (!viewLink(t, sentinel, path)) return;
+  const checkOutside = unchanged(outside, sentinel);
+  const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+  const result = spawnSync(process.execPath, [cli, 'obsidian', '--vault', vault], { cwd: vault, env: testEnv(), encoding: 'utf8' });
+  assert.equal(result.status, 2, result.stderr);
+  assert.equal(result.stderr, `error: ${refusalMessage(vault, path)}\n`);
+  assert.equal(result.stdout, '');
+  assert.throws(() => obsidianView(vault), viewRefused(vault, path));
+  checkOutside();
+  assert.ok(existsSync(join(out, `${id}.md`)));
+});
+
+test('obsidian destination refuses an outside MOC with escaped output path controls', t => {
+  const { vault, outside, sentinel } = viewFixture(t);
+  const name = '_view\u2028';
+  const out = join(vault, name);
+  mkdirSync(out);
+  const path = join(out, 'MOC.md');
+  if (!viewLink(t, sentinel, path)) return;
+  const checkOutside = unchanged(outside, sentinel);
+  assert.throws(() => obsidianView(vault, name), err => {
+    assert.equal(err.code, VAULT_PATH_OUTSIDE);
+    assert.equal(err.message, '_view\\u2028/MOC.md: path is outside the output directory or cannot be resolved');
+    assert.equal(err.message.includes('\u2028'), false);
+    return true;
+  });
+  checkOutside();
+});
+
+for (const layout of ['MOC', 'settings directory', 'graph', 'vault root']) {
+  test(`obsidian destination allows an inside ${layout} link`, t => {
+    const { root, vault, out, id } = viewFixture(t);
+    let viewRoot = vault;
+    let target;
+    if (layout === 'vault root') {
+      viewRoot = join(root, 'alias');
+      viewLink(t, vault, viewRoot, 'dir');
+    } else if (layout === 'settings directory') {
+      target = join(out, 'settings');
+      mkdirSync(target);
+      viewLink(t, target, join(out, '.obsidian'), 'dir');
+    } else {
+      target = join(out, 'saved');
+      writeFileSync(target, 'saved bytes\r\n');
+      if (layout === 'graph') mkdirSync(join(out, '.obsidian'));
+      if (!viewLink(t, target, layout === 'MOC' ? join(out, 'MOC.md') : join(out, '.obsidian', 'graph.json'))) return;
+    }
+    obsidianView(viewRoot);
+    assert.ok(existsSync(join(out, `${id}.md`)));
+    assert.ok(existsSync(join(out, '.obsidian', 'graph.json')));
+    if (layout === 'MOC') assert.ok(readFileSync(target, 'utf8').includes(`[[${id}]]`));
+    if (layout === 'graph') assert.equal(readFileSync(target, 'utf8'), 'saved bytes\r\n');
+  });
+}
+
+for (const layout of ['vault root', 'index', 'nested parent', 'file']) {
+  test(`obsidian output location refuses ${layout}`, t => {
+    const { vault, out, id } = viewFixture(t);
+    rmSync(out, { recursive: true });
+    const entry = join(vault, 'sources', `${id}.md`);
+    let name = '_obsidian';
+    let checkTarget = () => {};
+    if (layout === 'vault root') {
+      if (!viewLink(t, entry, join(vault, `${id}.md`))) return;
+      viewLink(t, '.', out, 'dir');
+    } else if (layout === 'file') {
+      writeFileSync(out, 'not a directory');
+      checkTarget = unchanged(vault, out);
+    } else {
+      const target = join(vault, '_index');
+      mkdirSync(target);
+      const file = join(target, 'keep');
+      writeFileSync(file, 'index bytes\r\n');
+      if (layout === 'nested parent') name = 'a/b';
+      viewLink(t, target, layout === 'index' ? out : join(vault, 'a'), 'dir');
+      checkTarget = unchanged(target, file);
+    }
+    const checkVault = unchanged(vault, entry);
+    assert.throws(() => obsidianView(vault, name), {
+      code: VAULT_PATH_OUTSIDE,
+      message: `obsidian refused: --out must be a directory and must not be or pass through a link (got ${name})`,
+    });
+    checkVault();
+    checkTarget();
+  });
+}
+
+test('obsidian refuses a canonical folder linked inside output before overwriting an entry', t => {
+  const { vault, out } = viewFixture(t, true);
+  const target = join(out, 'code', 'src');
+  mkdirSync(target, { recursive: true });
+  const entry = join(target, 'a.lua.md');
+  cpSync(join(vault, 'notes', '2026-01-01-old.md'), entry);
+  rmSync(join(vault, 'notes'), { recursive: true });
+  viewLink(t, target, join(vault, 'notes'), 'dir');
+  const checkEntry = unchanged(target, entry);
+  const names = readdirSync(out, { recursive: true }).sort();
+  assert.throws(() => obsidianView(vault), {
+    message: 'obsidian refused: canonical folder notes must not be inside --out',
+  });
+  checkEntry();
+  assert.deepEqual(readdirSync(out, { recursive: true }).sort(), names);
+});
+
+test('obsidian output location allows missing nested directories after normalization', t => {
+  const { vault, id } = viewFixture(t);
+  obsidianView(vault, 'unused/../a/b');
+  assert.ok(existsSync(join(vault, 'a', 'b', `${id}.md`)));
+  assert.ok(existsSync(join(vault, 'a', 'b', '.obsidian', 'graph.json')));
+  assert.equal(existsSync(join(vault, 'unused')), false);
+});
+
+test('obsidian destination refuses a code note file link outside output', t => {
+  const { vault, out, outside, sentinel } = viewFixture(t, true);
+  const path = join(out, 'code', 'src', 'a.lua.md');
+  mkdirSync(dirname(path), { recursive: true });
+  if (!viewLink(t, sentinel, path)) return;
+  const checkOutside = unchanged(outside, sentinel);
+  assert.throws(() => obsidianView(vault), viewRefused(vault, path));
+  checkOutside();
+});
+
+test('obsidian destination refuses MOC linked to a non-entry vault file', t => {
+  const { vault, out } = viewFixture(t);
+  const file = join(vault, 'keep.txt');
+  writeFileSync(file, 'vault root bytes\r\n');
+  const path = join(out, 'MOC.md');
+  if (!viewLink(t, file, path)) return;
+  const checkVault = unchanged(vault, file);
+  assert.throws(() => obsidianView(vault), viewRefused(vault, path));
+  checkVault();
+});
+
+for (const outside of [false, true]) {
+  test(`obsidian output location escapes controls in ${outside ? 'outside' : 'linked'} refusal`, t => {
+    const { vault } = viewFixture(t);
+    const name = outside ? '../outside\u2028' : '_view\u2028';
+    if (!outside) viewLink(t, '.', join(vault, name), 'dir');
+    assert.throws(() => obsidianView(vault, name), err => {
+      assert.equal(err.message, outside
+        ? 'obsidian refused: --out must be inside the vault (got ../outside\\u2028)'
+        : 'obsidian refused: --out must be a directory and must not be or pass through a link (got _view\\u2028)');
+      assert.equal(err.message.includes('\u2028'), false);
+      if (!outside) assert.equal(err.code, VAULT_PATH_OUTSIDE);
+      return true;
+    });
+  });
+}
