@@ -365,15 +365,18 @@ test('past 256 KiB of output, a new stream replays at most 262144 bytes, startin
   const s = await openStream(port, cookie);
   const r = await post(port, 'input', { data: 'seq 1 60000; echo "seq""-done"\n' }, { cookie });
   assert.equal(r.status, 200);
-  await waitFor(s, shellOutput(/seq-done\r?\n/));
+  await waitFor(s, shellOutput(/seq-done\r?\n.*\$ $/));
   assert.ok(Buffer.byteLength(s.text) > 262144, 'the shell printed more than 256 KiB');
   const replay = await openStream(port, cookie);
   await waitFor(replay, shellOutput(/seq-done\r\n.*\$ $/));
   assert.ok(Buffer.byteLength(replay.text) <= 262144, String(Buffer.byteLength(replay.text)));
-  const [one, two] = replay.text.split('\n');
-  assert.match(one, /^\d+\r$/, 'the replay starts with a whole line');
-  assert.equal(Number(two.trim()), Number(one.trim()) + 1);
-  assert.ok(s.text.includes(`\n${one}\n${two}\n`), 'the replay\'s first line is a line of the output');
+  // terminal.mjs keeps a byte suffix trimmed after LF, independent of CRLF
+  // rendering by the pty. Compare the actual output, not a presumed line shape.
+  const output = Buffer.from(s.text), tail = Buffer.from(replay.text);
+  const offset = output.length - tail.length;
+  assert.ok(offset > 0, 'the replay omits the old output');
+  assert.deepEqual(tail, output.subarray(offset), 'the replay is an exact suffix of the output');
+  assert.equal(output[offset - 1], 10, 'the replay starts immediately after LF');
 });
 
 test('a stream that is not read is cut once its unsent output passes 4 MiB: it aborts, with no clean end', { skip }, async () => {

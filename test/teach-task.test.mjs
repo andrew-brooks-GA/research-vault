@@ -825,7 +825,8 @@ test('certification start: task 2\'s setup.sh exits 3: exit 2, no state, and the
 
 test('certification start: SIGINT during a setup stops its group, removes the state and exits 2', async () => {
   const ws = copy();
-  writeFileSync(join(ws, 'evidence', '0001', 'setup.sh'), '#!/usr/bin/env bash\necho $$ > setup.pid\nsleep 30 & sleep 30\n', { mode: 0o755 });
+  // Silence the shell's notice when its foreground sleep is stopped with the group.
+  writeFileSync(join(ws, 'evidence', '0001', 'setup.sh'), '#!/usr/bin/env bash\necho $$ > setup.pid\nexec 2>/dev/null\nsleep 30 & sleep 30\n', { mode: 0o755 });
   const child = spawn(process.execPath, [BIN, 'teach', 'check', '--start', '1', ws], { env: testEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
   let stderr = '';
   child.stderr.on('data', (b) => { stderr += b; });

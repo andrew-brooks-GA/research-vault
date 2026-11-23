@@ -784,7 +784,7 @@ test('spec 49 test 5: verify shows pass or fail, runs beside the same lab\'s up 
     const v = await labServer(w.ws, { limits });
     try { assert.deepEqual(await text(v.act('verify')), [200, expected]); } finally { await v.close(); }
   }
-  const w = runWs({ up: '#!/bin/sh\nsleep 61\n', verify: '#!/bin/sh\necho "pid $$"\nsleep 61\n', timeout: 1 });
+  const w = runWs({ up: '#!/bin/sh\nsleep 61\n', verify: '#!/bin/sh\nexec 2>/dev/null\necho "pid $$"\nsleep 61\n', timeout: 1 });
   const v = await labServer(w.ws);
   try {
     const [, body] = await text(v.act('verify'));
@@ -895,7 +895,7 @@ test('the environment a script sees is the allowlist and the declared names, not
 });
 
 test('the end of a run: a timeout, a leader that leaves a background child, a child that ignores SIGTERM, a script that cannot start', async () => {
-  const slow = runWs({ up: '#!/bin/sh\necho "pid $$"\nsleep 61\n', timeout: 1 });
+  const slow = runWs({ up: '#!/bin/sh\nexec 2>/dev/null\necho "pid $$"\nsleep 61\n', timeout: 1 });
   let s = await labServer(slow.ws);
   try {
     const [, body] = await text(s.act('run'));
