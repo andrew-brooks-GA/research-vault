@@ -26,6 +26,10 @@ const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.m
 // text itself, and the test fails when either file stops containing it. Give one only when the
 // literal really is in both files; a row about two values being equal stays prose.
 export const COUPLINGS = [
+  ['scripts/run-tests.mjs', 'test/npm-test.test.mjs', 'runner timeout options, defaults and whole-run timeout diagnostic'],
+  ['scripts/run-tests.mjs', '.github/workflows/ci.yml', 'CI job limit must exceed the default whole-run limit'],
+  ['scripts/run-tests.mjs', 'AGENTS.md', 'npm test environment isolation and default test, test-file and whole-run limits'],
+  ['scripts/run-tests.mjs', 'docs/REFERENCE.md', 'npm test environment isolation and default test, test-file and whole-run limits'],
   ['bin/lib/resolve.mjs', 'README.md', 'the outside binding vault rule names the user choice', 'RESEARCH_VAULT_PATH'],
   ['bin/lib/resolve.mjs', 'docs/ADOPTING.md', 'the outside binding vault rule names the user choice', 'RESEARCH_VAULT_PATH'],
   ['bin/lib/resolve.mjs', 'docs/CODEX.md', 'the outside binding vault rule names the user choice', 'RESEARCH_VAULT_PATH'],

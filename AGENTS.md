@@ -4,7 +4,7 @@ This repo is the research-vault plugin: a zero-dependency Node CLI (`bin/`, `eng
 
 ## Before you commit
 
-- `npm test` (`node --test`): every test passes.
+- `npm test` (isolated environment; a test or a test file may run 10 minutes and the whole run 20): every test passes.
 - `npm run lint:self`: the vault template lints clean.
 - `node scripts/check-agentsmd-drift.mjs`: the generated vault AGENTS.md matches `schema/AGENTS.golden.md`.
 - `node scripts/check-encoding.mjs`: no BOM, CR byte or double-encoded mojibake sequence in tracked `.md`, `.mjs` and `.json` files.

@@ -53,7 +53,7 @@ const SAMPLES = [
   ['commands/x.md', '`research-vault init --refresh-doc`', 'invokes-cli', 'cli:init --refresh-doc'],
   ['docs/X.md', '`research-vault lnt`', 'invokes-cli', 'cli:lnt'],
   ['AGENTS.md', '- `npm run lint:self`: the template lints clean.', 'npm', 'npm:lint:self'],
-  ['AGENTS.md', '- `npm test` (`node --test`): every test passes.', 'npm', 'npm:test'],
+  ['AGENTS.md', '- `npm test` (isolated environment; a test or a test file may run 10 minutes and the whole run 20): every test passes.', 'npm', 'npm:test'],
 ];
 
 test('every supported reference syntax still yields its edge', () => {
