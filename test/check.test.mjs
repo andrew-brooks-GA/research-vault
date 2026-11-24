@@ -288,3 +288,61 @@ test('check without a code block runs today\'s path on the same fixture', () => 
   assert.deepEqual(Object.keys(parseProjectConfig(readFileSync(join(root, '.research-vault.json'), 'utf8'), loadSchema(process.cwd()))),
     ['vault', 'defaults', 'references', 'gates', 'capture', 'usage', 'taxonomyExtensions']);
 });
+
+// ---- globs that check nothing (R-13) ----
+const bindGlobs = (root, globs) => writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault: 'research', references: { globs } }) + '\n');
+
+test('a positional glob that matches no file is reported, and fails only under --check', () => {
+  const { root } = codeRepo({ code: false });
+  for (const [flags, status] of [[['--check'], 1], [[], 0]]) {
+    const r = cli(root, 'nope/*.md', ...flags);
+    assert.equal(r.stderr, 'check: nope/*.md matched no file\n', flags.join(' '));
+    assert.equal(r.stdout, 'check: 0 file(s); 0 ok, 0 stale, 0 uncovered\n', flags.join(' '));
+    assert.equal(r.status, status, flags.join(' '));
+  }
+});
+
+test('binding globs resolve against the binding\'s folder, not the working directory', () => {
+  const { root } = codeRepo({ code: false });
+  const rows = (cwd) => JSON.parse(cli(cwd, '--json').stdout).rows;
+  const fromRoot = rows(root);
+  const fromSub = rows(join(root, 'src'));
+  assert.deepEqual(fromRoot.map((r) => r.file), ['docs/d.md']);
+  assert.deepEqual(fromSub.map((r) => r.file), ['../docs/d.md']);
+  assert.deepEqual(fromSub.map(({ file, ...r }) => r), fromRoot.map(({ file, ...r }) => r));
+});
+
+test('a binding glob that matches no file fails --check and is named', () => {
+  const { root } = codeRepo({ code: false });
+  bindGlobs(root, ['docs/*.md', 'notes/*.md']);
+  const r = cli(root, '--check');
+  assert.equal(r.stderr, 'check: notes/*.md matched no file\n');
+  assert.equal(r.stdout, 'check: 1 file(s); 1 ok, 0 stale, 0 uncovered\n');
+  assert.equal(r.status, 1);
+});
+
+test('a quoted glob in the binding is a configuration error with no rows', () => {
+  const { root } = codeRepo({ code: false });
+  bindGlobs(root, ["'docs/*.md'"]);
+  const r = cli(root, '--json');
+  assert.equal(r.stderr, "check: 'docs/*.md' looks quoted; remove the quotes\n");
+  assert.equal(r.stdout, '');
+  assert.equal(r.status, 2);
+});
+
+test('a binding glob with a trailing quote only is a configuration error with no rows', () => {
+  const { root } = codeRepo({ code: false });
+  bindGlobs(root, ["docs/*.md'"]);
+  const r = cli(root, '--json');
+  assert.equal(r.stderr, "check: docs/*.md' looks quoted; remove the quotes\n");
+  assert.equal(r.stdout, '');
+  assert.equal(r.status, 2);
+});
+
+test('a glob that matches files with only ok rows passes --check with no warning', () => {
+  const { root } = codeRepo({ code: false });
+  const r = cli(root, 'docs/*.md', '--check');
+  assert.equal(r.stdout, 'check: 1 file(s); 1 ok, 0 stale, 0 uncovered\n');
+  assert.equal(r.stderr, '');
+  assert.equal(r.status, 0);
+});

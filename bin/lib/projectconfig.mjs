@@ -227,6 +227,13 @@ export function loadProjectConfig(startDir, opts = {}) {
   return { path: hit.path, config: parseProjectConfig(hit.raw, opts.schema) };
 }
 
+// A glob that kept its shell quotes (cmd.exe passes '...' through) matches nothing. Returns the
+// refusal for the first such glob, or null; check and init --project print it and exit 2.
+export function quotedGlob(globs) {
+  const g = globs.find((x) => /^['"]|['"]$/.test(x));
+  return g === undefined ? null : `${g} looks quoted; remove the quotes`;
+}
+
 // Write a starter .research-vault.json binding `dir` to a vault. Refuses to clobber
 // an existing binding (mirrors init's non-clobber discipline). `codeLinks` globs add the `code`
 // block; the body goes through parseProjectConfig first, so its rules live in one place. Returns the file path.

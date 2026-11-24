@@ -23,7 +23,7 @@ Capture fills `domain`/`topics` from the `.research-vault.json` `defaults` when 
 **Verify what you capture — do not assert from memory.** A version, date, or API claim must be confirmed by fetching the authoritative source (its docs/releases page), not recalled: training lags reality, so a remembered "latest version" is stale by construction. `capture` seeds only a `captured` provenance marker, which is *not* a verification — record a real `verify` (`refetched-source`) once you've fetched, or the entry trips `WARN_SOURCE_UNVERIFIED` and is not authoritative. If you cannot fetch, capture it as a `question`, not a `source` stated as fact.
 
 ## 3. Verify after authoring
-Run `research-vault check "<file-or-reference-glob>"` to confirm the new citation reports `ok`, not `uncovered` or `stale`. `research-vault check --check` exits 1 when any row is `stale`, `uncovered` or `unattached`, so a consuming repo can gate CI on it.
+Run `research-vault check "<file-or-reference-glob>"` to confirm the new citation reports `ok`, not `uncovered` or `stale`. `research-vault check --check` exits 1 when any row is `stale`, `uncovered` or `unattached` or a glob matches no file, so a consuming repo can gate CI on it.
 
 If the document matches `gates.globs`, run the `research-claims-gate` skill before it is shown or sent.
 

@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { loadSchema } from '../lib/schema.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
-import { loadProjectConfig } from '../lib/projectconfig.mjs';
+import { loadProjectConfig, quotedGlob } from '../lib/projectconfig.mjs';
 import { normalizeUrl } from '../lib/ids.mjs';
 import { extractCitationsDetailed } from '../lib/citations.mjs';
 import { staleness } from '../lib/stale.mjs';
@@ -97,17 +97,27 @@ export async function run(args) {
   const cfg = hit?.config;
   const repoRoot = hit ? dirname(hit.path) : cwd;
   let globs = args._.slice(1);
+  // Positional globs are relative to the working directory, where they were typed.
+  let base = cwd;
   // No positional globs: fall back to the bound repo's `.research-vault.json` references.globs
-  // plus code.globs (same discovery resolve.mjs uses). Only error with usage when neither is available.
-  if (!globs.length) globs = [...(cfg?.references?.globs ?? []), ...(cfg?.code?.globs ?? [])];
+  // plus code.globs (same discovery resolve.mjs uses), resolved against the binding's folder as
+  // codeFiles does. Only error with usage when neither is available.
+  if (!globs.length) { globs = [...(cfg?.references?.globs ?? []), ...(cfg?.code?.globs ?? [])]; base = repoRoot; }
   if (!globs.length) {
     process.stderr.write('usage: research-vault check <file|glob>... [--check] [--report] [--json] [--vault <path>]\n');
     return 2;
   }
+  const quoted = quotedGlob(globs);
+  if (quoted) { process.stderr.write(`check: ${quoted}\n`); return 2; }
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd });
   const entries = buildManifest(vaultPath).entries;
   const now = args.now || new Date().toISOString().slice(0, 10);
-  const files = expandFiles(globs, cwd);
+  // Each glob on its own, so one that matches nothing (a typo, a moved tree) is named; under
+  // --check it fails the gate, since a check of nothing must not pass.
+  const matched = globs.map((g) => expandFiles([g], base));
+  const unmatched = globs.filter((_, i) => !matched[i].length);
+  for (const g of unmatched) process.stderr.write(`check: ${g} matched no file\n`);
+  const files = [...new Set(matched.flat())].sort();
   const code = codeFiles(cfg, repoRoot);
   const versions = cfg?.code ? readVersions(cfg, repoRoot) : null;
 
@@ -137,5 +147,5 @@ export async function run(args) {
     process.stdout.write(`check: ${summary.files} file(s); ${summary.ok} ok, ${summary.stale} stale, ${summary.uncovered} uncovered${codeTail}\n`);
     if (versions) process.stdout.write(versionsLine(versions) + '\n');
   }
-  return args.check && summary.stale + summary.uncovered + (summary.unattached ?? 0) > 0 ? 1 : 0;
+  return args.check && unmatched.length + summary.stale + summary.uncovered + (summary.unattached ?? 0) > 0 ? 1 : 0;
 }

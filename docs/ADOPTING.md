@@ -40,7 +40,7 @@ Only blank and comment lines may sit between the comment and the declaration. On
 
 ```text
 research-vault check            # prints every link that is not ok
-research-vault check --check    # exits 1 on stale, uncovered or unattached
+research-vault check --check    # exits 1 on stale, uncovered or unattached, or a glob that matches no file
 research-vault check --json     # the rows, for tools
 ```
 
@@ -60,6 +60,8 @@ research-vault:
     - run: node /tmp/research-vault/bin/research-vault.mjs lint --vault research --check
     - run: node /tmp/research-vault/bin/research-vault.mjs check --check
 ```
+
+Under `--check` every glob in the binding (and every positional glob) must match at least one file, so a binding that names a language or a folder the project does not have yet fails CI until it does; drop that glob or add the file.
 
 The implementation defines a manifest write in the non-check `lint` path and a comparison in the `--check` path.
 

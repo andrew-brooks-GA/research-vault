@@ -236,3 +236,31 @@ test('init --project keeps its binding when acknowledgement storage is linked ou
   assert.equal(readFileSync(outsideFile, 'utf8'), 'unchanged');
   assert.deepEqual(readdirSync(outside), ['trusted-bindings.json']);
 });
+
+test('CLI init --project refuses a quoted --code-links glob before writing anything', t => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'rv-init-quoted-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const home = join(root, 'home'), repo = join(root, 'repo');
+  mkdirSync(home); mkdirSync(repo);
+  const env = { HOME: home, USERPROFILE: home, APPDATA: home, LOCALAPPDATA: home, XDG_CONFIG_HOME: home, XDG_DATA_HOME: home };
+  const r = spawnSync(process.execPath, [CLI, 'init', '--project', '--vault', 'research', '--code-links', "'src/*.js'"], { cwd: repo, env: testEnv(env), encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.stderr, "init: 'src/*.js' looks quoted; remove the quotes\n");
+  assert.equal(r.status, 2);
+  assert.equal(existsSync(join(repo, PROJECT_CONFIG_FILENAME)), false);
+  assert.deepEqual(readdirSync(repo), []);
+  assert.deepEqual(readdirSync(home), [], 'no acknowledgement written');
+});
+
+test('CLI init --project refuses a --globs value with a leading quote only before writing anything', t => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'rv-init-quoted-globs-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const home = join(root, 'home'), repo = join(root, 'repo');
+  mkdirSync(home); mkdirSync(repo);
+  const env = { HOME: home, USERPROFILE: home, APPDATA: home, LOCALAPPDATA: home, XDG_CONFIG_HOME: home, XDG_DATA_HOME: home };
+  const r = spawnSync(process.execPath, [CLI, 'init', '--project', '--vault', 'research', '--globs', "'docs/*.md"], { cwd: repo, env: testEnv(env), encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.stderr, "init: 'docs/*.md looks quoted; remove the quotes\n");
+  assert.equal(r.status, 2);
+  assert.equal(existsSync(join(repo, PROJECT_CONFIG_FILENAME)), false);
+  assert.deepEqual(readdirSync(repo), []);
+  assert.deepEqual(readdirSync(home), [], 'no acknowledgement written');
+});

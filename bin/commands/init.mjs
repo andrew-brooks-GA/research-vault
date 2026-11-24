@@ -7,7 +7,7 @@ import { checkProjectVault, resolveVault, configPath, hasVaultContent } from '..
 import { writeManifest } from '../lib/manifest.mjs';
 import { ENTRY_FOLDERS } from '../lib/fsutil.mjs';
 import { compileVault } from './compile.mjs';
-import { scaffoldProjectConfig } from '../lib/projectconfig.mjs';
+import { scaffoldProjectConfig, quotedGlob } from '../lib/projectconfig.mjs';
 import { acknowledgeBinding } from '../lib/trust.mjs';
 import { csvList } from '../lib/args.mjs';
 import { assertInsideVault, compareVaultLocations, VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
@@ -69,11 +69,13 @@ export async function run(args) {
   // `init --project` binds the CURRENT repo to a vault by writing a .research-vault.json
   // here; it does not scaffold a vault. The vault itself is resolved as usual.
   if (args.project) {
-    const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
-    const topics = csvList(args.topics);
-    const globs = csvList(args.globs);
     // --code-links <glob,glob> adds the `code` block (spec 15); scaffoldProjectConfig checks it needs a relative vault.
     const codeLinks = csvList(args['code-links']);
+    const globs = csvList(args.globs);
+    const quoted = quotedGlob([...codeLinks, ...globs]);
+    if (quoted) { process.stderr.write(`init: ${quoted}\n`); return 2; }
+    const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
+    const topics = csvList(args.topics);
     try {
       let writtenBytes;
       const target = scaffoldProjectConfig(process.cwd(), {
