@@ -1,15 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, writeFileSync, existsSync, readFileSync, mkdirSync, readdirSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, cpSync, writeFileSync, existsSync, readFileSync, mkdirSync, readdirSync, realpathSync, rmSync, symlinkSync, statSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { embedTexts, cosine, readIndex, INDEX } from '../bin/lib/embed.mjs';
 import { run as embedRun } from '../bin/commands/embed.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
 import { applyVerification } from '../bin/commands/verify.mjs';
-import { testEnv } from './helpers.mjs';
+import { testEnv, tmpVault, put } from './helpers.mjs';
 import { VAULT_PATH_OUTSIDE } from '../bin/lib/containment.mjs';
 
 export const LOOPBACK_ENDPOINT = 'http://127.0.0.1:1/v1/embeddings';
@@ -344,4 +346,64 @@ test('CLI embed refuses an unapproved address before resolving the bound vault',
   const approved = run(HTTPS_ENDPOINT);
   assert.equal(approved.status, 2, approved.stderr);
   assert.match(approved.stderr, /vault that could not be resolved/);
+});
+
+// SECURITY.md, Embedding endpoint, "What leaves the machine": embed sends the windows in batches of 64, one POST per
+// batch, as { input, model }, and nothing else. A loopback stub endpoint records each request; 130 one-window
+// entries make three batches. The CLI runs as a child process (the stub serves from this one). The inputs sent, in
+// order, are the index's text fields; each request carries the header names of a bare fetch POST of JSON to the same
+// stub. The vault's files are compared, by path and bytes, before and after.
+test('embed POSTs 130 windows as batches of 64, 64 and 2 to the endpoint path, { input, model } only, and changes no entry', { timeout: 60000 }, async (t) => {
+  const vault = tmpVault('rv-embed-batches-');
+  for (let i = 0; i < 130; i++) put(vault, 'source', `2026-01-01-e${String(i).padStart(3, '0')}`, { source_type: 'article', source_url: `https://example.org/${i}` });
+  const requests = [];
+  const server = createServer((req, res) => {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      const parsed = JSON.parse(body);
+      requests.push({ method: req.method, url: req.url, headers: req.headers, body: parsed });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ data: parsed.input.map(() => ({ embedding: [1, 0] })) }));
+    });
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const url = `http://127.0.0.1:${server.address().port}/v1/embeddings`;
+  const files = () => readdirSync(vault, { recursive: true }).sort().map((f) => [f, statSync(join(vault, f)).isFile() ? readFileSync(join(vault, f)).toString('base64') : 'dir']);
+  const before = files();
+  const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+  const child = spawn(process.execPath, [cli, 'embed', '--vault', vault, '--ack-data-egress'], {
+    cwd: boundRepo(vault, { url, model: 'fake' }), timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'],
+    env: testEnv({ RESEARCH_VAULT_ALLOW_NETWORK: '1', RESEARCH_VAULT_EMBED_URL: url }),
+  });
+  t.after(() => child.kill('SIGKILL'));
+  let stderr = '';
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (c) => { stderr += c; });
+  child.stdout.resume();
+  const [status] = await once(child, 'exit');
+  assert.equal(status, 0, stderr);
+  const sent = requests.splice(0);
+  const bare = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input: ['x'], model: 'fake' }), signal: AbortSignal.timeout(5000) });
+  await bare.text();
+  const names = (r) => Object.keys(r.headers).filter((k) => k !== 'content-length').sort();
+  const bareNames = names(requests[0]);
+  console.log(`requests: ${JSON.stringify(sent.map((r) => [r.method, r.url, r.body.input.length]))}; bare fetch headers: ${bareNames}`);
+  assert.deepEqual(sent.map((r) => [r.method, r.url, r.body.input.length]), [['POST', '/v1/embeddings', 64], ['POST', '/v1/embeddings', 64], ['POST', '/v1/embeddings', 2]]);
+  for (const r of sent) {
+    assert.deepEqual(Object.keys(r.body), ['input', 'model']);
+    assert.equal(r.body.model, 'fake');
+    assert.equal(r.headers['content-type'], 'application/json');
+    assert.deepEqual(names(r), bareNames, 'the header names of a bare fetch, nothing added');
+  }
+  const indexed = readFileSync(join(vault, INDEX), 'utf8').trim().split('\n').slice(1).map((l) => JSON.parse(l).text);
+  assert.equal(indexed.length, 130);
+  assert.deepEqual(sent.flatMap((r) => r.body.input), indexed, 'the inputs sent, in order, are the index texts');
+  assert.equal(new Set(indexed).size, 130, 'each window sent once');
+  const after = new Map(files());
+  const changed = [...new Set([...before.map(([f]) => f), ...after.keys()])].filter((f) => new Map(before).get(f) !== after.get(f)).sort();
+  assert.deepEqual(changed, ['_index', INDEX], 'only the index is written');
 });

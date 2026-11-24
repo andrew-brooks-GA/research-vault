@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { tmpVault, put } from './helpers.mjs';
+import { tmpVault, put, testEnv, noNetworkArgs } from './helpers.mjs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { checkQuotes } from '../bin/lib/quotes.mjs';
 import { buildPacket } from '../bin/lib/packet.mjs';
 import { readEntry } from '../bin/lib/fsutil.mjs';
@@ -99,4 +101,22 @@ test('gate evidence --packet: a quote over two lines is cut with both of its lin
   const big = readEntry(join(p, 'sources', `2026-01-01-${BIG}.md`));
   assert.ok(big.body.includes('L40: The quoted sentence begins on line forty\nL41: and ends on the line after it.'));
   assert.match(big.data.verifications.at(-1).notes, /^[0-9a-f]{8} L40@[0-9a-f]{8} run-abc123: /);
+});
+
+// SECURITY.md, Network refresh: gate evidence --packet opens no connection. The CLI runs with no network variable
+// and with noNetworkArgs, which logs and refuses a socket connect, dns.lookup or fetch, and the log holds only its load line.
+test('gate evidence --packet: the CLI writes the packet and opens no connection', { timeout: 30000 }, async () => {
+  const dir = vault();
+  put(dir, 'synthesis', '2026-01-02-s', { contributing_ids: [`2026-01-01-${BIG}`], summary: 's', confidence: 'medium' }, `# 2026-01-02-s\n\nIt rests on 2026-01-01-${BIG}.\n`);
+  await checkQuotes(dir, `2026-01-01-${BIG}`, ['The quoted sentence sits on line forty of the page.'], { ...NOW, runKey: RUN });
+  const p = out();
+  const netLog = join(mkdtempSync(join(tmpdir(), 'rv-packet-net-')), 'net.log');
+  const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+  const r = spawnSync(process.execPath, [...noNetworkArgs, cli, 'gate', 'evidence', join(dir, 'synthesis', '2026-01-02-s.md'), '--vault', dir, '--packet', p, '--run', RUN], {
+    cwd: dir, env: testEnv({ RV_TEST_NET_LOG: netLog }), encoding: 'utf8', timeout: 30000,
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^packet: /m);
+  assert.ok(existsSync(join(p, 'sources', `2026-01-01-${BIG}.md`)));
+  assert.equal(readFileSync(netLog, 'utf8'), 'loaded\n', 'no socket, lookup or fetch');
 });

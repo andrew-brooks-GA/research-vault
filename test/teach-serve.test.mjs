@@ -2,10 +2,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cpSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, existsSync, writeFileSync, chmodSync, renameSync, symlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { tmpdir, networkInterfaces } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { request } from 'node:http';
+import { connect } from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { fixtureVault, testEnv } from './helpers.mjs';
@@ -36,13 +37,14 @@ async function start(ws) {
 
 // node:http rather than fetch: fetch will not send a caller-chosen Host header.
 // `body` is a string; `chunked` sends it without a Content-Length.
-function req(port, { method = 'GET', path = '/', headers = {}, body, chunked = false }) {
+// `signal` aborts the request (an AbortSignal.timeout gives it a time limit).
+function req(port, { method = 'GET', path = '/', headers = {}, body, chunked = false, signal }) {
   return new Promise((resolve) => {
     const h = { Host: `127.0.0.1:${port}`, ...headers };
     for (const k of Object.keys(h)) if (h[k] === undefined) delete h[k];
     if (body !== undefined && !chunked && !('Content-Length' in h)) h['Content-Length'] = Buffer.byteLength(body);
     if (chunked) h['Transfer-Encoding'] = 'chunked';
-    const r = request({ host: '127.0.0.1', port, method, path, headers: h, setHost: false }, (res) => {
+    const r = request({ host: '127.0.0.1', port, method, path, headers: h, setHost: false, signal }, (res) => {
       let text = '';
       res.setEncoding('utf8');
       res.on('data', (c) => { text += c; });
@@ -510,4 +512,124 @@ test('teach serve --labs prints the lab address once, reusable; .teach-serve.jso
   console.log(`invalid labs.json: exit ${bad.status} ${JSON.stringify(bad.stderr)}`);
   assert.deepEqual([bad.status, bad.stdout, bad.stderr], [2, '', 'teach serve: labs/labs.json is invalid; run teach lint\n']);
   assert.equal(existsSync(file), false);
+});
+
+// Start the CLI `teach serve` (no --labs) on `ws` and wait for its serving line; the port is the one it prints.
+// The child is stopped when test `t` ends, whether it passed, failed or timed out.
+async function serveCli(t, ws) {
+  const child = spawn(process.execPath, [BIN, 'teach', 'serve', ws], {
+    env: testEnv({ RESEARCH_VAULT_PATH: fixtureVault() }), stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  t.after(() => stopCli(child));
+  let stdout = '';
+  child.stdout.setEncoding('utf8');
+  await new Promise((resolve, reject) => {
+    child.stdout.on('data', (c) => { stdout += c; if (stdout.includes('\n')) resolve(); });
+    child.on('exit', (code) => reject(new Error(`serve exited ${code} before serving`)));
+  });
+  const m = /^serving .+ at http:\/\/127\.0\.0\.1:(\d+)\/\n$/.exec(stdout);
+  assert.ok(m, stdout);
+  return { child, port: Number(m[1]) };
+}
+const stopCli = async (child) => {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  child.kill('SIGTERM');
+  await once(child, 'exit');
+};
+// 'connected', or the code of the error that refused the connection.
+const connects = (host, port) => new Promise((resolve) => {
+  const s = connect({ host, port });
+  const done = (r) => { s.destroy(); resolve(r); };
+  s.once('connect', () => done('connected'));
+  s.once('error', (e) => done(e.code));
+  s.setTimeout(2000, () => done('timeout'));
+});
+
+// SECURITY.md, Lesson server, "Loopback only": the CLI path binds 127.0.0.1, which the in-process tests above choose themselves.
+// 127.0.0.2 is probed too, so a machine with loopback only still has an address to refuse: on Linux a 127.0.0.1
+// listener refuses it and a 0.0.0.0 listener takes it; on macOS, where lo0 carries 127.0.0.1 alone, it times out.
+test('the CLI teach serve takes a connection on 127.0.0.1 and none on 127.0.0.2, ::1 or this machine\'s other addresses', { timeout: 30000 }, async (t) => {
+  const { port } = await serveCli(t, copyFixture());
+  assert.equal(await connects('127.0.0.1', port), 'connected');
+  const others = ['127.0.0.2', '::1', ...Object.values(networkInterfaces()).flat()
+    .filter((a) => !a.internal && !a.address.toLowerCase().startsWith('fe80')).map((a) => a.address)];
+  for (const host of others) {
+    const r = await connects(host, port);
+    console.log(`connect ${host}:${port} -> ${r}`);
+    assert.notEqual(r, 'connected', host);
+  }
+});
+
+// SECURITY.md, Lesson server, "Its other write": on SIGINT, not only SIGTERM, the state file is removed without --labs.
+test('teach serve without --labs removes .teach-serve.json and exits 0 on SIGINT', { skip: process.platform === 'win32' && 'POSIX signals', timeout: 20000 }, async (t) => {
+  const ws = copyFixture();
+  const file = join(ws, '.teach-serve.json');
+  const { child } = await serveCli(t, ws);
+  assert.equal(existsSync(file), true);
+  child.kill('SIGINT');
+  const [code, signal] = await once(child, 'exit');
+  console.log(`SIGINT: exit ${code} signal ${signal}; file present after exit: ${existsSync(file)}`);
+  assert.deepEqual([code, signal, existsSync(file)], [0, null, false]);
+});
+
+// SECURITY.md, Lesson server, "Static reads from an allowlist": without --labs or --terminal, each listed route answers,
+// and everything else is 404, labs/labs.json among them. Each request has a time limit of its own.
+test('the route list without --labs or --terminal: each listed route answers as SECURITY.md says, and unlisted paths are 404', { timeout: 60000 }, async (t) => {
+  const ws = copyFixture();
+  mkdirSync(join(ws, 'brand'));
+  writeFileSync(join(ws, 'brand', 'mark.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>\n');
+  mkdirSync(join(ws, 'labs'));
+  writeFileSync(join(ws, 'labs', 'labs.json'), '{"version":1,"labs":{}}\n');
+  const { server, port } = await start(ws);
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const send = (opts) => req(port, { ...opts, signal: AbortSignal.timeout(5000) });
+  const post = (path, body) => send({ method: 'POST', path, body,
+    headers: { Origin: `http://127.0.0.1:${port}`, 'Content-Type': 'application/json' } });
+  const html = 'text/html; charset=utf-8';
+  const listed = [
+    ['GET /', () => send({ path: '/' }), html],
+    ['GET /lessons.json', () => send({ path: '/lessons.json' }), 'application/json'],
+    ['GET /progress', () => send({ path: '/progress' }), html],
+    ['GET /progress.json', () => send({ path: '/progress.json' }), 'application/json'],
+    ['GET /lessons/0001-good.html', () => send({ path: '/lessons/0001-good.html' }), html],
+    ['HEAD /lessons/0001-good.html', () => send({ method: 'HEAD', path: '/lessons/0001-good.html' }), html],
+    ['GET /reference/good.html', () => send({ path: '/reference/good.html' }), html],
+    ['GET /assets/fxctl.cast', () => send({ path: '/assets/fxctl.cast' })],
+    ['GET /brand/mark.svg', () => send({ path: '/brand/mark.svg' })],
+    ['GET /GLOSSARY.md', () => send({ path: '/GLOSSARY.md' }), 'text/markdown; charset=utf-8'],
+    ['POST /attempt', () => post('/attempt', JSON.stringify({ lesson: '0003-review-good', answers: [0, 2, 1] })), 'application/json'],
+  ];
+  for (const [label, run, type] of listed) {
+    const r = await run();
+    console.log(`${label} -> ${r.status} ${r.headers?.['content-type']}`);
+    assert.equal(r.status, 200, label);
+    if (type) assert.equal(r.headers['content-type'], type, label);
+    if (type === 'application/json') JSON.parse(r.text);
+  }
+  const body = JSON.stringify({ lesson: '0003-review-good', answers: [0, 2, 1] });
+  const unlisted = [
+    ['GET /x', () => send({ path: '/x' })],
+    ['GET /progress.jsonx', () => send({ path: '/progress.jsonx' })],
+    ['GET /progress/', () => send({ path: '/progress/' })],
+    ['GET /lessons.json/x', () => send({ path: '/lessons.json/x' })],
+    ['GET /../MISSION.md', () => send({ path: '/../MISSION.md' })],
+    ['GET /MISSION.md', () => send({ path: '/MISSION.md' })],
+    ['GET /dividers/1.html', () => send({ path: '/dividers/1.html' })],
+    ['GET /labs/labs.json', () => send({ path: '/labs/labs.json' })],
+    ['GET /labs/open', () => send({ path: `/labs/open?t=${'0'.repeat(64)}` })],
+    ['GET /term/stream', () => send({ path: '/term/stream' })],
+    ['GET /terminal/terminal.mjs', () => send({ path: '/terminal/terminal.mjs' })],
+    ['POST /progress', () => post('/progress', body)],
+    ['POST /progress.json', () => post('/progress.json', body)],
+    ['POST /', () => post('/', body)],
+    ['POST /lab/run', () => post('/lab/run', '{"lab":"demo"}')],
+    ['POST /term/input', () => post('/term/input', '{"data":"x"}')],
+  ];
+  const before = attempts(ws);
+  for (const [label, run] of unlisted) {
+    const r = await run();
+    console.log(`${label} -> ${r.status}`);
+    assert.equal(r.status, 404, label);
+  }
+  assert.equal(attempts(ws), before, 'no unlisted route wrote an attempt');
 });

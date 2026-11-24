@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { request } from 'node:http';
 import { once } from 'node:events';
 import { createHash, randomBytes } from 'node:crypto';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { createServer, labStepsHtml, readmeDraft } from '../bin/lib/teach.mjs';
 import { readLabs, labPin, lessonLab, lineRedactor, secretHits } from '../bin/lib/labs.mjs';
 import { lintWorkspace } from '../bin/lib/lesson.mjs';
@@ -59,13 +60,14 @@ async function start(ws, opts = {}) {
 }
 
 // node:http rather than fetch: fetch will not send a caller-chosen Host header.
-function req(port, { method = 'GET', path = '/', headers = {}, body, chunked = false }) {
+// `signal` aborts the request (an AbortSignal.timeout gives it a time limit).
+function req(port, { method = 'GET', path = '/', headers = {}, body, chunked = false, signal }) {
   return new Promise((resolve) => {
     const h = { Host: `127.0.0.1:${port}`, ...headers };
     for (const k of Object.keys(h)) if (h[k] === undefined) delete h[k];
     if (body !== undefined && !chunked && !('Content-Length' in h)) h['Content-Length'] = Buffer.byteLength(body);
     if (chunked) h['Transfer-Encoding'] = 'chunked';
-    const r = request({ host: '127.0.0.1', port, method, path, headers: h, setHost: false }, (res) => {
+    const r = request({ host: '127.0.0.1', port, method, path, headers: h, setHost: false, signal }, (res) => {
       let text = '';
       res.setEncoding('utf8');
       res.on('data', (c) => { text += c; });
@@ -83,9 +85,9 @@ async function openLab(port, t) {
   const r = await req(port, { path: `/labs/open?t=${t}` });
   return { r, cookie: r.headers['set-cookie']?.[0]?.split(';')[0] };
 }
-const post = (port, action, body, { cookie, origin = `http://127.0.0.1:${port}`, headers = {} } = {}) => req(port, {
+const post = (port, action, body, { cookie, origin = `http://127.0.0.1:${port}`, headers = {}, signal } = {}) => req(port, {
   method: 'POST', path: `/lab/${action}`, body: typeof body === 'string' ? body : JSON.stringify(body),
-  headers: { Origin: origin, 'Content-Type': 'application/json', Cookie: cookie, ...headers },
+  headers: { Origin: origin, 'Content-Type': 'application/json', Cookie: cookie, ...headers }, signal,
 });
 const show = (label, r) => console.log(`${label} -> ${r.status} ${JSON.stringify(r.text)}`);
 
@@ -1094,4 +1096,34 @@ test('secretHits skips a declared value under 8 characters, so it gives no start
   assert.deepEqual(secretHits([['lessons/a.html', 'abc and long-value-1 and long-value-2'], ['b.sh', Buffer.from('abc')]], labs, env), [['lessons/a.html', 'LONG_ONE']]);
   assert.deepEqual(secretHits([['lessons/a.html', 'abcdefg']], labs, { SHORT_ONE: 'abcdefg' }), []);
   assert.deepEqual(secretHits([['lessons/a.html', 'abcdefgh']], labs, { SHORT_ONE: 'abcdefgh' }), [['lessons/a.html', 'SHORT_ONE']]);
+});
+
+// SECURITY.md, Lab runs, "Opening it" and check 4: t and the lab cookie are compared with timingSafeEqual once the
+// lengths match. A spy put on node:crypto's timingSafeEqual (syncBuiltinESMExports carries it to teach.mjs's import)
+// sees each comparison: one per same-length value, none for another length, which is refused without throwing.
+// Each request has a time limit and the server is closed, connections and all, when the test ends, so a comparison
+// that throws fails the test without keeping the file's process alive.
+test('t and the lab cookie go through timingSafeEqual when the lengths match; another length is refused without it', { timeout: 30000 }, async (tc) => {
+  const crypto = createRequire(import.meta.url)('node:crypto');
+  const original = crypto.timingSafeEqual;
+  const seen = [];
+  crypto.timingSafeEqual = (a, b) => { seen.push([a.length, b.length]); return original(a, b); };
+  syncBuiltinESMExports();
+  tc.after(() => { crypto.timingSafeEqual = original; syncBuiltinESMExports(); });
+  const { ws } = labWorkspace();
+  const t = newT();
+  const { server, port } = await start(ws, { labs: true, t, env: {} });
+  tc.after(() => { server.closeAllConnections(); server.close(); });
+  const limit = () => AbortSignal.timeout(5000);
+  const calls = async (send) => { seen.length = 0; const r = await send(); return [r.status, r.headers?.['set-cookie'], seen.splice(0)]; };
+  assert.deepEqual(await calls(() => req(port, { path: `/labs/open?t=${newT()}`, signal: limit() })), [403, undefined, [[64, 64]]], 'a wrong t of the same length');
+  assert.deepEqual(await calls(() => req(port, { path: `/labs/open?t=${t}0`, signal: limit() })), [403, undefined, []], 'a t one character longer');
+  const [status, cookies, compared] = await calls(() => req(port, { path: `/labs/open?t=${t}`, signal: limit() }));
+  assert.deepEqual([status, compared], [303, [[64, 64]]], 'the right t');
+  const cookie = cookies[0].split(';')[0];
+  const name = cookie.split('=')[0];
+  const lab = (c) => calls(() => post(port, 'run', { lab: 'nope' }, { cookie: c, signal: limit() }));
+  assert.deepEqual(await lab(`${name}=${newT()}`), [403, undefined, [[64, 64]]], 'a wrong cookie of the same length');
+  assert.deepEqual(await lab(`${cookie}0`), [403, undefined, []], 'a cookie one character longer');
+  assert.deepEqual(await lab(cookie), [404, undefined, [[64, 64]]], 'the right cookie passes check 4');
 });

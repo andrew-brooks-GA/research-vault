@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync, readdirSync, readlinkSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { assertVaultUntouched, outsideVaultRepo, tmpVault, put, testEnv } from './helpers.mjs';
+import { assertVaultUntouched, outsideVaultRepo, tmpVault, put, testEnv, testHome, noNetworkArgs } from './helpers.mjs';
 import { citationWarnings } from '../hooks/post-tool-use.mjs';
 
 const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'post-tool-use.mjs');
@@ -166,4 +166,49 @@ test('post-tool-use logs one cited event per newly cited id of a watched file, n
   citationWarnings(join(root, 'docs', 'a.md'), root, vault, cfg, NOW);
   citationWarnings(join(root, 'other', 'b.md'), root, vault, cfg, NOW);
   assert.equal(readUsage(vault).length, 2);
+});
+
+// Every file and folder under `root`: its path relative to `root` and its bytes (a link's target, a folder's marker).
+function inventory(root) {
+  const found = new Map();
+  const walk = (dir) => {
+    for (const d of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, d.name);
+      const key = relative(root, p);
+      if (d.isSymbolicLink()) found.set(key, `link ${readlinkSync(p)}`);
+      else if (d.isDirectory()) { found.set(key, 'dir'); walk(p); }
+      else found.set(key, readFileSync(p).toString('base64'));
+    }
+  };
+  walk(root);
+  return found;
+}
+const changed = (before, after) => [...new Set([...before.keys(), ...after.keys()])].filter((k) => before.get(k) !== after.get(k)).sort();
+
+// SECURITY.md, Local writers: after a vault-file edit the hook runs lint --fix and a manifest rebuild, its writes stay
+// in the vault, and it opens no network connection. The hook runs with no network variable and with noNetworkArgs,
+// which logs and refuses a socket connect, dns.lookup or fetch; the repository around the vault, the isolated HOME and a
+// TMPDIR of its own are compared whole, by path and bytes, before and after.
+test('PostToolUse on a vault edit writes only the fixed entry and the manifest, and opens no connection', { timeout: 60000 }, () => {
+  const { root, vault } = repo();
+  const entry = join(vault, 'sources', '2026-07-10-fresh.md');
+  writeFileSync(entry, readFileSync(entry, 'utf8').replace(/\n/g, '\r\n'));
+  const scratch = tmpVault('rv-posttooluse-net-');
+  const tmp = join(scratch, 'tmp');
+  mkdirSync(tmp);
+  const netLog = join(scratch, 'net.log');
+  const roots = [root, testHome, tmp];
+  const before = roots.map(inventory);
+  const r = spawnSync(process.execPath, [...noNetworkArgs, HOOK], {
+    cwd: root, encoding: 'utf8', timeout: 30000,
+    env: testEnv({ RV_TEST_NET_LOG: netLog, TMPDIR: tmp, TMP: tmp, TEMP: tmp }),
+    input: JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: entry }, cwd: root }),
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(readFileSync(netLog, 'utf8'), 'loaded\n', 'no socket, lookup or fetch');
+  const after = roots.map(inventory);
+  const diffs = roots.map((_, i) => changed(before[i], after[i]));
+  console.log(`changed: ${JSON.stringify(diffs)}`);
+  assert.deepEqual(diffs, [[join('research', '.vault-manifest.json'), join('research', 'sources', '2026-07-10-fresh.md')], [], []]);
+  assert.doesNotMatch(readFileSync(entry, 'utf8'), /\r/, 'the entry was fixed');
 });

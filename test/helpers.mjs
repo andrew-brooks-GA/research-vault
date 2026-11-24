@@ -43,6 +43,23 @@ export function testEnv(overrides = {}) {
 
 export function tmpVault(prefix = 'rv-graph-') { return mkdtempSync(join(tmpdir(), prefix)); }
 
+// Node arguments that log and refuse a process's outbound calls through net.Socket.prototype.connect (which http,
+// https, tls and fetch go through), dns.lookup, dns.promises.lookup and global fetch: a module loaded first writes
+// `loaded` to the log file, then each such call writes its name there and throws. It patches nothing else, so it does
+// not see dns.Resolver (or dns.resolve*) or dgram (UDP). A test passes the log path in RV_TEST_NET_LOG and expects
+// the log to hold `loaded` alone.
+const NO_NETWORK = `import net from 'node:net'; import dns from 'node:dns'; import { appendFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+const log = process.env.RV_TEST_NET_LOG;
+appendFileSync(log, 'loaded\\n');
+const record = (what) => { appendFileSync(log, what + '\\n'); throw new Error('network blocked by the test: ' + what); };
+net.Socket.prototype.connect = function () { record('connect'); };
+dns.lookup = () => record('dns.lookup');
+dns.promises.lookup = async () => record('dns.promises.lookup');
+globalThis.fetch = async () => record('fetch');
+syncBuiltinESMExports();`;
+export const noNetworkArgs = ['--import', `data:text/javascript,${encodeURIComponent(NO_NETWORK)}`];
+
 export function put(dir, type, id, extra = {}, body = `# ${id}\n`) {
   const folder = TYPE_FOLDER[type];
   const date = id.slice(0, 10);

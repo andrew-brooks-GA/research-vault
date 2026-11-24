@@ -162,3 +162,37 @@ test('a validated IPv6-literal URL skips DNS and pins the bracket-stripped addre
   captured.lookup('whatever', (err, address, family) => { got = { address, family }; });
   assert.deepEqual(got, { address: '2606:4700:4700::1111', family: 6 });
 });
+
+// SECURITY.md, Network refresh, SSRF-hardened: no connection pooling, and no cookies or auth headers are ever sent.
+// Each hop's request options, captured as above, carry agent: false and no cookie or authorization header, whatever
+// the environment holds. The 302 sets a cookie, so a cookie jar carrying it to the next hop fails the test.
+test('every hop is requested with agent: false and no cookie or authorization header', async () => {
+  const lookup = async () => [{ address: '93.184.216.34', family: 4 }];
+  const captured = [];
+  const request = (opts, cb) => {
+    captured.push(opts);
+    const req = new EventEmitter();
+    req.end = () => {};
+    req.destroy = () => {};
+    const res = captured.length === 1 ? fakeRes({ status: 302, headers: { location: 'https://second.example/b', 'set-cookie': ['sid=fixture-cookie; Path=/'] } })
+      : fakeRes({ status: 200 });
+    process.nextTick(() => { cb(res); res._play(); });
+    return req;
+  };
+  const names = ['HTTP_COOKIE', 'COOKIE', 'HTTP_AUTHORIZATION', 'AUTHORIZATION'];
+  const saved = names.map((n) => process.env[n]);
+  for (const n of names) process.env[n] = 'fixture-secret';
+  try {
+    await fetchSource('https://user:fixture-password@first.example/a', { request, lookup });
+  } finally {
+    names.forEach((n, i) => { if (saved[i] === undefined) delete process.env[n]; else process.env[n] = saved[i]; });
+  }
+  assert.equal(captured.length, 2);
+  for (const opts of captured) {
+    assert.equal(opts.agent, false);
+    const keys = Object.keys(opts.headers ?? {}).map((k) => k.toLowerCase());
+    assert.deepEqual(keys.filter((k) => k === 'cookie' || k === 'authorization'), [], JSON.stringify(opts.headers));
+    assert.equal(opts.auth, undefined, 'no user-info sent as auth');
+    assert.ok(!JSON.stringify(opts.headers).includes('fixture-'), JSON.stringify(opts.headers));
+  }
+});

@@ -13,6 +13,8 @@ import { applyVerification } from '../bin/commands/verify.mjs';
 import { run } from '../bin/commands/export.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
 import { readEntry } from '../bin/lib/fsutil.mjs';
+import { spawnSync } from 'node:child_process';
+import { testEnv } from './helpers.mjs';
 
 // Hand-write an entry directly to disk (mirroring capture/lint tests) so we can build
 // question entries with controlled state/answer_summary the fixture vault lacks.
@@ -223,4 +225,25 @@ test('export --min-authority secondary drops a tertiary source and keeps primary
   const ids = buildExport(dir, { scope: ['source', 'question'], minAuthority: 'secondary' }).map(r => r.meta.id);
   assert.ok(!ids.includes('2026-01-01-third'));
   for (const id of ['2026-01-01-first', '2026-01-01-untiered', '2026-01-01-q-answered']) assert.ok(ids.includes(id), id);
+});
+
+// SECURITY.md, Data export: --ack-data-egress alone is inert. The CLI's output with it is byte-identical to the
+// output with neither flag, over a scope whose notes have bodies; with --include-bodies too, the bodies appear.
+test('export --ack-data-egress without --include-bodies writes the same bytes as without either flag', { timeout: 120000 }, () => {
+  const dir = freshVault();
+  seedQuestions(dir);
+  handWrite(dir, 'notes', 'note', '2026-01-01-n', { sources: ['2026-01-01-a'], confidence: 'high', summary: 'The note summary.' });
+  const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+  const cwd = mkdtempSync(join(tmpdir(), 'rv-export-cwd-'));
+  const exp = (...flags) => spawnSync(process.execPath, [cli, 'export', '--vault', dir, '--scope', 'question,note,synthesis', ...flags], {
+    cwd, env: testEnv(), encoding: 'utf8', timeout: 30000,
+  });
+  const plain = exp();
+  const acked = exp('--ack-data-egress');
+  const bodies = exp('--include-bodies', '--ack-data-egress');
+  for (const r of [plain, acked, bodies]) assert.equal(r.status, 0, r.stderr);
+  assert.ok(plain.stdout.includes('The note summary.'));
+  assert.equal(acked.stdout, plain.stdout);
+  assert.ok(!plain.stdout.includes('# 2026-01-01-n'));
+  assert.ok(bodies.stdout.includes('# 2026-01-01-n'), 'with both flags the note body is exported');
 });
