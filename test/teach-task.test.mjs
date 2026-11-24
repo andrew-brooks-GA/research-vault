@@ -1193,3 +1193,24 @@ test('certification end: a state with started null is refused, names --cancel an
   assert.deepEqual(attemptFiles(ws), []);
   assert.ok(existsSync(join(ws, RUN)));
 });
+
+test('R08 run-state update replaces its inode and leaves the old temporary name untouched', async t => {
+  const { linkSync } = await import('node:fs');
+  const ws = copy();
+  t.after(() => rmSync(ws, { recursive: true, force: true }));
+  const file = join(ws, RUN);
+  writeFileSync(file + '.tmp', 'sentinel');
+  const o = io(() => T0);
+  let initial;
+  const result = await startRun(ws, ['1'], { minutes: null, pass: null, hints: true }, {
+    ...o, env: testEnv(), setup: async () => {
+      initial = readFileSync(file, 'utf8');
+      linkSync(file, join(ws, 'initial-state'));
+      return { code: 0 };
+    },
+  });
+  assert.equal(result, 0, o.lines.err.join('\n'));
+  assert.equal(state(ws).started, '2026-01-01T10:00:00.000Z');
+  assert.equal(readFileSync(join(ws, 'initial-state'), 'utf8'), initial);
+  assert.equal(readFileSync(file + '.tmp', 'utf8'), 'sentinel');
+});

@@ -154,18 +154,18 @@ test('CLI historical flags, ingest/consent refusals, and validation/conflict/sto
   const consent = fixture([{ type: 'source', title: 'Body', url: 'https://example.test', content: 'consented fixture text', storeBody: true }]);
   assert.equal(run(consent, 'body').status, 1); assert.deepEqual(bytes(consent.vault), []); assert.equal(run(consent, 'body', ['--ack-data-egress']).status, 0);
   fs.writeFileSync(f.path, '[{"type":"question","title":"First","body":"collision"}]'); assert.equal(run(f, 'conflict').status, 1); assert.deepEqual(bytes(f.vault), before);
-  const manifest = fixture(); fs.mkdirSync(join(manifest.vault, '.vault-manifest.json.tmp')); const m = run(manifest, 'manifest'); assert.equal(m.status, 1); assert.equal(m.report.errors[0].code, 'MANIFEST_IO'); assert.equal(bytes(manifest.vault).length, 2);
+  const manifest = fixture(); fs.mkdirSync(join(manifest.vault, '.vault-manifest.json')); const m = run(manifest, 'manifest'); assert.equal(m.status, 1); assert.equal(m.report.errors[0].code, 'MANIFEST_IO'); assert.equal(bytes(manifest.vault).length, 2);
   const storage = fixture(); const inject = join(storage.root, 'inject.mjs');
   fs.writeFileSync(inject, "import fs from 'node:fs';import{syncBuiltinESMExports}from'node:module';fs.linkSync=()=>{throw Object.assign(new Error('injected EACCES'),{code:'EACCES'})};syncBuiltinESMExports();");
   const s = run(storage, 'storage', [], ['--import', inject]); assert.equal(s.status, 1); assert.equal(s.report.errors[0].code, 'ARTIFACT_IO'); assert.equal(s.report.errors[0].retryable, false); assert.deepEqual(bytes(storage.vault), []);
 });
-test('actual temporary-write and rename failures preserve prior receipt bytes', async () => {
+test('actual temporary-open and rename failures preserve prior receipt bytes', async () => {
   const mutable = (await import('node:fs')).default; const { syncBuiltinESMExports } = await import('node:module');
-  for (const method of ['writeFileSync', 'renameSync']) {
+  for (const method of ['openSync', 'renameSync']) {
     const f = fixture(); const original = mutable[method]; let calls = 0; let prior;
     mutable[method] = (...args) => {
       const destination = String(args[method === 'renameSync' ? 1 : 0]);
-      if (destination.includes('stable_key.json') && ++calls === 3) {
+      if ((method === 'renameSync' ? destination.endsWith('stable_key.json') : destination.includes(join('.capture-operations', '.rv-atomic-'))) && ++calls === 3) {
         prior = fs.readFileSync(join(f.vault, '.capture-operations/stable_key.json'), 'utf8');
         fail('EACCES');
       }
@@ -275,4 +275,12 @@ test('issue 72 item 6: every plan entry that cannot be read is reported, and not
   assert.deepEqual(r.errors.map(e => [e.index, e.code]), [[0, 'INPUT_INVALID'], [2, 'INPUT_INVALID'], [3, 'INPUT_INVALID'], [4, 'INPUT_INVALID']]);
   assert.match(r.errors[2].error, /missing-1\.txt/); assert.match(r.errors[3].error, /missing-2\.txt/);
   assert.equal(r.recoveryStateCreated, false); assert.deepEqual(bytes(f.vault), []);
+});
+
+test('R08 round2 atomicJson receipts use explicit private permissions', t => {
+  if (process.platform === 'win32') return t.skip('POSIX permission bits unavailable on Windows');
+  const f = fixture();
+  t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
+  assert.deepEqual(f.run().errors, []);
+  assert.equal(fs.statSync(join(f.vault, '.capture-operations/stable_key.json')).mode & 0o777, 0o600);
 });

@@ -1,8 +1,8 @@
-import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { assertInsideVault, compareContainment } from './containment.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { walkEntries, readEntry, TYPE_FOLDER } from './fsutil.mjs';
+import { walkEntries, readEntry, TYPE_FOLDER, writeAtomic } from './fsutil.mjs';
 import { normalizeUrlSafe } from './ids.mjs';
 
 // Edge fields are declared once in the schema (see edge_fields) and shared with lint's
@@ -95,13 +95,8 @@ function refuseShrink(vaultPath, path, manifest) {
 
 export function writeManifest(vaultPath, manifest = buildManifest(vaultPath)) {
   const path = join(vaultPath, '.vault-manifest.json');
-  const tmp = path + '.tmp';
   assertInsideVault(vaultPath, path);
   refuseShrink(vaultPath, path, manifest);
   const text = JSON.stringify(manifest, null, 2);
-  assertInsideVault(vaultPath, tmp);
-  writeFileSync(tmp, text, 'utf8');
-  assertInsideVault(vaultPath, tmp);
-  assertInsideVault(vaultPath, path);
-  renameSync(tmp, path);
+  writeAtomic(path, text, { vaultPath });
 }

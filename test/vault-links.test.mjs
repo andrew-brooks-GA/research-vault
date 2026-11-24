@@ -121,7 +121,7 @@ test('walk and fix accept a type folder link inside the vault', t => {
   assert.doesNotMatch(readFileSync(realEntry, 'utf8'), /\r|# fixture comment/);
 });
 
-test('walk and fix accept an entry link inside the vault', t => {
+test('walk and fix replace an entry link inside the vault without rewriting its target', t => {
   const { vault } = fixture(t);
   const realEntry = note(join(vault, 'storage'), insideId, insideTitle);
   const folder = join(vault, 'notes');
@@ -129,9 +129,12 @@ test('walk and fix accept an entry link inside the vault', t => {
   const entry = join(folder, `${insideId}.md`);
   if (!link(t, realEntry, entry, 'file')) return;
   needsFix(realEntry);
+  const before = readFileSync(realEntry);
   assert.deepEqual(walkEntries(vault), [entry]);
   assert.equal(fixVault(vault, repoRoot).fixed, 1);
-  assert.doesNotMatch(readFileSync(realEntry, 'utf8'), /\r|# fixture comment/);
+  assert.doesNotMatch(readFileSync(entry, 'utf8'), /\r|# fixture comment/);
+  assert.deepEqual(readFileSync(realEntry), before);
+  assert.equal(lstatSync(entry).isSymbolicLink(), false);
 });
 
 test('walk and writes accept a vault root reached through a link', t => {
@@ -149,7 +152,7 @@ test('walk and writes accept a vault root reached through a link', t => {
 });
 
 for (const suffix of ['', '.tmp']) {
-  test(`manifest rebuild refuses an outside link at .vault-manifest.json${suffix}`, t => {
+  test(`manifest rebuild ${suffix ? 'ignores the old temporary' : 'refuses the destination'} outside link at .vault-manifest.json${suffix}`, t => {
     const { vault, outside } = fixture(t);
     note(vault, insideId, insideTitle);
     const name = `.vault-manifest.json${suffix}`;
@@ -158,13 +161,14 @@ for (const suffix of ['', '.tmp']) {
     writeFileSync(other, bytes);
     if (!link(t, other, join(vault, name), 'file')) return;
     const result = runCli(vault, 'manifest', '--rebuild');
-    assert.equal(result.status, 2, result.stderr);
-    assert.ok(namesPath(result.stderr, name), result.stderr);
+    assert.equal(result.status, suffix ? 0 : 2, result.stderr);
+    if (!suffix) assert.ok(namesPath(result.stderr, name), result.stderr);
     assert.deepEqual(readFileSync(other), bytes);
-    assert.equal(existsSync(join(vault, suffix ? '.vault-manifest.json' : '.vault-manifest.json.tmp')), false);
+    assert.equal(existsSync(join(vault, '.vault-manifest.json')), true);
+    if (!suffix) assert.equal(existsSync(join(vault, '.vault-manifest.json.tmp')), false);
   });
 
-  test(`writeEntry refuses an outside link at the ${suffix ? 'temporary' : 'final'} path`, t => {
+  test(`writeEntry ${suffix ? 'ignores an outside link at the old temporary' : 'refuses an outside link at the final'} path`, t => {
     const { vault, outside } = fixture(t);
     const folder = join(vault, 'notes');
     mkdirSync(folder);
@@ -174,9 +178,11 @@ for (const suffix of ['', '.tmp']) {
     const bytes = Buffer.from('outside fixture\r\n');
     writeFileSync(other, bytes);
     if (!link(t, other, entry + suffix, 'file')) return;
-    assert.throws(() => writeEntry(entry, { title: insideTitle }, '# Fixture\n', ['title']), refused(join('notes', name + suffix)));
+    const write = () => writeEntry(entry, { title: insideTitle }, '# Fixture\n', ['title']);
+    if (suffix) write();
+    else assert.throws(write, refused(join('notes', name)));
     assert.deepEqual(readFileSync(other), bytes);
-    assert.equal(existsSync(suffix ? entry : entry + '.tmp'), false);
+    assert.equal(existsSync(suffix ? entry : entry + '.tmp'), !!suffix);
   });
 }
 

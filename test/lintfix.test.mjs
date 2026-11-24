@@ -54,3 +54,32 @@ test('lint --fix --topics rewrites aliased topics through built-in and vault pai
   try { await run({ _: ['lint'], vault: dir2, fix: true, topics: undefined }); } finally { process.stdout.write = so; }
   assert.equal(topicsOf(f2), 'topics: [kubernetes, test-driven-development]', 'through run with a value-less --topics');
 });
+
+test('R08 fixVault replaces entries and leaves the old temporary name untouched', async t => {
+  const { linkSync, rmSync } = await import('node:fs');
+  const dir = join(mkdtempSync(join(tmpdir(), 'rv-fix-atomic-')), 'v');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  cpSync(fileURLToPath(new URL('./fixtures/vault', import.meta.url)), dir, { recursive: true });
+  const path = join(dir, 'sources', '2026-01-01-a.md');
+  const raw = '\uFEFF' + readFileSync(path, 'utf8');
+  writeFileSync(path, raw);
+  writeFileSync(path + '.tmp', 'sentinel');
+  linkSync(path, join(dir, 'original'));
+  fixVault(dir, process.cwd());
+  assert.equal(readFileSync(path, 'utf8').startsWith('\uFEFF'), false);
+  assert.equal(readFileSync(join(dir, 'original'), 'utf8'), raw);
+  assert.equal(readFileSync(path + '.tmp', 'utf8'), 'sentinel');
+});
+
+test('R08 round2 lint --fix preserves private entry permissions', async t => {
+  if (process.platform === 'win32') return t.skip('POSIX permission bits unavailable on Windows');
+  const { chmodSync, statSync, rmSync } = await import('node:fs');
+  const dir = join(mkdtempSync(join(tmpdir(), 'rv-mode-')), 'v');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  cpSync(fileURLToPath(new URL('./fixtures/vault', import.meta.url)), dir, { recursive: true });
+  const path = join(dir, 'sources', '2026-01-01-a.md');
+  writeFileSync(path, '\uFEFF' + readFileSync(path, 'utf8')); chmodSync(path, 0o600);
+  assert.equal(await run({ fix: true, vault: dir }), 0);
+  assert.equal(statSync(path).mode & 0o777, 0o600);
+  assert.equal(readFileSync(path, 'utf8').startsWith('\uFEFF'), false);
+});

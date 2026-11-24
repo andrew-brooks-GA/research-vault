@@ -26,6 +26,7 @@ const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.m
 // text itself, and the test fails when either file stops containing it. Give one only when the
 // literal really is in both files; a row about two values being equal stays prose.
 export const COUPLINGS = [
+  ['bin/lib/fsutil.mjs', 'vault-template/.gitignore', 'Random atomic-write leftovers use .rv-atomic-*.tmp', '.rv-atomic-'],
   ['bin/lib/validate.mjs', 'schema/frontmatter.schema.json', 'collection containers, edge members and verification row maps validated at the entry boundary', 'verifications'],
   ['bin/commands/lint.mjs', 'bin/lib/lintrules.mjs', 'PARSE and FIELD_SHAPE findings prevent manifest rebuilding', 'FIELD_SHAPE'],
   ['bin/lib/resolve.mjs', 'README.md', 'acknowledgement permits the bound vault anywhere', 'research-vault trust'],

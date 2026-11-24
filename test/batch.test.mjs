@@ -131,12 +131,18 @@ test('batch: intra-batch dedup normalizes both sides (trailing slash vs tracking
   assert.equal(r.skipped[0].id, '2026-06-12-canonical');
 });
 
-test('batch: a mid-loop write failure reports created-so-far and rebuilds the manifest', () => {
+test('batch: a mid-loop write failure reports created-so-far and rebuilds the manifest', async t => {
   const dir = freshVault();
-  // Pre-create a directory where the second entry's temp file would be written, so its
-  // writeFileSync throws EISDIR (portable across win/mac/linux) after the first is on disk.
-  mkdirSync(join(dir, 'sources'), { recursive: true });
-  mkdirSync(join(dir, 'sources', '2026-06-12-second.md.tmp'), { recursive: true });
+  // Fail publication of the second entry after the first is on disk.
+  const fs = (await import('node:fs')).default;
+  const { syncBuiltinESMExports } = await import('node:module');
+  const link = fs.linkSync;
+  t.mock.method(fs, 'linkSync', (from, to) => {
+    if (to.endsWith('2026-06-12-second.md')) throw Object.assign(new Error('injected EACCES'), { code: 'EACCES' });
+    return link(from, to);
+  });
+  syncBuiltinESMExports();
+  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
   const r = runBatch(dir, writePlan([
     { type: 'source', title: 'First', url: 'https://fault.example.com/a' },
     { type: 'source', title: 'Second', url: 'https://fault.example.com/b' },
@@ -145,7 +151,7 @@ test('batch: a mid-loop write failure reports created-so-far and rebuilds the ma
   assert.equal(r.created[0].id, '2026-06-12-first');
   assert.equal(r.errors.length, 1);
   assert.match(r.errors[0].error, /write failed/);
-  assert.ok(existsSync(join(dir, 'sources', '2026-06-12-first.md')), 'first entry persisted (tmp+rename)');
+  assert.ok(existsSync(join(dir, 'sources', '2026-06-12-first.md')), 'first entry persisted (exclusive publication)');
   const manifest = JSON.parse(readFileSync(join(dir, '.vault-manifest.json'), 'utf8'));
   assert.ok(manifest.entries.some(e => e.id === '2026-06-12-first'), 'manifest rebuilt to include the written entry');
 });
@@ -289,4 +295,37 @@ test('batch: a blocklisted source is the item error even with force in the spec;
   assert.equal(r.errors.length, 1);
   assert.equal(r.errors[0].index, 0);
   assert.match(r.errors[0].error, /^blocked source: spam.example.com \(domain\): content farm/);
+});
+
+test('R08 round2 batch reclassifies publication races per item', async t => {
+  const { default: fs } = await import('node:fs');
+  const { syncBuiltinESMExports } = await import('node:module');
+  const link = fs.linkSync;
+  let conflict = false, winner;
+  t.mock.method(fs, 'linkSync', (from, to) => {
+    if (to.endsWith('-racer.md')) {
+      winner = fs.readFileSync(from, 'utf8');
+      if (conflict) winner = winner.replace('https://example.com/race', 'https://example.com/other');
+      fs.writeFileSync(to, winner);
+    }
+    return link(from, to);
+  });
+  syncBuiltinESMExports();
+  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  for (conflict of [false, true]) for (const keepGoing of [false, true]) {
+    const dir = freshVault();
+    const plan = writePlan([{ type: 'source', title: 'Racer', url: 'https://example.com/race' }, { type: 'question', title: 'Later' }]);
+    const r = runBatch(dir, plan, { ...NOW, continue: keepGoing });
+    assert.equal(readFileSync(join(dir, 'sources/2026-06-12-racer.md'), 'utf8'), winner);
+    if (conflict) {
+      assert.equal(r.errors[0].index, 0); assert.match(r.errors[0].error, /^id taken:/);
+      assert.deepEqual(r.skipped, []);
+    } else {
+      assert.deepEqual(r.errors, []);
+      assert.deepEqual(r.skipped, [{ index: 0, id: '2026-06-12-racer', reason: 'existing entry with same url' }]);
+    }
+    assert.equal(existsSync(join(dir, 'questions/2026-06-12-later.md')), !conflict || keepGoing);
+    assert.equal(r.created.length, !conflict || keepGoing ? 1 : 0);
+    fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(plan);
+  }
 });

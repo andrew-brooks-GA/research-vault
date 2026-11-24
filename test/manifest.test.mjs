@@ -211,3 +211,29 @@ test('manifest --topics lists the topic vocabulary with counts, superseded entri
   const r = cli('manifest', '--rebuild', '--topics', '--vault', dir);
   assert.equal(r.stdout, 'manifest: 3 entries\nvulkan 1\nzig 2\n', 'with --rebuild: written, then the list instead of the JSON');
 });
+
+test('R08 writeManifest leaves the old fixed temporary name untouched', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rv-manifest-atomic-'));
+  try {
+    writeFileSync(join(dir, '.vault-manifest.json.tmp'), 'sentinel');
+    writeManifest(dir, { entries: [], generated: 'fixture' });
+    assert.deepEqual(JSON.parse(readFileSync(join(dir, '.vault-manifest.json'), 'utf8')), { entries: [], generated: 'fixture' });
+    assert.equal(readFileSync(join(dir, '.vault-manifest.json.tmp'), 'utf8'), 'sentinel');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('R08 round2 atomic leftovers do not affect lint or manifest entries', async t => {
+  const { cpSync } = await import('node:fs');
+  const { lintVault } = await import('../bin/lib/lintrules.mjs');
+  const dir = tmpVault('rv-leftover-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  cpSync(VAULT, dir, { recursive: true });
+  const before = buildManifest(dir).entries;
+  const text = readFileSync(join(dir, 'sources/2026-01-01-a.md'), 'utf8');
+  for (const folder of [dir, join(dir, 'sources')])
+    writeFileSync(join(folder, '.rv-atomic-12345678-1234-1234-1234-123456789abc.tmp'), text);
+  const lint = lintVault(dir, process.cwd());
+  assert.deepEqual(lint.violations, []);
+  assert.deepEqual(lint.warnings, []);
+  assert.deepEqual(buildManifest(dir).entries, before);
+});

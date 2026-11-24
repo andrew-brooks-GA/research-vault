@@ -1,6 +1,6 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { walkEntries, readEntry, FOLDER_TYPE } from './fsutil.mjs';
+import { walkEntries, readEntry, FOLDER_TYPE, writeAtomic } from './fsutil.mjs';
 import { loadSchema, stageAllowedInFolder, fieldOrder } from './schema.mjs';
 import { serializeFrontmatter } from './frontmatter.mjs';
 import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, allowedValues, fieldShapeErrors } from './validate.mjs';
@@ -230,7 +230,7 @@ export function fixVault(vaultPath, repoRoot, { topics = false } = {}) {
     }
     if (out !== raw) {
       assertInsideVault(vaultPath, abs);
-      writeFileSync(abs, out, 'utf8');
+      writeAtomic(abs, out, { vaultPath });
       fixed++;
     }
   }

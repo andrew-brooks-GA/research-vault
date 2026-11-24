@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { prepareEntry } from '../commands/capture.mjs';
 import { serializeFrontmatter } from './frontmatter.mjs';
-import { readEntry, walkEntries, TYPE_FOLDER, ENTRY_FOLDERS } from './fsutil.mjs';
+import { readEntry, walkEntries, writeAtomic, TYPE_FOLDER, ENTRY_FOLDERS } from './fsutil.mjs';
 import { loadSchema } from './schema.mjs';
 import { sha256, normalizeUrl, verKey } from './ids.mjs';
 import { buildManifest, danglingEdges, writeManifest } from './manifest.mjs';
@@ -21,16 +21,7 @@ function canonical(value) {
 const digest = value => sha256(JSON.stringify(canonical(value)));
 const retryableIO = e => ['EINTR', 'EBUSY', 'EAGAIN'].includes(e.code);
 function atomicJson(vault, path, value) {
-  const tmp = `${path}.${randomUUID()}.tmp`;
-  const text = JSON.stringify(value, null, 2) + '\n';
-  assertInsideVault(vault, path);
-  try {
-    assertInsideVault(vault, tmp);
-    fs.writeFileSync(tmp, text, { flag: 'wx', mode: 0o600 });
-    assertInsideVault(vault, tmp);
-    assertInsideVault(vault, path);
-    fs.renameSync(tmp, path);
-  } finally { try { unlinkInside(vault, tmp); } catch {} }
+  writeAtomic(path, JSON.stringify(value, null, 2) + '\n', { vaultPath: vault, mode: 0o600 });
 }
 function unlinkInside(vault, path) {
   assertInsideVault(vault, path);

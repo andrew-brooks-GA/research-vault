@@ -533,3 +533,27 @@ test('a source whose title gives a taken id is refused as id taken, at the CLI a
   assert.deepEqual(again2.errors, []); assert.equal(again2.skipped.length, 1);
   assert.deepEqual(files(), [...before, ...['asked-once.md', 'release-notes.md', 'rerun-page.md'].map(e => readdirSync(join(dir, e === 'asked-once.md' ? 'questions' : 'sources')).find(f => f.endsWith(e)))].sort());
 });
+
+test('R08 ordinary capture preserves the winner when the destination appears before publication', async t => {
+  const { default: fs } = await import('node:fs');
+  const { syncBuiltinESMExports } = await import('node:module');
+  const dir = freshVault();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const path = join(dir, 'questions', '2026-01-01-race.md');
+  const open = fs.openSync;
+  let raced = false;
+  t.mock.method(fs, 'openSync', (name, flags, ...rest) => {
+    if (!raced && String(name).includes('.rv-atomic-') && flags === 'wx') {
+      raced = true;
+      writeFileSync(path, 'winner');
+    }
+    return open(name, flags, ...rest);
+  });
+  syncBuiltinESMExports();
+  t.after(() => { t.mock.restoreAll(); syncBuiltinESMExports(); });
+  const result = captureEntry(dir, { type: 'question', title: 'Race', now: '2026-01-01' });
+  assert.equal(raced, true);
+  assert.equal(readFileSync(path, 'utf8'), 'winner');
+  assert.equal(result.dedup.reason, 'entry id 2026-01-01-race already exists in questions/ (supersede via verify, do not overwrite)');
+  assert.deepEqual(readdirSync(join(dir, 'questions')), ['2026-01-01-race.md']);
+});

@@ -142,7 +142,15 @@ export function captureEntry(vaultPath, opts) {
   const folder = join(vaultPath, prep.folder);
   assertInsideVault(vaultPath, folder);
   mkdirSync(folder, { recursive: true });
-  writeEntry(prep.path, prep.data, prep.body, prep.order, vaultPath);
+  try {
+    writeEntry(prep.path, prep.data, prep.body, prep.order, vaultPath, { exclusive: true });
+  } catch (e) {
+    if (e.code !== 'EEXIST') throw e;
+    // Reuse the ordinary duplicate/id-taken classification after losing publication.
+    const raced = prepareEntry(vaultPath, { ...opts, now: prep.data.created });
+    if (raced.dedup) return { dedup: raced.dedup };
+    throw e;
+  }
   writeManifest(vaultPath);
   return { id: prep.id, path: prep.path, dedup: null };
 }
@@ -230,7 +238,7 @@ function runSpecs(vaultPath, plan, cliOpts, errors = []) {
         if (!knownIds.has(ref) && !pending.some(p => p.id === ref))
           errors.push({ index, error: `unresolved reference: ${ref}` });
       }
-      if (errors.length === before) pending.push(prep);
+      if (errors.length === before) pending.push({ ...prep, index });
     } catch (e) { errors.push({ index, error: e.message }); }
   });
   if (errors.length && !cliOpts.continue) return { errors, created: [], skipped };
@@ -243,7 +251,21 @@ function runSpecs(vaultPath, plan, cliOpts, errors = []) {
       const folder = join(vaultPath, prep.folder);
       assertInsideVault(vaultPath, folder);
       mkdirSync(folder, { recursive: true });
-      writeEntry(prep.path, prep.data, prep.body, prep.order, vaultPath);
+      try {
+        writeEntry(prep.path, prep.data, prep.body, prep.order, vaultPath, { exclusive: true });
+      } catch (e) {
+        if (e.code !== 'EEXIST') throw e;
+        try {
+          const raced = prepareEntry(vaultPath, { ...specToOpts(plan[prep.index], cliOpts), now: prep.data.created });
+          if (!raced.dedup) throw e;
+          if (raced.dedup.ambiguous) throw new Error(`${raced.dedup.reason} (existing: ${raced.dedup.id})`);
+          skipped.push({ index: prep.index, id: raced.dedup.id, reason: raced.dedup.reason });
+        } catch (error) {
+          errors.push({ index: prep.index, error: error.message });
+          if (!cliOpts.continue) break;
+        }
+        continue;
+      }
       created.push({ id: prep.id, path: prep.path });
     }
   } catch (e) {

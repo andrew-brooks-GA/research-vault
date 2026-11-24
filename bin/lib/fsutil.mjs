@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync, writeFileSync, lstatSync, renameSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, lstatSync, renameSync, linkSync, unlinkSync, openSync, closeSync, copyFileSync, constants } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { dirname, join, sep, relative } from 'node:path';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.mjs';
 import { assertInsideVault, isInsideVault, escapePathControls } from './containment.mjs';
@@ -91,14 +92,42 @@ export function checkFrontmatter(absPath, data, text) {
   if (field !== null) throw new Error(`frontmatter write refused for ${JSON.stringify(escapePathControls(absPath))} at ${JSON.stringify(escapePathControls(field))}: value does not round-trip`);
 }
 
-export function writeEntry(absPath, data, body, order, vaultPath = dirname(dirname(absPath))) {
-  const tmp = absPath + '.tmp';
+export function writeEntry(absPath, data, body, order, vaultPath = dirname(dirname(absPath)), options = {}) {
   const text = serializeFrontmatter(data, body, order);
   checkFrontmatter(absPath, data, text);
-  assertInsideVault(vaultPath, absPath);
-  assertInsideVault(vaultPath, tmp);
-  writeFileSync(tmp, text, 'utf8');
-  assertInsideVault(vaultPath, tmp);
-  assertInsideVault(vaultPath, absPath);
-  renameSync(tmp, absPath);
+  writeAtomic(absPath, text, { ...options, vaultPath });
+}
+
+// Same-directory publication; only remove a temporary file this call created.
+export function writeAtomic(path, text, { exclusive = false, vaultPath = dirname(path), mode } = {}) {
+  const tmp = join(dirname(path), `.rv-atomic-${randomUUID()}.tmp`);
+  let created = false;
+  assertInsideVault(vaultPath, path);
+  try {
+    assertInsideVault(vaultPath, tmp);
+    // Opening separately lets cleanup cover a partial/failed write without deleting an existing file.
+    if (!exclusive && mode === undefined) {
+      const destination = lstatSync(path, { throwIfNoEntry: false });
+      if (destination?.isFile()) mode = destination.mode & 0o7777;
+    }
+    const fd = openSync(tmp, 'wx', mode);
+    created = true;
+    try { writeFileSync(fd, text, 'utf8'); } finally { closeSync(fd); }
+    assertInsideVault(vaultPath, tmp);
+    assertInsideVault(vaultPath, path);
+    if (exclusive) {
+      try { linkSync(tmp, path); }
+      catch (e) {
+        if (!['ENOTSUP', 'EOPNOTSUPP', 'EPERM', 'ENOSYS'].includes(e.code)) throw e;
+        // Without hard links, content is not published atomically.
+        // A failed copy cannot prove destination ownership; leave any destination it leaves.
+        copyFileSync(tmp, path, constants.COPYFILE_EXCL);
+      }
+    }
+    else renameSync(tmp, path);
+  } finally {
+    if (created) {
+      try { assertInsideVault(vaultPath, tmp); unlinkSync(tmp); } catch {}
+    }
+  }
 }

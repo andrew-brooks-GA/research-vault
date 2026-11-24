@@ -1,7 +1,8 @@
 // Issue 79 D3, D4: a checked task's requirements file, the run of its checker for `teach check`, the checker's output
 // read against the file, and the lines `teach check` prints. The checker is started here, not by labs.mjs's launch,
 // which needs a pin (R12). D8: a certification run's start, end and cancel.
-import { accessSync, constants, existsSync, lstatSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, lstatSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs';
+import { writeAtomic } from './fsutil.mjs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { parseFrontmatter } from './frontmatter.mjs';
@@ -293,7 +294,7 @@ export async function startRun(ws, nums, { minutes, pass, hints }, { now, out, e
   const state = { id: `c-${t0.slice(0, 10).replaceAll('-', '')}-${t0.slice(11, 19).replaceAll(':', '')}`, started: null, tasks, minutes: M, pass: P, hints };
   try {
     checkRunFile(ws, RUN_FILE);
-    writeFileSync(file, JSON.stringify(state) + '\n', { flag: 'wx' });
+    writeAtomic(file, JSON.stringify(state) + '\n', { vaultPath: ws, exclusive: true });
   } catch (e) {
     if (e.code !== 'EEXIST') throw e;
     const r = readRun(ws);
@@ -315,7 +316,7 @@ export async function startRun(ws, nums, { minutes, pass, hints }, { now, out, e
   if (runIdIn(file) !== state.id) return refuse(`certification run ${state.id} was dropped during its setup; no run started; scopes already reset: ${reset.join(', ')}`);
   state.started = now().toISOString();
   checkRunFile(ws, RUN_FILE);
-  writeFileSync(file, JSON.stringify(state) + '\n');
+  writeAtomic(file, JSON.stringify(state) + '\n', { vaultPath: ws });
   out(`certification run ${state.id}: started`);
   out(`tasks: ${tasks.map((t) => taskLesson(ws, t).lesson).join(', ')}`);
   out(`requirements: ${tasks.reduce((n, t) => n + readRequirements(ws, t).requirements.length, 0)}`);
