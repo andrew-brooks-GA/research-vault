@@ -161,7 +161,7 @@ export function lintVault(vaultPath, repoRoot) {
     // that someone asserted it. Verify by fetch (refetched-source / cross-referenced) or
     // human-spot-check before relying on it. See AGENTS.md §7.
     if (isUnverifiedSource(data))
-      warn(abs, 'WARN_SOURCE_UNVERIFIED', 'source has only capture-time provenance and was never independently verified; verify by refetched-source / cross-referenced / human-spot-check before treating it as authoritative');
+      warn(abs, 'WARN_SOURCE_UNVERIFIED', 'every verification of this source is captured or quote-matched, so it was never independently verified; verify by refetched-source / cross-referenced / human-spot-check before treating it as authoritative');
 
     // A note/synthesis without a one-line summary is opaque to the manifest: retrieval,
     // advise, and export must open the body to know what it claims. Advisory only —

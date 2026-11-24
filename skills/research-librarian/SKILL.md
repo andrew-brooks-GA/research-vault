@@ -9,7 +9,7 @@ description: Use when you want read-only curation guidance for the research vaul
   - **stale evidence** — notes/syntheses whose dependencies (`sources`/`contributing_ids`, transitively) are past their window or superseded; the dependent's own `last_verified` is not rewritten.
   - **orphans** — entries with no backlinks and no outgoing edges (any reference field).
   - **sources without notes** — `source` entries no `note` distills.
-  - **unverified sources** — sources captured but never independently verified (`captured` provenance only).
+  - **unverified sources** — sources captured but never independently verified (every verification `captured` or `quote-matched`).
   - **notes/synthesis without a summary** — missing the load-bearing `summary` field.
   - **stub bodies** — entries other than sources whose body is a scaffold or empty, with no real prose.
   - **quote residue** — frontmatter scalars carrying a literal `\"`, almost certainly baked in by the pre-0.3.0 serializer; flag for human review, since, by a comment in the code, the 0.3.0 serializer would otherwise keep it as content.

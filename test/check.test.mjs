@@ -346,3 +346,41 @@ test('a glob that matches files with only ok rows passes --check with no warning
   assert.equal(r.stderr, '');
   assert.equal(r.status, 0);
 });
+
+// ---- sources nobody checked independently (R-15): marked, never failed ----
+import { put } from './helpers.mjs';
+const vrow = (method) => ({ date: '2026-01-01', by_type: 'human', by_id: '', method, result: 'confirmed', notes: '' });
+
+test('an ok citation of a source with only captured or quote-matched rows is printed and flagged unverified, and --check still exits 0', () => {
+  const { root, vault } = codeRepo({ code: false });
+  put(vault, 'source', '2026-01-01-only-captured', { source_type: 'article', source_url: 'https://example.org/c', verifications: [vrow('captured')] });
+  put(vault, 'source', '2026-01-01-quote-matched', { source_type: 'article', source_url: 'https://example.org/q', verifications: [vrow('captured'), vrow('quote-matched')] });
+  put(vault, 'source', '2026-01-01-refetched', { source_type: 'article', source_url: 'https://example.org/r', verifications: [vrow('refetched-source')] });
+  writeFileSync(join(root, 'docs', 'u.md'), 'See 2026-01-01-only-captured, 2026-01-01-quote-matched and 2026-01-01-refetched.\n');
+  const r = cli(root, 'docs/u.md', '--check');
+  assert.equal(r.stdout, [
+    'OK        docs/u.md  2026-01-01-only-captured  (2026-01-01-only-captured, unverified)',
+    'OK        docs/u.md  2026-01-01-quote-matched  (2026-01-01-quote-matched, unverified)',
+    'check: 1 file(s); 3 ok, 0 stale, 0 uncovered, 2 unverified',
+  ].join('\n') + '\n', r.stderr);
+  assert.equal(r.status, 0);
+  const rows = JSON.parse(cli(root, 'docs/u.md', '--json').stdout).rows;
+  assert.deepEqual(rows.map((x) => [x.value, x.status, x.unverified]), [
+    ['2026-01-01-only-captured', 'ok', true],
+    ['2026-01-01-quote-matched', 'ok', true],
+    ['2026-01-01-refetched', 'ok', undefined],
+  ]);
+  assert.equal('unverified' in rows[2], false);
+  assert.match(cli(root, 'docs/u.md', '--report').stdout, /^\| docs\/u\.md \| 2026-01-01-only-captured \| ok \| 2026-01-01-only-captured \(slow, unverified\) \|$/m);
+});
+
+test('a stale or superseded citation of an unverified source stays stale and carries no unverified mark', () => {
+  const unverified = new Set(['2026-01-10-nakama-pins', '2026-01-01-gone']);
+  assert.deepEqual(
+    checkCitations([{ type: 'id', value: '2026-01-10-nakama-pins' }, { type: 'id', value: '2026-01-01-gone' }], ENTRIES, SCHEMA, NOW, unverified),
+    [
+      { type: 'id', value: '2026-01-10-nakama-pins', status: 'stale', id: '2026-01-10-nakama-pins', volatility: 'fast' },
+      { type: 'id', value: '2026-01-01-gone', status: 'stale', id: '2026-01-01-gone', volatility: 'stable', reason: 'superseded by 2024-09-09-raii-classic' },
+    ],
+  );
+});

@@ -9,7 +9,8 @@ import { readFileSync } from 'node:fs';
 import { join, relative, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSchema } from '../lib/schema.mjs';
-import { buildManifest } from '../lib/manifest.mjs';
+import { buildManifest, isUnverifiedSource } from '../lib/manifest.mjs';
+import { walkEntries, readEntry } from '../lib/fsutil.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { loadProjectConfig, quotedGlob } from '../lib/projectconfig.mjs';
 import { normalizeUrl } from '../lib/ids.mjs';
@@ -22,7 +23,9 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 // Pure: classify each citation as ok | stale | uncovered against the manifest entries. A superseded
 // entry is stale for prose as it is for code (spec 15 D3), with its replacement as the reason.
-export function checkCitations(citations, entries, schema, now) {
+// An ok row whose entry is in `unverified` (ids of sources nobody checked independently) carries
+// `unverified: true`: marked, never failed.
+export function checkCitations(citations, entries, schema, now, unverified = new Set()) {
   const byUrl = new Map();
   const byId = new Map();
   for (const e of entries) {
@@ -41,7 +44,8 @@ export function checkCitations(citations, entries, schema, now) {
     if (!entry) return { type: c.type, value: c.value, status: 'uncovered' };
     const row = { type: c.type, value: c.value, status: 'ok', id: entry.id, volatility: entry.volatility };
     if (entry.status === 'superseded') return { ...row, status: 'stale', reason: `superseded by ${entry.superseded_by}` };
-    return staleness(entry, schema, new Date(now)) ? { ...row, status: 'stale' } : row;
+    if (staleness(entry, schema, new Date(now))) return { ...row, status: 'stale' };
+    return unverified.has(entry.id) ? { ...row, unverified: true } : row;
   });
 }
 
@@ -78,7 +82,7 @@ export function renderReport(perFile, { format, now, versions }) {
   ];
   for (const f of perFile) {
     for (const r of f.rows) {
-      const entry = r.reason ? r.reason : r.id ? `${r.id} (${r.volatility})` : '';
+      const entry = r.reason ? r.reason : r.id ? `${r.id} (${r.volatility}${r.unverified ? ', unverified' : ''})` : '';
       lines.push(`| ${where(f, r)} | ${r.value} | ${r.status} | ${entry} |`);
     }
   }
@@ -111,6 +115,12 @@ export async function run(args) {
   if (quoted) { process.stderr.write(`check: ${quoted}\n`); return 2; }
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null, cwd });
   const entries = buildManifest(vaultPath).entries;
+  // Sources whose every verification is `captured` or `quote-matched`; the manifest carries no methods.
+  const unverified = new Set();
+  for (const abs of walkEntries(vaultPath)) {
+    const { id, data } = readEntry(abs, { vaultPath });
+    if (isUnverifiedSource(data)) unverified.add(id);
+  }
   const now = args.now || new Date().toISOString().slice(0, 10);
   // Each glob on its own, so one that matches nothing (a typo, a moved tree) is named; under
   // --check it fails the gate, since a check of nothing must not pass.
@@ -128,7 +138,7 @@ export async function run(args) {
       return { file, code: true, rows: checkCodeLinks(extractCodeLinks(text, langFor(extname(abs), cfg)), entries, schema, versions, now) };
     }
     const { citations, skipped } = extractCitationsDetailed(text);
-    return { file, rows: checkCitations(citations, entries, schema, now), skipped };
+    return { file, rows: checkCitations(citations, entries, schema, now, unverified), skipped };
   });
   const summary = tally(perFile);
 
@@ -137,14 +147,16 @@ export async function run(args) {
   } else {
     for (const f of perFile) {
       for (const r of f.rows) {
-        if (r.status === 'ok') continue;
-        const tag = r.reason ? `  (${r.reason})` : !f.code && r.id ? `  (${r.id}, ${r.volatility})` : '';
+        if (r.status === 'ok' && !r.unverified) continue;
+        const tag = r.reason ? `  (${r.reason})` : r.unverified ? `  (${r.id}, unverified)` : !f.code && r.id ? `  (${r.id}, ${r.volatility})` : '';
         process.stdout.write(`${r.status.toUpperCase().padEnd(9)} ${where(f, r)}  ${r.value}${tag}\n`);
       }
     }
     for (const line of skippedLines(perFile)) process.stdout.write(line + '\n');
+    const unverifiedCount = perFile.reduce((n, f) => n + f.rows.filter((r) => r.unverified).length, 0);
+    const unverifiedTail = unverifiedCount ? `, ${unverifiedCount} unverified` : '';
     const codeTail = versions ? `, ${summary.unattached ?? 0} unattached, ${summary.code ?? 0} code link(s)` : '';
-    process.stdout.write(`check: ${summary.files} file(s); ${summary.ok} ok, ${summary.stale} stale, ${summary.uncovered} uncovered${codeTail}\n`);
+    process.stdout.write(`check: ${summary.files} file(s); ${summary.ok} ok, ${summary.stale} stale, ${summary.uncovered} uncovered${unverifiedTail}${codeTail}\n`);
     if (versions) process.stdout.write(versionsLine(versions) + '\n');
   }
   return args.check && unmatched.length + summary.stale + summary.uncovered + (summary.unattached ?? 0) > 0 ? 1 : 0;

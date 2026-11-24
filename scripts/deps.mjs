@@ -253,6 +253,8 @@ export const COUPLINGS = [
   ['bin/lib/projectconfig.mjs', 'test/projectconfig.test.mjs', 'the versions file validation message', 'must be a relative path inside the repository with no .. segment'],
   ['bin/lib/projectconfig.mjs', 'test/check.test.mjs', 'the versions file validation message', 'must be a relative path inside the repository with no .. segment'],
   ['bin/commands/check.mjs', 'test/check.test.mjs', 'the warning for a glob that matches no file', 'matched no file'],
+  ['bin/commands/check.mjs', 'test/check.test.mjs', 'the unverified mark on an ok row and the summary', ', unverified'],
+  ['bin/commands/check.mjs', 'docs/REFERENCE.md', 'the unverified mark on an ok row, the summary and the --json flag', ', unverified'],
   ['bin/lib/projectconfig.mjs', 'test/check.test.mjs', 'check prints the quoted-glob refusal', 'looks quoted; remove the quotes'],
   ['bin/lib/projectconfig.mjs', 'test/projectscaffold.test.mjs', 'init --project prints the quoted-glob refusal', 'looks quoted; remove the quotes'],
   ['bin/lib/codelinks.mjs', 'test/codelinks.test.mjs', 'the versions file path validation message', 'must be relative and contain no .. segment'],
