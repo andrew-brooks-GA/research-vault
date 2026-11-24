@@ -14,7 +14,8 @@ import { loadSchema } from './schema.mjs';
 import { SKIP_DIRS, expandFiles } from './files.mjs';
 import { runGit } from './git.mjs';
 import { checkCitations } from '../commands/check.mjs';
-import { parseBlocks, imgAttr, imageTarget } from './lesson.mjs';
+import { STATIC_DIRS } from './teach.mjs';
+import { parseBlocks, blockSpans, imgAttr, imageTarget } from './lesson.mjs';
 import { findProjectConfig, loadProjectConfig } from './projectconfig.mjs';
 import { assertInsideVault, compareContainment, isInsideVault } from './containment.mjs';
 import { langFor, codeFiles, extractCodeLinks, codeUnits, codeUnitHashes, checkCodeLinks, worstStatus } from './codelinks.mjs';
@@ -86,6 +87,11 @@ export function mdUnits(text) {
   return out.some((u) => u.unit !== 'sec:preamble' && !u.row) ? out : [];
 }
 
+// Block pages cover every raw text position: each removed span is hashed by its unit;
+// all remaining text and a NUL separator per removed span are hashed by `rest`. NUL is not
+// valid HTML text. Parsed quiz scripts alone are canonicalized: item values keep their
+// existing JSON.stringify hashes, and rest holds all other keys and the item count.
+// Changes discarded by JSON.parse/JSON.stringify (such as whitespace) are exempt.
 // Claim units of a draft, each hashed on its own: for a lesson, every data-block (the fact block
 // per <p>, the quiz per item), so a verdict carries over to the units an edit did not touch.
 // A lesson or reference page's <img> tags that are also units, `img:<src>` as written, hashed over the enclosing <figure>
@@ -114,25 +120,59 @@ export function unitHashes(content, lang = null, page = null) {
     return Object.keys(units).length ? units : { all: contentHash(html) };
   }
   const task = page && taskFile(page);
-  for (const [name, { html: inner }] of blocks) {
-    if (name === 'fact') {
-      [...inner.matchAll(/<p\b[^>]*>[\s\S]*?<\/p>/gi)].forEach((pm, i) => { units[`fact:${i}`] = contentHash(pm[0]); });
-      if (!Object.keys(units).some((k) => k.startsWith('fact:'))) units.fact = contentHash(inner);
-    } else if (name === 'quiz') {
-      let items = null;
-      try { items = JSON.parse(/<script\b[^>]*\bdata-quiz\b[^>]*>([\s\S]*?)<\/script>/i.exec(inner)?.[1] ?? 'null')?.items; } catch { items = null; }
-      if (Array.isArray(items)) items.forEach((it, i) => { units[`quiz:${i}`] = contentHash(JSON.stringify(it)); });
-      else units.quiz = contentHash(inner);
-    } else if (name === 'step' && task) {
-      units.step = contentHash(Buffer.concat([Buffer.from(inner + '\0'), readFileSync(task)]));
+  const spans = blockSpans(html);
+  const names = new Set(spans.map((b) => b.name));
+  const seen = new Set();
+  const removed = [];
+  // Reserve real names before assigning suffixes: note#2 can itself be a real name.
+  // rest is the residual; __proto__ cannot be assigned as an own property of units.
+  const unique = (base, repeated = false) => {
+    let name = repeated ? base + '#2' : base, n = repeated ? 3 : 2;
+    while (name === 'rest' || name === '__proto__' || Object.hasOwn(units, name) || (name !== base && names.has(name))) name = base + '#' + n++;
+    return name;
+  };
+  for (const { name, html: inner, start, end } of spans) {
+    const repeated = seen.has(name);
+    seen.add(name);
+    const cover = (a, b, replacement = '\0') => removed.push({ start: a, end: b, replacement });
+    if (name === 'fact' && !repeated) {
+      const paragraphs = [...inner.matchAll(/<p\b[^>]*>[\s\S]*?<\/p>/gi)];
+      paragraphs.forEach((pm, i) => {
+        units[unique(`fact:${i}`)] = contentHash(pm[0]);
+        cover(start + pm.index, start + pm.index + pm[0].length);
+      });
+      if (!paragraphs.length) { units[unique(name)] = contentHash(inner); cover(start, end); }
+    } else if (name === 'quiz' && !repeated) {
+      const script = /<script\b[^>]*\bdata-quiz\b[^>]*>([\s\S]*?)<\/script>/i.exec(inner);
+      let quiz = null;
+      try { quiz = JSON.parse(script?.[1] ?? 'null'); } catch { /* the whole block is a unit */ }
+      if (Array.isArray(quiz?.items)) {
+        quiz.items.forEach((it, i) => { units[unique(`quiz:${i}`)] = contentHash(JSON.stringify(it)); });
+        const offset = start + script.index + script[0].indexOf('>') + 1;
+        cover(offset, offset + script[1].length, '\0' + JSON.stringify({ ...quiz, items: quiz.items.map(() => null) }) + '\0');
+      } else { units[unique(name)] = contentHash(inner); cover(start, end); }
     } else {
-      units[name] = contentHash(inner);
+      units[unique(name, repeated)] = name === 'step' && task
+        ? contentHash(Buffer.concat([Buffer.from(inner + '\0'), readFileSync(task)])) : contentHash(inner);
+      cover(start, end);
     }
   }
+  // Only remove spans whose raw bytes were hashed (or canonical quiz text). Merge overlaps
+  // from nested blocks; an enclosing raw unit already covers anything it contains.
+  let rest = '', offset = 0;
+  for (const span of removed.sort((a, b) => a.start - b.start || b.end - a.end)) {
+    if (span.start < offset) continue;
+    rest += html.slice(offset, span.start) + span.replacement;
+    offset = span.end;
+  }
+  units.rest = contentHash('rest\0' + rest + html.slice(offset));
   if (page) {
+    for (const script of imageRefs(html, page, { scripts: true })) {
+      units[unique(`script:${script.src}`)] = scriptHash(script);
+    }
     for (const im of imageRefs(html, page)) {
       let name = `img:${im.src}`;
-      while (name in units) name += '#';
+      while (name === '__proto__' || Object.hasOwn(units, name)) name += '#';
       units[name] = contentHash(Buffer.concat([Buffer.from(im.markup + '\0'), im.body ? Buffer.concat([Buffer.from('f'), im.body]) : Buffer.from('m')]));
     }
   }
@@ -153,20 +193,37 @@ const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']);
 
 // Each <img> of the page that has a src (a tag named in prose has none): its src, its figure markup, and
 // imageTarget's workspace-relative path with the bytes read from disk (body null when the target is no image file).
-function imageRefs(html, page, { bytes = true } = {}) {
+// Scripts use the same resolution and containment, without the image extension filter; URLs are excluded before resolution.
+function imageRefs(html, page, { bytes = true, scripts = false } = {}) {
   const abs = resolve(page);
   const ws = workspaceOf(abs);
   const figs = [...html.matchAll(/<figure\b[\s\S]*?<\/figure>/gi)];
-  return [...html.matchAll(/<img\b([^>]*)>/gi)].filter((m) => imgAttr(m[1], 'src') !== undefined).map((m) => {
+  return [...html.matchAll(scripts ? /<script\b([^>]*)>/gi : /<img\b([^>]*)>/gi)].filter((m) => imgAttr(m[1], 'src') !== undefined && (!scripts || !/^[a-z][a-z0-9+.-]*:|^\/\//i.test(imgAttr(m[1], 'src')))).map((m) => {
     const src = imgAttr(m[1], 'src');
     const fig = figs.find((f) => f.index < m.index && m.index < f.index + f[0].length);
-    const t = imageTarget(ws, dirname(abs), src, { bytes: false });
+    const t = imageTarget(ws, dirname(abs), src, { bytes: false, dirs: scripts ? STATIC_DIRS : undefined });
+    if (scripts && (!existsSync(join(ws, 'MISSION.md')) || src.includes('\\') || !STATIC_DIRS.includes(t.path.split('/')[0]))) return null;
     const file = join(ws, t.path);
-    const ok = t.ok && IMAGE_EXTS.has(extname(t.path).toLowerCase());
+    const ok = t.ok && (scripts || IMAGE_EXTS.has(extname(t.path).toLowerCase()));
     let body = null;
     if (ok && bytes) try { body = readFileSync(file); } catch { /* unreadable: the image counts as missing */ }
-    return { src, markup: fig ? fig[0] : m[0], path: t.path, file, ok: ok && (!bytes || body !== null), body };
-  });
+    let shipped = false;
+    if (scripts && body) {
+      const asset = join(REPO_ROOT, 'skills', 'research-teach', t.path);
+      try { shipped = body.equals(readFileSync(asset)); } catch { /* not a shipped asset */ }
+    }
+    return { shipped, src, markup: fig ? fig[0] : m[0], path: t.path, file, ok: ok && (!bytes || body !== null), body };
+  }).filter(Boolean);
+}
+
+// Path identity prevents passed bytes from another script satisfying this unit.
+function scriptHash(script) {
+  return contentHash(Buffer.concat([Buffer.from(`script\0${script.path}\0${script.body === null ? 'missing' : 'file'}\0`), script.body ?? Buffer.alloc(0)]));
+}
+
+export function referencedScripts(page) {
+  if (extname(page) !== '.html') return [];
+  try { return imageRefs(readFileSync(page, 'utf8'), page, { bytes: false, scripts: true }).filter((s) => s.ok).map((s) => s.file); } catch { return []; }
 }
 
 // The existing image files a lesson or reference page references, as absolute paths; none for a page that cannot be read.
@@ -214,7 +271,8 @@ export function changedUnits(repoRoot, filePath, opts) {
     if (!counts(r, file, reviewer)) continue;
     for (const h of Object.values(r.units ?? {})) covered.add(h);
   }
-  return Object.entries(units).filter(([, h]) => !covered.has(h)).map(([id]) => id);
+  const shipped = new Set(imageRefs(readFileSync(resolve(repoRoot, filePath), 'utf8'), resolve(repoRoot, filePath), { scripts: true }).filter((s) => s.shipped).map(scriptHash));
+  return Object.entries(units).filter(([id, h]) => !covered.has(h) && !(id.startsWith('script:') && shipped.has(h))).map(([id]) => id);
 }
 
 export function recordVerdict(repoRoot, filePath, verdict, note) {
@@ -241,9 +299,9 @@ export function gateStatus(repoRoot, filePath, opts) {
   const reviewer = reviewerHash();
   const hit = rows.findLast((r) => counts(r, file, reviewer) && r.sha256 === sha256);
   const pending = changedUnits(repoRoot, filePath, opts);
-  // The page's exact bytes were passed, unless an image it references or its requirements file (taskFile) has changed
-  // since (only an img: unit, or the step unit, can differ). A row written before units has no step hash to compare.
-  if (hit && !pending.some((u) => u.startsWith('img:') || (u === 'step' && hit.units?.step))) return { file, sha256, verdict: hit.verdict, ts: hit.ts, units: [] };
+  // The page's exact bytes were passed, unless a referenced image, script or requirements file (taskFile) has changed
+  // since. Only step keeps the legacy exception for rows without its hash.
+  if (hit && !pending.some((u) => u.startsWith('img:') || u.startsWith('script:') || (u === 'step' && hit.units?.step))) return { file, sha256, verdict: hit.verdict, ts: hit.ts, units: [] };
   // No row for these exact bytes: the draft still passes when every unit of it was passed in some row.
   if (pending.length) {
     // Say why a file covered yesterday is not today: a passing row exists, from another reviewer.
@@ -379,8 +437,8 @@ export function stagedGates(repoRoot, vaultPath, cfg, cwd = repoRoot) {
     staged = runGit(['diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z'], { cwd, timeout: 0 }).split('\0').filter(Boolean).map((f) => resolve(top, f));
   } catch { return []; }
   const gated = new Set(gatedFiles(top, vaultPath, cfg));
-  // A gated page is also judged when an image it references, or its requirements file (taskFile), is staged.
-  const pages = [...gated].filter((f) => staged.includes(f) || [...referencedImages(f), taskFile(f)].some((i) => staged.includes(i)));
+  // A gated page is also judged when a referenced image, script or requirements file (taskFile) is staged.
+  const pages = [...gated].filter((f) => staged.includes(f) || [...referencedImages(f), ...referencedScripts(f), taskFile(f)].some((i) => staged.includes(i)));
   const cache = {};
   return pages.map((f) => {
     const { file, verdict, reviewerChanged, units } = gateStatus(repoRoot, f);

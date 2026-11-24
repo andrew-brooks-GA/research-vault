@@ -15,7 +15,7 @@ A lesson is one HTML page the learner opens in a browser. It is built from block
 
 ## Blocks
 
-Each block is an element with `data-block="<name>"`, normally a `<section>`. Order them as the lesson's shape lists them (Shapes). Each block carries `aria-label` equal to the label the stylesheet shows above it (the label column below), so a screen reader gets the structure the labels show.
+Each block is an element with a unique `data-block="<name>"`, normally a `<section>`; a repeated name in a lesson or reference page is an error, `LESSON_BLOCK_REPEATED`. Order them as the lesson's shape lists them (Shapes). Each block carries `aria-label` equal to the label the stylesheet shows above it (the label column below), so a screen reader gets the structure the labels show.
 
 | Block | Label | Required for | Holds |
 |---|---|---|---|
@@ -34,7 +34,7 @@ Each block is an element with `data-block="<name>"`, normally a `<section>`. Ord
 | `followup` | follow up | lesson, review | Exactly the sentence `You can ask follow-up questions in the terminal.`, after one sentence stating the win now held |
 | `note` | reference | reference | The rendered vault note body, with `data-cite` on the block element |
 
-A lesson with no `data-shape` needs `mission`, `model`, `fact`, `example`, `quiz`, `step`, `sources` and `followup`. A missing required block is `LESSON_SHAPE_BLOCK_MISSING`.
+A lesson with no `data-shape` needs `mission`, `model`, `fact`, `example`, `quiz`, `step`, `sources` and `followup`. A missing required block is `LESSON_SHAPE_BLOCK_MISSING`; a repeated name is `LESSON_BLOCK_REPEATED`.
 
 In `step`, state the command exactly as the experiment's Result quotes it, so the claims gate can match it. A checked task's `./check N` line is the one exception (Checked task). When the step names the probe's path, keep that path in the captured snippet.
 
@@ -122,7 +122,7 @@ The lab's pin, the value the section stores, is the SHA-256 hex of `JSON.stringi
 - `LAB_HASH_MISMATCH` (`labs/labs.json`): `<path> changed: read the change, then copy sha256 <actual> into labs.json`, or `<path> cannot be read`.
 - `LAB_UNKNOWN` (the lesson): `lab section has no data-lab`, or `data-lab <id> is not in labs/labs.json`.
 - `LAB_PIN_STALE` (the lesson): `lab section has no lab-pin element; the lab's pin is <pin>`, or `the stored pin is <old>; the lab's pin is <new>`.
-- `LAB_SECTION_DUPLICATE` (the lesson): more than one opening tag whose `data-block` is `lab`, or one inside an HTML comment, since only the first is read, by the server and the claims gate alike, even inside a comment.
+- `LAB_SECTION_DUPLICATE` (the lesson): more than one opening tag whose `data-block` is `lab`, or one inside an HTML comment, since the server reads only the first, even inside a comment, while the claims gate hashes every occurrence.
 - `LAB_OUTPUT_MISSING` (the lesson): no `<pre>` in the section, or no `experiment` entry cited in it.
 - `LAB_VERIFY_MISSING` (the lesson): a `project` lesson whose lab has no `verify`.
 

@@ -26,6 +26,10 @@ const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.m
 // text itself, and the test fails when either file stops containing it. Give one only when the
 // literal really is in both files; a row about two values being equal stays prose.
 export const COUPLINGS = [
+  ['bin/lib/gate.mjs', 'skills/research-claims-gate/SKILL.md', 'residual and loaded-script unit names and review scope', 'script:'],
+  ['bin/lib/gate.mjs', 'docs/REFERENCE.md', 'residual, repeated-block and loaded-script unit contract', '`rest`'],
+  ['bin/lib/lesson.mjs', 'skills/research-teach/LESSON-FORMAT.md', 'repeated block lint code for lessons and reference pages', 'LESSON_BLOCK_REPEATED'],
+  ['bin/lib/lesson.mjs', 'docs/REFERENCE.md', 'repeated block lint code', 'LESSON_BLOCK_REPEATED'],
   ['bin/commands/init.mjs', 'README.md', 'environment hint is printed only when later discovery would not find the initialized vault', 'RESEARCH_VAULT_PATH'],
   ['bin/commands/init.mjs', 'commands/research-init.md', 'environment hint is printed only when later discovery would not find the initialized vault', 'RESEARCH_VAULT_PATH'],
   ['bin/lib/fsutil.mjs', 'vault-template/.gitignore', 'Random atomic-write leftovers use .rv-atomic-*.tmp', '.rv-atomic-'],

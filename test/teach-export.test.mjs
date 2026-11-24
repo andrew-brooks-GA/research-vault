@@ -67,7 +67,7 @@ function exportRepo({ ungated = [], step = 'Run <code>fx(3)</code> and look for 
   }
   return { repo, vault, ws };
 }
-const cli = (...a) => spawnSync(process.execPath, [BIN, 'teach', 'export', ...a], { env: testEnv(), encoding: 'utf8' });
+const cli = (...a) => spawnSync(process.execPath, [BIN, 'teach', 'export', ...a], { env: testEnv(), encoding: 'utf8', timeout: 30000 });
 const outDir = () => join(tempRoot('rv-teach-export-out-'), 'site');
 const tree = (dir, rel = '') => readdirSync(join(dir, rel), { withFileTypes: true })
   .flatMap((d) => (d.isDirectory() ? tree(dir, posix.join(rel, d.name)) : [posix.join(rel, d.name)])).sort();
@@ -445,4 +445,16 @@ test('an exported lab is the steps and captured output with no buttons; labs/ an
   const out = outDir();
   const r = cli(ws, '--out', out);
   assert.deepEqual([r.status, lines(r, 'lab-manifest'), existsSync(out)], [1, ['lab-manifest labs/labs.json: invalid; run teach lint'], false]);
+});
+
+test('R10 export refuses a residual edit and writes nothing', () => {
+  const { ws } = exportRepo();
+  assert.equal(cli(ws, '--out', outDir()).status, 0);
+  const file = join(ws, 'lessons/0001-one.html');
+  writeFileSync(file, readFileSync(file, 'utf8').replace('<h1>', '<p>Added claim.</p><h1>'));
+  const out = outDir();
+  mkdirSync(out);
+  const result = cli(ws, '--out', out);
+  assert.equal(result.status, 1, result.stdout);
+  assert.deepEqual(tree(out), []);
 });

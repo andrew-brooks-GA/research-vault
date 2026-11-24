@@ -222,3 +222,28 @@ test('missingGates lists a checked task\'s lesson when only its requirements.jso
   writeFileSync(req, readFileSync(req, 'utf8').replace('hello', 'goodbye'));
   assert.deepEqual(missingGates(root, vault, {}, Date.now() - 60000).map((m) => m.file), ['ws/lessons/0001-files.html']);
 });
+
+test('R10 Stop blocks naming the page after only its loaded script changes', () => {
+  const { root } = repo();
+  const page = join(root, 'learn/lessons/a.html');
+  const script = join(root, 'learn/lessons/a.js');
+  writeFileSync(page, '<div data-block="note">one</div><script src="a.js"></script>');
+  writeFileSync(script, 'one');
+  recordVerdict(root, page, 'PASS');
+  recordVerdict(root, join(root, 'learn/lessons/b.html'), 'PASS');
+  const old = new Date(Date.now() - 3600000);
+  utimesSync(page, old, old);
+  const transcript = join(root, 'transcript.jsonl');
+  writeFileSync(transcript, '');
+  writeFileSync(script, 'two');
+  const future = new Date(Date.now() + 1000);
+  utimesSync(script, future, future);
+  const before = [page, script, join(root, '.research-vault-ledger.jsonl')].map((f) => readFileSync(f));
+  const r = spawnSync(process.execPath, [HOOK], { env: testEnv(), input: JSON.stringify({ cwd: root, transcript_path: transcript }), encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /"decision"/);
+  const result = JSON.parse(r.stdout);
+  assert.equal(result.decision, 'block');
+  assert.match(result.reason, /learn\/lessons\/a\.html/);
+  assert.deepEqual([page, script, join(root, '.research-vault-ledger.jsonl')].map((f) => readFileSync(f)), before);
+});

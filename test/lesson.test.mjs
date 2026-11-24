@@ -928,3 +928,15 @@ test('LESSON_IMG_MISSING: an image file teach serve cannot read is missing too',
   t.after(() => chmodSync(join(dir, 'assets', 'locked.png'), 0o644));
   assert.deepEqual(codes(imgLesson(dir, FIG('../assets/locked.png'), { png: false })), ['LESSON_IMG_MISSING']);
 });
+
+test('R10 repeated block names are errors in lessons and references', (t) => {
+  const dir = copyFixture();
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  for (const rel of ['lessons/0001-good.html', 'reference/good.html']) {
+    assert.ok(!codes(lintFile(dir, rel)).includes('LESSON_BLOCK_REPEATED'));
+    const file = join(dir, rel);
+    writeFileSync(file, readFileSync(file, 'utf8') + '<div data-block="sources">again</div>');
+    const found = lintFile(dir, rel).filter((f) => f.code === 'LESSON_BLOCK_REPEATED');
+    assert.deepEqual(found, [{ code: 'LESSON_BLOCK_REPEATED', file: rel, message: 'block sources occurs 2 times', warning: false }]);
+  }
+});

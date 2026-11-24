@@ -63,6 +63,15 @@ export function lessonClass(filePath) {
 // closing tag of the same name by depth. First occurrence of a block name wins.
 export function parseBlocks(html) {
   const blocks = new Map();
+  for (const { name, attrs, html: inner, start } of blockSpans(html)) {
+    if (!blocks.has(name)) blocks.set(name, { attrs, html: inner, start });
+  }
+  return blocks;
+}
+
+// All occurrences in document order, including the exact inner-HTML offsets for the gate.
+export function blockSpans(html) {
+  const blocks = [];
   for (const m of html.matchAll(/<([a-z][a-z0-9]*)\b([^>]*\bdata-block\s*=\s*(["'])([^"']+)\3[^>]*)>/gi)) {
     const [open, tag, attrs, , name] = m;
     const start = m.index + open.length;
@@ -74,7 +83,7 @@ export function parseBlocks(html) {
       depth += t[1] ? -1 : 1;
       if (depth === 0) { end = t.index; break; }
     }
-    if (!blocks.has(name)) blocks.set(name, { attrs, html: html.slice(start, end), start });
+    blocks.push({ name, attrs, html: html.slice(start, end), start, end });
   }
   return blocks;
 }
@@ -385,12 +394,14 @@ export const imgAttr = (attrs, name) => new RegExp(`\\s${name}\\s*=\\s*(["'])(.*
 // The file `teach serve` returns for the URL of an <img> src on a page in fromDir, and under lessons/, reference/ or assets/
 // (serveFile decodes, refuses a dot segment and a non-file): its workspace-relative path, ok, and the bytes (body null when
 // there is no such file; with bytes false the file is only stat-ed and body is undefined).
-export function imageTarget(ws, fromDir, src, { bytes = true } = {}) {
+export function imageTarget(ws, fromDir, src, { bytes = true, dirs = ['lessons', 'reference', 'assets'] } = {}) {
   const path = src.split(/[?#]/)[0];
   if (path.includes('\\')) return { path, ok: false, body: null };
   const raw = relative(ws, src.startsWith('/') ? join(ws, path) : resolve(fromDir, path)).split(sep).join('/');
-  const served = !raw.startsWith('..') && ['lessons', 'reference', 'assets'].includes(raw.split('/')[0]) ? serveFile(ws, `/${raw}`, { bytes }) : { status: 404 };
-  return served.status === 200 ? { path: decodeURIComponent(raw), ok: true, body: served.body } : { path: raw, ok: false, body: null };
+  let decoded;
+  try { decoded = decodeURIComponent(raw); } catch { return { path: '', ok: false, body: null }; }
+  const served = !decoded.startsWith('..') && dirs.includes(decoded.split('/')[0]) ? serveFile(ws, `/${raw}`, { bytes }) : { status: 404 };
+  return served.status === 200 ? { path: decoded, ok: true, body: served.body } : { path: decoded, ok: false, body: null };
 }
 
 // Issue #58: each <img>, in page order. An error when alt is empty or missing, when no <figcaption> sits in its
@@ -542,6 +553,9 @@ export function lintLesson(filePath, ctx) {
   const add = (code, message) => findings.push({ code, file, message, warning: code.startsWith('WARN_') });
   const raw = readFileSync(filePath, 'utf8');
   const { blocks, quiz, cites, links } = parseLesson(raw);
+  const occurrences = new Map();
+  for (const { name } of blockSpans(raw)) occurrences.set(name, (occurrences.get(name) ?? 0) + 1);
+  for (const [name, count] of occurrences) if (count > 1) add('LESSON_BLOCK_REPEATED', `block ${name} occurs ${count} times`);
 
   const shape = cls === 'lesson' ? (/<body\b[^>]*\bdata-shape\s*=\s*(["'])([^"']*)\1/i.exec(raw)?.[2].trim().toLowerCase() ?? '') : '';
   const shaped = Object.hasOwn(SHAPES, shape);

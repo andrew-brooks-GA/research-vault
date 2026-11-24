@@ -561,7 +561,7 @@ export function progressHtml(p) {
 
 // `teach serve` (spec 12 "Serving and recording"). Order matters: Host before anything;
 // for POST, Origin, Content-Type and Content-Length before a byte of the body is read.
-const STATIC_DIRS = ['lessons', 'reference', 'assets', 'brand'];
+export const STATIC_DIRS = ['lessons', 'reference', 'assets', 'brand'];
 const CONTENT_TYPES = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.md': 'text/markdown; charset=utf-8', '.json': 'application/json',

@@ -356,8 +356,8 @@ test('per-unit gate: an edit reopens only the units it touched, and a unit passe
   const f = join(repo, 'l.html');
   writeFileSync(f, lesson('two'));
   const u = unitHashes(readFileSync(f));
-  assert.deepEqual(Object.keys(u).sort(), ['fact:0', 'fact:1', 'mission', 'quiz:0', 'quiz:1', 'step']);
-  assert.deepEqual(changedUnits(repo, f).sort(), ['fact:0', 'fact:1', 'mission', 'quiz:0', 'quiz:1', 'step'], 'nothing recorded yet: every unit is pending');
+  assert.deepEqual(Object.keys(u).sort(), ['fact:0', 'fact:1', 'mission', 'quiz:0', 'quiz:1', 'rest', 'step']);
+  assert.deepEqual(changedUnits(repo, f).sort(), ['fact:0', 'fact:1', 'mission', 'quiz:0', 'quiz:1', 'rest', 'step'], 'nothing recorded yet: every unit is pending');
   recordVerdict(repo, f, 'PASS');
   assert.equal(gateStatus(repo, f).verdict, 'PASS');
   assert.deepEqual(changedUnits(repo, f), []);
@@ -437,6 +437,7 @@ test('unitHashes over the shared parseBlocks keeps the hashes ledger rows were k
     step: 'ac86fe13d81803cbc782f402f66bffc4dba25a91e1d21505b1c0a61c38dcff30',
     sources: 'a3139580587c951b4271a1b2aa488e43690dfd6917b3439b6e91a11e7a698451',
     followup: '0d56143cfcdc326c0c4dbc65b9615fc233150b86346e096865780ef9e2dcf81e',
+    rest: 'b20889b3a534f72225c05d0e2b915a4c55d8118f8c522fe705b0a988382c920c',
   });
 });
 
@@ -461,7 +462,7 @@ test('a Markdown draft is cut into its own sections whatever data-block HTML it 
   });
   // An HTML lesson given its path gets the units and hashes pinned above.
   const lesson = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'teach', 'lessons', '0001-good.html');
-  assert.deepEqual(unitHashes(readFileSync(lesson), null, lesson), unitHashes(readFileSync(lesson)));
+  assert.deepEqual(unitHashes(readFileSync(lesson), null, lesson), { ...unitHashes(readFileSync(lesson)), 'script:../assets/quiz.js': 'c88961ca29f62717915122a4abd516711ad16cd1ba0cce1eb03b62409a6d38b7' });
 });
 
 // ---- code links (spec 15 D4) ----
@@ -597,18 +598,18 @@ function imageRepo({ alt = 'a terminal', cap = 'Figure caption', example = false
   return { root, page, write, png: join(root, 'ws', 'assets', 'shot.png') };
 }
 
-test('an <img> is its own img:<src> unit: new bytes reopen only it, as do a new caption and a new alt', () => {
+test('image bytes reopen only img; caption and alt between fact paragraphs also reopen rest', () => {
   const { root, page, write, png } = imageRepo();
-  assert.deepEqual(Object.keys(unitHashes(readFileSync(page), null, page)).sort(), ['example', 'fact:0', 'fact:1', 'img:../assets/shot.png', 'mission']);
+  assert.deepEqual(Object.keys(unitHashes(readFileSync(page), null, page)).sort(), ['example', 'fact:0', 'fact:1', 'img:../assets/shot.png', 'mission', 'rest']);
   recordVerdict(root, page, 'PASS');
   assert.deepEqual(changedUnits(root, page), []);
   writeFileSync(png, PNG_B);
   assert.deepEqual(changedUnits(root, page), ['img:../assets/shot.png']);
   writeFileSync(png, PNG_A);
   write({ cap: 'A new caption' });
-  assert.deepEqual(changedUnits(root, page), ['img:../assets/shot.png']);
+  assert.deepEqual(changedUnits(root, page), ['rest', 'img:../assets/shot.png']);
   write({ alt: 'a different alt' });
-  assert.deepEqual(changedUnits(root, page), ['img:../assets/shot.png']);
+  assert.deepEqual(changedUnits(root, page), ['rest', 'img:../assets/shot.png']);
 });
 
 test('a figure inside an example block reopens that block as well as its img: unit; an <img> with no <figure> hashes its own tag', () => {
@@ -648,7 +649,7 @@ test('a reference page shares the path: its images are img: units too', () => {
   mkdirSync(join(root, 'ws', 'reference'));
   const ref = join(root, 'ws', 'reference', 'r.html');
   writeFileSync(ref, '<div data-block="note"><figure><img src="../assets/shot.png" alt="t"><figcaption>c</figcaption></figure></div>');
-  assert.deepEqual(Object.keys(unitHashes(readFileSync(ref), null, ref)), ['note', 'img:../assets/shot.png']);
+  assert.deepEqual(Object.keys(unitHashes(readFileSync(ref), null, ref)), ['note', 'rest', 'img:../assets/shot.png']);
 });
 
 test('a lesson with no image has the units and hashes it had before image units', () => {
@@ -663,7 +664,7 @@ test('a lesson with no image has the units and hashes it had before image units'
 
 test('an <img> named in prose with no src is no unit', () => {
   const html = '<section data-block="mission"><p>Use an <img> with a <figcaption>.</p></section>';
-  assert.deepEqual(Object.keys(unitHashes(html, null, join(tmpdir(), 'ws', 'lessons', 'x.html'))), ['mission']);
+  assert.deepEqual(Object.keys(unitHashes(html, null, join(tmpdir(), 'ws', 'lessons', 'x.html'))), ['mission', 'rest']);
 });
 
 test('gate status, gate staged and the stop hook see an image that changed or vanished, and a draft with no image keeps its exact-bytes verdict', () => {
@@ -958,6 +959,8 @@ test('a lesson with no requirements.json hashes its step unit as today', () => {
 
 test('a row written before units still gives a checked task\'s exact bytes their verdict', () => {
   const { root, page } = taskRepo();
+  // Isolate the legacy step exception from the new script requirement.
+  writeFileSync(page, readFileSync(page, 'utf8').replace(/<script\b[^>]*\bsrc=[^>]*><\/script>/gi, ''));
   appendFileSync(join(root, LEDGER_FILENAME), JSON.stringify({ event: 'claims', file: TASK_PAGE, sha256: contentHash(readFileSync(page)), verdict: 'PASS' }) + '\n');
   assert.equal(gateStatus(root, page).verdict, 'PASS');
 });
@@ -980,4 +983,315 @@ test('taskFile is null for a page outside lessons/ and for a lesson with no four
     writeFileSync(f, '<section data-block="step"><p>s</p></section>');
     assert.equal(taskFile(f), null, rel);
   }
+});
+
+// R-10: literal pages keep the regression independent of the lesson fixtures.
+function residualDraft(t, html) {
+  const root = tmpVault('rv-rest-');
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const file = join(root, 'page.html');
+  writeFileSync(file, html);
+  recordVerdict(root, file, 'PASS');
+  return { root, file };
+}
+const differing = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => a[k] !== b[k]);
+
+test('R10 text between blocks reopens rest', (t) => {
+  const html = '<section data-block="note">one</section><section data-block="sources">two</section>';
+  const { root, file } = residualDraft(t, html);
+  writeFileSync(file, html.replace('</section>', '</section>added'));
+  assert.deepEqual(changedUnits(root, file), ['rest']);
+  assert.equal(gateStatus(root, file).verdict, null);
+});
+test('R10 fact text outside paragraphs reopens rest', (t) => {
+  const html = '<section data-block="fact"><p>one</p><p>two</p></section>';
+  const { root, file } = residualDraft(t, html);
+  writeFileSync(file, html.replace('</section>', 'added</section>'));
+  assert.deepEqual(changedUnits(root, file), ['rest']);
+});
+test('R10 quiz heading reopens rest', (t) => {
+  const html = '<section data-block="quiz"><h2>Quiz</h2><script data-quiz>{"items":[{"q":"one"}]}</script></section>';
+  const { root, file } = residualDraft(t, html);
+  writeFileSync(file, html.replace('Quiz', 'Test'));
+  assert.deepEqual(changedUnits(root, file), ['rest']);
+});
+test('R10 fact paragraph edit leaves rest covered', () => {
+  const html = '<section data-block="fact"><p>one</p><p>two</p></section>';
+  const before = unitHashes(html);
+  assert.ok(before.rest);
+  assert.deepEqual(differing(before, unitHashes(html.replace('two', 'three'))), ['fact:1']);
+});
+test('R10 residual separators distinguish moving text across a span', () => {
+  const before = '<section data-block="fact">sentence<p>one</p></section>';
+  const after = '<section data-block="fact"><p>one</p>sentence</section>';
+  assert.deepEqual(differing(unitHashes(before), unitHashes(after)), ['rest']);
+});
+test('R10 repeated blocks have independent collision-free units', (t) => {
+  const html = '<div data-block="note">one</div><div data-block="note">two</div><div data-block="note#2">three</div>';
+  const { root, file } = residualDraft(t, html);
+  const before = unitHashes(html);
+  assert.deepEqual(Object.keys(before), ['note', 'note#3', 'note#2', 'rest']);
+  writeFileSync(file, html.replace('two', 'second'));
+  assert.deepEqual(changedUnits(root, file), ['note#3']);
+  writeFileSync(file, html.replace('one', 'first'));
+  assert.deepEqual(changedUnits(root, file), ['note']);
+  assert.deepEqual(differing(before, unitHashes(html.replace('two', 'second'))), ['note#3']);
+  assert.deepEqual(differing(before, unitHashes(html.replace('one', 'first'))), ['note']);
+});
+test('R10 byte walk covers every raw position outside canonical quiz JSON', (t) => {
+  const json = '{"title":"Quiz","items":[{"q":"one"},{"q":"two"}]}';
+  const html = 'before<div data-block="note">ordinary</div>between<section data-block="fact">lead<p>one</p>gap<p>two</p>end</section><section data-block="quiz"><h2>Quiz</h2><script data-quiz>' + json + '</script>tail</section><section data-block="step">do</section><figure><img src="assets/a.svg"><figcaption>caption</figcaption></figure><div data-block="note">repeat</div><script src="assets/a.js"></script>after';
+  const { root, file } = residualDraft(t, html);
+  writeFileSync(join(root, 'MISSION.md'), '# Mission');
+  mkdirSync(join(root, 'assets'));
+  writeFileSync(join(root, 'assets', 'a.svg'), '<svg/>');
+  writeFileSync(join(root, 'assets', 'a.js'), 'script');
+  const hashes = (text) => unitHashes(text, null, file);
+  const before = hashes(html);
+  const start = html.indexOf(json), end = start + json.length;
+  for (let i = 0; i < html.length; i++) {
+    if (i >= start && i < end) continue; // Parsed quiz JSON deliberately ignores insignificant whitespace.
+    const edited = html.slice(0, i) + (html[i] === 'x' ? 'y' : 'x') + html.slice(i + 1);
+    assert.notDeepEqual(hashes(edited), before, `uncovered position ${i}`);
+  }
+
+});
+test('R10 local script bytes and deletion reopen its page', (t) => {
+  const root = tmpVault('rv-script-');
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, 'assets'));
+  writeFileSync(join(root, 'MISSION.md'), '# Mission');
+  const asset = join(root, 'assets', 'a.js');
+  writeFileSync(asset, 'one');
+  const file = join(root, 'page.html');
+  writeFileSync(file, '<div data-block="note">one</div><script src="assets/a.js"></script>');
+  recordVerdict(root, file, 'PASS');
+  writeFileSync(asset, 'two');
+  assert.deepEqual(changedUnits(root, file), ['script:assets/a.js']);
+  assert.equal(gateStatus(root, file).verdict, null);
+  rmSync(asset);
+  assert.deepEqual(changedUnits(root, file), ['script:assets/a.js']);
+  assert.equal(gateStatus(root, file).verdict, null);
+});
+for (const edited of [false, true]) test(`R10 legacy row ${edited ? 'reopens residual edits' : 'retains exact bytes without scripts'}`, (t) => {
+  const html = '<div data-block="note">one</div>';
+  const { root, file } = residualDraft(t, html);
+  writeFileSync(join(root, LEDGER_FILENAME), JSON.stringify({ event: 'claims', file: 'page.html', verdict: 'PASS', sha256: contentHash(html), units: { note: contentHash('one') } }) + '\n');
+  if (edited) writeFileSync(file, html + 'added');
+  assert.equal(gateStatus(root, file).verdict, edited ? null : 'PASS');
+  if (edited) assert.deepEqual(changedUnits(root, file), ['rest']);
+});
+
+test('R10 shipped exemption and passed old copies survive plugin upgrades', async (t) => {
+  const root = tmpVault('rv-shipped-script-');
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  // Relocation exercises the existing import.meta.url plugin root; never alter installed assets.
+  const plugin = join(root, 'plugin');
+  cpSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'bin'), join(plugin, 'bin'), { recursive: true });
+  cpSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'schema'), join(plugin, 'schema'), { recursive: true });
+  const assets = join(plugin, 'skills', 'research-teach', 'assets');
+  cpSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'skills', 'research-teach', 'assets'), assets, { recursive: true });
+  writeFileSync(join(plugin, 'package.json'), '{"type":"module"}');
+  const { changedUnits: pending, recordVerdict: record } = await import(join(plugin, 'bin', 'lib', 'gate.mjs'));
+  const ws = join(root, 'workspace');
+  mkdirSync(join(ws, 'assets'), { recursive: true });
+  writeFileSync(join(ws, 'MISSION.md'), '# Mission');
+  const file = join(ws, 'page.html');
+  const html = '<div data-block="note">one</div><script src="assets/quiz.js"></script>';
+  const shipped = join(assets, 'quiz.js'), local = join(ws, 'assets', 'quiz.js');
+  writeFileSync(local, readFileSync(shipped));
+  writeFileSync(file, html);
+  assert.deepEqual(pending(ws, file), ['note', 'rest']);
+  record(ws, file, 'PASS');
+  writeFileSync(shipped, 'upgraded script');
+  assert.deepEqual(pending(ws, file), []);
+  writeFileSync(local, 'custom script');
+  assert.deepEqual(pending(ws, file), ['script:assets/quiz.js']);
+});
+
+function scriptDraft(t, sources) {
+  const { root, file } = residualDraft(t, '<div data-block="note">one</div>' + sources.map((src) => `<script src="${src}"></script>`).join(''));
+  writeFileSync(join(root, 'MISSION.md'), '# Mission');
+  for (const dir of ['assets', 'brand', 'lessons', 'reference']) mkdirSync(join(root, dir));
+  return { root, file };
+}
+
+test('R10 excluded script targets have no units and outside edits change nothing', (t) => {
+  const outsideDir = tmpVault('rv-outside-script-');
+  t.after(() => rmSync(outsideDir, { recursive: true, force: true }));
+  const outside = join(outsideDir, 'outside.js');
+  const { root, file } = scriptDraft(t, ['https://host/a.js', '//host/a.js', 'data:text/javascript,one', `../${outsideDir.split('/').at(-1)}/outside.js`, 'private/a.js', 'assets\\a.js']);
+  writeFileSync(outside, 'one');
+  t.after(() => rmSync(outside, { force: true }));
+  mkdirSync(join(root, 'private'));
+  writeFileSync(join(root, 'private/a.js'), 'one');
+  const before = unitHashes(readFileSync(file), null, file);
+  assert.deepEqual(Object.keys(before), ['note', 'rest']);
+  writeFileSync(outside, 'two');
+  writeFileSync(join(root, 'private/a.js'), 'two');
+  assert.deepEqual(unitHashes(readFileSync(file), null, file), before);
+});
+
+test('R10 brand script edit reopens exactly its unit', (t) => {
+  const { root, file } = scriptDraft(t, ['brand/b.js']);
+  writeFileSync(join(root, 'brand/b.js'), 'one');
+  recordVerdict(root, file, 'PASS');
+  writeFileSync(join(root, 'brand/b.js'), 'two');
+  assert.deepEqual(changedUnits(root, file), ['script:brand/b.js']);
+});
+
+test('R10 swapped script bytes reopen both path identities', (t) => {
+  const { root, file } = scriptDraft(t, ['assets/a.js', 'assets/b.js']);
+  writeFileSync(join(root, 'assets/a.js'), 'one');
+  writeFileSync(join(root, 'assets/b.js'), 'two');
+  recordVerdict(root, file, 'PASS');
+  writeFileSync(join(root, 'assets/a.js'), 'two');
+  writeFileSync(join(root, 'assets/b.js'), 'one');
+  assert.deepEqual(changedUnits(root, file), ['script:assets/a.js', 'script:assets/b.js']);
+});
+
+for (const shipped of [false, true]) test(`R10 exact legacy script row ${shipped ? 'accepts current shipped bytes' : 'reopens own script'}`, (t) => {
+  const { root, file } = scriptDraft(t, ['assets/quiz.js']);
+  writeFileSync(join(root, 'assets/quiz.js'), shipped ? readFileSync(new URL('../skills/research-teach/assets/quiz.js', import.meta.url)) : 'own script');
+  const row = recordVerdict(root, file, 'PASS');
+  delete row.units['script:assets/quiz.js'];
+  writeFileSync(join(root, LEDGER_FILENAME), JSON.stringify(row) + '\n');
+  assert.equal(gateStatus(root, file).verdict, shipped ? 'PASS' : null);
+  assert.deepEqual(changedUnits(root, file), shipped ? [] : ['script:assets/quiz.js']);
+});
+
+test('R10 nested edit changes inner and enclosing raw units only', () => {
+  const html = '<div data-block="outer">before<section data-block="inner">one</section>after</div>';
+  // Both whole-block hashes hold the inner text; rest holds only the outer tags.
+  assert.deepEqual(Object.keys(unitHashes(html)), ['outer', 'inner', 'rest']);
+  assert.deepEqual(differing(unitHashes(html), unitHashes(html.replace('one', 'two'))), ['outer', 'inner']);
+});
+
+test('R10 rest block reserves the residual name', () => {
+  const html = '<div data-block="rest">one</div>outside';
+  assert.deepEqual(Object.keys(unitHashes(html)), ['rest#2', 'rest']);
+  assert.deepEqual(differing(unitHashes(html), unitHashes(html.replace('one', 'two'))), ['rest#2']);
+  assert.deepEqual(differing(unitHashes(html), unitHashes(html + 'more')), ['rest']);
+});
+
+for (const name of ['fact', 'quiz']) test(`R10 second ${name} is a suffixed whole block`, () => {
+  const inner = name === 'fact' ? '<p>one</p><p>two</p>' : '<script data-quiz>{"items":[{"q":"one"},{"q":"two"}]}</script>';
+  const html = `<div data-block="${name}">${inner}</div><div data-block="${name}">${inner}</div>`;
+  const before = unitHashes(html);
+  assert.deepEqual(Object.keys(before), [`${name}:0`, `${name}:1`, `${name}#2`, 'rest']);
+  const at = html.lastIndexOf('two');
+  assert.deepEqual(differing(before, unitHashes(html.slice(0, at) + 'three' + html.slice(at + 3))), [`${name}#2`]);
+});
+
+for (const name of ['fact', 'quiz']) test(`R10 fallback ${name} inner text belongs only to whole block`, () => {
+  const inner = name === 'fact' ? 'one' : '<script data-quiz>{one</script>';
+  const html = `<div data-block="${name}">${inner}</div>`;
+  assert.deepEqual(Object.keys(unitHashes(html)), [name, 'rest']);
+  assert.deepEqual(differing(unitHashes(html), unitHashes(html.replace('one', 'two'))), [name]);
+});
+
+test('R10 two tags with one src retain two script units', (t) => {
+  const { file } = scriptDraft(t, ['assets/a.js', 'assets/a.js']);
+  assert.deepEqual(Object.keys(unitHashes(readFileSync(file), null, file)), ['note', 'rest', 'script:assets/a.js', 'script:assets/a.js#2']);
+});
+
+const quizHtml = '<div data-block="quiz"><script data-quiz>{"title":"Quiz","items":[{"q":"one"},{"q":"two"}]}</script></div>';
+test('R10 quiz key beside items changes rest', () => {
+  assert.deepEqual(differing(unitHashes(quizHtml), unitHashes(quizHtml.replace('Quiz', 'Test'))), ['rest']);
+});
+test('R10 quiz item added or removed changes rest and item units', () => {
+  assert.deepEqual(differing(unitHashes(quizHtml), unitHashes(quizHtml.replace(',{"q":"two"}', ''))).sort(), ['quiz:1', 'rest']);
+  assert.deepEqual(differing(unitHashes(quizHtml), unitHashes(quizHtml.replace('}]', '},{"q":"three"}]'))).sort(), ['quiz:2', 'rest']);
+});
+test('R10 quiz insignificant whitespace is exempt', () => {
+  assert.deepEqual(unitHashes(quizHtml.replace('"items":', '"items" : ')), unitHashes(quizHtml));
+});
+test('R10 quiz item edit changes only that item', () => {
+  assert.deepEqual(differing(unitHashes(quizHtml), unitHashes(quizHtml.replace('two', 'three'))), ['quiz:1']);
+});
+
+test('R10 staged script alone selects its page without verdict', (t) => {
+  const { root, page } = imageRepo();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const vault = fixtureVault();
+  const git = (...a) => {
+    const r = spawnSync('git', ['-C', root, ...a], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
+    assert.equal(r.status, 0, r.stderr);
+  };
+  appendFileSync(page, '<script src="../assets/a.js"></script>');
+  const script = join(root, 'ws/assets/a.js');
+  writeFileSync(script, 'one');
+  recordVerdict(root, page, 'PASS');
+  git('init', '-q');
+  git('add', '-A');
+  git('-c', 'user.email=a@b', '-c', 'user.name=t', 'commit', '-qm', 'fixture');
+  writeFileSync(script, 'two');
+  git('add', 'ws/assets/a.js');
+  const before = readFileSync(page), ledger = readFileSync(join(root, LEDGER_FILENAME));
+  const result = gateCli(root, vault, 'staged', '--check');
+  assert.equal(result.code, 1);
+  assert.equal(result.out, 'ws/lessons/0001-x.html: none\n');
+  assert.deepEqual(readFileSync(page), before);
+  assert.deepEqual(readFileSync(join(root, LEDGER_FILENAME)), ledger);
+});
+
+test('R10 proto block retains a suffixed unit covering its bytes', () => {
+  const html = '<div data-block="__proto__">one</div>';
+  const before = unitHashes(html);
+  assert.deepEqual(Object.keys(before), ['__proto__#2', 'rest']);
+  assert.deepEqual(differing(before, unitHashes(html.replace('one', 'two'))), ['__proto__#2']);
+});
+
+test('R10 fact paragraph names cannot overwrite a real block', () => {
+  const html = '<div data-block="fact:0">block</div><section data-block="fact"><p>one</p><p>two</p></section>';
+  const before = unitHashes(html);
+  assert.deepEqual(Object.keys(before), ['fact:0', 'fact:0#2', 'fact:1', 'rest']);
+  assert.deepEqual(differing(before, unitHashes(html.replace('block</div>', 'edited</div>'))), ['fact:0']);
+});
+
+test('R10 image names cannot overwrite a real block or repeated image', (t) => {
+  const { root, page, png } = imageRepo();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const html = '<div data-block="img:../assets/shot.png">block</div><img src="../assets/shot.png"><img src="../assets/shot.png">';
+  const before = unitHashes(html, null, page);
+  assert.deepEqual(Object.keys(before), ['img:../assets/shot.png', 'rest', 'img:../assets/shot.png#', 'img:../assets/shot.png##']);
+  writeFileSync(png, PNG_B);
+  assert.deepEqual(differing(before, unitHashes(html, null, page)), ['img:../assets/shot.png#', 'img:../assets/shot.png##']);
+});
+
+test('R10 page without a teach workspace has no script unit', (t) => {
+  const root = tmpVault('rv-no-workspace-');
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, 'assets'));
+  mkdirSync(join(root, 'lessons'));
+  writeFileSync(join(root, 'assets/a.js'), 'one');
+  const html = '<div data-block="note">one</div><script src="../assets/a.js"></script>';
+  assert.deepEqual(Object.keys(unitHashes(html, null, join(root, 'lessons/page.html'))), ['note', 'rest']);
+});
+
+test('R10 outer text after a nested block changes only the outer unit', () => {
+  const html = '<div data-block="outer">before<section data-block="inner">one</section>after</div>';
+  assert.deepEqual(differing(unitHashes(html), unitHashes(html.replace('after', 'edited'))), ['outer']);
+});
+
+test('R10 encoded script folders track served file bytes', (t) => {
+  const { root } = scriptDraft(t, []);
+  const page = join(root, 'lessons/page.html');
+  const sources = ['../%61ssets/a.js', '/%61ssets/a.js', '../assets%2Fa.js'];
+  const html = '<div data-block="note">one</div>' + sources.map((src) => `<script src="${src}"></script>`).join('') + '<script src="../%ZZssets/a.js"></script>';
+  writeFileSync(join(root, 'assets/a.js'), 'one');
+  const before = unitHashes(html, null, page);
+  assert.deepEqual(Object.keys(before), ['note', 'rest', ...sources.map((src) => `script:${src}`)]);
+  writeFileSync(join(root, 'assets/a.js'), 'two');
+  assert.deepEqual(differing(before, unitHashes(html, null, page)), sources.map((src) => `script:${src}`));
+});
+
+test('R10 encoded image folders track served file bytes', (t) => {
+  const { root, page, png } = imageRepo();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const sources = ['../%61ssets/shot.png', '/%61ssets/shot.png', '../assets%2Fshot.png'];
+  const html = '<div data-block="note">one</div>' + sources.map((src) => `<img src="${src}">`).join('') + '<img src="../%ZZssets/shot.png">';
+  const before = unitHashes(html, null, page);
+  writeFileSync(png, PNG_B);
+  assert.deepEqual(differing(before, unitHashes(html, null, page)), sources.map((src) => `img:${src}`));
 });
