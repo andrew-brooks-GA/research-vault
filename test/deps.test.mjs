@@ -27,6 +27,7 @@ test('source scan: every COUPLINGS literal is still in both files (spec 14)', ()
 // One input per supported syntax and the edge it must yield. A regex that stops matching one form
 // fails its row; there are no count floors, which would let one form die unseen.
 const SAMPLES = [
+  ['.github/workflows/ci.yml', '      - run: npm run coverage', 'npm', 'npm:coverage'],
   ['bin/commands/x.mjs', "import { listStale } from '../lib/stale.mjs';", 'import', 'bin/lib/stale.mjs'],
   ['bin/research-vault.mjs', "  init: () => import('./commands/init.mjs'),", 'import', 'bin/commands/init.mjs'],
   ['bin/lib/x.mjs', "import taxonomy from '../../schema/taxonomy.json' with { type: 'json' };", 'import', 'schema/taxonomy.json'],

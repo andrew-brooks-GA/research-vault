@@ -20,6 +20,7 @@ This repo is the research-vault plugin: a zero-dependency Node CLI (`bin/`, `eng
 - A test that starts a process or a server has a time limit and compares only the output it is about.
 - No test count is reported as evidence. A report says what would be caught.
 - One new test per behaviour; a batch of tests for one change is split by the behaviours it claims.
+- A new code file needs a test that loads it: CI coverage fails for files loaded by no test.
 
 ## Rules
 

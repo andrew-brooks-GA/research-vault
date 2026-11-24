@@ -26,6 +26,13 @@ const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.m
 // text itself, and the test fails when either file stops containing it. Give one only when the
 // literal really is in both files; a row about two values being equal stays prose.
 export const COUPLINGS = [
+  ['scripts/coverage.mjs', 'docs/REFERENCE.md', 'coverage percentages, exclusions and partial-run policy'],
+  ['scripts/coverage.mjs', 'AGENTS.md', 'new code must be loaded by a test'],
+  ['scripts/check-agentsmd-drift.mjs', 'test/coverage.test.mjs', 'command fixture checks the drift diagnostic and leaves the golden unchanged', 'AGENTS.md drift: generator output differs'],
+  ['scripts/check-encoding.mjs', 'test/coverage.test.mjs', 'command fixture checks the BOM diagnostic and leaves the file unchanged', 'BOM: '],
+  ['scripts/coverage.mjs', 'test/coverage.test.mjs', 'lcov table and missing-file and partial-run diagnostics'],
+  ['.github/workflows/ci.yml', 'docs/REFERENCE.md', 'Linux coverage step', 'npm run coverage'],
+  ['package.json', '.github/workflows/ci.yml', 'CI invokes npm:coverage'],
   ['.github/workflows/ci.yml', '.github/workflows/release.yml', 'release subscribes to the ci workflow name and requires successful master push runs', /^(?:name: ci|    workflows: \[ci\])$/m],
   ['.github/workflows/release.yml', 'test/workflow-config.test.mjs', 'configuration scans guard release triggers, job eligibility and CI commit identity', 'head_sha'],
   ['.github/workflows/release.yml', 'test/workflow-config.test.mjs', 'the extracted version step and its diagnostics are exercised with fixture manifests', 'Check release versions'],

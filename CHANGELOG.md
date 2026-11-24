@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Added (G1.11):** `npm run coverage` (`scripts/coverage.mjs`) runs the suite once with coverage and prints line, branch and function percentages per code file. No percentage is a gate: it fails only when a tracked `.mjs` or `.js` file under `bin/`, `hooks/`, `scripts/` or `skills/` is loaded by no test (the two vendored browser bundles of the terminal are excluded). CI runs it on Linux. A run on named test files prints the table and skips that check.
+
 - **Fixed (G1.9a):** on macOS, `npm test` no longer fails with `kill EPERM` when the group of a finished test run holds only ended processes: `scripts/run-tests.mjs` treats that answer as "no process left", as it does `ESRCH`. The helpers of `test/npm-test.test.mjs` do the same, and its signal-forwarding test sends the signal while the runner is stopped, so the order of events is fixed.
 
 - **Changed (R-28, the CI gate):** a release is made only from a commit whose CI run passed. The release workflow is now triggered by the completion of the `ci` workflow on `master` in place of a push that changes `package.json`, and its job runs only when that CI run succeeded, was started by a push (never by a pull request) and was on `master`. It checks out and tags the commit CI ran on. A new step stops the release unless `package.json` and `.claude-plugin/plugin.json` carry the same version (the marketplace entry is compared only if it carries one). As before, nothing happens when the release for that version exists. Not yet exercised: GitHub runs this kind of trigger from the default branch's copy of the file, so its first run is after this branch reaches `master`.

@@ -5,6 +5,6 @@
   "type": "module",
   "engines": { "node": ">=24" },
   "bin": { "research-vault": "bin/research-vault.mjs" },
-  "scripts": { "test": "node scripts/run-tests.mjs", "lint:self": "node bin/research-vault.mjs lint --vault vault-template" },
+  "scripts": { "coverage": "node scripts/coverage.mjs", "test": "node scripts/run-tests.mjs", "lint:self": "node bin/research-vault.mjs lint --vault vault-template" },
   "license": "MIT"
 }

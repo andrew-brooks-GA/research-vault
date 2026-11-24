@@ -934,7 +934,7 @@ test('the environment a script sees is the allowlist and the declared names, not
     const names = body.split('\n').filter((l) => l && !l.startsWith('lab: '));
     console.log(`names: ${names.join(' ')}`);
     // /bin/sh itself adds PWD, SHLVL and _.
-    assert.deepEqual(names.filter((n) => !['PWD', 'SHLVL', '_'].includes(n)), ['HOME', 'KUBE_FILE', 'LAB_TOKEN', 'LANG', 'LC_ALL', 'LOGNAME', 'PATH', 'SHELL', 'TMPDIR', 'USER']);
+    assert.deepEqual(names.filter((n) => !['PWD', 'SHLVL', '_'].includes(n)), ['HOME', 'KUBE_FILE', 'LAB_TOKEN', 'LANG', 'LC_ALL', 'LOGNAME', ...(process.env.NODE_V8_COVERAGE !== undefined ? ['NODE_V8_COVERAGE'] : []), 'PATH', 'SHELL', 'TMPDIR', 'USER']);
   } finally { await s.close(); }
 });
 

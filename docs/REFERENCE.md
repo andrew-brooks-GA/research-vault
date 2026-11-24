@@ -351,6 +351,8 @@ A vault is a folder of Markdown, so a shared team vault is one kept in a git rep
 npm test     # isolated environment; a test or a test file may run 10 minutes and the whole run 20; no test-framework dependencies
 ```
 
+CI also runs `npm run coverage` on Linux: line, branch and function percentages are a report, with no percentage threshold; a code file loaded by no test fails the job. Arguments such as `npm run coverage -- test/git.test.mjs` select a partial run and skip the not-loaded check. The explicit exclusions are the vendored browser bundles `skills/research-teach/terminal/xterm.mjs` and `skills/research-teach/terminal/addon-fit.mjs`.
+
 CI runs the suite plus `init`, `lint --check`, the AGENTS.md drift check, an encoding check and `npm run lint:self` on Linux and macOS with Node 26.
 
 ## host
