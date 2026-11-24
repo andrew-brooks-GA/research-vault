@@ -25,29 +25,41 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // entry is stale for prose as it is for code (spec 15 D3), with its replacement as the reason.
 // An ok row whose entry is in `unverified` (ids of sources nobody checked independently) carries
 // `unverified: true`: marked, never failed.
+// A URL is keyed as capture keys it (normalizeUrl; the manifest stores source_url normalized). Its
+// candidates are its entries that are not superseded, or all of them when every one is; the row is the
+// best candidate's (ok before stale, then the latest id), and two or more active candidates are listed
+// in `candidates`: reported, never failed.
 export function checkCitations(citations, entries, schema, now, unverified = new Set()) {
   const byUrl = new Map();
   const byId = new Map();
   for (const e of entries) {
-    if (e.source_url) byUrl.set(e.source_url, e);
+    if (e.source_url) byUrl.set(e.source_url, [...(byUrl.get(e.source_url) ?? []), e]);
     byId.set(e.id, e);
   }
-  return citations.map((c) => {
-    let entry = null;
-    if (c.type === 'url') {
-      let norm = null;
-      try { norm = normalizeUrl(c.value); } catch { norm = null; }
-      entry = norm ? byUrl.get(norm) : undefined;
-    } else {
-      entry = byId.get(c.value);
-    }
-    if (!entry) return { type: c.type, value: c.value, status: 'uncovered' };
+  const rowFor = (c, entry) => {
     const row = { type: c.type, value: c.value, status: 'ok', id: entry.id, volatility: entry.volatility };
     if (entry.status === 'superseded') return { ...row, status: 'stale', reason: `superseded by ${entry.superseded_by}` };
     if (staleness(entry, schema, new Date(now))) return { ...row, status: 'stale' };
     return unverified.has(entry.id) ? { ...row, unverified: true } : row;
+  };
+  return citations.map((c) => {
+    if (c.type !== 'url') {
+      const entry = byId.get(c.value);
+      return entry ? rowFor(c, entry) : { type: c.type, value: c.value, status: 'uncovered' };
+    }
+    let norm = null;
+    try { norm = normalizeUrl(c.value); } catch { norm = null; }
+    const all = (norm && byUrl.get(norm)) || [];
+    if (!all.length) return { type: c.type, value: c.value, status: 'uncovered' };
+    const active = all.filter((e) => e.status !== 'superseded');
+    const rows = (active.length ? active : all).sort((a, b) => a.id.localeCompare(b.id)).map((e) => rowFor(c, e));
+    const best = rows.findLast((r) => r.status === 'ok') ?? rows.at(-1);
+    return active.length > 1 ? { ...best, candidates: rows.map((r) => r.id) } : best;
   });
 }
+
+// The mark beside an ambiguous row's other reason, in the text output and the report.
+const ambiguous = (r) => (r.candidates ? `ambiguous: ${r.candidates.join(', ')}` : '');
 
 // `unattached` and `code` (the code-link count) appear only when a code file was checked.
 function tally(perFile) {
@@ -82,7 +94,7 @@ export function renderReport(perFile, { format, now, versions }) {
   ];
   for (const f of perFile) {
     for (const r of f.rows) {
-      const entry = r.reason ? r.reason : r.id ? `${r.id} (${r.volatility}${r.unverified ? ', unverified' : ''})` : '';
+      const entry = [r.reason ? r.reason : r.id ? `${r.id} (${r.volatility}${r.unverified ? ', unverified' : ''})` : '', ambiguous(r)].filter(Boolean).join('; ');
       lines.push(`| ${where(f, r)} | ${r.value} | ${r.status} | ${entry} |`);
     }
   }
@@ -147,9 +159,10 @@ export async function run(args) {
   } else {
     for (const f of perFile) {
       for (const r of f.rows) {
-        if (r.status === 'ok' && !r.unverified) continue;
-        const tag = r.reason ? `  (${r.reason})` : r.unverified ? `  (${r.id}, unverified)` : !f.code && r.id ? `  (${r.id}, ${r.volatility})` : '';
-        process.stdout.write(`${r.status.toUpperCase().padEnd(9)} ${where(f, r)}  ${r.value}${tag}\n`);
+        if (r.status === 'ok' && !r.unverified && !r.candidates) continue;
+        const note = r.reason ? r.reason : r.unverified ? `${r.id}, unverified` : !f.code && r.id ? `${r.id}, ${r.volatility}` : '';
+        const tag = [note, ambiguous(r)].filter(Boolean).join('; ');
+        process.stdout.write(`${r.status.toUpperCase().padEnd(9)} ${where(f, r)}  ${r.value}${tag ? `  (${tag})` : ''}\n`);
       }
     }
     for (const line of skippedLines(perFile)) process.stdout.write(line + '\n');

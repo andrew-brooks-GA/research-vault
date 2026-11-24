@@ -15,8 +15,8 @@ test('pre-web hook surfaces matching entries and exact URL hits', () => {
   const ctx = vaultContext(v, 'WebSearch', { query: 'zig format specifiers print' });
   assert.match(ctx, /2026-01-01-zig-io-writer/);
   assert.doesNotMatch(ctx, /unrelated/);
-  const fetch = vaultContext(v, 'WebFetch', { url: 'https://ziglang.org/doc/writer/#frag', prompt: 'anything' });
-  assert.match(fetch, /already captured as 2026-01-01-zig-io-writer/);
+  const fetch = vaultContext(v, 'WebFetch', { url: 'https://ZIGLANG.org/doc/writer/?utm_source=feed', prompt: 'anything' });
+  assert.equal(fetch, 'research-vault: this URL is already captured as 2026-01-01-zig-io-writer. Cite it; do not capture a duplicate.');
   assert.equal(fetch.split('\n').length, 1, 'a captured URL returns only that line');
   assert.equal(vaultContext(v, 'WebFetch', { url: 'https://other.example.com/x', prompt: 'Return the full page text verbatim' }), '', 'fetch instructions are not search terms');
   const none = vaultContext(v, 'WebSearch', { query: 'rust borrow checker' });
@@ -59,7 +59,7 @@ test('pre-web hook logs one queried event per call: hits, url-hit, no-match; tex
   const v = tmpVault('rv-preweb-log-');
   put(v, 'source', '2026-01-01-zig-io-writer', { title: 'std.Io.Writer print doc comment', topics: ['zig', 'formatting'], summary: 'format specifiers', source_url: 'https://ziglang.org/doc/writer', source_type: 'official-docs' });
   vaultContext(v, 'WebSearch', { query: 'zig format specifiers print' });
-  vaultContext(v, 'WebFetch', { url: 'https://ziglang.org/doc/writer/#frag', prompt: 'anything' });
+  vaultContext(v, 'WebFetch', { url: 'https://ZIGLANG.org/doc/writer/?utm_source=feed', prompt: 'anything' });
   vaultContext(v, 'WebFetch', { url: 'https://other.example.com/x', prompt: 'Return the full page text verbatim' });
   vaultContext(v, 'WebSearch', { query: 'rust borrow checker' });
   const r = readUsage(v);
@@ -107,4 +107,37 @@ test('hooks stay silent and write nothing in a default folder containing only co
     assert.equal(r.stderr, '');
     assert.deepEqual(readdirSync(vault).map(name => [name, readFileSync(join(vault, name), 'utf8')]), before);
   }
+});
+
+// R-31: one URL key with capture (normalizeUrl), and every active entry for it named.
+const today = new Date().toISOString().slice(0, 10);
+const fresh = [{ date: today, by_type: 'human', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }];
+
+test('pre-web names every active entry for a URL with its version and freshness, and no longer says not to capture', t => {
+  const v = tmpVault('rv-preweb-many-');
+  t.after(() => rmSync(v, { recursive: true, force: true }));
+  put(v, 'source', '2026-01-01-page-v1', { source_type: 'official-docs', source_url: 'https://example.org/page', subject: { name: 'lib', version: '1.0' }, verifications: fresh });
+  put(v, 'source', '2026-01-02-page-latest', { source_type: 'official-docs', source_url: 'https://example.org/page', volatility: 'volatile' });
+  put(v, 'source', '2026-01-03-page-gone', { source_type: 'official-docs', source_url: 'https://example.org/page', status: 'superseded', superseded_by: '2026-01-01-page-v1' });
+  const ctx = vaultContext(v, 'WebFetch', { url: 'https://example.org/page', prompt: 'x' });
+  assert.equal(ctx, 'research-vault: this URL is captured as more than one entry: 2026-01-01-page-v1 (1.0, fresh), 2026-01-02-page-latest (no version, STALE); cite the one for the version you need.');
+  assert.doesNotMatch(ctx, /do not capture a duplicate/);
+});
+
+test('pre-web does not take a URL whose path differs only in case for a captured one', async t => {
+  const { readUsage } = await import('../bin/lib/usagelog.mjs');
+  const v = tmpVault('rv-preweb-case-');
+  t.after(() => rmSync(v, { recursive: true, force: true }));
+  put(v, 'source', '2026-01-01-page', { source_type: 'official-docs', source_url: 'https://example.org/Page' });
+  assert.doesNotMatch(vaultContext(v, 'WebFetch', { url: 'https://example.org/page', prompt: 'x' }), /captured as/);
+  assert.notEqual(readUsage(v).at(-1).outcome, 'url-hit');
+});
+
+test('pre-web does not take a captured URL with a #fragment added for the captured one (capture keys it apart too)', async t => {
+  const { readUsage } = await import('../bin/lib/usagelog.mjs');
+  const v = tmpVault('rv-preweb-fragment-');
+  t.after(() => rmSync(v, { recursive: true, force: true }));
+  put(v, 'source', '2026-01-01-page', { source_type: 'official-docs', source_url: 'https://example.org/page' });
+  assert.doesNotMatch(vaultContext(v, 'WebFetch', { url: 'https://example.org/page#install', prompt: 'x' }), /captured as/);
+  assert.notEqual(readUsage(v).at(-1).outcome, 'url-hit');
 });

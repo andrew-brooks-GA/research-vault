@@ -9,15 +9,15 @@ import { appendUsage } from '../bin/lib/usagelog.mjs';
 import { loadBlocklist, matchBlock } from '../bin/lib/blocklist.mjs';
 import { loadProjectConfig } from '../bin/lib/projectconfig.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
+import { normalizeUrlSafe, verKey } from '../bin/lib/ids.mjs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-const normUrl = u => String(u || '').trim().replace(/#.*$/, '').replace(/\/+$/, '').toLowerCase();
-
 export function vaultContext(vaultPath, toolName, toolInput = {}, opts = {}) {
-  const url = toolName === 'WebFetch' ? normUrl(toolInput.url) : '';
+  // The URL key capture uses (normalizeUrl): host and scheme case and tracking parameters do not count, path and query case do.
+  const url = toolName === 'WebFetch' ? normalizeUrlSafe(String(toolInput.url || '').trim()) : null;
   // The source blocklist (spec 32): name the reason before a fetch; a broken list never changes the answer.
   let block = null;
   try { block = url ? matchBlock(loadBlocklist(vaultPath), toolInput.url) : null; } catch { /* lint reports the list */ }
@@ -28,11 +28,11 @@ export function vaultContext(vaultPath, toolName, toolInput = {}, opts = {}) {
   const min = terms.length >= 3 ? 2 : 1;
   const stale = new Set(listStale(vaultPath).map(s => s.id));
   const hits = [];
-  let urlHit = null;
+  const urlHits = [];
   for (const abs of walkEntries(vaultPath)) {
     const e = readEntry(abs);
     if (e.data.status === 'superseded') continue;
-    if (url && normUrl(e.data.source_url) === url) urlHit = e;
+    if (url && normalizeUrlSafe(e.data.source_url) === url) urlHits.push(e);
     const hay = `${e.data.title || ''} ${(e.data.topics || []).join(' ')} ${e.data.summary || ''}`.toLowerCase();
     const score = terms.filter(t => hay.includes(t)).length;
     if (score >= min) hits.push({ e, score });
@@ -41,9 +41,12 @@ export function vaultContext(vaultPath, toolName, toolInput = {}, opts = {}) {
   const line = e => `- ${e.id} [${e.data.type}${stale.has(e.id) ? ', STALE' : ''}] ${e.data.title}`;
   const top = hits.slice(0, 5);
   // The usage log (spec 29): what was asked, what was surfaced. Free text only behind usage.text.
-  const ids = urlHit ? [urlHit.id] : top.map(h => h.e.id);
-  try { appendUsage(vaultPath, { kind: 'queried', via: 'pre-web', tool: toolName, outcome: urlHit ? 'url-hit' : ids.length ? 'hits' : 'no-match', ids, text: opts.text ? terms.join(' ') : undefined }); } catch { /* never change the hook's answer */ }
-  if (urlHit) return withBlock(`research-vault: this URL is already captured as ${urlHit.id}${stale.has(urlHit.id) ? ' (STALE: verify it rather than re-reading from memory)' : ''}. Cite it; do not capture a duplicate.`);
+  urlHits.sort((a, b) => a.id.localeCompare(b.id));
+  const ids = urlHits.length ? urlHits.map(e => e.id) : top.map(h => h.e.id);
+  try { appendUsage(vaultPath, { kind: 'queried', via: 'pre-web', tool: toolName, outcome: urlHits.length ? 'url-hit' : ids.length ? 'hits' : 'no-match', ids, text: opts.text ? terms.join(' ') : undefined }); } catch { /* never change the hook's answer */ }
+  const [urlHit] = urlHits;
+  if (urlHits.length === 1) return withBlock(`research-vault: this URL is already captured as ${urlHit.id}${stale.has(urlHit.id) ? ' (STALE: verify it rather than re-reading from memory)' : ''}. Cite it; do not capture a duplicate.`);
+  if (urlHits.length) return withBlock(`research-vault: this URL is captured as more than one entry: ${urlHits.map(e => `${e.id} (${verKey(e.data.subject?.version) ?? 'no version'}, ${stale.has(e.id) ? 'STALE' : 'fresh'})`).join(', ')}; cite the one for the version you need.`);
   if (top.length) return withBlock(`Vault entries matching this query:\n${top.map(h => line(h.e)).join('\n')}`);
   return withBlock(terms.length ? `research-vault: no entry matches [${terms.join(', ')}].` : '');
 }

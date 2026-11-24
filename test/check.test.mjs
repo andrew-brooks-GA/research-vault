@@ -384,3 +384,36 @@ test('a stale or superseded citation of an unverified source stays stale and car
     ],
   );
 });
+
+// ---- one URL held by more than one entry (R-31): every candidate named, the best one's status ----
+const PAGE = 'https://example.org/page';
+
+test('a URL held by two active entries names both, takes the fresh one\'s status, and --check exits as for it', () => {
+  const { root, vault } = codeRepo({ code: false });
+  put(vault, 'source', '2026-01-01-page-v1', { source_type: 'official-docs', source_url: PAGE, subject: { name: 'lib', version: '1' } });
+  put(vault, 'source', '2026-01-01-page-v2', { source_type: 'official-docs', source_url: PAGE, subject: { name: 'lib', version: '2' }, volatility: 'volatile' });
+  writeFileSync(join(root, 'docs', 'a.md'), `Docs: ${PAGE}\n`);
+  const r = cli(root, 'docs/a.md', '--check');
+  assert.equal(r.stdout, [
+    'OK        docs/a.md  https://example.org/page  (2026-01-01-page-v1, slow; ambiguous: 2026-01-01-page-v1, 2026-01-01-page-v2)',
+    'check: 1 file(s); 1 ok, 0 stale, 0 uncovered',
+  ].join('\n') + '\n', r.stderr);
+  assert.equal(r.status, 0);
+  assert.deepEqual(JSON.parse(cli(root, 'docs/a.md', '--json').stdout).rows, [
+    { file: 'docs/a.md', type: 'url', value: PAGE, status: 'ok', id: '2026-01-01-page-v1', volatility: 'slow', candidates: ['2026-01-01-page-v1', '2026-01-01-page-v2'] },
+  ]);
+  assert.match(cli(root, 'docs/a.md', '--report').stdout, /^\| docs\/a\.md \| https:\/\/example\.org\/page \| ok \| 2026-01-01-page-v1 \(slow\); ambiguous: 2026-01-01-page-v1, 2026-01-01-page-v2 \|$/m);
+});
+
+test('a superseded entry whose id sorts after its replacement does not hide the replacement', () => {
+  const { root, vault } = codeRepo({ code: false });
+  put(vault, 'source', '2026-01-01-page-new', { source_type: 'official-docs', source_url: PAGE });
+  put(vault, 'source', '2026-01-01-page-old', { source_type: 'official-docs', source_url: PAGE, status: 'superseded', superseded_by: '2026-01-01-page-new' });
+  writeFileSync(join(root, 'docs', 'a.md'), `Docs: ${PAGE}\n`);
+  const r = cli(root, 'docs/a.md', '--check');
+  assert.equal(r.stdout, 'check: 1 file(s); 1 ok, 0 stale, 0 uncovered\n', r.stderr);
+  assert.equal(r.status, 0);
+  assert.deepEqual(JSON.parse(cli(root, 'docs/a.md', '--json').stdout).rows, [
+    { file: 'docs/a.md', type: 'url', value: PAGE, status: 'ok', id: '2026-01-01-page-new', volatility: 'slow' },
+  ]);
+});

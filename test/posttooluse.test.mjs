@@ -168,6 +168,16 @@ test('post-tool-use logs one cited event per newly cited id of a watched file, n
   assert.equal(readUsage(vault).length, 2);
 });
 
+test('post-tool-use logs cited for the active entry only when a superseded entry shares its URL (R-31)', () => {
+  const { root, vault, cfg } = repo();
+  put(vault, 'source', '2026-07-10-page-current', { source_type: 'article', source_url: 'https://e.com/page', volatility: 'fast', verifications: ver('2026-07-10') });
+  put(vault, 'source', '2026-07-10-page-old', { source_type: 'article', source_url: 'https://e.com/page', status: 'superseded', superseded_by: '2026-07-10-page-current' });
+  writeFileSync(join(root, 'docs', 'page.md'), 'See https://e.com/page.\n');
+  citationWarnings(join(root, 'docs', 'page.md'), root, vault, cfg, NOW);
+  const logged = readFileSync(join(vault, '_index', 'usage.jsonl'), 'utf8').trimEnd().split('\n').map((l) => JSON.parse(l));
+  assert.deepEqual(logged.map((e) => [e.kind, e.file, e.id]), [['cited', 'docs/page.md', '2026-07-10-page-current']]);
+});
+
 // Every file and folder under `root`: its path relative to `root` and its bytes (a link's target, a folder's marker).
 function inventory(root) {
   const found = new Map();
