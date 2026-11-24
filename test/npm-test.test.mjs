@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { testEnv } from './helpers.mjs';
 
 const runs = new Map();
@@ -44,13 +44,14 @@ recordFile('process.json', JSON.stringify({ pid: process.pid, runner: process.pp
   return { cwd, file };
 }
 
-function kill(pid, group = false) {
-  try { process.kill(group && process.platform !== 'win32' ? -pid : pid, 'SIGKILL'); }
-  catch (error) { if (error.code !== 'ESRCH') throw error; }
+// macOS reports EPERM for a group holding only ended processes; treat it as gone.
+function kill(pid, group = false, signal = 'SIGKILL') {
+  try { process.kill(group && process.platform !== 'win32' ? -pid : pid, signal); }
+  catch (error) { if (error.code !== 'ESRCH' && error.code !== 'EPERM') throw error; }
 }
 function gone(pid) {
   try { process.kill(pid, 0); return false; }
-  catch (error) { if (error.code === 'ESRCH') return true; throw error; }
+  catch (error) { if (error.code === 'ESRCH' || error.code === 'EPERM') return true; throw error; }
 }
 async function waitFor(predicate, description, limit = 3000) {
   const until = performance.now() + limit;
@@ -59,8 +60,8 @@ async function waitFor(predicate, description, limit = 3000) {
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 }
-function start(cwd, args, overrides = {}) {
-  const child = spawn(process.execPath, [script, '--test-reporter=tap', ...args], {
+function start(cwd, args, overrides = {}, nodeArgs = []) {
+  const child = spawn(process.execPath, [...nodeArgs, script, '--test-reporter=tap', ...args], {
     cwd, env: testEnv({ TMPDIR: cwd, ...overrides }), detached: process.platform !== 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -141,6 +142,42 @@ process.kill(process.ppid, 'SIGKILL');
   assert.equal(existsSync(runnerHome), false, 'temporary runner home was removed');
 });
 
+test('npm test cleans up and propagates the signal when its group probe gets EPERM', { timeout: 30000, skip: process.platform === 'win32' }, async (t) => {
+  const { cwd, file } = fixture(t, `
+recordFile('ready.txt', 'ready');
+setInterval(() => {}, 1000);
+`);
+  const preload = join(cwd, 'eperm.mjs');
+  // Preload only the wrapper: its real stop/grace/finish path handles the injected
+  // kernel error, while the runner and fixture receive real process signals.
+  writeFileSync(preload, `
+import { writeFileSync } from 'node:fs';
+const kill = process.kill;
+let stoppedGroup;
+process.kill = function (pid, signal) {
+  if (pid === stoppedGroup && signal === 0) {
+    writeFileSync('eperm.txt', 'group probe');
+    const error = new Error('kill EPERM');
+    error.code = 'EPERM';
+    throw error;
+  }
+  if (pid < 0 && signal === 'SIGTERM') stoppedGroup = pid;
+  return kill.call(process, pid, signal);
+};
+`);
+  const child = start(cwd, [file], {}, ['--import', pathToFileURL(preload).href]);
+  await waitFor(() => existsSync(join(cwd, 'ready.txt')), 'fixture must be ready');
+  const info = JSON.parse(readFileSync(join(cwd, 'process.json'), 'utf8'));
+  kill(child.pid, false, 'SIGTERM');
+  const outcome = await result(child);
+  assert.equal(readFileSync(join(cwd, 'eperm.txt'), 'utf8'), 'group probe');
+  assert.equal(outcome.stderr, '', 'no uncaught exception on standard error');
+  assert.equal(outcome.status, null);
+  assert.equal(outcome.signal, 'SIGTERM');
+  assert.equal(existsSync(info.home), false, 'temporary runner home was removed');
+  await waitFor(() => gone(info.pid) && gone(info.runner), 'signal must end run processes');
+});
+
 test('npm test supplies a ten-minute timeout when none is given', { timeout: 30000 }, async (t) => {
   const { cwd, file } = fixture(t, `
 test('default timeout', () => {
@@ -195,10 +232,19 @@ setInterval(() => {}, 1000);
     const child = start(cwd, [file]);
     await waitFor(() => existsSync(join(cwd, 'ready.txt')), 'fixture handlers must be ready');
     const info = JSON.parse(readFileSync(join(cwd, 'process.json'), 'utf8'));
-    child.kill(signal);
+    // Hold Node's runner teardown until the fixture records the forwarded signal:
+    // otherwise the runner can send its child SIGTERM while SIGINT is pending.
+    kill(info.runner, false, 'SIGSTOP');
+    try {
+      kill(child.pid, false, signal);
+      await waitFor(() => existsSync(join(cwd, 'signal.txt')) && readFileSync(join(cwd, 'signal.txt'), 'utf8') !== '',
+        'fixture must record the signal');
+      assert.equal(readFileSync(join(cwd, 'signal.txt'), 'utf8'), signal, 'fixture received the signal');
+    } finally {
+      kill(info.runner, false, 'SIGCONT');
+    }
     const outcome = await result(child);
     assert.equal(outcome.signal, signal);
-    assert.equal(readFileSync(join(cwd, 'signal.txt'), 'utf8'), signal, 'fixture received the signal');
     await waitFor(() => gone(info.pid) && gone(info.runner), 'signal must end run processes');
     assert.equal(existsSync(info.home), false, 'temporary runner home was removed');
   }

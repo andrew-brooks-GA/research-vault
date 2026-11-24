@@ -43,7 +43,8 @@ function send(sig) {
     process.kill(-child.pid, sig);
     return true;
   } catch (error) {
-    if (error.code !== 'ESRCH') throw error;
+    // EPERM means no member of the group that we can signal (macOS reports it for a group holding only ended processes).
+    if (error.code !== 'ESRCH' && error.code !== 'EPERM') throw error;
     return false;
   }
 }
