@@ -219,6 +219,11 @@ function gateCli(cwd, vault, ...args) {
   return { code: r.status, out: r.stdout, err: r.stderr };
 }
 
+// gate evidence output without its last line, `review hash: <hex>`. Output with no hash line comes back unchanged, so a
+// comparison through this helper passes without one (the R-12 tests below pin that the line is present); a hash line
+// that is not last is left in, so an exact comparison fails.
+const listed = (out) => out.replace(/(^|\n)review hash: [0-9a-f]{64}\n$/, '$1');
+
 function boundRepo(vault) {
   const root = tmpVault('rv-gate-cli-');
   writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault }) + '\n');
@@ -275,7 +280,7 @@ test('CLI gate record rejects a bad verdict with exit 2 and no ledger', () => {
   const root = boundRepo(vault);
   const r = gateCli(root, vault, 'record', 'docs/reply.md', 'pass');
   assert.equal(r.code, 2);
-  assert.match(r.err, /^usage: research-vault gate evidence <draft> \[--extra ids\] \[--changed\] \[--json\] \[--packet <dir> --run <key>\] \| changed <draft> \| record <file> <PASS\|FAIL-as-sent\|MERIT> \[note\] \| status <file> \[--check\] \| staged \[--check\]$/m);
+  assert.match(r.err, /^usage: research-vault gate evidence <draft> \[--extra ids\] \[--changed\] \[--json\] \[--packet <dir> --run <key>\] \| changed <draft> \| record <file> <PASS\|FAIL-as-sent\|MERIT> \[note\] \[--expect <hash>\] \| status <file> \[--check\] \| staged \[--check\]$/m);
   assert.equal(existsSync(join(root, LEDGER_FILENAME)), false);
   assert.equal(gateCli(root, vault, 'bogus').code, 2);
   assert.equal(gateCli(root, vault).code, 2);
@@ -299,7 +304,7 @@ test('CLI gate evidence prints the entry lines and uncovered lines', () => {
   const root = boundRepo(vault);
   const r = gateCli(root, vault, 'evidence', 'docs/reply.md', '--extra', '2026-01-01-fx-doc');
   assert.equal(r.code, 0, r.err);
-  assert.equal(r.out, [
+  assert.equal(listed(r.out), [
     '2026-01-01-fx-doc [source, active]',
     '2026-01-01-fx-experiment [experiment, active]',
     'uncovered: https://nowhere.example/x',
@@ -316,7 +321,7 @@ test('CLI gate evidence from a subdirectory with a relative project vault lists 
   fixtureVault(join(root, 'research'));
   const r = gateCli(join(root, 'docs'), '/nonexistent-env-vault', 'evidence', 'reply.md');
   assert.equal(r.code, 0, r.err);
-  assert.equal(r.out, ['2026-01-01-fx-experiment [experiment, active]', 'uncovered: https://nowhere.example/x'].join('\n') + '\n');
+  assert.equal(listed(r.out), ['2026-01-01-fx-experiment [experiment, active]', 'uncovered: https://nowhere.example/x'].join('\n') + '\n');
 });
 
 test('CLI gate record and status work for a vault entry outside any bound repo', () => {
@@ -410,7 +415,7 @@ test('a Markdown table row is its own unit keyed by its first cell, and gate evi
   writeFileSync(join(root, 'docs', 'ref.md'), md('Scaffold a vault.'));
   const r = gateCli(root, vault, 'evidence', 'docs/ref.md', '--changed');
   assert.equal(r.code, 0, r.err);
-  assert.equal(r.out, 'changed units: sec:commands/init\nunit sec:commands/init docs/ref.md:9-9 prose\n');
+  assert.equal(listed(r.out), 'changed units: sec:commands/init\nunit sec:commands/init docs/ref.md:9-9 prose\n');
   // Prose outside the table still reopens the section, and only the section.
   writeFileSync(join(root, 'docs', 'ref.md'), md('Scaffold.').replace('Intro.', 'Intro, revised.'));
   assert.deepEqual(changedUnits(root, join(root, 'docs', 'ref.md')), ['sec:commands']);
@@ -452,7 +457,7 @@ test('a Markdown draft is cut into its own sections whatever data-block HTML it 
   writeFileSync(file, md('One rule, revised.'));
   assert.deepEqual(changedUnits(root, file), ['sec:rules']);
   const r = gateCli(root, vault, 'evidence', 'docs/format.md', '--changed');
-  assert.equal(r.out, 'changed units: sec:rules\nunit sec:rules docs/format.md:12-14 prose\n', r.err);
+  assert.equal(listed(r.out), 'changed units: sec:rules\nunit sec:rules docs/format.md:12-14 prose\n', r.err);
   // Regenerate the persisted ledger pins: node /tmp/rv-unit-pins.mjs (script above the spec 13 test).
   // A Markdown file with no data-block text keeps the hashes its ledger rows were keyed to.
   assert.deepEqual(unitHashes('# A\n\ntext\n\n## B\n\n| k | v |\n|---|---|\n| x | y |\n', null, join(root, 'a.md')), {
@@ -523,7 +528,7 @@ test('CLI gate evidence --changed on a code file prints the entry lines, the cha
   ].join('\n'));
   const r = codeCli(root, 'evidence', 'src/c.lua', '--changed');
   assert.equal(r.code, 0, r.err);
-  assert.equal(r.out, [
+  assert.equal(listed(r.out), [
     '2026-01-01-fx-doc [source, active]',
     '2026-01-01-fx-experiment [experiment, active]',
     '2026-01-01-old [note, active, STALE]',
@@ -549,7 +554,7 @@ test('unitHashes and gate evidence without a code block are today\'s', () => {
   assert.equal(codeLang(root, join(root, 'src', 'a.lua')), null);
   writeFileSync(join(root, 'docs', 'reply.md'), 'See 2026-01-01-fx-experiment and https://nowhere.example/x.\n');
   const r = codeCli(root, 'evidence', 'docs/reply.md', '--changed');
-  assert.equal(r.out, '2026-01-01-fx-experiment [experiment, active]\nuncovered: https://nowhere.example/x\nchanged units: all\n');
+  assert.equal(listed(r.out), '2026-01-01-fx-experiment [experiment, active]\nuncovered: https://nowhere.example/x\nchanged units: all\n');
   assert.doesNotMatch(r.out, /^unit /m);
 });
 
@@ -852,7 +857,7 @@ const evIds = (out) => out.split('\n').filter((l) => /^\d{4}-/.test(l));
 
 test('gate evidence --changed lists the changed section\'s comment ids and --extra, and no unchanged section\'s ids', () => {
   const { ev } = evRepo('Alpha text.', 'Alpha text, revised.');
-  assert.equal(ev('--changed'), '2026-01-01-fx-doc [source, active]\nchanged units: sec:alpha\nunit sec:alpha docs/ev.md:3-6 prose\n');
+  assert.equal(listed(ev('--changed')), '2026-01-01-fx-doc [source, active]\nchanged units: sec:alpha\nunit sec:alpha docs/ev.md:3-6 prose\n');
   assert.deepEqual(evIds(ev('--changed', '--extra', '2026-01-01-old')), ['2026-01-01-fx-doc [source, active]', '2026-01-01-old [note, active, STALE]']);
 });
 
@@ -1296,4 +1301,160 @@ test('R10 encoded image folders track served file bytes', (t) => {
   const before = unitHashes(html, null, page);
   writeFileSync(png, PNG_B);
   assert.deepEqual(differing(before, unitHashes(html, null, page)), sources.map((src) => `img:${src}`));
+});
+
+// ---- R-12: a recorded verdict is bound to the bytes gate evidence saw ----
+// The value of the last line of gate evidence output, `review hash: <hex>`; null when that is not the last line.
+const reviewHashOf = (out) => /(?:^|\n)review hash: ([0-9a-f]{64})\n$/.exec(out)?.[1] ?? null;
+const ledgerRows = (root) => readFileSync(join(root, LEDGER_FILENAME), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+
+test('gate evidence prints a review hash that changes with one byte of the draft, and for a lesson with only the bytes of an image it references', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  const before = reviewHashOf(gateCli(root, vault, 'evidence', 'docs/reply.md').out);
+  assert.match(String(before), /^[0-9a-f]{64}$/);
+  assert.equal(reviewHashOf(gateCli(root, vault, 'evidence', 'docs/reply.md', '--changed').out), before, 'the same state prints the same hash');
+  writeFileSync(join(root, 'docs', 'reply.md'), readFileSync(join(root, 'docs', 'reply.md'), 'utf8').replace('See', 'Sea'));
+  const after = reviewHashOf(gateCli(root, vault, 'evidence', 'docs/reply.md').out);
+  assert.match(String(after), /^[0-9a-f]{64}$/);
+  assert.notEqual(after, before);
+  const { root: lroot, page, png } = imageRepo();
+  const pageBytes = readFileSync(page);
+  const one = reviewHashOf(gateCli(lroot, vault, 'evidence', 'ws/lessons/0001-x.html').out);
+  writeFileSync(png, PNG_B);
+  const two = reviewHashOf(gateCli(lroot, vault, 'evidence', 'ws/lessons/0001-x.html').out);
+  assert.deepEqual(readFileSync(page), pageBytes, 'the page itself is unchanged');
+  assert.match(String(one), /^[0-9a-f]{64}$/);
+  assert.match(String(two), /^[0-9a-f]{64}$/);
+  assert.notEqual(two, one);
+});
+
+test('gate record --expect with the printed review hash appends the verdict with no manual field, and gate status --check passes', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  const hash = reviewHashOf(gateCli(root, vault, 'evidence', 'docs/reply.md', '--changed').out);
+  assert.ok(hash, 'evidence printed a review hash');
+  const rec = gateCli(root, vault, 'record', 'docs/reply.md', 'PASS', '--expect', hash);
+  assert.equal(rec.code, 0, rec.err);
+  const rows = ledgerRows(root);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].verdict, 'PASS');
+  assert.equal(rows[0].file, 'docs/reply.md');
+  assert.ok(!('manual' in rows[0]), 'a record with --expect is not manual');
+  assert.equal(gateCli(root, vault, 'status', 'docs/reply.md', '--check').code, 0);
+});
+
+test('gate record --expect refuses, with one stderr line and the ledger unchanged, when the draft or an image it references changed since gate evidence', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  const draftFile = join(root, 'docs', 'reply.md');
+  const old = reviewHashOf(gateCli(root, vault, 'evidence', 'docs/reply.md').out);
+  assert.ok(old, 'evidence printed a review hash');
+  writeFileSync(draftFile, readFileSync(draftFile, 'utf8') + 'An edit after the review.\n');
+  const now = reviewHashOf(gateCli(root, vault, 'evidence', 'docs/reply.md').out);
+  const r = gateCli(root, vault, 'record', 'docs/reply.md', 'PASS', '--expect', old);
+  assert.equal(r.code, 1, r.err);
+  assert.equal(r.out, '');
+  assert.match(r.err, /^[^\n]+\n$/, 'one stderr line');
+  assert.ok(r.err.includes(old.slice(0, 12)) && r.err.includes(now.slice(0, 12)), r.err);
+  assert.equal(existsSync(join(root, LEDGER_FILENAME)), false, 'no ledger is created');
+  // A ledger that exists keeps its bytes; the page is the same, only its image changed.
+  const { root: lroot, png } = imageRepo();
+  assert.equal(gateCli(lroot, vault, 'record', 'ws/lessons/0001-x.html', 'FAIL-as-sent').code, 0);
+  const ledger = readFileSync(join(lroot, LEDGER_FILENAME));
+  const before = reviewHashOf(gateCli(lroot, vault, 'evidence', 'ws/lessons/0001-x.html', '--changed').out);
+  assert.ok(before, 'evidence printed a review hash');
+  writeFileSync(png, PNG_B);
+  const img = gateCli(lroot, vault, 'record', 'ws/lessons/0001-x.html', 'PASS', '--expect', before);
+  assert.equal(img.code, 1, img.err);
+  assert.match(img.err, /^[^\n]+\n$/, 'one stderr line');
+  assert.deepEqual(readFileSync(join(lroot, LEDGER_FILENAME)), ledger, 'the ledger bytes are unchanged');
+});
+
+test('gate record --expect with a value that is not 64 hex characters, or with no value, exits 2 and writes no ledger', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  const names = readdirSync(root).sort();
+  for (const tail of [['--expect', 'a'.repeat(63)], ['--expect', 'g'.repeat(64)], ['--expect']]) {
+    const r = gateCli(root, vault, 'record', 'docs/reply.md', 'PASS', ...tail);
+    assert.equal(r.code, 2, `${tail.join(' ')}: ${r.err}`);
+    assert.match(r.err, /^usage: research-vault gate /m);
+    assert.equal(existsSync(join(root, LEDGER_FILENAME)), false, `${tail.join(' ')}: no ledger`);
+    assert.deepEqual(readdirSync(root).sort(), names);
+  }
+});
+
+test('gate record without --expect marks the row manual, and a manual row passes gate status as a hand-written old-style row does', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  const rec = gateCli(root, vault, 'record', 'docs/reply.md', 'MERIT', 'a note');
+  assert.equal(rec.code, 0, rec.err);
+  const [row] = ledgerRows(root);
+  assert.equal(row.manual, true);
+  assert.equal(row.verdict, 'MERIT');
+  assert.equal(gateCli(root, vault, 'status', 'docs/reply.md', '--check').code, 0);
+  const old = boundRepo(vault);
+  const sha256 = createHash('sha256').update(readFileSync(join(old, 'docs', 'reply.md'))).digest('hex');
+  writeFileSync(join(old, LEDGER_FILENAME), JSON.stringify({ ts: '2026-01-01T00:00:00.000Z', event: 'claims', file: 'docs/reply.md', sha256, verdict: 'PASS' }) + '\n');
+  assert.equal(gateCli(old, vault, 'status', 'docs/reply.md', '--check').code, 0, 'a row with neither manual nor a review hash keeps its verdict');
+});
+
+test('gate evidence --json carries reviewHash, the value of the printed review hash line', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  const printed = reviewHashOf(gateCli(root, vault, 'evidence', 'docs/reply.md', '--changed').out);
+  assert.ok(printed, 'evidence printed a review hash');
+  assert.equal(JSON.parse(gateCli(root, vault, 'evidence', 'docs/reply.md', '--changed', '--json').out).reviewHash, printed);
+});
+
+test('the review hash of a lesson changes when only its loaded script changes, and again when only its requirements file does', () => {
+  const vault = fixtureVault();
+  const { root, page, req } = taskRepo(vault);
+  const script = join(root, 'ws', 'assets', 'quiz.js');
+  mkdirSync(dirname(script));
+  writeFileSync(script, 'one\n');
+  const hash = () => {
+    const r = gateCli(root, vault, 'evidence', TASK_PAGE);
+    assert.equal(r.code, 0, r.err);
+    return reviewHashOf(r.out);
+  };
+  const pageBytes = readFileSync(page);
+  const first = hash();
+  writeFileSync(script, 'two\n');
+  const second = hash();
+  editRequirements(req);
+  const third = hash();
+  assert.deepEqual(readFileSync(page), pageBytes, 'the page itself is unchanged');
+  for (const h of [first, second, third]) assert.match(String(h), /^[0-9a-f]{64}$/);
+  assert.notEqual(second, first, 'the script bytes are in the hash');
+  assert.notEqual(third, second, 'the requirements file bytes are in the hash');
+});
+
+test('gate record --expect takes the printed review hash in upper case', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  const hash = reviewHashOf(gateCli(root, vault, 'evidence', 'docs/reply.md').out);
+  assert.ok(hash, 'evidence printed a review hash');
+  assert.notEqual(hash.toUpperCase(), hash);
+  const rec = gateCli(root, vault, 'record', 'docs/reply.md', 'PASS', '--expect', hash.toUpperCase());
+  assert.equal(rec.code, 0, rec.err);
+  const [row] = ledgerRows(root);
+  assert.equal(row.verdict, 'PASS');
+  assert.ok(!('manual' in row), 'a record with --expect is not manual');
+});
+
+test('gate record --expect=<hash>, right or wrong, exits 2 with the usage line and writes no ledger', () => {
+  const vault = fixtureVault();
+  const root = boundRepo(vault);
+  const hash = reviewHashOf(gateCli(root, vault, 'evidence', 'docs/reply.md').out);
+  assert.ok(hash, 'evidence printed a review hash');
+  const names = readdirSync(root).sort();
+  for (const flag of [`--expect=${hash}`, `--expect=${'0'.repeat(64)}`]) {
+    const r = gateCli(root, vault, 'record', 'docs/reply.md', 'MERIT', flag, 'a note');
+    assert.equal(r.code, 2, `${flag}: ${r.out}${r.err}`);
+    assert.equal(r.out, '');
+    assert.match(r.err, /^usage: research-vault gate .* record <file> <PASS\|FAIL-as-sent\|MERIT> \[note\] \[--expect <hash>\] /m);
+    assert.equal(existsSync(join(root, LEDGER_FILENAME)), false, `${flag}: no ledger`);
+    assert.deepEqual(readdirSync(root).sort(), names);
+  }
 });

@@ -7,7 +7,7 @@ import { resolveVault } from '../lib/resolve.mjs';
 import { loadProjectConfig, PROJECT_CONFIG_FILENAME } from '../lib/projectconfig.mjs';
 import { loadSchema } from '../lib/schema.mjs';
 import { csvList } from '../lib/args.mjs';
-import { VERDICTS, recordVerdict, gateStatus, evidenceFor, renderEvidence, changedUnits, codeLang, ledgerKey, ledgerRoot, stagedGates, missingEvidence } from '../lib/gate.mjs';
+import { VERDICTS, draftState, recordVerdict, gateStatus, evidenceFor, renderEvidence, changedUnits, codeLang, ledgerKey, ledgerRoot, stagedGates, missingEvidence } from '../lib/gate.mjs';
 import { readVersions } from '../lib/codelinks.mjs';
 import { buildPacket } from '../lib/packet.mjs';
 
@@ -20,14 +20,17 @@ const label = (s) => {
   const why = [s.reviewerChanged && 'reviewer changed', s.missing && `${s.missing} cited id${s.missing === 1 ? '' : 's'} not in this vault`, ...(s.differs ?? []).map((d) => `${d}: staged and working copies differ`)].filter(Boolean);
   return why.length ? `none (${why.join('; ')})` : 'none';
 };
-const USAGE = `usage: research-vault gate evidence <draft> [--extra ids] [--changed] [--json] [--packet <dir> --run <key>] | changed <draft> | record <file> <${VERDICTS.join('|')}> [note] | status <file> [--check] | staged [--check]`;
+const USAGE = `usage: research-vault gate evidence <draft> [--extra ids] [--changed] [--json] [--packet <dir> --run <key>] | changed <draft> | record <file> <${VERDICTS.join('|')}> [note] [--expect <hash>] | status <file> [--check] | staged [--check]`;
 
 export async function run(args) {
   const cwd = args.cwd ?? process.cwd();
   const [, sub, file, verdict, note] = args._;
   const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
   if (!['evidence', 'changed', 'record', 'status', 'staged'].includes(sub) || (!file && sub !== 'staged')) return usage();
-  if (sub === 'record' && !VERDICTS.includes(verdict)) return usage();
+  // A value-taking flag with no value parses to undefined (args.mjs); --expect is refused unless it is a SHA-256 in hex.
+  // args.mjs reads --expect=<hex> as an unknown key `expect=<hex>` that swallows the next token: refused, never a manual row.
+  if (sub === 'record' && (!VERDICTS.includes(verdict) || ('expect' in args && !/^[0-9a-f]{64}$/i.test(args.expect ?? ''))
+    || Object.keys(args).some((k) => k.startsWith('expect=')))) return usage();
 
   // The pre-commit form: every staged gated file and the verdict for its staged content; --check exits 1 while one has none.
   // A git failure throws (exit 2): a state that could not be inspected is never reported as none.
@@ -62,6 +65,8 @@ export async function run(args) {
 
   if (sub === 'evidence') {
     const extra = csvList(args.extra);
+    // What gate record --expect compares: the hash of what a row would store, taken before the list is derived.
+    const { reviewHash } = draftState(repoRoot, abs);
     const c = codeLang(repoRoot, abs);
     // With --changed, a Markdown draft's list holds only the citations in the changed units (evidenceFor).
     const changed = args.changed ? changedUnits(repoRoot, abs) : null;
@@ -73,6 +78,7 @@ export async function run(args) {
       try { packet = buildPacket(vaultPath, r.entries, resolve(cwd, String(args.packet)), args.run, REPO_ROOT); } catch (err) { process.stderr.write(`gate: ${err.message}\n`); return 1; }
       r.packet = packet;
     }
+    r.reviewHash = reviewHash;
     if (args.json) { process.stdout.write(JSON.stringify(r, null, 2) + '\n'); return 0; }
     let out = renderEvidence(r);
     if (args.changed) {
@@ -81,6 +87,7 @@ export async function run(args) {
       for (const u of r.units ?? []) if (r.changed.includes(u.unit)) out += `unit ${u.unit} ${ledgerKey(repoRoot, abs)}:${u.start}-${u.end} ${u.status}\n`;
     }
     if (packet) out += `packet: ${packet.dir} (${packet.excerpted} of ${packet.entries} entries cut to the lines around this run's quotes; a round on it can fail the draft and cannot pass it)\n`;
+    out += `review hash: ${reviewHash}\n`;
     process.stdout.write(out);
     return 0;
   }
@@ -90,7 +97,12 @@ export async function run(args) {
     return units.length ? 1 : 0;
   }
   if (sub === 'record') {
-    const row = recordVerdict(repoRoot, abs, verdict, note);
+    let row;
+    try { row = recordVerdict(repoRoot, abs, verdict, note, args.expect); } catch (err) {
+      if (err.code !== 'DRAFT_CHANGED') throw err;
+      process.stderr.write(`gate: ${file} or a file beside it changed since gate evidence (review hash ${args.expect.slice(0, 12).toLowerCase()}, now ${err.actual.slice(0, 12)}); nothing recorded\n`);
+      return 1;
+    }
     process.stdout.write(`recorded claims ${verdict} for ${row.file} @ ${row.sha256.slice(0, 12)}\n`);
     return 0;
   }

@@ -290,16 +290,28 @@ export function changedUnits(repoRoot, filePath, opts) {
   return Object.entries(units).filter(([id, h]) => !covered.has(h) && !(id.startsWith('script:') && shipped.has(h))).map(([id]) => id);
 }
 
-export function recordVerdict(repoRoot, filePath, verdict, note) {
-  if (!VERDICTS.includes(verdict)) throw new Error(`verdict must be one of ${VERDICTS.join(', ')}`);
+// What a claims row stores of the draft and the files beside it (its sha256 and its unit hashes, which hold the
+// images, scripts and requirements file), with `reviewHash`, the SHA-256 over exactly those: `gate evidence` prints
+// it and `gate record --expect` compares it, so a row is refused when anything it would store changed since.
+export function draftState(repoRoot, filePath) {
   const content = readFileSync(resolve(repoRoot, filePath));
-  const row = {
-    ts: new Date().toISOString(), event: 'claims', file: ledgerKey(repoRoot, filePath),
-    sha256: contentHash(content), verdict, units: unitHashes(content, codeLang(repoRoot, filePath)?.lang, resolve(repoRoot, filePath)),
-  };
+  const state = { sha256: contentHash(content), units: unitHashes(content, codeLang(repoRoot, filePath)?.lang, resolve(repoRoot, filePath)) };
+  return { ...state, reviewHash: contentHash(JSON.stringify(state)) };
+}
+
+// `expect` is the review hash `gate evidence` printed: a mismatch throws (code DRAFT_CHANGED, `actual` the current
+// hash) and writes nothing. A row recorded without it is marked `manual`; nothing reads the mark for the verdict.
+export function recordVerdict(repoRoot, filePath, verdict, note, expect) {
+  if (!VERDICTS.includes(verdict)) throw new Error(`verdict must be one of ${VERDICTS.join(', ')}`);
+  const { sha256, units, reviewHash } = draftState(repoRoot, filePath);
+  if (expect !== undefined && expect.toLowerCase() !== reviewHash) {
+    throw Object.assign(new Error('draft changed since gate evidence'), { code: 'DRAFT_CHANGED', actual: reviewHash });
+  }
+  const row = { ts: new Date().toISOString(), event: 'claims', file: ledgerKey(repoRoot, filePath), sha256, verdict, units };
   const reviewer = reviewerHash();
   if (reviewer) row.reviewer = reviewer;
   if (note !== undefined) row.note = note;
+  if (expect === undefined) row.manual = true;
   const ledger = join(repoRoot, LEDGER_FILENAME);
   const line = JSON.stringify(row) + '\n';
   assertInsideVault(repoRoot, ledger);

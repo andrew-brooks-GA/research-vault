@@ -85,7 +85,7 @@ test('gate evidence --packet: the command prints the list and the packet line, a
   const p = out();
   const ok = await call({ packet: p, run: RUN });
   assert.equal(ok.code, 0, ok.err);
-  assert.match(ok.out, new RegExp(`^2026-01-01-${BIG} \\[source, active\\]\\n2026-01-02-s \\[synthesis, active\\]\\npacket: .* \\(1 of 2 entries cut .*cannot pass it\\)\\n$`));
+  assert.match(ok.out, new RegExp(`^2026-01-01-${BIG} \\[source, active\\]\\n2026-01-02-s \\[synthesis, active\\]\\npacket: .* \\(1 of 2 entries cut .*cannot pass it\\)\\nreview hash: [0-9a-f]{64}\\n$`));
   assert.ok(existsSync(join(p, 'sources', `2026-01-01-${BIG}.md`)));
 });
 
