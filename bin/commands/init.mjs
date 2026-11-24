@@ -1,5 +1,5 @@
 import { cpSync, mkdirSync, existsSync, realpathSync, writeFileSync } from 'node:fs';
-import { join, dirname, relative } from 'node:path';
+import { join, dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSchema } from '../lib/schema.mjs';
 import { generateAgentsMd } from '../lib/agentsmd.mjs';
@@ -106,7 +106,8 @@ export async function run(args) {
     process.stdout.write(`Refreshed AGENTS.md + taxonomy.json at ${vaultPath} (entries, meta/, .gitignore untouched).\n`);
     return 0;
   }
-  const { path: vaultPath, source } = resolveVault({ flag: args.vault ?? null });
+  const { path: resolvedPath, source } = resolveVault({ flag: args.vault ?? null });
+  const vaultPath = resolve(resolvedPath);
   const r = runInit({ vaultPath, force: !!args.force });
   if (!r.created) { process.stderr.write(r.reason + '\n'); return 1; }
   const home = process.env.HOME || process.env.USERPROFILE;

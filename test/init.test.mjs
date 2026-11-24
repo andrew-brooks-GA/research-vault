@@ -1,9 +1,77 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, existsSync, writeFileSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { runInit, refreshDocs } from '../bin/commands/init.mjs';
+import { configPath } from '../bin/lib/resolve.mjs';
+
+const CLI = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+
+function relativeInit(t, { args = ['--vault', 'research'], env: envOverrides = {}, existingPointer = false } = {}) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'rv-init-relative-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const cwd = join(root, 'a');
+  const home = join(root, 'home');
+  mkdirSync(cwd);
+  mkdirSync(home);
+  const env = testEnv({
+    HOME: home, USERPROFILE: home, APPDATA: home, LOCALAPPDATA: home,
+    XDG_CONFIG_HOME: join(home, 'config'), XDG_DATA_HOME: join(home, 'data'),
+    ...envOverrides,
+  });
+  const pointer = configPath({ platform: process.platform, home, env });
+  assert.equal(existsSync(pointer), false);
+  if (existingPointer) {
+    const other = join(root, 'other');
+    mkdirSync(other);
+    mkdirSync(dirname(pointer), { recursive: true });
+    writeFileSync(pointer, JSON.stringify({ vaultPath: other }));
+  }
+  const init = spawnSync(process.execPath, [CLI, 'init', ...args], {
+    cwd, env: testEnv(env), encoding: 'utf8', timeout: 20000,
+  });
+  assert.equal(init.status, 0, init.stderr);
+  return { root, env, pointer, init, vault: join(realpathSync(cwd), 'research') };
+}
+
+test('init with a relative vault stores and prints an absolute default pointer', (t) => {
+  const { pointer, init, vault } = relativeInit(t);
+  assert.deepEqual(JSON.parse(readFileSync(pointer, 'utf8')), { vaultPath: vault });
+  assert.ok(existsSync(join(vault, 'AGENTS.md')));
+  assert.ok(init.stdout.includes(`Initialized vault at ${vault} (`));
+  assert.ok(init.stdout.includes(`"${vault}"`));
+  assert.doesNotMatch(init.stdout, /^.*"research".*$/m);
+});
+
+test('a default initialized with a relative vault resolves from another working directory', (t) => {
+  const { root, env, vault } = relativeInit(t);
+  const cwd = join(root, 'b');
+  mkdirSync(cwd);
+  const before = readdirSync(cwd);
+  const paths = spawnSync(process.execPath, [CLI, 'host', 'paths'], {
+    cwd, env: testEnv(env), encoding: 'utf8', timeout: 20000,
+  });
+  assert.equal(paths.status, 0, paths.stderr);
+  assert.deepEqual(readdirSync(cwd), before);
+  assert.equal(JSON.parse(paths.stdout).vault, vault);
+});
+
+test('init with a relative environment vault stores an absolute default pointer', (t) => {
+  const { pointer, vault } = relativeInit(t, {
+    args: [], env: { RESEARCH_VAULT_PATH: 'research' },
+  });
+  assert.deepEqual(JSON.parse(readFileSync(pointer, 'utf8')), { vaultPath: vault });
+});
+
+test('init with a relative vault and --set-default replaces an existing pointer with an absolute path', (t) => {
+  const { pointer, vault } = relativeInit(t, {
+    args: ['--vault', 'research', '--set-default'], existingPointer: true,
+  });
+  assert.deepEqual(JSON.parse(readFileSync(pointer, 'utf8')), { vaultPath: vault });
+});
 
 test('init scaffolds vault, generates AGENTS.md, is idempotent', () => {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'vault');
@@ -60,7 +128,7 @@ test('refreshDocs refuses a non-vault target', () => {
 // not know survives refreshDocs and lint --check byte for byte, and lint stays clean.
 import { createHash } from 'node:crypto';
 import { readdirSync } from 'node:fs';
-import { put } from './helpers.mjs';
+import { put, testEnv } from './helpers.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
 import { ENTRY_FOLDERS } from '../bin/lib/fsutil.mjs';
 
