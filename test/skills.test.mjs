@@ -139,6 +139,23 @@ test('the claims-gate skill holds the packet rules and the rule for edits after 
   assert.ok(read('skills/research-orchestrate/SKILL.md').includes('--run ${args.runKey}'), 'the Write step puts the run key in its quote rows');
 });
 
+// R-17: a compaction re-attaches only the first part of a skill (about 14,500 bytes of these files), so the
+// gate rules sit in a block that ends well before that. Offsets are bytes, not characters.
+test('the gate rules of research-teach and research-orchestrate sit in an Invariants block within the first 12,000 bytes', () => {
+  for (const [skill, names] of [
+    ['research-teach', ['teach lint', 'lesson-reader', 'research-claims-gate', 'MERIT']],
+    ['research-orchestrate', ['research-claims-gate', 'Close out', 'MERIT', 'Write step']],
+  ]) {
+    const bytes = readFileSync(join(ROOT, `skills/${skill}/SKILL.md`));
+    const start = bytes.indexOf('\n## Invariants\n');
+    assert.ok(start >= 0, `${skill} has no ## Invariants heading`);
+    const end = bytes.indexOf('\n## ', start + 1);
+    assert.ok(end > start && end < 12000, `${skill}: the Invariants block ends at byte ${end}`);
+    const block = bytes.subarray(start, end).toString('utf8');
+    for (const n of names) assert.ok(block.includes(n), `${skill}: the Invariants block lacks ${n}`);
+  }
+});
+
 // Pull request 71 shipped a reference script the Workflow tool cannot take; this is the smallest check that fails on it.
 test('the orchestrate skill\'s reference script is a Workflow script', () => {
   const skill = read('skills/research-orchestrate/SKILL.md');

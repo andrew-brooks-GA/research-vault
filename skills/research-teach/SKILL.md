@@ -7,6 +7,19 @@ argument-hint: "[what would you like to learn, or the passage you are stuck on]"
 
 The pedagogy here is adapted from Matt Pocock's `teach` skill (mattpocock/skills, MIT). What this skill adds is a system of record: facts live in the vault with a review date, and nothing reaches the learner that the recorded evidence does not support. A lesson that is wrong gets memorised, because lessons are built for retention, so the truth check is not optional.
 
+## Invariants
+
+Keep these after a compaction; the section named holds the detail.
+
+- Nothing reaches the learner before three gates, in this order: `teach lint` prints `lint: clean`, a fresh `research-vault:lesson-reader` returns `VERDICT: READS` (or, after a third `REVISE` round whose findings do not name scope, its findings are applied and that round is recorded as the decision in `GATE-LOG.md`; findings that name scope split the lesson), and the `research-claims-gate` skill records `PASS` or `MERIT`. Open the lesson only then (§5).
+- Dispatch the reader with a prompt that is exactly the lesson's absolute path and nothing else. On `REVISE`, fix the lesson, run `teach lint`, and dispatch a fresh reader (§5).
+- Reference docs and the workspace `README.md` go through the same lint and gates. After any revision, lint and gate again (§5).
+- Knowledge comes from the vault or the probe, never memory: search the vault before the web, and capture a page as a `source` before anything from it is taught or cited (§3).
+- Write `evidence/NNNN/PLAN.md` before the probe. Never edit a claim line; append a `## Revisions` section (§3).
+- Every behaviour claim is probed and kept as evidence: a program claim is run and the run captured as a `snippet` and an `experiment`, then `verify --method tool-probe`; a document claim cites its captured `source` and `note`. A run that exists only on disk is not evidence (§3).
+- The learner's records are written through the CLI: `teach record add`, and `teach record supersede` for a record that turns out wrong, never an edit. Attempts are written by `teach serve`, `teach check`, `teach attempt add` or `teach attempt import`, never edited (§1, §6).
+- Record each reader verdict in `GATE-LOG.md` under the lesson's heading; the file is append-only (§1, §5).
+
 ## 0. Resolve paths once
 
 - CLI: `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs"`. Resolve `${CLAUDE_PLUGIN_ROOT}` to an absolute path now; it was unset in the controller's Bash and in the Bash of the one general-purpose subagent probed on 2026-11-03.

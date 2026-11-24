@@ -7,6 +7,19 @@ description: Use when entering a fresh research task — a question that needs n
 
 The reference implementation of `docs/ORCHESTRATOR-INTEGRATION.md`. Durable conclusions land as atomic vault entries — sources, notes, questions, snippets, experiments, synthesis — never as a monolithic report. Reports are views; the vault is the system of record.
 
+## Invariants
+
+Keep these after a compaction; the section named holds the detail.
+
+- Check the vault first: search it before any web research, and when fresh entries cover the question and no covering `source` is unverified, answer from the vault and stop (§1).
+- Append `--vault <absolute vault>` to every CLI call, including reads (§0).
+- The Recon and Research workers write no entry; only the Write step writes to the vault, one command at a time. Run no two captures at once on one vault (§0, §2).
+- Run `capture --fill` only if the user agreed to store page text (§1, §2, §3).
+- A returned id is not evidence that anything was captured: confirm each id is a file in the vault, then run `lint` with the explicit vault: clean, or explain every warning (§4, Close out).
+- Run the `research-claims-gate` skill on the synthesis entry file before you present it to the user (§4, Close out).
+- Close a question with `verify --id <question> --answered-by <synthesis id>` only after the gate records `PASS` or `MERIT`; if the gate does not pass, show its verdict and leave the questions open (§4, Close out).
+- Offline or fetch-blocked, do not fabricate: answer from the vault and record what could not be verified as open `question` entries (§4, Close out).
+
 ## 0. Resolve paths once
 <!-- evidence: 2026-11-17-cli-lines-behind-research-orchestrate-skill 2026-11-17-document-lines-research-orchestrate-skill-names 2026-11-17-probe-cli-behaviour-research-orchestrate-skill 2026-11-17-third-lines-behind-research-orchestrate-skill -->
 
