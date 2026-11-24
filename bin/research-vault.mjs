@@ -1,6 +1,8 @@
 #!/usr/bin/env node
+// R-18: the Node version check runs first; every other import of the plugin's code is dynamic, after it.
+import './lib/node-floor.mjs';
 import { readFileSync, existsSync } from 'node:fs';
-import { parseArgs } from './lib/args.mjs';
+const { parseArgs } = await import('./lib/args.mjs');
 
 const USAGE = `research-vault <command> [options]
 commands: init|lint|capture|verify|search|related|manifest|compile|advise|obsidian|refresh|export|check|gate|teach|embed|host|trust`;

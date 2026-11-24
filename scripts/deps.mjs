@@ -493,6 +493,7 @@ export const COUPLINGS = [
   ['bin/lib/teach.mjs', 'skills/research-teach/terminal/terminal.mjs', 'INPUT_MAX, the body size the input queue splits at, is TERM_BODY_MAX', '65536'],
   ['bin/lib/teach.mjs', 'skills/research-teach/terminal/terminal.mjs', 'the script opens the terminal in the .term-screen element and finds the frame of the page termPage builds', 'term-screen'],
   ['bin/lib/terminal.mjs', 'docs/REFERENCE.md', "the teach serve section states the shell's environment, KEPT_MAX, UNSENT_MAX and the SIGHUP and SIGKILL to the helper's group", 'xterm-256color'],
+  ['bin/lib/node-floor.mjs', 'test/smoke.test.mjs', 'the old-Node refusal line', 'or newer is required'],
 ];
 
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

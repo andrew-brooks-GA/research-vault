@@ -58,6 +58,12 @@ versions: sdk=0.21.0
 
 ## Install
 
+You need:
+
+- Node 24 or newer, and git.
+- For the plugin route, Claude Code (tested with 2.1.331).
+- Per feature: `python3` with its `pty` module for `teach serve --terminal`, which also runs your `$SHELL` (`/bin/bash` when it is unset); the `codex` CLI for `host review codex`; for a teach lab or checked task, the interpreter named on its script's `#!` line.
+
 The Claude commands below are an installation recipe; authenticated Claude acceptance has not been run for this update.
 
 In Claude Code:
