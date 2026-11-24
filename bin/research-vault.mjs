@@ -2,14 +2,16 @@
 // R-18: the Node version check runs first; every other import of the plugin's code is dynamic, after it.
 import './lib/node-floor.mjs';
 import { readFileSync, existsSync } from 'node:fs';
-const { parseArgs } = await import('./lib/args.mjs');
+const { parseArgs, commandAt, wantsHelp } = await import('./lib/args.mjs');
 
 const USAGE = `research-vault <command> [options]
 commands: init|lint|capture|verify|search|related|manifest|compile|advise|obsidian|refresh|export|check|gate|teach|embed|host|trust`;
 
-const args = parseArgs(process.argv.slice(2));
-const cmd = args._[0];
-if (!cmd || cmd === '--help' || cmd === '-h') { process.stdout.write(USAGE + '\n'); process.exit(0); }
+// R-23: flags may come before the command; the command is the first word no flag takes as its value.
+const argv = process.argv.slice(2);
+const at = commandAt(argv);
+const cmd = argv[at];
+if (!cmd || cmd === '-h') { process.stdout.write(USAGE + '\n'); process.exit(0); }
 
 const commands = {
   trust: () => import('./commands/trust.mjs'),
@@ -32,9 +34,12 @@ const commands = {
   embed: () => import('./commands/embed.mjs'),
 };
 if (!commands[cmd]) { process.stderr.write(`unknown command: ${cmd}\n${USAGE}\n`); process.exit(1); }
+// R-23: an unknown option, or an option with no value, exits 2 before the command runs, unless it asks for help.
+let args;
+try { args = parseArgs(argv, at); } catch (err) { process.stderr.write(`research-vault ${cmd}: ${err.message}\n`); process.exit(2); }
 // Issue 72 item 9: --help or -h after a command prints that command's row of the docs/REFERENCE.md command table,
 // without its evidence comment, and runs nothing.
-if ('help' in args || args._.slice(1).includes('-h')) {
+if (wantsHelp(args)) {
   const doc = new URL('../docs/REFERENCE.md', import.meta.url);
   const head = `| \`${cmd}\` | `;
   const row = existsSync(doc) && readFileSync(doc, 'utf8').split('\n').find(l => l.startsWith(head));

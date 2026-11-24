@@ -10,9 +10,9 @@ export async function run(args) {
     writeManifest(vaultPath, m);
     process.stdout.write(`manifest: ${m.entries.length} entries\n`);
   }
-  // `--topics` takes no value (`topics` cannot be a BOOL flag: capture --topics takes a list), so the
-  // key is present and args.topics is undefined. The vocabulary search sees by default: no superseded.
-  if ('topics' in args && args.topics === undefined) {
+  // `--topics` takes no value here (a boolean in manifest's table, args.mjs; capture --topics takes a list).
+  // The vocabulary search sees by default: no superseded.
+  if (args.topics === true) {
     const counts = new Map();
     for (const e of m.entries) if (e.status !== 'superseded') for (const t of e.topics) counts.set(t, (counts.get(t) ?? 0) + 1);
     process.stdout.write([...counts].sort(([a], [b]) => a.localeCompare(b)).map(([t, n]) => `${t} ${n}\n`).join(''));

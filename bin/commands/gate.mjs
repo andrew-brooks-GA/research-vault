@@ -27,10 +27,8 @@ export async function run(args) {
   const [, sub, file, verdict, note] = args._;
   const usage = () => { process.stderr.write(USAGE + '\n'); return 2; };
   if (!['evidence', 'changed', 'record', 'status', 'staged'].includes(sub) || (!file && sub !== 'staged')) return usage();
-  // A value-taking flag with no value parses to undefined (args.mjs); --expect is refused unless it is a SHA-256 in hex.
-  // args.mjs reads --expect=<hex> as an unknown key `expect=<hex>` that swallows the next token: refused, never a manual row.
-  if (sub === 'record' && (!VERDICTS.includes(verdict) || ('expect' in args && !/^[0-9a-f]{64}$/i.test(args.expect ?? ''))
-    || Object.keys(args).some((k) => k.startsWith('expect=')))) return usage();
+  // --expect (or --expect=<hash>) is refused unless it is a SHA-256 in hex.
+  if (sub === 'record' && (!VERDICTS.includes(verdict) || ('expect' in args && !/^[0-9a-f]{64}$/i.test(args.expect ?? '')))) return usage();
 
   // The pre-commit form: every staged gated file and the verdict for its staged content; --check exits 1 while one has none.
   // A git failure throws (exit 2): a state that could not be inspected is never reported as none.

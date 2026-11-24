@@ -172,7 +172,7 @@ Two facet tiers keep retrieval clean as a vault grows: **`domain`** is a small c
 
 ## Commands
 
-Run as `node bin/research-vault.mjs <command>` from a clone, or `research-vault <command>` if you've put it on your PATH. Every command takes `--vault <path>`. For example:
+Run as `node bin/research-vault.mjs <command>` from a clone, or `research-vault <command>` if you've put it on your PATH. Every command takes `--vault <path>`. Each command checks its flags before it runs: an unknown option, an option that takes a value given none (at the end, or followed by another `--` option) and a value given to an option that takes none exit 2 with one line on stderr, `research-vault <command>: unknown option --<name>`, `research-vault <command>: option --<name> needs a value` or `research-vault <command>: option --<name> takes no value`; with `--help`, or `-h` where it is not an option's value, the command prints its help and exits 0 instead. A value may follow its option or be joined to it with `=` (`--vault=<path>`), a value that starts with `--` must be joined so, and `--` ends the options. For example:
 
 ```text
 research-vault capture --type source --title "vcluster sleep mode" \
@@ -240,7 +240,7 @@ The `teach` verbs, one heading each. The workspace is the positional path, which
 
 <!-- evidence: 2026-11-12-brand-lint-export-serve-cast-evidence 2026-11-12-issue-65-replay-prototype-runs 2026-11-12-lines-behind-issue-65-replay-prototype 2026-11-12-lines-behind-task-14-follow-ups -->
 
-`teach cast check <file> [--needle <value>]...` (scans an asciicast v2 or v3 file: its `o` and `i` events joined in order with CSI and OSC escape sequences removed, and each string value of its header, for each `--needle` value and each token shape of `TOKEN_SHAPES` in `bin/lib/cast.mjs` (LESSON-FORMAT.md, Replays, lists them); exit 0 with `cast: clean`; exit 1 with one line per kind found in the events and one per kind found in the header, `secret <file>: <kind> at event <n>` (`n` counts the events from 0, the one where the match starts) or `at the header`, the kind of the nth `--needle` being `needle <n>`, so a line never holds the value; exit 2 with usage when a `--needle` has no value, or with `teach cast: <file>: not an asciicast v2 or v3 file` or `cannot read (<code>)`).
+`teach cast check <file> [--needle <value>]...` (scans an asciicast v2 or v3 file: its `o` and `i` events joined in order with CSI and OSC escape sequences removed, and each string value of its header, for each `--needle` value and each token shape of `TOKEN_SHAPES` in `bin/lib/cast.mjs` (LESSON-FORMAT.md, Replays, lists them); exit 0 with `cast: clean`; exit 1 with one line per kind found in the events and one per kind found in the header, `secret <file>: <kind> at event <n>` (`n` counts the events from 0, the one where the match starts) or `at the header`, the kind of the nth `--needle` being `needle <n>`, so a line never holds the value; exit 2 with usage when a `--needle` value is empty, or with `teach cast: <file>: not an asciicast v2 or v3 file` or `cannot read (<code>)`).
 
 ### teach cast transcript
 

@@ -1378,7 +1378,8 @@ test('gate record --expect with a value that is not 64 hex characters, or with n
   for (const tail of [['--expect', 'a'.repeat(63)], ['--expect', 'g'.repeat(64)], ['--expect']]) {
     const r = gateCli(root, vault, 'record', 'docs/reply.md', 'PASS', ...tail);
     assert.equal(r.code, 2, `${tail.join(' ')}: ${r.err}`);
-    assert.match(r.err, /^usage: research-vault gate /m);
+    // R-23: --expect with no value is refused by the parser before gate runs.
+    assert.match(r.err, tail.length === 1 ? /^research-vault gate: option --expect needs a value$/m : /^usage: research-vault gate /m);
     assert.equal(existsSync(join(root, LEDGER_FILENAME)), false, `${tail.join(' ')}: no ledger`);
     assert.deepEqual(readdirSync(root).sort(), names);
   }
@@ -1443,18 +1444,22 @@ test('gate record --expect takes the printed review hash in upper case', () => {
   assert.ok(!('manual' in row), 'a record with --expect is not manual');
 });
 
-test('gate record --expect=<hash>, right or wrong, exits 2 with the usage line and writes no ledger', () => {
+// R-23 (D5): --expect=<hash> is the space form: a wrong hash is refused with exit 1 and no ledger, the right one records.
+test('gate record --expect=<hash> refuses a wrong hash with exit 1 and no ledger, and records with the right one', () => {
   const vault = fixtureVault();
   const root = boundRepo(vault);
   const hash = reviewHashOf(gateCli(root, vault, 'evidence', 'docs/reply.md').out);
   assert.ok(hash, 'evidence printed a review hash');
   const names = readdirSync(root).sort();
-  for (const flag of [`--expect=${hash}`, `--expect=${'0'.repeat(64)}`]) {
-    const r = gateCli(root, vault, 'record', 'docs/reply.md', 'MERIT', flag, 'a note');
-    assert.equal(r.code, 2, `${flag}: ${r.out}${r.err}`);
-    assert.equal(r.out, '');
-    assert.match(r.err, /^usage: research-vault gate .* record <file> <PASS\|FAIL-as-sent\|MERIT> \[note\] \[--expect <hash>\] /m);
-    assert.equal(existsSync(join(root, LEDGER_FILENAME)), false, `${flag}: no ledger`);
-    assert.deepEqual(readdirSync(root).sort(), names);
-  }
+  const wrong = gateCli(root, vault, 'record', 'docs/reply.md', 'MERIT', `--expect=${'0'.repeat(64)}`, 'a note');
+  assert.equal(wrong.code, 1, `${wrong.out}${wrong.err}`);
+  assert.equal(wrong.out, '');
+  assert.match(wrong.err, /^[^\n]+\n$/, 'one stderr line');
+  assert.equal(existsSync(join(root, LEDGER_FILENAME)), false, 'no ledger');
+  assert.deepEqual(readdirSync(root).sort(), names);
+  const right = gateCli(root, vault, 'record', 'docs/reply.md', 'MERIT', `--expect=${hash}`, 'a note');
+  assert.equal(right.code, 0, right.err);
+  const [row] = ledgerRows(root);
+  assert.equal(row.verdict, 'MERIT');
+  assert.ok(!('manual' in row), 'a record with --expect= is not manual');
 });

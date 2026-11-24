@@ -51,7 +51,7 @@ test('lint --fix --topics rewrites aliased topics through built-in and vault pai
   assert.equal(topicsOf(f), 'topics: [kubernetes, test-driven-development]');
   const { dir: dir2, f: f2 } = aliasVault();
   const so = process.stdout.write; process.stdout.write = () => true;
-  try { await run({ _: ['lint'], vault: dir2, fix: true, topics: undefined }); } finally { process.stdout.write = so; }
+  try { await run({ _: ['lint'], vault: dir2, fix: true, topics: true }); } finally { process.stdout.write = so; }
   assert.equal(topicsOf(f2), 'topics: [kubernetes, test-driven-development]', 'through run with a value-less --topics');
 });
 

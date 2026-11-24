@@ -26,6 +26,13 @@ const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.m
 // text itself, and the test fails when either file stops containing it. Give one only when the
 // literal really is in both files; a row about two values being equal stays prose.
 export const COUPLINGS = [
+  ['bin/lib/args.mjs', 'docs/REFERENCE.md', 'the strict-option error lines', 'unknown option --'],
+  ['bin/lib/args.mjs', 'docs/REFERENCE.md', 'the strict-option error lines', 'needs a value'],
+  ['bin/lib/args.mjs', 'docs/REFERENCE.md', 'the strict-option error lines', 'takes no value'],
+  ['bin/lib/args.mjs', 'test/args.test.mjs', 'the strict-option error lines', 'unknown option --'],
+  ['bin/lib/args.mjs', 'test/args.test.mjs', 'the strict-option error lines', 'needs a value'],
+  ['bin/lib/args.mjs', 'test/args.test.mjs', 'the strict-option error lines', 'takes no value'],
+  ['bin/lib/args.mjs', 'test/gate.test.mjs', 'the strict-option error lines', 'needs a value'],
   ['bin/lib/gate.mjs', 'skills/research-claims-gate/SKILL.md', 'residual and loaded-script unit names and review scope', 'script:'],
   ['bin/lib/gate.mjs', 'docs/REFERENCE.md', 'residual, repeated-block and loaded-script unit contract', '`rest`'],
   ['bin/lib/lesson.mjs', 'skills/research-teach/LESSON-FORMAT.md', 'repeated block lint code for lessons and reference pages', 'LESSON_BLOCK_REPEATED'],
