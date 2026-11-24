@@ -1,5 +1,5 @@
 import { cpSync, mkdirSync, existsSync, realpathSync, writeFileSync } from 'node:fs';
-import { join, dirname, relative, resolve } from 'node:path';
+import { join, dirname, relative, resolve, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSchema } from '../lib/schema.mjs';
 import { generateAgentsMd } from '../lib/agentsmd.mjs';
@@ -10,7 +10,7 @@ import { compileVault } from './compile.mjs';
 import { scaffoldProjectConfig } from '../lib/projectconfig.mjs';
 import { acknowledgeBinding } from '../lib/trust.mjs';
 import { csvList } from '../lib/args.mjs';
-import { assertInsideVault, VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
+import { assertInsideVault, compareVaultLocations, VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -60,7 +60,7 @@ export function refreshDocs({ vaultPath, repoRoot = REPO_ROOT }) {
   return { refreshed: true, vaultPath };
 }
 
-function profileHint(platform, vaultPath) {
+export function profileHint(platform, vaultPath) {
   if (platform === 'win32') return `Set vault path (PowerShell):\n  [Environment]::SetEnvironmentVariable("RESEARCH_VAULT_PATH","${vaultPath}","User")`;
   return `Add to your shell profile:\n  export RESEARCH_VAULT_PATH="${vaultPath}"`;
 }
@@ -122,6 +122,14 @@ export async function run(args) {
   } else {
     process.stdout.write(`Initialized vault at ${vaultPath} (resolved via ${source}). Default pointer unchanged (use --set-default to repoint).\n`);
   }
-  process.stdout.write(profileHint(process.platform, vaultPath) + '\n');
+  const envVault = process.env.RESEARCH_VAULT_PATH;
+  const later = resolveVault({ home, readProjectConfig: () => null });
+  const relativeEnvVault = !!envVault && !isAbsolute(envVault);
+  if (envVault && (relativeEnvVault || compareVaultLocations(envVault, vaultPath) !== true)) {
+    process.stdout.write(`RESEARCH_VAULT_PATH is set to "${envVault}" and takes precedence over the default pointer; commands will use that folder until the variable is changed or unset.\n`);
+  }
+  if (relativeEnvVault || !isAbsolute(later.path) || compareVaultLocations(later.path, vaultPath) !== true) {
+    process.stdout.write(profileHint(process.platform, vaultPath) + '\n');
+  }
   return 0;
 }

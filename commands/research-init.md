@@ -1,8 +1,8 @@
 ---
-description: Scaffold a research vault at the discovered location and print the env-var setup line.
+description: Scaffold a research vault at the discovered location and show setup guidance when needed.
 disable-model-invocation: true
 ---
-Run `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" init` and relay its output. Then tell the user the printed `RESEARCH_VAULT_PATH` profile line so future sessions resolve the vault.
+Run `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" init` and relay its output. `init` prints a `RESEARCH_VAULT_PATH` line only when the vault would not be found without it; when printed, tell the user that line.
 
 ## Bind a repo to a vault (`--project`)
 
