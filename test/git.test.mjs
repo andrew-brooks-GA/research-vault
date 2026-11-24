@@ -185,11 +185,12 @@ test('Git invocation puts fixed overrides first and passes the environment and p
   assert.deepEqual(options.stdio, ['ignore', 'pipe', 'ignore']);
 
   const processCwd = 'a separate launch directory';
-  const untimed = gitInvocation(command, { cwd, processCwd, timeout: 0, stderr: 'inherit' });
+  const untimed = gitInvocation(command, { cwd, processCwd, timeout: 0, stderr: 'inherit', encoding: 'buffer' });
   assert.deepEqual(untimed.args, [...overrides, '-C', cwd, ...command]);
   assert.equal(untimed.options.cwd, processCwd);
   assert.equal(untimed.options.timeout, 0);
   assert.deepEqual(untimed.options.stdio, ['ignore', 'pipe', 'inherit']);
+  assert.equal(untimed.options.encoding, 'buffer');
 });
 
 test('Git overrides the repository hooks directory', (t) => {

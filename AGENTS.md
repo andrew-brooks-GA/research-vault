@@ -8,7 +8,7 @@ This repo is the research-vault plugin: a zero-dependency Node CLI (`bin/`, `eng
 - `npm run lint:self`: the vault template lints clean.
 - `node scripts/check-agentsmd-drift.mjs`: the generated vault AGENTS.md matches `schema/AGENTS.golden.md`.
 - `node scripts/check-encoding.mjs`: no BOM, CR byte or double-encoded mojibake sequence in any tracked file that is not binary.
-- `node bin/research-vault.mjs gate staged --check`: gates files covered by the nearest `.research-vault.json` binding (see `docs/REFERENCE.md`, Gate); staged gated files need a `PASS` or `MERIT` claims verdict for their current content from `research-claims-gate`. The binding is git-ignored, so a fresh clone has none: without one, the command gates nothing and passes. CI does not run this check. `git config core.hooksPath .githooks` enables it before commits. See [binding setup](docs/ADOPTING.md#1-put-a-vault-inside-the-repo).
+- `node bin/research-vault.mjs gate staged --check`: gates files covered by the nearest `.research-vault.json` binding (see `docs/REFERENCE.md`, Gate); staged gated files need a `PASS` or `MERIT` claims verdict for their staged content from `research-claims-gate`. The binding is git-ignored, so a fresh clone has none: without one, the command gates nothing and passes. CI does not run this check. `git config core.hooksPath .githooks` enables it before commits. See [binding setup](docs/ADOPTING.md#1-put-a-vault-inside-the-repo).
 
 ## New tests
 

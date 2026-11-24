@@ -13,10 +13,11 @@ import { buildPacket } from '../lib/packet.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // `none (reviewer changed)`: the file's passing rows were given by another version of the reviewer.
-// Issue 72 item 12: a file with no verdict names each cause the gate can see: another reviewer, or cited ids this vault lacks.
+// Issue 72 item 12: a file with no verdict names each cause the gate can see: another reviewer, cited ids this vault lacks,
+// or (gate staged) a file beside it whose staged and working copies differ.
 const label = (s) => {
   if (s.verdict) return s.verdict;
-  const why = [s.reviewerChanged && 'reviewer changed', s.missing && `${s.missing} cited id${s.missing === 1 ? '' : 's'} not in this vault`].filter(Boolean);
+  const why = [s.reviewerChanged && 'reviewer changed', s.missing && `${s.missing} cited id${s.missing === 1 ? '' : 's'} not in this vault`, ...(s.differs ?? []).map((d) => `${d}: staged and working copies differ`)].filter(Boolean);
   return why.length ? `none (${why.join('; ')})` : 'none';
 };
 const USAGE = `usage: research-vault gate evidence <draft> [--extra ids] [--changed] [--json] [--packet <dir> --run <key>] | changed <draft> | record <file> <${VERDICTS.join('|')}> [note] | status <file> [--check] | staged [--check]`;
@@ -28,7 +29,8 @@ export async function run(args) {
   if (!['evidence', 'changed', 'record', 'status', 'staged'].includes(sub) || (!file && sub !== 'staged')) return usage();
   if (sub === 'record' && !VERDICTS.includes(verdict)) return usage();
 
-  // The pre-commit form: every staged gated file and its verdict; --check exits 1 while one has none.
+  // The pre-commit form: every staged gated file and the verdict for its staged content; --check exits 1 while one has none.
+  // A git failure throws (exit 2): a state that could not be inspected is never reported as none.
   if (sub === 'staged') {
     const hit = loadProjectConfig(cwd, { schema: loadSchema(REPO_ROOT) });
     if (!hit) {

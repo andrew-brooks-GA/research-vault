@@ -3,8 +3,8 @@
 // from what it cites, and finds the files the gate covers. A code file the binding's
 // code.globs name is keyed by linked symbol (spec 15); everything else as before.
 import { createHash } from 'node:crypto';
-import { readFileSync, appendFileSync, existsSync, readdirSync } from 'node:fs';
-import { join, resolve, relative, dirname, extname, basename } from 'node:path';
+import { readFileSync, appendFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { join, resolve, relative, dirname, extname, basename, isAbsolute, matchesGlob, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractCitations } from './citations.mjs';
 import { buildManifest } from './manifest.mjs';
@@ -235,12 +235,26 @@ export function referencedImages(page) {
 
 // Issue 79 D9: a lesson page's evidence/NNNN/requirements.json as an absolute path when the file exists, else null.
 export function taskFile(page) {
+  const file = taskPath(page);
+  return file && existsSync(file) ? file : null;
+}
+
+// The requirements file path a lesson page's step unit reads, present or not; null for a page that has none.
+function taskPath(page) {
   const abs = resolve(page);
   const nnnn = /^(\d{4})-.*\.html$/.exec(basename(abs))?.[1];
   if (!nnnn || basename(dirname(abs)) !== 'lessons') return null;
   const ws = workspaceOf(abs);
   const file = join(ws, 'evidence', nnnn, 'requirements.json');
-  return isInsideVault(ws, file) && existsSync(file) ? file : null;
+  return isInsideVault(ws, file) ? file : null;
+}
+
+// The files beside a page whose bytes or absence its verdict reads, present or not: the images under the folders
+// imageTarget serves, the local scripts, and the requirements file. None for a page with no data-block (unitHashes).
+function pageDeps(html, page) {
+  if (!pageBlocks(html, page).size) return [];
+  const images = imageRefs(html, page, { bytes: false }).filter((i) => IMAGE_EXTS.has(extname(i.path).toLowerCase()) && ['lessons', 'reference', 'assets'].includes(i.path.split('/')[0]));
+  return [...images, ...imageRefs(html, page, { bytes: false, scripts: true })].map((r) => r.file).concat(taskPath(page) ?? []);
 }
 
 // The binding of this repo root and the language of a code.globs file under it, else null. A
@@ -261,17 +275,18 @@ function ledgerRows(repoRoot) {
 }
 
 // Units of the draft's current content that no PASS or MERIT row for this file has covered,
-// by unit id: the reviewer's worklist after an edit.
+// by unit id: the reviewer's worklist after an edit. `opts.content` (bytes) stands in for the file on disk.
 export function changedUnits(repoRoot, filePath, opts) {
   const file = ledgerKey(repoRoot, filePath);
-  const units = unitHashes(readFileSync(resolve(repoRoot, filePath)), codeLang(repoRoot, filePath, opts)?.lang, resolve(repoRoot, filePath));
+  const content = opts?.content ?? readFileSync(resolve(repoRoot, filePath));
+  const units = unitHashes(content, codeLang(repoRoot, filePath, opts)?.lang, resolve(repoRoot, filePath));
   const covered = new Set();
   const reviewer = reviewerHash();
   for (const r of ledgerRows(repoRoot)) {
     if (!counts(r, file, reviewer)) continue;
     for (const h of Object.values(r.units ?? {})) covered.add(h);
   }
-  const shipped = new Set(imageRefs(readFileSync(resolve(repoRoot, filePath), 'utf8'), resolve(repoRoot, filePath), { scripts: true }).filter((s) => s.shipped).map(scriptHash));
+  const shipped = new Set(imageRefs(content.toString('utf8'), resolve(repoRoot, filePath), { scripts: true }).filter((s) => s.shipped).map(scriptHash));
   return Object.entries(units).filter(([id, h]) => !covered.has(h) && !(id.startsWith('script:') && shipped.has(h))).map(([id]) => id);
 }
 
@@ -292,13 +307,15 @@ export function recordVerdict(repoRoot, filePath, verdict, note) {
   return row;
 }
 
+// `opts.content` (bytes) is judged in place of the file on disk; files beside it are read from disk.
 export function gateStatus(repoRoot, filePath, opts) {
   const file = ledgerKey(repoRoot, filePath);
-  const sha256 = contentHash(readFileSync(resolve(repoRoot, filePath)));
+  const content = opts?.content ?? readFileSync(resolve(repoRoot, filePath));
+  const sha256 = contentHash(content);
   const rows = ledgerRows(repoRoot);
   const reviewer = reviewerHash();
   const hit = rows.findLast((r) => counts(r, file, reviewer) && r.sha256 === sha256);
-  const pending = changedUnits(repoRoot, filePath, opts);
+  const pending = changedUnits(repoRoot, filePath, { ...opts, content });
   // The page's exact bytes were passed, unless a referenced image, script or requirements file (taskFile) has changed
   // since. Only step keeps the legacy exception for rows without its hash.
   if (hit && !pending.some((u) => u.startsWith('img:') || u.startsWith('script:') || (u === 'step' && hit.units?.step))) return { file, sha256, verdict: hit.verdict, ts: hit.ts, units: [] };
@@ -424,37 +441,75 @@ export function findWorkspaces(repoRoot, vaultPath) {
   return out;
 }
 
-// Workspace lessons, reference docs and README.md, gates.globs, and every code.globs file with an attached link.
-// Staged files that are gated, each with the verdict for its current content. Empty outside git.
+// Staged files that are gated, chosen by gateRule from their paths and index content (a clean one on disk only when it
+// is a regular file after any link is followed, as expandFiles finds it), each with the verdict for its
+// staged content by gateStatus's rule. A file git reports clean is judged by its working copy, the bytes gate record
+// hashed; one whose working copy differs or is gone, by the index blob as a checkout would write it (cat-file
+// --filters), so a changed file under a line-ending, ident or filter rule is judged in that checkout form. A gated
+// page not staged is judged when its content, read the same way, references a staged image, script or requirements
+// file (pageDeps, present or not). A page whose images, scripts or requirements file differ between the index and
+// the working tree, an untracked one included, has no verdict and names them in `differs`; otherwise those files are
+// read from disk. Throws when git cannot be inspected or a staged blob cannot be read.
 // The index is the one git finds from cwd, so a worktree that inherits the binding above it is
-// judged by its own index and the binding's globs expanded at its own top; the ledger key stays
+// judged by its own index and the binding's globs matched at its own top; the ledger key stays
 // relative to the bound root, as `gate record` writes it.
-// ponytail: judges the working copy, not the index; a partially staged file reads as its working copy.
 export function stagedGates(repoRoot, vaultPath, cfg, cwd = repoRoot) {
-  let top, staged;
-  try {
-    top = runGit(['rev-parse', '--show-toplevel'], { cwd, timeout: 0 }).trim();
-    staged = runGit(['diff', '--cached', '--name-only', '--diff-filter=ACMR', '-z'], { cwd, timeout: 0 }).split('\0').filter(Boolean).map((f) => resolve(top, f));
-  } catch { return []; }
-  const gated = new Set(gatedFiles(top, vaultPath, cfg));
-  // A gated page is also judged when a referenced image, script or requirements file (taskFile) is staged.
-  const pages = [...gated].filter((f) => staged.includes(f) || [...referencedImages(f), ...referencedScripts(f), taskFile(f)].some((i) => staged.includes(i)));
+  const git = (args, encoding) => {
+    try { return runGit(['--literal-pathspecs', ...args], { cwd, timeout: 0, stderr: 'pipe', encoding }); } catch (err) {
+      const cmd = args.includes('--') ? args.slice(0, args.indexOf('--')) : args;
+      throw new Error(`git ${cmd.join(' ')} failed in ${cwd}: ${String(err.stderr || err.message).trim().split('\n').at(-1)}`);
+    }
+  };
+  const top = git(['rev-parse', '--show-toplevel']).trim();
+  const paths = (out) => out.split('\0').filter(Boolean).map((f) => resolve(top, f));
+  // A submodule (gitlink) holds no file to judge; T is a type change (a link replaced by a file, or the reverse).
+  const staged = new Set(paths(git(['diff', '--cached', '--name-only', '--diff-filter=ACMRT', '--ignore-submodules=all', '-z'])));
+  // Tracked files whose working copy differs from the index or is gone.
+  const dirty = new Set(paths(git(['diff', '--name-only', '--ignore-submodules=all', '-z'])));
+  const blobs = new Map();
+  const blob = (f) => blobs.get(f) ?? blobs.set(f, git(['cat-file', '--filters', `:0:${ledgerKey(top, f)}`], 'buffer')).get(f);
+  // The bytes a file is judged by; null for a clean file that cannot be read.
+  const read = (f) => {
+    if (dirty.has(f) || !existsSync(f)) return blob(f);
+    try { return readFileSync(f); } catch { return null; }
+  };
+  const deps = new Map();
+  const depsOf = (f) => deps.get(f) ?? deps.set(f, pageDeps(read(f)?.toString('utf8') ?? '', f)).get(f);
+  const gates = gateRule(top, vaultPath, cfg);
+  const own = [...staged].filter((f) => (dirty.has(f) || !existsSync(f) || statSync(f).isFile()) && gates(f, () => blob(f)));
+  // Only an HTML page references an image, a script or a requirements file. A page on disk and clean is gated as
+  // gatedFiles finds it; one that differs or is gone, by its index version.
+  const others = [...new Set([...gatedFiles(top, vaultPath, cfg), ...dirty])]
+    .filter((f) => !staged.has(f) && extname(f) === '.html' && (!dirty.has(f) || gates(f, () => blob(f))) && depsOf(f).some((d) => staged.has(d)));
+  // A page that is untracked is skipped: nothing of it is committed.
+  const untracked = others.length ? paths(git(['ls-files', '--others', '--full-name', '-z', '--', ...others])) : [];
+  const pages = [...own, ...others.filter((f) => !untracked.includes(f))];
+  const all = [...new Set(pages.flatMap(depsOf))];
+  const inside = all.filter((d) => !/^\.\.(\/|$)/.test(ledgerKey(top, d)));
+  // A file outside the repository cannot be staged: it differs when it exists.
+  const differ = new Set(all.filter((d) => !inside.includes(d) && existsSync(d)));
+  if (inside.length) {
+    for (const f of paths(git(['diff', '--name-only', '-z', '--', ...inside]))) differ.add(f);
+    for (const f of paths(git(['ls-files', '--others', '--full-name', '-z', '--', ...inside]))) differ.add(f);
+  }
   const cache = {};
   return pages.map((f) => {
-    const { file, verdict, reviewerChanged, units } = gateStatus(repoRoot, f);
-    const missing = verdict ? 0 : missingEvidence(repoRoot, f, vaultPath, units, cache);
-    return { file, verdict, ...(reviewerChanged && { reviewerChanged }), ...(missing && { missing }) };
+    const content = read(f) ?? undefined;
+    const { file, verdict, reviewerChanged, units } = gateStatus(repoRoot, f, { content });
+    const missing = verdict ? 0 : missingEvidence(repoRoot, f, vaultPath, units, cache, content);
+    const differs = depsOf(f).filter((d) => differ.has(d)).map((d) => ledgerKey(repoRoot, d));
+    return { file, verdict: differs.length ? null : verdict, ...(reviewerChanged && { reviewerChanged }), ...(missing && { missing }), ...(differs.length && { differs }) };
   });
 }
 
 // Issue 72 item 12: how many ids the changed units of a Markdown file cite that this vault does not hold. A doc gated
 // against another vault cites them, and those units cannot pass here until that evidence is rebuilt. Code files are not
-// counted. `cache` lets a caller build the vault's manifest once for many files.
-export function missingEvidence(repoRoot, filePath, vaultPath, units, cache = {}) {
+// counted. `cache` lets a caller build the vault's manifest once for many files; `content` (bytes) stands in for the file.
+export function missingEvidence(repoRoot, filePath, vaultPath, units, cache = {}, content = null) {
   try {
     const abs = resolve(repoRoot, filePath);
     if (codeLang(repoRoot, abs)) return 0;
-    const text = readFileSync(abs, 'utf8');
+    const text = (content ?? readFileSync(abs)).toString('utf8');
     const cites = changedCites(text, !pageBlocks(text, abs).size ? mdUnits(text) : [], units?.length ? units : null);
     const rows = checkCitations(cites, (cache.manifest ??= buildManifest(vaultPath)).entries, loadSchema(REPO_ROOT), new Date().toISOString().slice(0, 10));
     return new Set(rows.filter((r) => r.status === 'uncovered' && r.type === 'id').map((r) => r.value)).size;
@@ -463,6 +518,25 @@ export function missingEvidence(repoRoot, filePath, vaultPath, units, cache = {}
 
 // The files of a teach workspace the gate covers; `teach export` gates exactly these.
 export const WORKSPACE_GATES = ['lessons/*.html', 'reference/*.html', 'README.md'];
+
+// gatedFiles's rule for one file (absolute, under repoRoot) whose content `read()` returns, read only for a code.globs
+// match: what gate staged applies to the index. A path matches as expandFiles finds it on disk: relative to the root
+// it is expanded at (a pattern's leading ./ dropped, an absolute pattern against the absolute path), with no folder
+// above it in SKIP_DIRS (expandFiles prunes those folders; a file of such a name it prunes for some patterns only, and
+// it matches here). A pattern with a .. segment matches the absolute path as resolved against the root, so one that
+// leaves the root gates nothing under it. On Node 26, path.matchesGlob and fs.globSync agree on * and **, which pass no dot name.
+function gateRule(repoRoot, vaultPath, cfg) {
+  const workspaces = findWorkspaces(repoRoot, vaultPath);
+  const slash = (p) => p.split(sep).join('/');
+  const match = (root, file, globs) => {
+    const rel = slash(relative(root, file));
+    if (/^\.\.(\/|$)/.test(rel) || rel.split('/').slice(0, -1).some((d) => SKIP_DIRS.has(d))) return false;
+    return globs.some((g) => (g.split('/').includes('..') ? matchesGlob(slash(file), slash(resolve(root, g)))
+      : isAbsolute(g) ? matchesGlob(file, g) : matchesGlob(rel, g.replace(/^(\.\/)+/, ''))));
+  };
+  return (file, read) => workspaces.some((ws) => match(ws, file, WORKSPACE_GATES)) || match(repoRoot, file, cfg?.gates?.globs ?? [])
+    || (!!cfg?.code && match(repoRoot, file, cfg.code.globs) && extractCodeLinks(read().toString('utf8'), langFor(extname(file), cfg)).some((l) => l.symbol));
+}
 
 export function gatedFiles(repoRoot, vaultPath, cfg) {
   const files = findWorkspaces(repoRoot, vaultPath).flatMap((ws) => expandFiles(WORKSPACE_GATES, ws));
