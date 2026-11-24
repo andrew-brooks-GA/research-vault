@@ -9,6 +9,7 @@ import { recordVerdict, contentHash } from '../bin/lib/gate.mjs';
 import { missingGates, sinceFrom, TWELVE_HOURS } from '../hooks/stop-gate.mjs';
 
 const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'stop-gate.mjs');
+const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'research-vault.mjs');
 
 // A bound repo with one workspace holding two lessons.
 function repo() {
@@ -24,7 +25,7 @@ function repo() {
 }
 
 function hook(evt) {
-  const r = spawnSync(process.execPath, [HOOK], { env: testEnv(), input: JSON.stringify(evt), encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [HOOK], { env: testEnv(), input: JSON.stringify(evt), encoding: 'utf8', timeout: 20000 });
   return { code: r.status, out: r.stdout, err: r.stderr };
 }
 
@@ -71,6 +72,30 @@ test('CLI exits 0 with no output when stop_hook_active is true', () => {
   const r = hook({ stop_hook_active: true, transcript_path: join(root, 'nope.jsonl'), cwd: root });
   assert.equal(r.code, 0);
   assert.equal(r.out, '');
+});
+
+// R-16 (issue 86): Stop is a reminder, not the gate. Claude Code sets stop_hook_active on the stop
+// that follows a block in the same turn, so the hook blocks once per turn and keeps no state of its own.
+test('CLI blocks the first stop of each turn until a verdict is recorded', () => {
+  const { root } = repo();
+  recordVerdict(root, join(root, 'learn/lessons/b.html'), 'PASS');
+  const transcript = join(root, 't.jsonl');
+  writeFileSync(transcript, '');
+  const now = new Date(Date.now() + 1000);
+  utimesSync(join(root, 'learn/lessons/a.html'), now, now);
+  const stop = (active) => {
+    const { code, out } = hook({ stop_hook_active: active, transcript_path: transcript, cwd: root });
+    return { code, out };
+  };
+  const first = stop(false);
+  assert.equal(first.code, 0);
+  assert.equal(JSON.parse(first.out).decision, 'block');
+  assert.match(JSON.parse(first.out).reason, /^- learn\/lessons\/a\.html: run the research-claims-gate skill, then research-vault gate record learn\/lessons\/a\.html PASS\|MERIT$/m);
+  assert.deepEqual(stop(true), { code: 0, out: '' }, 'the repeated stop of the same turn goes through');
+  assert.deepEqual(stop(false), first, 'the first stop of the next turn blocks again, byte for byte');
+  const rec = spawnSync(process.execPath, [CLI, 'gate', 'record', 'learn/lessons/a.html', 'PASS'], { cwd: root, env: testEnv(), encoding: 'utf8', timeout: 20000 });
+  assert.equal(rec.status, 0, rec.stderr);
+  assert.deepEqual(stop(false), { code: 0, out: '' }, 'a recorded verdict ends the reminder');
 });
 
 test('CLI exits 0 with no output outside a bound repo', () => {
