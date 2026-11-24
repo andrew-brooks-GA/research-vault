@@ -2,7 +2,7 @@ import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSchema, fieldOrder } from '../lib/schema.mjs';
 import { walkEntries, readEntry, writeEntry } from '../lib/fsutil.mjs';
-import { writeManifest, CONFIRMING_RESULTS } from '../lib/manifest.mjs';
+import { buildManifest, writeManifest, CONFIRMING_RESULTS } from '../lib/manifest.mjs';
 import { resolveVault, reportFallback } from '../lib/resolve.mjs';
 import { assertControlledValues } from '../lib/validate.mjs';
 import { listStale } from '../lib/stale.mjs';
@@ -17,6 +17,7 @@ function findEntry(vaultPath, id) {
 }
 
 export function applyVerification(vaultPath, opts) {
+  buildManifest(vaultPath);
   const repoRoot = opts.repoRoot || REPO_ROOT;
   const schema = loadSchema(repoRoot, { vaultPath });
   const now = opts.now || new Date().toISOString().slice(0, 10);
@@ -64,6 +65,7 @@ export function applyVerification(vaultPath, opts) {
 
 // Close a question: a state change, not a check of its claim, so no verification row is appended.
 export function answerQuestion(vaultPath, opts) {
+  buildManifest(vaultPath);
   const schema = loadSchema(opts.repoRoot || REPO_ROOT, { vaultPath });
   const now = opts.now || new Date().toISOString().slice(0, 10);
   const abs = findEntry(vaultPath, opts.id);

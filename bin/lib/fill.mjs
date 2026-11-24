@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync } from 'node:fs';
 import { readEntry, writeEntry, TYPE_FOLDER } from './fsutil.mjs';
 import { loadSchema, fieldOrder } from './schema.mjs';
-import { writeManifest } from './manifest.mjs';
+import { buildManifest, writeManifest } from './manifest.mjs';
 import { loadBlocklist, matchBlock } from './blocklist.mjs';
 import { fetchSource, rawFileUrl } from './fetchsource.mjs';
 import { extractText } from './extract.mjs';
@@ -26,6 +26,7 @@ function hashBefore(data, row) {
 // Page text for a source that holds none (spec 52 points 2, 3, 6 and 7). One result per call;
 // only `filled` and `discarded` change the entry.
 export async function fillSource(vaultPath, id, opts = {}) {
+  buildManifest(vaultPath);
   const path = join(vaultPath, TYPE_FOLDER.source, `${id}.md`);
   const refused = reason => ({ id, result: 'refused', reason });
   // The id comes from the command line and is joined into a path: an entry id and nothing else.

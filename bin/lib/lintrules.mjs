@@ -3,10 +3,10 @@ import { basename, join } from 'node:path';
 import { walkEntries, readEntry, FOLDER_TYPE } from './fsutil.mjs';
 import { loadSchema, stageAllowedInFolder, fieldOrder } from './schema.mjs';
 import { serializeFrontmatter } from './frontmatter.mjs';
-import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, allowedValues } from './validate.mjs';
+import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, allowedValues, fieldShapeErrors } from './validate.mjs';
 import { BLOCKLIST, loadBlocklist, matchBlock } from './blocklist.mjs';
 import { isUnverifiedSource } from './manifest.mjs';
-import { assertInsideVault } from './containment.mjs';
+import { assertInsideVault, escapePathControls } from './containment.mjs';
 
 const MONOLITHIC_SYNTHESIS_WORDS = 1500;
 
@@ -85,20 +85,27 @@ export function lintVault(vaultPath, repoRoot) {
   const idType = new Map();
   for (const abs of files) {
     try {
-      const e = readEntry(abs);
+      const e = readEntry(abs, { validateShapes: false });
       if (e.data && e.data.type) idType.set(basename(abs, '.md'), e.data.type);
     } catch { /* PARSE will surface in the main loop */ }
   }
 
   for (const abs of files) {
-    const raw = readFileSync(abs, 'utf8');
+    let raw;
+    try { raw = readFileSync(abs, 'utf8'); } catch {
+      try { readEntry(abs, { vaultPath }); } catch (e) { add(abs, 'PARSE', escapePathControls(e.cause.message)); }
+      continue;
+    }
     if (raw.charCodeAt(0) === 0xFEFF) add(abs, 'ENCODING_BOM', 'file has a UTF-8 BOM');
     if (/\r/.test(raw)) add(abs, 'ENCODING_CRLF', 'file has CRLF line endings');
     if (/\u00C3\u00A2\u00E2\u201A\u00AC/.test(raw)) add(abs, 'ENCODING_MOJIBAKE', 'double-encoded UTF-8 detected');
 
     let entry;
-    try { entry = readEntry(abs); } catch (e) { add(abs, 'PARSE', e.message); continue; }
+    try { entry = readEntry(abs, { vaultPath, validateShapes: false }); } catch (e) { add(abs, 'PARSE', escapePathControls(e.cause.message)); continue; }
     const { folder, data } = entry;
+    const shapes = fieldShapeErrors(data);
+    for (const msg of shapes) add(abs, 'FIELD_SHAPE', msg);
+    if (shapes.length) continue;
 
     for (const f of schema.fields.derived_forbidden) if (f in data) add(abs, 'STORED_DERIVED', `stored derived field: ${f}`);
     if (FOLDER_TYPE[folder] && data.type !== FOLDER_TYPE[folder]) add(abs, 'TYPE_FOLDER', `type ${data.type} in folder ${folder}`);
@@ -110,7 +117,6 @@ export function lintVault(vaultPath, repoRoot) {
       const val = data[field]; if (!val) continue;
       const meta = ENUM_META[field];
       if (field === 'domain') {
-        if (!Array.isArray(val)) { add(abs, 'FIELD_SHAPE', 'domain must be a list'); continue; }
         for (const d of val) if (!allowedValues(schema, key).includes(d)) add(abs, meta.code, `unknown ${meta.label}: ${d}`);
       } else if (!allowedValues(schema, key).includes(val)) {
         add(abs, meta.code, `unknown ${meta.label}: ${val}`);
@@ -206,11 +212,12 @@ export function fixVault(vaultPath, repoRoot, { topics = false } = {}) {
   const aliases = schema.taxonomy.topic_aliases;
   let fixed = 0;
   for (const abs of walkEntries(vaultPath)) {
-    const raw = readFileSync(abs, 'utf8');
+    let raw;
+    try { raw = readFileSync(abs, 'utf8'); } catch { continue; } // lint reports the read failure
     const normalized = raw.replace(/^\uFEFF/, '').replace(/\r/g, '');
     let out = normalized;
     let entry;
-    try { entry = readEntry(abs); } catch { }
+    try { entry = readEntry(abs, { validateShapes: false }); } catch { }
     if (entry) {
       for (const slot of stringSlots(entry.data)) {
         const u = unwrapQuoteArtifact(slot.get());

@@ -24,19 +24,43 @@ export function allowedValues(schema, key) {
   return Array.isArray(t) ? t : Object.keys(t);
 }
 
+// Entry readers and lint share this boundary; consumers never iterate malformed fields.
+export function fieldShapeErrors(data) {
+  const errors = [];
+  const add = (field, shape) => errors.push(`${field} must be ${shape}`);
+  const map = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  for (const field of ['domain', 'topics', 'related', 'sources', 'contributing_ids', 'contributing', 'attachments', 'verifications']) {
+    if (data[field] === undefined || data[field] === '') continue;
+    if (!Array.isArray(data[field])) { add(field, 'a list'); continue; }
+    for (const [i, value] of data[field].entries()) {
+      const at = `${field}[${i}]`;
+      if (['related', 'sources', 'contributing_ids', 'contributing'].includes(field)) {
+        if (typeof value !== 'string') add(at, 'a string');
+      } else if (field === 'verifications' && !map(value)) add(at, 'a map');
+    }
+  }
+  if (data.subject !== undefined && data.subject !== '') {
+    if (!map(data.subject)) add('subject', 'a map');
+  }
+  return errors;
+}
+
+export function assertFieldShapes(data) {
+  const errors = fieldShapeErrors(data);
+  if (errors.length) throw Object.assign(new Error(errors.join('; ')), { code: 'FIELD_SHAPE' });
+}
+
 function check(schema, field, key, value) {
   const allow = allowedValues(schema, key);
   if (!allow.includes(value)) throw new Error(`unknown ${field}: ${value} (allowed: ${allow.join(', ')})`);
 }
 
 export function assertControlledValues(data, schema) {
+  assertFieldShapes(data);
   for (const [field, key] of Object.entries(CONTROLLED_FIELDS)) {
     if (data[field] === undefined || data[field] === null || data[field] === '') continue;
     let vals;
     if (field === 'domain') {
-      // Shape before values: a bare scalar `domain: security` must fail once here, not get
-      // iterated character-by-character into `unknown domain: s`, `e`, `c`, …
-      if (!Array.isArray(data[field])) throw new Error('domain must be a list');
       vals = data[field];
     } else {
       vals = [data[field]];

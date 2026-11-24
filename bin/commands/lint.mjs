@@ -10,6 +10,8 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export function lintAndReport(vaultPath, { check = false } = {}) {
   const { violations, warnings } = lintVault(vaultPath, REPO_ROOT);
+  // An incomplete graph must never replace (or be compared with) the stored manifest.
+  if (violations.some(v => v.code === 'PARSE' || v.code === 'FIELD_SHAPE')) return { violations, warnings };
   if (check) {
     const norm = m => { const { generated, ...rest } = m; return JSON.stringify(rest); };
     const fresh = norm(buildManifest(vaultPath));

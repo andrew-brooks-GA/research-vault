@@ -23,6 +23,18 @@ subject:
 text here
 `;
 
+test('CRLF frontmatter has the same declared data as LF, including nested and block values', () => {
+  const lf = '---\ntitle: Example\ntopics: [one, two]\nsubject:\n  name: Tool\n  version: "1"\nverifications:\n  - date: 2026-01-01\n    notes: checked\nsummary: |\n  first\n  second\n---\nBody\n';
+  const expected = { title: 'Example', topics: ['one', 'two'], subject: { name: 'Tool', version: '1' }, verifications: [{ date: '2026-01-01', notes: 'checked' }], summary: 'first\nsecond\n' };
+  assert.deepEqual(parseFrontmatter(lf).data, expected);
+  assert.deepEqual(parseFrontmatter(lf.replace(/\n/g, '\r\n')).data, expected);
+});
+
+test('a CR inside a scalar line remains content at every nesting level', () => {
+  const text = '---\ntitle: a\rb\nsubject:\n  name: c\rd\nverifications:\n  - notes: e\rf\n    by_id: g\rh\n---\n';
+  assert.deepEqual(parseFrontmatter(text).data, { title: 'a\rb', subject: { name: 'c\rd' }, verifications: [{ notes: 'e\rf', by_id: 'g\rh' }] });
+});
+
 test('parses scalars, flow lists, block-map sequences, nested map', () => {
   const { data, body } = parseFrontmatter(sample);
   assert.equal(data.title, 'Effective Go');

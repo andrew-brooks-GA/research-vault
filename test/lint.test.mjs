@@ -11,6 +11,111 @@ import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
 import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS } from '../bin/lib/validate.mjs';
 import { writeBlocklist } from './blocklist.test.mjs';
 import { BLOCKLIST } from '../bin/lib/blocklist.mjs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
+import { tmpVault, put, testEnv } from './helpers.mjs';
+import { readEntry } from '../bin/lib/fsutil.mjs';
+
+const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+const badId = '2026-01-01-bad';
+function damagedVault(t, extra = {}) {
+  const vault = tmpVault();
+  t.after(() => rmSync(vault, { recursive: true, force: true }));
+  put(vault, 'source', '2026-01-01-good', { source_type: 'article', source_url: 'https://example.org/good' });
+  put(vault, 'source', badId, { source_type: 'article', source_url: 'https://example.org/bad', ...extra });
+  const path = join(vault, 'sources', `${badId}.md`);
+  return { vault, path };
+}
+function invoke(vault, args) {
+  const r = spawnSync(process.execPath, [cli, ...args, '--vault', vault], { cwd: vault, env: testEnv(), encoding: 'utf8', timeout: 15000 });
+  assert.ifError(r.error);
+  return r;
+}
+const readers = [
+  ['search', '--text', 'good'],
+  ['capture', '--type', 'source', '--title', 'New', '--source-type', 'article', '--url', 'https://example.org/new'],
+  ['check', 'sources/2026-01-01-good.md'],
+  ['verify', '--id', badId, '--method', 'human-spot-check', '--result', 'confirmed'],
+  ['related', badId], ['compile'], ['export'],
+];
+for (const args of [...readers.slice(0, 3), ['lint', '--check']]) {
+  test(`bad-entry parse failure names the path: ${args[0]}`, t => {
+    const { vault, path } = damagedVault(t);
+    writeFileSync(path, 'not frontmatter\n');
+    const before = readFileSync(path);
+    const r = invoke(vault, args);
+    assert.notEqual(r.status, 0);
+    assert.ok((r.stdout + r.stderr).includes(`sources/${badId}.md`));
+    assert.deepEqual(readFileSync(path), before);
+    assert.deepEqual(readdirSync(join(vault, 'sources')).sort(), [`${badId}.md`, '2026-01-01-good.md']);
+    assert.equal(existsSync(join(vault, '.vault-manifest.json')), false);
+  });
+}
+for (const flags of [[], ['--check']]) {
+  test(`bad-entry lint ${flags.join(' ')} prints PARSE and preserves manifest bytes`, t => {
+    const { vault, path } = damagedVault(t);
+    writeFileSync(path, 'not frontmatter\n');
+    const manifest = join(vault, '.vault-manifest.json');
+    const bytes = '{"sentinel":true}\n';
+    writeFileSync(manifest, bytes);
+    const r = invoke(vault, ['lint', ...flags]);
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /PARSE.*sources\/2026-01-01-bad\.md/);
+    assert.equal(readFileSync(manifest, 'utf8'), bytes);
+  });
+}
+for (const [field, value] of Object.entries({ verifications: 'nope', topics: 7, related: 5, subject: 'nope', domain: 7, sources: 7, contributing_ids: 7, contributing: 7, attachments: 7 })) {
+  test(`bad-entry ${field} shape is a finding and stops consumers before output or writes`, t => {
+    const { vault, path } = damagedVault(t, { [field]: value });
+    const before = readFileSync(path);
+    const lint = invoke(vault, ['lint']);
+    assert.equal(lint.status, 1);
+    assert.match(lint.stdout, new RegExp(`FIELD_SHAPE.*sources/${badId}\\.md.*${field}`));
+    for (const args of readers) {
+      const r = invoke(vault, args);
+      assert.equal(r.status, args[0] === 'export' ? 1 : 2, args[0]);
+      assert.doesNotMatch(r.stderr, /is not a function|Cannot read properties/);
+      assert.ok(r.stderr.includes(`${badId}.md`) && r.stderr.includes(field), `${args[0]}: ${r.stderr}`);
+      assert.equal(r.stdout, '', args[0]);
+    }
+    assert.deepEqual(readFileSync(path), before);
+    assert.deepEqual(readdirSync(join(vault, 'sources')).sort(), [`${badId}.md`, '2026-01-01-good.md']);
+    assert.equal(existsSync(join(vault, '.vault-manifest.json')), false);
+    assert.equal(existsSync(join(vault, '_index')), false);
+  });
+}
+test('bad-entry CRLF is searchable, linted, and fixed to LF', t => {
+  const { vault, path } = damagedVault(t);
+  writeFileSync(path, readFileSync(path, 'utf8').replace(/\n/g, '\r\n'));
+  assert.equal(readEntry(path).hasCrlf, true);
+  assert.equal(invoke(vault, ['search', '--text', 'bad']).status, 0);
+  const lint = invoke(vault, ['lint']);
+  assert.equal(lint.status, 1);
+  assert.match(lint.stdout, /ENCODING_CRLF.*2026-01-01-bad/);
+  assert.equal(invoke(vault, ['lint', '--fix']).status, 0);
+  assert.doesNotMatch(readFileSync(path, 'utf8'), /\r/);
+});
+test('bad-entry writeEntry normalizes CRLF throughout', t => {
+  const { path } = damagedVault(t);
+  const lf = readFileSync(path, 'utf8');
+  writeFileSync(path, lf.replace(/\n/g, '\r\n'));
+  const entry = readEntry(path);
+  writeEntry(path, entry.data, entry.body);
+  assert.equal(readFileSync(path, 'utf8'), lf);
+});
+test('bad-entry parse errors escape path controls', t => {
+  const vault = tmpVault();
+  t.after(() => rmSync(vault, { recursive: true, force: true }));
+  const path = join(vault, 'bad\nname.md');
+  writeFileSync(path, 'broken');
+  assert.throws(() => readEntry(path), e => e.code === 'ENTRY_PARSE' && e.message.includes('bad\\u000aname.md') && !e.message.includes('\n'));
+});
+test('bad-entry read errors retain filesystem codes and escape path controls', t => {
+  const vault = tmpVault();
+  t.after(() => rmSync(vault, { recursive: true, force: true }));
+  const path = join(vault, 'missing\nname.md');
+  assert.throws(() => readEntry(path), e => e.code === 'ENOENT' && e.entryCode === 'ENTRY_READ' && !e.message.includes('\n'));
+});
 
 const GOOD = fileURLToPath(new URL('./fixtures/vault', import.meta.url));
 const BAD = fileURLToPath(new URL('./fixtures/bad', import.meta.url));
@@ -294,4 +399,113 @@ test('lint warns WARN_SOURCE_BLOCKED on a source matching the blocklist and repo
   writeFileSync(join(dir, BLOCKLIST), '{}', 'utf8');
   const bad = lintVault(dir, process.cwd());
   assert.equal(bad.violations.filter(x => x.code === 'BLOCKLIST_INVALID').length, 1);
+});
+
+// Round-two regressions: every subprocess uses the temporary vault and testEnv home.
+for (const mode of ['verification', 'quotes', 'answer', 'fill']) {
+  test('bad-entry refuses ' + mode + ' before changing a good entry', t => {
+    const { vault, path } = damagedVault(t);
+    const good = '2026-01-01-good';
+    const question = '2026-01-01-question';
+    const prose = 'This sentence provides enough stored source text for a quote check. '.repeat(6);
+    put(vault, 'source', good, { source_type: 'article', source_url: 'https://example.org/good' }, mode === 'fill' ? '# Stub\n' : '# Good\n\n' + prose);
+    put(vault, 'question', question, { question: 'Why?', state: 'open' });
+    const quotes = join(vault, 'quotes.json');
+    const content = join(vault, 'content.txt');
+    writeFileSync(quotes, JSON.stringify(['This sentence provides enough stored source text for a quote check.']));
+    writeFileSync(content, prose);
+    const args = {
+      verification: ['verify', '--id', good, '--method', 'human-spot-check', '--result', 'confirmed'],
+      quotes: ['verify', '--id', good, '--quotes', quotes],
+      answer: ['verify', '--id', question, '--answered-by', good],
+      fill: ['capture', '--fill', good, '--content-file', content, '--ack-data-egress'],
+    }[mode];
+    const manifest = join(vault, '.vault-manifest.json');
+    writeFileSync(manifest, '{"sentinel":true}\n');
+    const snapshot = () => Object.fromEntries(readdirSync(vault, { recursive: true, withFileTypes: true }).map(d => {
+      const p = join(d.parentPath, d.name);
+      return [p, d.isDirectory() ? null : readFileSync(p).toString('base64')];
+    }));
+    for (const bad of ['not frontmatter\n', '---\nverifications: nope\n---\n']) {
+      writeFileSync(path, bad);
+      const before = snapshot();
+      const r = invoke(vault, args);
+      assert.equal(r.status, 2);
+      assert.ok(r.stderr.includes('sources/' + badId + '.md'), r.stderr);
+      assert.deepEqual(snapshot(), before, 'entry and manifest bytes and all folder names must stay unchanged');
+    }
+  });
+}
+
+test('search text accepts non-string titles and scalar summaries', t => {
+  const { vault, path } = damagedVault(t);
+  for (const title of [2024, true, ['a']]) {
+    put(vault, 'source', badId, { title, summary: 42, topics: [2024, true], source_type: 'article', source_url: 'https://example.org/bad' });
+    for (const text of [String(title), '42']) {
+      const r = invoke(vault, ['search', '--text', text, '--json']);
+      assert.equal(r.status, 0, r.stderr);
+      assert.ok(JSON.parse(r.stdout).some(e => e.id === badId));
+    }
+  }
+});
+
+test('lint fix repairs other fields on malformed shapes and retains their types for warnings', t => {
+  const { vault, path } = damagedVault(t, { topics: 7, title: "'Wrapped'" });
+  put(vault, 'synthesis', '2026-01-02-rollup', { contributing_ids: [badId] });
+  const r = invoke(vault, ['lint', '--fix']);
+  assert.equal(r.status, 1);
+  assert.equal(readEntry(path, { validateShapes: false }).data.title, 'Wrapped');
+  assert.match(r.stdout, /WARN_SYNTHESIS_NO_NOTE_COVERAGE/);
+  assert.match(r.stdout, /FIELD_SHAPE/);
+});
+
+test('lint parse diagnostic prints the entry path once', t => {
+  const { vault, path } = damagedVault(t);
+  writeFileSync(path, 'broken\n');
+  const r = invoke(vault, ['lint', '--check']);
+  assert.equal(r.status, 1);
+  const line = r.stdout.split('\n').find(l => l.startsWith('PARSE'));
+  assert.equal(line.split(badId + '.md').length - 1, 1, line);
+});
+
+test('entry directory is reported by lint and skipped by fix without writes', t => {
+  const { vault, path } = damagedVault(t);
+  rmSync(path);
+  mkdirSync(path);
+  const goodPath = join(vault, 'sources', '2026-01-01-good.md');
+  const before = readFileSync(goodPath);
+  const manifest = join(vault, '.vault-manifest.json');
+  writeFileSync(manifest, '{"sentinel":true}\n');
+  for (const args of [['lint', '--fix'], ['lint', '--check'], ['search']]) {
+    const r = invoke(vault, args);
+    assert.notEqual(r.status, 0);
+    assert.match(r.stdout + r.stderr, /EISDIR/);
+    assert.ok((r.stdout + r.stderr).includes('sources/' + badId + '.md'));
+    if (args[0] === 'lint') assert.match(r.stdout, /PARSE/);
+    assert.deepEqual(readFileSync(goodPath), before);
+    assert.equal(readFileSync(manifest, 'utf8'), '{"sentinel":true}\n');
+    assert.deepEqual(readdirSync(join(vault, 'sources')).sort(), [badId + '.md', '2026-01-01-good.md']);
+    assert.deepEqual(readdirSync(path), []);
+  }
+});
+
+test('batch scalar options are written as CLI strings', async t => {
+  for (const flags of [[], ['--operation-id', 'scalar-plan']]) await t.test(flags.length ? 'capture-operation' : 'batch', t => {
+  const { vault } = damagedVault(t);
+  const plan = join(vault, 'plan.json');
+  writeFileSync(plan, JSON.stringify([{ type: 'source', title: 'Numeric plan', url: 'https://example.org/numeric', subjectName: 'Tool', subjectVersion: 26, byId: 7, summary: 42 }]));
+  const r = invoke(vault, ['capture', '--batch', plan, '--json', ...flags]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const name = readdirSync(join(vault, 'sources')).find(n => n.endsWith('-numeric-plan.md'));
+  const path = join(vault, 'sources', name);
+  const data = readEntry(path).data;
+  assert.equal(data.subject.version, '26');
+  assert.equal(data.verifications[0].by_id, '7');
+  assert.equal(data.summary, '42');
+  assert.match(readFileSync(path, 'utf8'), /version: "26"/);
+  assert.equal(invoke(vault, ['lint']).status, 0);
+  const search = invoke(vault, ['search', '--text', 'Numeric plan', '--json']);
+  assert.equal(search.status, 0, search.stderr);
+  assert.equal(JSON.parse(search.stdout)[0].title, 'Numeric plan');
+  });
 });

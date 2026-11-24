@@ -25,6 +25,13 @@ function loadSkeleton(repoRoot, type) {
 }
 
 export function prepareEntry(vaultPath, opts, ctx = {}) {
+  // JSON plans share the CLI's scalar semantics, including numeric versions and identities.
+  opts = { ...opts };
+  for (const key of ['title', 'type', 'now', 'url', 'volatility', 'byId', 'sourceType', 'subjectName', 'subjectVersion',
+    'series', 'authorityTier', 'authorityBasis', 'capturedVia', 'sourceAuthor', 'summary', 'confidence',
+    'question', 'synthesisBasis', 'language', 'provider', 'modelId', 'dateRun', 'task', 'outcome', 'state', 'answerSummary']) {
+    if (opts[key] != null) opts[key] = String(opts[key]);
+  }
   const repoRoot = opts.repoRoot || REPO_ROOT;
   const schema = loadSchema(repoRoot, { vaultPath });
   const now = opts.now || new Date().toISOString().slice(0, 10);

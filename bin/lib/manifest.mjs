@@ -31,7 +31,7 @@ export function buildManifest(vaultPath) {
   const edgeKeys = new Set();
   const edges = [];
   for (const abs of walkEntries(vaultPath)) {
-    const { id, data } = readEntry(abs);
+    const { id, data } = readEntry(abs, { vaultPath });
     const last = lastVerified(data.verifications);
     entries.push({
       id, type: data.type, title: data.title,

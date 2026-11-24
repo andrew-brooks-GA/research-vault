@@ -123,7 +123,7 @@ function parseBlockScalar(lines, i, header) {
 }
 
 export function parseFrontmatter(text) {
-  const m = FM.exec(text);
+  const m = FM.exec(text.replace(/\r\n/g, '\n'));
   if (!m) throw new Error('missing or malformed frontmatter');
   const [, fm, body] = m;
   const lines = fm.split('\n');
@@ -137,7 +137,7 @@ export function parseFrontmatter(text) {
       if (lastKey) raw[lastKey].lines.push(line);
       i++; continue;
     }
-    const top = /^([A-Za-z_][\w]*):([^\r]*)$/.exec(line);
+    const top = /^([A-Za-z_][\w]*):([\s\S]*)$/.exec(line);
     if (!top) throw new Error(`unparseable frontmatter line: ${line}`);
     const key = top[1];
     const start = i;
@@ -159,11 +159,11 @@ export function parseFrontmatter(text) {
           const itemFirst = lines[i].replace(/^\s+-\s?/, '');
           if (/^[A-Za-z_][\w]*:/.test(itemFirst)) {
             const obj = {};
-            const kv = /^([A-Za-z_][\w]*):([^\r]*)$/.exec(itemFirst);
+            const kv = /^([A-Za-z_][\w]*):([\s\S]*)$/.exec(itemFirst);
             obj[kv[1]] = parseNestedScalar(kv[2], lines[i]);
             i++;
             while (i < lines.length && /^\s{4,}[A-Za-z_][\w]*:/.test(lines[i])) {
-              const kv2 = /^\s+([A-Za-z_][\w]*):([^\r]*)$/.exec(lines[i]);
+              const kv2 = /^\s+([A-Za-z_][\w]*):([\s\S]*)$/.exec(lines[i]);
               obj[kv2[1]] = parseNestedScalar(kv2[2], lines[i]);
               i++;
             }
@@ -178,7 +178,7 @@ export function parseFrontmatter(text) {
         const obj = {};
         i++;
         while (i < lines.length && /^\s+[A-Za-z_][\w]*:/.test(lines[i])) {
-          const kv = /^\s+([A-Za-z_][\w]*):([^\r]*)$/.exec(lines[i]);
+          const kv = /^\s+([A-Za-z_][\w]*):([\s\S]*)$/.exec(lines[i]);
           obj[kv[1]] = parseNestedScalar(kv[2], lines[i]);
           i++;
         }

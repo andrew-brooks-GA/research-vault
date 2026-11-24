@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { readEntry, writeEntry, TYPE_FOLDER } from './fsutil.mjs';
 import { loadSchema, fieldOrder } from './schema.mjs';
-import { writeManifest } from './manifest.mjs';
+import { buildManifest, writeManifest } from './manifest.mjs';
 import { loadBlocklist, matchBlock } from './blocklist.mjs';
 import { fetchSource, rawFileUrl } from './fetchsource.mjs';
 import { extractText } from './extract.mjs';
@@ -38,6 +38,7 @@ const around = (lines, at, to = at) => lines.slice(Math.max(0, at - 3), to + 2).
 // `<quote hash 8>: <quote>` for one found on the fetched page (spec 54 item 5). The body and
 // `content_hash` are never changed.
 export async function checkQuotes(vaultPath, id, quotes, opts = {}) {
+  buildManifest(vaultPath);
   const path = join(vaultPath, TYPE_FOLDER.source, `${id}.md`);
   if (!/^[a-z0-9][a-z0-9-]*$/.test(String(id)) || !existsSync(path)) throw new Error(`not a source entry of this vault: ${id}`);
   const e = readEntry(path);

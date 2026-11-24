@@ -3,6 +3,60 @@ import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { loadSchema, stageAllowedInFolder, fieldOrder, applyTaxonomyExtensions } from '../bin/lib/schema.mjs';
 import { PROJECT_CONFIG_FILENAME } from '../bin/lib/projectconfig.mjs';
+import { assertControlledValues, fieldShapeErrors } from '../bin/lib/validate.mjs';
+import { tmpVault, put } from './helpers.mjs';
+import { rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { lintVault } from '../bin/lib/lintrules.mjs';
+import { searchVault } from '../bin/commands/search.mjs';
+
+test('verification scalar types remain searchable with existing enum findings', async t => {
+  for (const field of ['date', 'by_type', 'by_id', 'method', 'result', 'notes']) {
+    await t.test(field, () => {
+      const data = { verifications: [{ date: '2026-01-01', by_type: 'human', method: 'human-spot-check', result: 'confirmed', [field]: 7 }] };
+      assert.deepEqual(fieldShapeErrors(data), []);
+      const vault = tmpVault();
+      try {
+        put(vault, 'source', '2026-01-01-scalar', { source_url: 'https://example.org', source_type: 'article', ...data });
+        const codes = lintVault(vault, process.cwd()).violations.map(v => v.code);
+        assert.deepEqual(codes, ({ method: ['ENUM_METHOD'], result: ['ENUM_RESULT'], by_type: ['ENUM_BY_TYPE'] })[field] || []);
+        assert.equal(searchVault(vault, { text: 'scalar' })[0].id, '2026-01-01-scalar');
+      } finally { rmSync(vault, { recursive: true, force: true }); }
+    });
+  }
+});
+
+test('collection members are validated before consumers use them', async t => {
+  const rows = [
+    ...['related', 'sources', 'contributing_ids', 'contributing'].map(field =>
+      [{ [field]: [7] }, `${field}[0] must be a string`]),
+    [{ verifications: [null] }, 'verifications[0] must be a map'],
+  ];
+  for (const [data, message] of rows) await t.test(message, () => {
+    assert.throws(() => assertControlledValues(data, loadSchema(process.cwd())), e => e.code === 'FIELD_SHAPE' && e.message === message);
+  });
+});
+
+test('non-edge members and empty containers remain searchable without shape findings', async t => {
+  const rows = [
+    { topics: [2024, 'k8s'] }, { domain: [7] }, { attachments: [true] },
+    { subject: { name: 7, version: 26 } },
+    ...['domain', 'topics', 'related', 'sources', 'contributing_ids', 'contributing', 'attachments', 'verifications', 'subject'].map(k => ({ [k]: '' })),
+  ];
+  for (const data of rows) await t.test(JSON.stringify(data), () => {
+    assert.deepEqual(fieldShapeErrors(data), []);
+    const vault = tmpVault();
+    try {
+      put(vault, 'source', '2026-01-01-compatible', { source_url: 'https://example.org', source_type: 'article', ...data });
+      for (const [field, value] of Object.entries(data)) if (value === '') {
+        const path = join(vault, 'sources', '2026-01-01-compatible.md');
+        writeFileSync(path, readFileSync(path, 'utf8').replace(new RegExp(`^${field}:.*$`, 'm'), `${field}:`));
+      }
+      const codes = lintVault(vault, process.cwd()).violations.map(v => v.code);
+      assert.deepEqual(codes, data.domain?.[0] === 7 ? ['ENUM_DOMAIN'] : []);
+      assert.equal(searchVault(vault, { text: 'compatible' })[0].id, '2026-01-01-compatible');
+    } finally { rmSync(vault, { recursive: true, force: true }); }
+  });
+});
 
 test('loads taxonomy and field definitions', () => {
   const s = loadSchema(process.cwd());

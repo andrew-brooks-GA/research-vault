@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync, writeFileSync, lstatSync, renameSync } from 'node:fs';
-import { dirname, join, sep } from 'node:path';
+import { dirname, join, sep, relative } from 'node:path';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.mjs';
 import { assertInsideVault, isInsideVault, escapePathControls } from './containment.mjs';
+import { assertFieldShapes } from './validate.mjs';
 
 export const TYPE_FOLDER = { source:'sources', note:'notes', synthesis:'synthesis', snippet:'snippets', experiment:'experiments', question:'questions' };
 export const FOLDER_TYPE = Object.fromEntries(Object.entries(TYPE_FOLDER).map(([t, f]) => [f, t]));
@@ -33,19 +34,30 @@ export function walkEntries(vaultPath, { onSkippedLink } = {}) {
 }
 
 // Pass folderChecked only for paths returned by walkEntries in the same synchronous call.
-export function readEntry(absPath, { folderChecked = false } = {}) {
-  const folderPath = dirname(absPath);
-  if ((!folderChecked && lstatSync(folderPath).isSymbolicLink()) || lstatSync(absPath).isSymbolicLink()) {
-    assertInsideVault(dirname(folderPath), absPath);
+export function readEntry(absPath, { folderChecked = false, vaultPath, validateShapes = true } = {}) {
+  let phase = 'ENTRY_READ';
+  try {
+    const folderPath = dirname(absPath);
+    if ((!folderChecked && lstatSync(folderPath).isSymbolicLink()) || lstatSync(absPath).isSymbolicLink()) {
+      assertInsideVault(dirname(folderPath), absPath);
+    }
+    const raw = readFileSync(absPath, 'utf8');
+    const hasBom = raw.charCodeAt(0) === 0xFEFF;
+    const hasCrlf = /\r/.test(raw);
+    phase = 'ENTRY_PARSE';
+    const { data, body } = parseFrontmatter(raw);
+    if (validateShapes) assertFieldShapes(data);
+    const parts = absPath.split(sep);
+    const folder = parts[parts.length - 2];
+    const id = parts[parts.length - 1].replace(/\.md$/, '');
+    return { id, folder, data, body, hasBom, hasCrlf };
+  } catch (cause) {
+    const path = escapePathControls(vaultPath ? relative(vaultPath, absPath) : absPath);
+    const error = new Error(`${path}: ${escapePathControls(cause.message)}`, { cause });
+    error.code = cause.code ?? phase;
+    error.entryCode = phase;
+    throw error;
   }
-  const raw = readFileSync(absPath, 'utf8');
-  const hasBom = raw.charCodeAt(0) === 0xFEFF;
-  const hasCrlf = /\r/.test(raw);
-  const { data, body } = parseFrontmatter(raw);
-  const parts = absPath.split(sep);
-  const folder = parts[parts.length - 2];
-  const id = parts[parts.length - 1].replace(/\.md$/, '');
-  return { id, folder, data, body, hasBom, hasCrlf };
 }
 
 // Compare the parser's data model: scalar types matter, list order matters, map order
