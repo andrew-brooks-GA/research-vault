@@ -1,7 +1,15 @@
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { PROJECT_CONFIG_FILENAME, scaffoldProjectConfig, parseProjectConfig } from '../bin/lib/projectconfig.mjs';
+import { mkdirSync, mkdtempSync, readFileSync, existsSync, realpathSync, rmSync, symlinkSync, writeFileSync, readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import { defaultVaultPath, configPath } from '../bin/lib/resolve.mjs';
+import { testEnv } from './helpers.mjs';
+import { isBindingAcknowledged } from '../bin/lib/trust.mjs';
 
 const SCHEMA = {
   taxonomy: {
@@ -41,13 +49,6 @@ test('scaffoldProjectConfig refuses to overwrite an existing binding', () => {
 });
 
 // ---- code links (spec 15 D7) ----
-import { mkdirSync, mkdtempSync, readFileSync, existsSync, realpathSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
-import { defaultVaultPath } from '../bin/lib/resolve.mjs';
-import { testEnv } from './helpers.mjs';
 
 const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'research-vault.mjs');
 
@@ -58,12 +59,12 @@ test('init --project writes a relative vault that resolves from a nested working
   mkdirSync(nested);
   mkdirSync(join(repo, 'research'));
   const init = spawnSync(process.execPath, [CLI, 'init', '--project', '--vault', 'research'], {
-    cwd: repo, env: testEnv(), encoding: 'utf8',
+    cwd: repo, env: testEnv(), encoding: 'utf8', timeout: 20000,
   });
   assert.equal(init.status, 0, init.stderr);
   assert.equal(init.stderr, '');
   assert.equal(JSON.parse(readFileSync(join(repo, PROJECT_CONFIG_FILENAME), 'utf8')).vault, 'research');
-  const paths = spawnSync(process.execPath, [CLI, 'host', 'paths'], { cwd: nested, env: testEnv(), encoding: 'utf8' });
+  const paths = spawnSync(process.execPath, [CLI, 'host', 'paths'], { cwd: nested, env: testEnv(), encoding: 'utf8', timeout: 20000 });
   assert.equal(paths.status, 0, paths.stderr);
   assert.equal(JSON.parse(paths.stdout).vault, join(repo, 'research'));
 });
@@ -76,10 +77,10 @@ test('first-run project init binds the default vault and plain init creates it',
   mkdirSync(repo);
   mkdirSync(home);
   const overrides = {
-    HOME: home, USERPROFILE: home, LOCALAPPDATA: home, APPDATA: home, XDG_DATA_HOME: home, XDG_CONFIG_HOME: home,
+    HOME: home, USERPROFILE: home, LOCALAPPDATA: home, APPDATA: home, XDG_DATA_HOME: join(home, 'data'), XDG_CONFIG_HOME: home,
   };
   const run = (...args) => spawnSync(process.execPath, [CLI, 'init', ...args], {
-    cwd: repo, env: testEnv(overrides), encoding: 'utf8',
+    cwd: repo, env: testEnv(overrides), encoding: 'utf8', timeout: 20000,
   });
   const vault = defaultVaultPath({ platform: process.platform, home, env: testEnv(overrides) });
   const binding = join(repo, PROJECT_CONFIG_FILENAME);
@@ -88,7 +89,11 @@ test('first-run project init binds the default vault and plain init creates it',
   assert.equal(project.stderr, '');
   assert.equal(project.stdout, `Bound this repo to ${vault} via ${binding}.\n`);
   assert.equal(JSON.parse(readFileSync(binding, 'utf8')).vault, vault);
-  assert.equal(existsSync(vault), false);
+  if (vault === dirname(configPath({ platform: process.platform, home, env: testEnv(overrides) }))) {
+    assert.deepEqual(readdirSync(vault), ['trusted-bindings.json']);
+  } else {
+    assert.equal(existsSync(vault), false);
+  }
   const init = run();
   assert.equal(init.status, 0, init.stderr);
   assert.equal(init.stderr, '');
@@ -105,7 +110,7 @@ test('project init warns about an outside vault that search requires an override
   mkdirSync(vault);
   const overrides = { HOME: root, USERPROFILE: root, APPDATA: root, XDG_CONFIG_HOME: root };
   const run = (...args) => spawnSync(process.execPath, [CLI, ...args], {
-    cwd: repo, env: testEnv(overrides), encoding: 'utf8',
+    cwd: repo, env: testEnv(overrides), encoding: 'utf8', timeout: 20000,
   });
   const binding = join(repo, PROJECT_CONFIG_FILENAME);
   const project = run('init', '--project', '--vault', vault);
@@ -153,7 +158,7 @@ test('scaffoldProjectConfig without codeLinks writes today\'s file', () => {
 
 test('CLI init --project --code-links writes the block and prints where the versions key goes; a vault outside the repo exits 1', () => {
   const repo = realpathSync(mkdtempSync(join(tmpdir(), 'rv-init-code-')));
-  const run = (...args) => spawnSync(process.execPath, [CLI, 'init', '--project', ...args], { env: testEnv(), cwd: repo, encoding: 'utf8' });
+  const run = (...args) => spawnSync(process.execPath, [CLI, 'init', '--project', ...args], { env: testEnv(), cwd: repo, encoding: 'utf8', timeout: 20000 });
   let r = run('--vault', '../Research', '--code-links', 'src/**/*.lua');
   assert.equal(r.status, 1);
   assert.match(r.stderr, /^invalid \.research-vault\.json: code links need a project-specific vault inside the repo \(a relative vault path\); this binding points at \.\.\/Research$/m);
@@ -163,4 +168,45 @@ test('CLI init --project --code-links writes the block and prints where the vers
   assert.match(r.stdout, /^Bound this repo to research via .*\.research-vault\.json\.$/m);
   assert.match(r.stdout, /^Code links on for src\/\*\*\/\*\.lua, tools\/\*\.lua: in .*\.research-vault\.json, add a code\.versions key \(\{ file, pattern \}\) per dependency to pin to, and a code\.languages row \(\{ comment, decl \}\) for a language the plugin does not ship\.$/m);
   assert.deepEqual(JSON.parse(readFileSync(join(repo, PROJECT_CONFIG_FILENAME), 'utf8')).code, { globs: ['src/**/*.lua', 'tools/*.lua'], languages: {}, versions: {} });
+});
+
+test('init --project acknowledges the binding it creates', t => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'rv-init-trust-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const home = join(root, 'home'), repo = join(root, 'repo');
+  mkdirSync(home); mkdirSync(repo);
+  const env = testEnv({ HOME: home, USERPROFILE: home, APPDATA: home, XDG_CONFIG_HOME: home });
+  const folder = process.platform === 'darwin' ? join(home, 'Library', 'Application Support', 'research-vault') : join(home, 'research-vault');
+  mkdirSync(dirname(folder), { recursive: true });
+  const r = spawnSync(process.execPath, [CLI, 'init', '--project', '--vault', 'research'], { cwd: repo, env: testEnv(env), encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  const binding = join(repo, '.research-vault.json');
+  assert.equal(JSON.parse(readFileSync(binding)).vault, 'research');
+  assert.equal(r.stderr, '');
+  const rows = JSON.parse(readFileSync(join(folder, 'trusted-bindings.json'))).bindings;
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].path, binding);
+  assert.equal(rows[0].sha256, createHash('sha256').update(readFileSync(binding)).digest('hex'));
+  assert.equal(isBindingAcknowledged(binding, { platform: process.platform, home, env }), true);
+});
+
+test('init --project keeps its binding when acknowledgement storage is linked outside', t => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'rv-init-trust-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const home = join(root, 'home'), repo = join(root, 'repo'), outside = join(root, 'outside');
+  mkdirSync(home); mkdirSync(repo); mkdirSync(outside);
+  const env = testEnv({ HOME: home, USERPROFILE: home, APPDATA: home, XDG_CONFIG_HOME: home });
+  const folder = process.platform === 'darwin' ? join(home, 'Library', 'Application Support', 'research-vault') : join(home, 'research-vault');
+  mkdirSync(dirname(folder), { recursive: true });
+  const outsideFile = join(outside, 'trusted-bindings.json'); writeFileSync(outsideFile, 'unchanged');
+  try { symlinkSync(outside, folder, 'dir'); } catch (e) {
+    if (['EPERM', 'EACCES', 'ENOSYS'].includes(e.code)) { t.skip(`links unavailable: ${e.code}`); return; } throw e;
+  }
+  const r = spawnSync(process.execPath, [CLI, 'init', '--project', '--vault', 'research'], { cwd: repo, env: testEnv(env), encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  const binding = join(repo, '.research-vault.json');
+  assert.equal(JSON.parse(readFileSync(binding)).vault, 'research');
+  assert.equal(r.stderr, 'Could not record the acknowledgement; run research-vault trust to record it.\n');
+  assert.equal(readFileSync(outsideFile, 'utf8'), 'unchanged');
+  assert.deepEqual(readdirSync(outside), ['trusted-bindings.json']);
 });

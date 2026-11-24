@@ -8,6 +8,7 @@ import { writeManifest } from '../lib/manifest.mjs';
 import { ENTRY_FOLDERS, walkEntries } from '../lib/fsutil.mjs';
 import { compileVault } from './compile.mjs';
 import { scaffoldProjectConfig } from '../lib/projectconfig.mjs';
+import { acknowledgeBinding } from '../lib/trust.mjs';
 import { csvList } from '../lib/args.mjs';
 import { assertInsideVault, VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
 
@@ -79,9 +80,16 @@ export async function run(args) {
     // --code-links <glob,glob> adds the `code` block (spec 15); scaffoldProjectConfig checks it needs a relative vault.
     const codeLinks = csvList(args['code-links']);
     try {
+      let writtenBytes;
       const target = scaffoldProjectConfig(process.cwd(), {
         vault: vaultPath, domain: args.domain, topics, globs, volatility: args.volatility, codeLinks, schema: loadSchema(REPO_ROOT),
-      });
+      }, { writeFileSync(target, content, options) {
+        writtenBytes = Buffer.from(content, options.encoding);
+        writeFileSync(target, content, options);
+      } });
+      try { acknowledgeBinding(target, { bytes: writtenBytes }); } catch {
+        process.stderr.write('Could not record the acknowledgement; run research-vault trust to record it.\n');
+      }
       process.stdout.write(`Bound this repo to ${vaultPath} via ${target}.\n`);
       if (!checkProjectVault(vaultPath, target).path) {
         process.stderr.write('Warning: this binding names a vault outside the repository. It will be used only when RESEARCH_VAULT_PATH points at it or --vault is passed.\n');

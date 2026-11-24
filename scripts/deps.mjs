@@ -26,6 +26,23 @@ const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.m
 // text itself, and the test fails when either file stops containing it. Give one only when the
 // literal really is in both files; a row about two values being equal stays prose.
 export const COUPLINGS = [
+  ['bin/commands/trust.mjs', 'test/trust.test.mjs', 'linked-folder alternate vault label and fixed notice are asserted', 'Binding-folder vault: '],
+  ['bin/commands/trust.mjs', 'docs/REFERENCE.md', 'found-folder and real-folder vault labels and linked-folder notice', 'Linked folder: vault locations differ depending on the path.'],
+  ['bin/commands/trust.mjs', 'test/trust.test.mjs', 'binding display pieces and reconstruction use fixed prefixes and a 76-character total line limit', '76'],
+  ['bin/commands/trust.mjs', 'docs/REFERENCE.md', 'network-like vault values skip real-location lookup', 'Vault location was not looked up.'],
+  ['bin/commands/trust.mjs', 'test/trust.test.mjs', 'network-like vault lookup notice is asserted verbatim', 'Vault location was not looked up.'],
+  ['bin/commands/trust.mjs', 'bin/lib/resolve.mjs', 'two leading slash or backslash characters must not trigger network or device real-location lookup', 'vault'],
+  ['bin/commands/trust.mjs', 'docs/REFERENCE.md', 'trust display escapes non-ASCII and backslashes and wraps lines including prefixes at 76 characters', '76'],
+  ['bin/commands/trust.mjs', 'test/trust.test.mjs', 'non-object JSON refusal is asserted verbatim', 'binding JSON must be an object'],
+  ['bin/commands/trust.mjs', 'test/trust.test.mjs', 'UTF-8 refusal is asserted verbatim', 'binding must be valid UTF-8'],
+  ['bin/lib/trust.mjs', 'test/trust.test.mjs', 'linked binding refusal is asserted verbatim', 'binding must be a regular file'],
+  ['bin/lib/trust.mjs', 'test/projectscaffold.test.mjs', 'project init tests protect the acknowledgement record destination', 'trusted-bindings.json'],
+  ['bin/commands/init.mjs', 'test/projectscaffold.test.mjs', 'failed acknowledgement leaves the binding and prints the trust remedy', 'Could not record the acknowledgement; run research-vault trust to record it.'],
+  ['bin/commands/trust.mjs', 'test/trust.test.mjs', 'trust status and display labels are asserted', 'Acknowledged: '],
+  ['bin/lib/trust.mjs', 'docs/REFERENCE.md', 'the acknowledgement record filename and format', 'trusted-bindings.json'],
+  ['bin/lib/trust.mjs', 'test/trust.test.mjs', 'the acknowledgement record filename and format', 'trusted-bindings.json'],
+  ['bin/research-vault.mjs', 'docs/REFERENCE.md', 'trust in the usage line and command reference row', 'trust'],
+  ['bin/commands/init.mjs', 'bin/commands/trust.mjs', 'the acknowledgement remedy names research-vault trust', 'research-vault trust'],
   ['scripts/coverage.mjs', 'docs/REFERENCE.md', 'coverage percentages, exclusions and partial-run policy'],
   ['scripts/coverage.mjs', 'AGENTS.md', 'new code must be loaded by a test'],
   ['scripts/check-agentsmd-drift.mjs', 'test/coverage.test.mjs', 'command fixture checks the drift diagnostic and leaves the golden unchanged', 'AGENTS.md drift: generator output differs'],

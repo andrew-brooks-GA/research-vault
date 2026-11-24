@@ -37,3 +37,11 @@ test('a value flag does not swallow a following --flag as its value', () => {
   const b = parseArgs(['capture', '--title']);
   assert.equal(b.title, undefined);
 });
+
+test('trust boolean flags preserve a following directory positional', () => {
+  for (const flag of ['show', 'revoke', 'yes']) {
+    const args = parseArgs(['trust', `--${flag}`, 'somedir']);
+    assert.equal(args[flag], true);
+    assert.deepEqual(args._, ['trust', 'somedir']);
+  }
+});
