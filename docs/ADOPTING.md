@@ -9,7 +9,7 @@ research-vault init --vault research
 research-vault init --project --vault research --code-links 'src/**/*.ts,src/**/*.js'
 ```
 
-The first command scaffolds `research/` (entry folders, `taxonomy.json`, a generated `AGENTS.md`, a `.gitignore` for the derived caches). The second writes `.research-vault.json` at the repo root, binding the repo to that vault and naming which files are code. Commit both. Code links need the vault inside the repo; a shared vault elsewhere can be cited from prose when it matches your `RESEARCH_VAULT_PATH`, config pointer or OS default under the [binding rule](../SECURITY.md#repository-bindings).
+The first command scaffolds `research/` (entry folders, `taxonomy.json`, a generated `AGENTS.md`, a `.gitignore` for the derived caches). The second writes `.research-vault.json` at the repo root, binding the repo to that vault and naming which files are code. Commit both. Code links need the vault inside the repo; a shared vault elsewhere can be cited from prose when its binding is approved with `research-vault trust` (as `init --project` does), without needing the variable, or when it matches your `RESEARCH_VAULT_PATH`, config pointer or OS default under the [binding rule](../SECURITY.md#repository-bindings).
 
 The plugin ships comment and declaration patterns for Lua, the JavaScript and TypeScript family, Python, Go, Rust, Zig, Ruby, shell and C/C++. Another language, or a stricter rule, is two regexes under `code.languages` in that file; see the Reference, "Code links".
 

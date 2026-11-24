@@ -141,7 +141,7 @@ test('gate staged refuses an unapproved outside vault without changing it', (t) 
   const r = cli('--check');
   assert.equal(r.status, 2);
   assert.equal(r.stdout, '');
-  assert.equal(r.stderr, `error: The binding at ${join(root, '.research-vault.json')} names a vault outside its repository that is not one of your own. Set RESEARCH_VAULT_PATH to that folder or pass --vault to the command.\n`);
+  assert.equal(r.stderr, `error: The binding at ${join(root, '.research-vault.json')} names a vault outside its repository that is not one of your own. Run research-vault trust in that project to approve the binding. Set RESEARCH_VAULT_PATH to that folder or pass --vault to the command.\n`);
   assert.deepEqual(snapshot(outside), before);
 });
 

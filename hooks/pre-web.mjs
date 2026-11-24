@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 // Optional, non-load-bearing: before WebFetch/WebSearch, search the vault for the query or URL and
 // hand the matches to the model as context. Never blocks the call; silent when no vault; always exits 0.
-import { existsSync } from 'node:fs';
-import { resolveVault } from '../bin/lib/resolve.mjs';
+import { resolveVault, hasVaultContent } from '../bin/lib/resolve.mjs';
 import { walkEntries, readEntry } from '../bin/lib/fsutil.mjs';
 import { listStale } from '../bin/lib/stale.mjs';
 import { termsOf } from '../bin/lib/terms.mjs';
@@ -56,7 +55,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
     try {
       const evt = JSON.parse(input || '{}');
       const { path: vaultPath } = resolveVault({ cwd: evt.cwd });
-      if (!existsSync(vaultPath)) process.exit(0);
+      if (!hasVaultContent(vaultPath)) process.exit(0);
       const cfg = loadProjectConfig(evt.cwd || process.cwd(), { schema: loadSchema(REPO_ROOT) })?.config;
       const ctx = vaultContext(vaultPath, evt.tool_name, evt.tool_input || {}, { text: cfg?.usage?.text === true });
       if (ctx) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: ctx } }) + '\n');

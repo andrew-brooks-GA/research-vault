@@ -7,7 +7,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, dirname, basename, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveVault } from '../bin/lib/resolve.mjs';
+import { escapePathControls } from '../bin/lib/containment.mjs';
+import { resolveVault, hasVaultContent } from '../bin/lib/resolve.mjs';
 import { findProjectConfig } from '../bin/lib/projectconfig.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { listStale } from '../bin/lib/stale.mjs';
@@ -46,8 +47,8 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
     try {
       const cwd = resolve(JSON.parse(input || '{}').cwd || process.cwd());
       const { path: vaultPath, source } = resolveVault({ cwd });
-      if (existsSync(vaultPath)) {
-        process.stdout.write(`research-vault: ${buildManifest(vaultPath).entries.length} entries; ${listStale(vaultPath).length} stale\n`);
+      if (hasVaultContent(vaultPath)) {
+        process.stdout.write(`research-vault: ${buildManifest(vaultPath).entries.length} entries; ${listStale(vaultPath).length} stale; ${escapePathControls(vaultPath)} (${source})\n`);
         // Walk only a bound repo: a config or default vault resolves from anywhere, including ~.
         const hit = source === 'project' && findProjectConfig(cwd);
         if (hit) {

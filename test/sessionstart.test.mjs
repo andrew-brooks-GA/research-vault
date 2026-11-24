@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
+import { rmSync, writeFileSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { assertVaultUntouched, outsideVaultRepo, tmpVault, put, testEnv } from './helpers.mjs';
+import { runInit } from '../bin/commands/init.mjs';
 import { workspaceBrief } from '../hooks/session-start.mjs';
 
 const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'session-start.mjs');
@@ -85,11 +86,11 @@ test('workspaceBrief names a task attempt by its summary (issue 79 D6)', () => {
 });
 
 test('CLI prints the workspace line after the summary line', () => {
-  const { root } = repo();
-  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: root }), cwd: root, env: testEnv(), encoding: 'utf8' });
+  const { root, vault } = repo();
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: root }), cwd: root, env: testEnv(), encoding: 'utf8', timeout: 20000 });
   assert.equal(r.status, 0);
   const lines = r.stdout.trim().split('\n');
-  assert.match(lines[0], /^research-vault: 2 entries; 1 stale$/);
+  assert.equal(lines[0], `research-vault: 2 entries; 1 stale; ${vault} (project)`);
   assert.equal(lines[1], 'research-teach learn/k8s: 1 record(s) review-due; 1 reference doc(s) with a stale citation');
   assert.equal(lines.length, 2);
 });
@@ -101,9 +102,9 @@ test('CLI outside a bound repo prints the summary line only', () => {
   mkdirSync(join(elsewhere, 'ws', 'learning-records'), { recursive: true });
   writeFileSync(join(elsewhere, 'ws', 'MISSION.md'), '# m\n');
   writeFileSync(join(elsewhere, 'ws', 'learning-records', '0001-a.md'), record(day(21 + 1)));
-  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: elsewhere }), cwd: elsewhere, env: testEnv({ RESEARCH_VAULT_PATH: vault }), encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd: elsewhere }), cwd: elsewhere, env: testEnv({ RESEARCH_VAULT_PATH: vault }), encoding: 'utf8', timeout: 20000 });
   assert.equal(r.status, 0);
-  assert.equal(r.stdout, 'research-vault: 2 entries; 1 stale\n');
+  assert.equal(r.stdout, `research-vault: 2 entries; 1 stale; ${vault} (env)\n`);
 });
 
 test('SessionStart stays silent for a refused outside vault', (t) => {
@@ -120,7 +121,7 @@ test('SessionStart stays silent for a refused outside vault', (t) => {
 
 // Issue 72 item 13: in a research-vault checkout whose claims reviewer is not the one of the running plugin, the hook says so.
 test('CLI names a checkout whose claims reviewer differs from the plugin running the session (issue 72 item 13)', () => {
-  const run = (cwd, vault) => spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd }), cwd, env: testEnv({ RESEARCH_VAULT_PATH: vault }), encoding: 'utf8' });
+  const run = (cwd, vault) => spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ cwd }), cwd, env: testEnv({ RESEARCH_VAULT_PATH: vault }), encoding: 'utf8', timeout: 20000 });
   const own = readFileSync(join(dirname(HOOK), '..', 'agents', 'claims-reviewer.md'));
   const checkout = (dir, name, body) => {
     mkdirSync(join(dir, 'agents'), { recursive: true });
@@ -146,4 +147,45 @@ test('CLI names a checkout whose claims reviewer differs from the plugin running
   checkout(inner, 'research-vault', own);
   writeFileSync(join(root, 'agents', 'claims-reviewer.md'), 'another reviewer\n');
   assert.ok(!/claims reviewer/.test(run(inner, vault).stdout));
+});
+
+function sessionFixture(t) {
+  const root = tmpVault('rv-summary-');
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const cwd = join(root, 'repo'); mkdirSync(cwd);
+  const home = join(root, 'home'); mkdirSync(home);
+  const env = testEnv({ HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: join(home, 'config'), XDG_DATA_HOME: join(home, 'data'), APPDATA: join(home, 'config'), LOCALAPPDATA: join(home, 'data') });
+  const run = () => spawnSync(process.execPath, [HOOK], { cwd, env: testEnv(env), input: JSON.stringify({ cwd }), encoding: 'utf8', timeout: 20000 });
+  return { root, cwd, home, env, run };
+}
+
+for (const source of ['config', 'default']) {
+  test(`session summary names the ${source} vault`, t => {
+    const f = sessionFixture(t);
+    const folder = process.platform === 'darwin' ? join(f.home, 'Library', 'Application Support', 'research-vault') : join(f.home, source === 'config' ? 'config' : 'data', 'research-vault');
+    const vault = source === 'config' ? join(f.root, 'vault') : folder;
+    runInit({ vaultPath: vault });
+    if (source === 'config') {
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, 'config.json'), JSON.stringify({ vaultPath: vault }));
+    }
+    const r = f.run();
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout, `research-vault: 0 entries; 0 stale; ${vault} (${source})\n`);
+  });
+}
+
+test('session summary escapes newline escape and format characters in a vault path', t => {
+  const f = sessionFixture(t);
+  const vault = join(f.root, 'vault-\n-\u001b-\u202e');
+  try { mkdirSync(vault); } catch (e) {
+    if (['EPERM', 'EINVAL', 'EILSEQ'].includes(e.code)) return t.skip(`filesystem refused control characters: ${e.code}`);
+    throw e;
+  }
+  runInit({ vaultPath: vault });
+  f.env.RESEARCH_VAULT_PATH = vault;
+  const r = f.run();
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, `research-vault: 0 entries; 0 stale; ${join(f.root, 'vault-\\u000a-\\u001b-\\u202e')} (env)\n`);
+  assert.doesNotMatch(r.stdout.slice(0, -1), /[\p{Cc}\p{Cf}]/u);
 });

@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import childProcess, { spawnSync } from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { editedPaths, adaptCodex } from '../hooks/codex.mjs';
@@ -25,8 +27,8 @@ test('Codex adapter rejects traversal and shell-shaped patches rather than evalu
 
 test('Codex adapter preserves Stop decisions and merges session guidance', () => {
   assert.deepEqual(adaptCodex('Stop', {}, { invoke: () => '{"decision":"block","reason":"missing verdict"}' }), { decision: 'block', reason: 'missing verdict' });
-  const s = adaptCodex('SessionStart', {}, { invoke: () => 'research-vault: 3 entries; 1 stale' });
-  assert.match(s.hookSpecificOutput.additionalContext, /3 entries/);
+  const s = adaptCodex('SessionStart', {}, { invoke: () => 'research-vault: 3 entries; 1 stale; /vault (project)' });
+  assert.ok(s.hookSpecificOutput.additionalContext.startsWith('research-vault: 3 entries; 1 stale; /vault (project)\n'));
   assert.match(s.hookSpecificOutput.additionalContext, /search the vault explicitly/);
 });
 
@@ -47,4 +49,32 @@ test('Codex PostToolUse gives only a notice for a refused outside vault', (t) =>
   assert.ok(!output.systemMessage.includes(id));
   assert.ok(!output.systemMessage.includes(title));
   assertVaultUntouched(fixture);
+});
+
+test('Codex Dependencies calls the dependency script with --hook', t => {
+  const cwd = tmpVault('rv-codex-deps-');
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  mkdirSync(join(cwd, 'research'));
+  writeFileSync(join(cwd, '.research-vault.json'), '{"vault":"research"}');
+  const previousEnv = process.env;
+  process.env = testEnv();
+  const calls = [];
+  // Observe the actual spawn arguments: invoke's signature does not expose --hook.
+  const mock = t.mock.method(childProcess, 'spawnSync', (command, args, options) => {
+    calls.push({ command, args, options });
+    return { status: 0, stdout: '' };
+  });
+  syncBuiltinESMExports();
+  try {
+    adaptCodex('Dependencies', { cwd, tool_input: { file_path: join(cwd, 'file.md') } });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].command, process.execPath);
+    assert.deepEqual(calls[0].args, [fileURLToPath(new URL('../scripts/deps.mjs', import.meta.url)), '--hook']);
+    assert.equal(JSON.parse(calls[0].options.input).tool_input.file_path, join(cwd, 'file.md'));
+    assert.ok(calls[0].options.timeout > 0 && calls[0].options.timeout <= 25000);
+  } finally {
+    mock.mock.restore();
+    syncBuiltinESMExports();
+    process.env = previousEnv;
+  }
 });

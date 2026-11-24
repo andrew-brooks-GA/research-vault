@@ -2,8 +2,14 @@ import { constants, fstatSync, readFileSync, realpathSync, lstatSync, mkdirSync,
 import path from 'node:path';
 import { homedir } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
-import { configPath } from './resolve.mjs';
 import { assertInsideWorkspaceFolder } from './containment.mjs';
+
+export function configPath({ platform, home, env }) {
+  const p = platform === 'win32' ? path.win32 : path.posix;
+  if (platform === 'win32') return p.join(env.APPDATA || p.join(home, 'AppData', 'Roaming'), 'research-vault', 'config.json');
+  if (platform === 'darwin') return p.join(home, 'Library', 'Application Support', 'research-vault', 'config.json');
+  return p.join(env.XDG_CONFIG_HOME || p.join(home, '.config'), 'research-vault', 'config.json');
+}
 
 export function trustedBindingsPath({ platform = process.platform, home = homedir(), env = process.env } = {}) {
   const p = platform === 'win32' ? path.win32 : path.posix;

@@ -2,6 +2,8 @@ import path from 'node:path';
 import { homedir } from 'node:os';
 import nodeFs, { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { configPath, isBindingAcknowledged } from './trust.mjs';
+import { walkEntries } from './fsutil.mjs';
 import { loadSchema } from './schema.mjs';
 import { loadProjectConfig, PROJECT_CONFIG_FILENAME } from './projectconfig.mjs';
 import { compareContainment, compareVaultLocations, mayBeInside } from './containment.mjs';
@@ -18,12 +20,7 @@ export function defaultVaultPath({ platform, home, env }) {
   return p.join(env.XDG_DATA_HOME || p.join(home, '.local', 'share'), 'research-vault');
 }
 
-export function configPath({ platform, home, env }) {
-  const p = pj(platform);
-  if (platform === 'win32') return p.join(env.APPDATA || p.join(home, 'AppData', 'Roaming'), 'research-vault', 'config.json');
-  if (platform === 'darwin') return p.join(home, 'Library', 'Application Support', 'research-vault', 'config.json');
-  return p.join(env.XDG_CONFIG_HOME || p.join(home, '.config'), 'research-vault', 'config.json');
-}
+export { configPath } from './trust.mjs';
 
 function readConfigPath(ctx) {
   const p = configPath(ctx);
@@ -92,13 +89,17 @@ export function resolveVault(opts = {}) {
     const verdict = checkProjectVault(project.vault, binding, { ...ctx, readConfig, fs: opts.fs ?? nodeFs });
     if (verdict.path) return { path: verdict.path, source: 'project' };
 
+    if (isBindingAcknowledged(binding, ctx)) {
+      return { path: path.resolve(path.dirname(binding), project.vault), source: 'project' };
+    }
+
     const location = binding.replace(/[\p{Cc}\p{Cf}\p{Cs}\u2028\u2029]/gu, ch => {
       const hex = ch.codePointAt(0).toString(16);
       return hex.length > 4 ? `\\u{${hex}}` : `\\u${hex.padStart(4, '0')}`;
     });
     const remedy = verdict.alreadyChosen ? 'Pass --vault to the command.'
       : 'Set RESEARCH_VAULT_PATH to that folder or pass --vault to the command.';
-    const error = new Error(`The binding at ${location} names ${verdict.reason}. ${remedy}`);
+    const error = new Error(`The binding at ${location} names ${verdict.reason}. Run research-vault trust in that project to approve the binding. ${remedy}`);
     error.code = OUTSIDE_PROJECT_VAULT;
     throw error;
   }
@@ -115,4 +116,9 @@ export function reportFallback({ path: vaultPath, source }, stream = process.std
   if (source !== 'config' && source !== 'default') return;
   const from = source === 'config' ? 'the user config' : 'the OS default';
   stream.write(`research-vault: no .research-vault.json found from the working directory; writing to ${vaultPath} (from ${from})\n`);
+}
+
+const VAULT_MARKERS = ['AGENTS.md', 'taxonomy.json', 'README.md', 'CLAUDE.md', 'GEMINI.md', 'meta'];
+export function hasVaultContent(dir) {
+  return VAULT_MARKERS.some(m => existsSync(path.join(dir, m))) || walkEntries(dir).length > 0;
 }

@@ -101,7 +101,7 @@ test('first-run project init binds the default vault and plain init creates it',
   assert.ok(existsSync(join(vault, 'AGENTS.md')));
 });
 
-test('project init warns about an outside vault that search requires an override to use', (t) => {
+test('project init acknowledges an outside vault for immediate use without a variable', (t) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'rv-init-project-outside-')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const repo = join(root, 'repo');
@@ -116,14 +116,12 @@ test('project init warns about an outside vault that search requires an override
   const project = run('init', '--project', '--vault', vault);
   assert.equal(project.status, 0, project.stderr);
   assert.equal(project.stdout, `Bound this repo to ${vault} via ${binding}.\n`);
-  assert.equal(project.stderr,
-    'Warning: this binding names a vault outside the repository. It will be used only when RESEARCH_VAULT_PATH points at it or --vault is passed.\n');
+  assert.equal(project.stderr, '');
   assert.equal(JSON.parse(readFileSync(binding, 'utf8')).vault, vault);
 
-  const refused = run('search');
-  assert.equal(refused.status, 2, refused.stderr);
-  assert.equal(refused.stdout, '');
-  assert.match(refused.stderr, /^error: The binding at /);
+  const paths = run('host', 'paths');
+  assert.equal(paths.status, 0, paths.stderr);
+  assert.equal(JSON.parse(paths.stdout).vault, vault);
   const init = run('init', '--vault', vault);
   assert.equal(init.status, 0, init.stderr);
   assert.equal(init.stderr, '');
@@ -190,11 +188,12 @@ test('init --project acknowledges the binding it creates', t => {
   assert.equal(isBindingAcknowledged(binding, { platform: process.platform, home, env }), true);
 });
 
-test('init --project keeps its binding when acknowledgement storage is linked outside', t => {
+test('init --project omits the outside warning for an inside vault when acknowledgement storage is linked outside', t => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'rv-init-trust-')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const home = join(root, 'home'), repo = join(root, 'repo'), outside = join(root, 'outside');
   mkdirSync(home); mkdirSync(repo); mkdirSync(outside);
+  const vault = join(repo, 'research'); mkdirSync(vault);
   const env = testEnv({ HOME: home, USERPROFILE: home, APPDATA: home, XDG_CONFIG_HOME: home });
   const folder = process.platform === 'darwin' ? join(home, 'Library', 'Application Support', 'research-vault') : join(home, 'research-vault');
   mkdirSync(dirname(folder), { recursive: true });
@@ -204,9 +203,36 @@ test('init --project keeps its binding when acknowledgement storage is linked ou
   }
   const r = spawnSync(process.execPath, [CLI, 'init', '--project', '--vault', 'research'], { cwd: repo, env: testEnv(env), encoding: 'utf8', timeout: 20000 });
   assert.equal(r.status, 0, r.stderr);
-  const binding = join(repo, '.research-vault.json');
-  assert.equal(JSON.parse(readFileSync(binding)).vault, 'research');
+  assert.equal(JSON.parse(readFileSync(join(repo, '.research-vault.json'))).vault, 'research');
   assert.equal(r.stderr, 'Could not record the acknowledgement; run research-vault trust to record it.\n');
+  assert.deepEqual(readdirSync(vault), []);
+  assert.equal(readFileSync(outsideFile, 'utf8'), 'unchanged');
+  assert.deepEqual(readdirSync(outside), ['trusted-bindings.json']);
+});
+
+test('init --project keeps its binding when acknowledgement storage is linked outside', t => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'rv-init-trust-')));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const home = join(root, 'home'), repo = join(root, 'repo'), outside = join(root, 'outside');
+  mkdirSync(home); mkdirSync(repo); mkdirSync(outside);
+  const vault = join(root, 'vault'); mkdirSync(vault);
+  const env = testEnv({ HOME: home, USERPROFILE: home, APPDATA: home, XDG_CONFIG_HOME: home });
+  const folder = process.platform === 'darwin' ? join(home, 'Library', 'Application Support', 'research-vault') : join(home, 'research-vault');
+  mkdirSync(dirname(folder), { recursive: true });
+  const outsideFile = join(outside, 'trusted-bindings.json'); writeFileSync(outsideFile, 'unchanged');
+  try { symlinkSync(outside, folder, 'dir'); } catch (e) {
+    if (['EPERM', 'EACCES', 'ENOSYS'].includes(e.code)) { t.skip(`links unavailable: ${e.code}`); return; } throw e;
+  }
+  const r = spawnSync(process.execPath, [CLI, 'init', '--project', '--vault', vault], { cwd: repo, env: testEnv(env), encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  const binding = join(repo, '.research-vault.json');
+  assert.equal(JSON.parse(readFileSync(binding)).vault, vault);
+  assert.equal(r.stderr, 'Could not record the acknowledgement; run research-vault trust to record it.\nWarning: this binding names a vault outside the repository. It will be used only when RESEARCH_VAULT_PATH points at it or --vault is passed.\n');
+  const refused = spawnSync(process.execPath, [CLI, 'search'], { cwd: repo, env: testEnv(env), encoding: 'utf8', timeout: 20000 });
+  assert.equal(refused.status, 2, refused.stderr);
+  assert.equal(refused.stdout, '');
+  assert.match(refused.stderr, /The binding at/);
+  assert.deepEqual(readdirSync(vault), []);
   assert.equal(readFileSync(outsideFile, 'utf8'), 'unchanged');
   assert.deepEqual(readdirSync(outside), ['trusted-bindings.json']);
 });

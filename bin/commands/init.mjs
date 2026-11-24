@@ -3,9 +3,9 @@ import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSchema } from '../lib/schema.mjs';
 import { generateAgentsMd } from '../lib/agentsmd.mjs';
-import { checkProjectVault, resolveVault, configPath } from '../lib/resolve.mjs';
+import { checkProjectVault, resolveVault, configPath, hasVaultContent } from '../lib/resolve.mjs';
 import { writeManifest } from '../lib/manifest.mjs';
-import { ENTRY_FOLDERS, walkEntries } from '../lib/fsutil.mjs';
+import { ENTRY_FOLDERS } from '../lib/fsutil.mjs';
 import { compileVault } from './compile.mjs';
 import { scaffoldProjectConfig } from '../lib/projectconfig.mjs';
 import { acknowledgeBinding } from '../lib/trust.mjs';
@@ -13,11 +13,6 @@ import { csvList } from '../lib/args.mjs';
 import { assertInsideVault, VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-
-const VAULT_MARKERS = ['AGENTS.md', 'taxonomy.json', 'README.md', 'CLAUDE.md', 'GEMINI.md', 'meta'];
-function hasVaultContent(dir) {
-  return VAULT_MARKERS.some(m => existsSync(join(dir, m))) || walkEntries(dir).length > 0;
-}
 
 function writeVaultDocs(vaultPath, repoRoot) {
   const docs = join(vaultPath, 'AGENTS.md');
@@ -87,11 +82,12 @@ export async function run(args) {
         writtenBytes = Buffer.from(content, options.encoding);
         writeFileSync(target, content, options);
       } });
-      try { acknowledgeBinding(target, { bytes: writtenBytes }); } catch {
+      let acknowledged = false;
+      try { acknowledgeBinding(target, { bytes: writtenBytes }); acknowledged = true; } catch {
         process.stderr.write('Could not record the acknowledgement; run research-vault trust to record it.\n');
       }
       process.stdout.write(`Bound this repo to ${vaultPath} via ${target}.\n`);
-      if (!checkProjectVault(vaultPath, target).path) {
+      if (!acknowledged && !checkProjectVault(vaultPath, target).path) {
         process.stderr.write('Warning: this binding names a vault outside the repository. It will be used only when RESEARCH_VAULT_PATH points at it or --vault is passed.\n');
       }
       if (codeLinks.length) {

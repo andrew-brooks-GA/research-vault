@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { mkdirSync, writeFileSync, rmSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { assertVaultUntouched, outsideVaultRepo, tmpVault, put, testEnv } from './helpers.mjs';
 import { vaultContext } from '../hooks/pre-web.mjs';
@@ -84,4 +85,26 @@ test('pre-web names a blocklisted URL\'s reason before a fetch, ahead of the cap
   assert.equal(both[0], first);
   assert.match(both[1], /already captured as 2026-01-01-spam/);
   assert.doesNotMatch(vaultContext(v, 'WebSearch', { query: 'spam example content' }), /blocklist/);
+});
+
+test('hooks stay silent and write nothing in a default folder containing only config records', t => {
+  const root = tmpVault('rv-not-vault-');
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const cwd = join(root, 'repo'); mkdirSync(cwd);
+  const home = join(root, 'home'); mkdirSync(home);
+  const env = testEnv({ HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: join(home, 'config'), XDG_DATA_HOME: join(home, 'data'), APPDATA: join(home, 'config'), LOCALAPPDATA: join(home, 'data') });
+  const vault = process.platform === 'darwin' ? join(home, 'Library', 'Application Support', 'research-vault') : join(home, 'data', 'research-vault');
+  mkdirSync(vault, { recursive: true });
+  writeFileSync(join(vault, 'trusted-bindings.json'), '{"version":1,"bindings":[]}');
+  writeFileSync(join(vault, 'config.json'), '{}');
+  const before = readdirSync(vault).map(name => [name, readFileSync(join(vault, name), 'utf8')]);
+  for (const name of ['session-start.mjs', 'pre-web.mjs']) {
+    const r = spawnSync(process.execPath, [fileURLToPath(new URL(`../hooks/${name}`, import.meta.url))], {
+      cwd, env: testEnv(env), input: JSON.stringify({ cwd, tool_name: 'WebSearch', tool_input: { query: 'unmatched query' } }), encoding: 'utf8', timeout: 20000,
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout, '');
+    assert.equal(r.stderr, '');
+    assert.deepEqual(readdirSync(vault).map(name => [name, readFileSync(join(vault, name), 'utf8')]), before);
+  }
 });

@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { acknowledgeBinding } from '../bin/lib/trust.mjs';
+import { testEnv, put } from './helpers.mjs';
 import { tmpdir } from 'node:os';
 import { dirname, join, posix, sep, win32 } from 'node:path';
 import { defaultVaultPath, configPath, OUTSIDE_PROJECT_VAULT, resolveVault } from '../bin/lib/resolve.mjs';
@@ -99,7 +103,7 @@ function assertRefused(options, binding, reason = 'a vault outside its repositor
   remedy = 'Set RESEARCH_VAULT_PATH to that folder or pass --vault to the command.') {
   assert.throws(() => resolveVault(options), (err) => {
     assert.equal(err.code, OUTSIDE_PROJECT_VAULT);
-    assert.equal(err.message, `The binding at ${binding} names ${reason}. ${remedy}`);
+    assert.equal(err.message, `The binding at ${binding} names ${reason}. Run research-vault trust in that project to approve the binding. ${remedy}`);
     assert.doesNotMatch(err.message, /[\r\n\u2028\u2029]/);
     assert.doesNotMatch(err.message, /init --vault|--set-default/);
     return true;
@@ -319,4 +323,110 @@ test('refusing a known outside project vault makes no resolution probe for the m
 test('an explicit flag wins over a refused project vault', (t) => {
   const { vault, cwd, options } = projectVaults(t);
   assert.deepEqual(resolveVault(options(vault, { flag: cwd })), { path: cwd, source: 'flag' });
+});
+
+// Task 4.0b: real bindings and isolated acknowledgement storage.
+function acknowledgedProject(t) {
+  const f = projectVaults(t);
+  const env = testEnv({ HOME: f.root, USERPROFILE: f.root, XDG_CONFIG_HOME: join(f.root, 'config'), XDG_DATA_HOME: join(f.root, 'data'), APPDATA: join(f.root, 'config'), LOCALAPPDATA: join(f.root, 'data') });
+  const ctx = { cwd: f.cwd, home: f.root, platform: process.platform, env };
+  writeFileSync(f.binding, '{"vault":"../OutsideVault"}');
+  return { ...f, env, ctx };
+}
+
+function treeBytes(dir) {
+  if (!existsSync(dir)) return null;
+  return readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name)).map(e =>
+    [e.name, e.isDirectory() ? treeBytes(join(dir, e.name)) : readFileSync(join(dir, e.name)).toString('hex')]);
+}
+
+const CLI = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+const SESSION = fileURLToPath(new URL('../hooks/session-start.mjs', import.meta.url));
+const child = (file, args, f, input) => spawnSync(process.execPath, [file, ...args], {
+  cwd: f.cwd, env: testEnv(f.env), input, encoding: 'utf8', timeout: 20000,
+});
+
+test('acknowledged outside binding resolves relative to its found folder using injected home', t => {
+  const f = acknowledgedProject(t);
+  acknowledgeBinding(f.binding, f.ctx);
+  const nested = join(f.cwd, 'docs');
+  mkdirSync(nested);
+  assert.deepEqual(resolveVault({ ...f.ctx, cwd: nested }), { path: join(f.root, 'OutsideVault'), source: 'project' });
+});
+
+test('capture refuses an unacknowledged outside binding without changing any destination', t => {
+  const f = acknowledgedProject(t);
+  writeFileSync(join(f.vault, 'sentinel'), 'outside bytes');
+  const before = treeBytes(f.root);
+  const r = child(CLI, ['capture', '--type', 'source', '--title', 'Unapproved capture', '--url', 'https://example.org/unapproved'], f);
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /The binding at .* names a vault outside its repository/);
+  assert.throws(() => resolveVault(f.ctx), { code: 'ERR_OUTSIDE_PROJECT_VAULT' });
+  assert.deepEqual(treeBytes(f.root), before);
+});
+
+test('one added byte invalidates acknowledgement without changing the vault or record', t => {
+  const f = acknowledgedProject(t);
+  acknowledgeBinding(f.binding, f.ctx);
+  writeFileSync(f.binding, readFileSync(f.binding, 'utf8') + ' ');
+  const before = treeBytes(f.root);
+  assert.throws(() => resolveVault(f.ctx), { code: 'ERR_OUTSIDE_PROJECT_VAULT' });
+  assert.deepEqual(treeBytes(f.root), before);
+});
+
+test('inside binding resolves with no record and with a row for another binding', t => {
+  const f = acknowledgedProject(t);
+  const other = join(f.root, 'other');
+  mkdirSync(other);
+  const binding = join(other, '.research-vault.json');
+  writeFileSync(binding, '{"vault":"inside"}');
+  mkdirSync(join(other, 'inside'));
+  for (const recorded of [false, true]) {
+    if (recorded) acknowledgeBinding(f.binding, f.ctx);
+    assert.deepEqual(resolveVault({ ...f.ctx, cwd: other }), { path: join(other, 'inside'), source: 'project' });
+  }
+});
+
+test('acknowledging A does not approve B even when both name the same outside vault', t => {
+  const f = acknowledgedProject(t);
+  acknowledgeBinding(f.binding, f.ctx);
+  const other = join(f.root, 'other');
+  mkdirSync(other);
+  writeFileSync(join(other, '.research-vault.json'), readFileSync(f.binding));
+  const before = treeBytes(f.root);
+  assert.throws(() => resolveVault({ ...f.ctx, cwd: other }), { code: 'ERR_OUTSIDE_PROJECT_VAULT' });
+  assert.deepEqual(treeBytes(f.root), before);
+});
+
+// Regression guard: passes before and after 4.0b; rows must not change unbound precedence.
+test('without a binding acknowledgement rows leave env config default precedence unchanged', t => {
+  const f = acknowledgedProject(t);
+  acknowledgeBinding(f.binding, f.ctx);
+  const cwd = join(f.root, 'unbound'); mkdirSync(cwd);
+  const cfg = configPath(f.ctx); mkdirSync(dirname(cfg), { recursive: true });
+  writeFileSync(cfg, JSON.stringify({ vaultPath: f.vault }));
+  assert.deepEqual(resolveVault({ ...f.ctx, cwd, env: { ...f.env, RESEARCH_VAULT_PATH: cwd } }), { path: cwd, source: 'env' });
+  assert.deepEqual(resolveVault({ ...f.ctx, cwd }), { path: f.vault, source: 'config' });
+  rmSync(cfg);
+  const expected = process.platform === 'darwin' ? join(f.root, 'Library', 'Application Support', 'research-vault') : join(f.root, 'data', 'research-vault');
+  assert.deepEqual(resolveVault({ ...f.ctx, cwd }), { path: expected, source: 'default' });
+});
+
+test('search and session start use the same acknowledged outside vault', t => {
+  const f = acknowledgedProject(t);
+  put(f.vault, 'note', '2020-01-01-acknowledged', { title: 'Acknowledged fixture', sources: [], confidence: 'medium', volatility: 'fast' });
+  acknowledgeBinding(f.binding, f.ctx);
+  const search = child(CLI, ['search', '--text', 'Acknowledged fixture'], f);
+  assert.equal(search.status, 0, search.stderr);
+  assert.match(search.stdout, /2020-01-01-acknowledged/);
+  const hook = child(SESSION, [], f, JSON.stringify({ cwd: f.cwd }));
+  assert.equal(hook.status, 0, hook.stderr);
+  assert.equal(hook.stdout, `research-vault: 1 entries; 1 stale; ${join(f.root, 'OutsideVault')} (project)\n`);
+});
+
+test('outside binding refusal offers trust in that project', t => {
+  const f = acknowledgedProject(t);
+  const before = treeBytes(f.root);
+  assert.throws(() => resolveVault(f.ctx), /Run research-vault trust in that project to approve the binding\./);
+  assert.deepEqual(treeBytes(f.root), before);
 });
