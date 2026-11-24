@@ -117,7 +117,6 @@ export function writeRecord(workspaceDir, { title, kind, lesson, body, now }, sc
 
 function assertRecordWrite(workspaceDir, dir, path) {
   assertInsideWorkspaceFolder(workspaceDir, dir, path, { regular: true });
-  assertInsideWorkspaceFolder(workspaceDir, dir, path + '.tmp', { regular: true });
 }
 
 export function supersedeRecord(workspaceDir, id, byId, reason, schema) {

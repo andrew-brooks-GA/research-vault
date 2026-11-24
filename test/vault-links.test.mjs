@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readEntry, walkEntries, writeEntry } from '../bin/lib/fsutil.mjs';
@@ -61,7 +61,53 @@ function needsFix(path) {
 }
 
 function runCli(vault, ...args) {
-  return spawnSync(process.execPath, [cli, ...args, '--vault', vault], { cwd: vault, env: testEnv(), encoding: 'utf8' });
+  return spawnSync(process.execPath, [cli, ...args, '--vault', vault], { cwd: vault, env: testEnv(), encoding: 'utf8', timeout: 30000 });
+}
+
+for (const absolute of [false, true]) {
+  for (const writer of ['verify', 'writeEntry']) {
+    test(`${writer}: a ${absolute ? 'absolute' : 'relative'} link at the old temporary name leaves the entry regular`, t => {
+      const { vault } = fixture(t);
+      const entry = note(vault, insideId, insideTitle);
+      const target = absolute ? entry : `${insideId}.md`;
+      if (!link(t, target, entry + '.tmp', 'file')) return;
+      if (writer === 'verify') {
+        const result = runCli(vault, 'verify', '--id', insideId, '--method', 'human-spot-check', '--result', 'confirmed', '--notes', 'new verification');
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(result.stdout, 'verify: updated\n');
+      } else {
+        const { data } = readEntry(entry);
+        writeEntry(entry, { ...data, title: 'New title' }, '# New body\n', undefined, vault);
+      }
+      assert.ok(lstatSync(entry).isFile(), 'entry remains a regular file');
+      const updated = readEntry(entry);
+      if (writer === 'verify') assert.equal(updated.data.verifications.at(-1).notes, 'new verification');
+      else {
+        assert.equal(updated.data.title, 'New title');
+        assert.equal(updated.body.trim(), '# New body');
+      }
+      assert.ok(lstatSync(entry + '.tmp').isSymbolicLink());
+      assert.equal(readlinkSync(entry + '.tmp'), target);
+    });
+  }
+}
+
+for (const absolute of [false, true]) {
+  test(`lint leaves a regular manifest and preserves a ${absolute ? 'absolute' : 'relative'} link at its old temporary name`, t => {
+    const { vault } = fixture(t);
+    put(vault, 'source', insideId, { title: insideTitle, source_type: 'article', source_url: 'https://example.com/a' });
+    const manifest = join(vault, '.vault-manifest.json');
+    writeFileSync(manifest, '{"entries":[]}\n');
+    const target = absolute ? manifest : '.vault-manifest.json';
+    if (!link(t, target, manifest + '.tmp', 'file')) return;
+    const result = runCli(vault, 'lint');
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.ok(lstatSync(manifest).isFile(), 'manifest remains a regular file');
+    const parsed = JSON.parse(readFileSync(manifest, 'utf8'));
+    assert.deepEqual(parsed.entries.map(e => [e.id, e.title]), [[insideId, insideTitle]]);
+    assert.ok(lstatSync(manifest + '.tmp').isSymbolicLink());
+    assert.equal(readlinkSync(manifest + '.tmp'), target);
+  });
 }
 
 function runHook(vault, hook, tool_name, tool_input) {

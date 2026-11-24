@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import fs, { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import fs, { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -13,6 +13,7 @@ import { assertInsideWorkspaceFolder, VAULT_PATH_OUTSIDE } from '../bin/lib/cont
 import { loadTeachSchema } from '../bin/lib/schema.mjs';
 import { cancelRun, endRun, ENDING_FILE, readRun, RUN_FILE, startRun } from '../bin/lib/task.mjs';
 import { createServer, fixRecordFrontmatter, fixRecordFrontmatters, previousTaskAttempt, supersedeRecord, writeAttempt, writeRecord } from '../bin/lib/teach.mjs';
+import { readEntry } from '../bin/lib/fsutil.mjs';
 import { testEnv } from './helpers.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -591,20 +592,36 @@ for (const action of ['fixRecordFrontmatter', 'teach lint --fix']) {
 }
 
 for (const action of ['supersedeRecord', 'fixRecordFrontmatter']) {
-  test(`${action} refuses a linked temporary name even within learning-records`, (t) => {
-    const { ws } = fixture(t);
-    const old = writeRecord(ws, record('Old'), SCHEMA);
-    const replacement = writeRecord(ws, record('Replacement'), SCHEMA);
-    if (action === 'fixRecordFrontmatter') writeFileSync(old.path, '# Legacy record\n');
-    const temp = old.path + '.tmp';
-    if (!link(t, replacement.path, temp)) return;
-    const before = [old.path, replacement.path].map((file) => readFileSync(file));
-    const mutate = action === 'supersedeRecord' ? () => supersedeRecord(ws, old.id, replacement.id, 'Revised', SCHEMA)
-      : () => fixRecordFrontmatter(ws, old.id + '.md', NOW);
-    assert.throws(mutate, { message: folderError(`learning-records/${old.id}.md.tmp`) });
-    assertLink(temp);
-    assert.deepEqual([old.path, replacement.path].map((file) => readFileSync(file)), before);
-  });
+  for (const targetKind of ['another record', 'same record relative', 'same record absolute']) {
+    test(`${action} preserves a linked old temporary name within learning-records (${targetKind})`, (t) => {
+      const { ws } = fixture(t);
+      const old = writeRecord(ws, record('Old'), SCHEMA);
+      const replacement = writeRecord(ws, record('Replacement'), SCHEMA);
+      if (action === 'fixRecordFrontmatter') writeFileSync(old.path, '# Legacy record\n');
+      const temp = old.path + '.tmp';
+      const target = targetKind === 'another record' ? replacement.path
+        : targetKind === 'same record relative' ? old.id + '.md' : old.path;
+      if (!link(t, target, temp)) return;
+      const before = readFileSync(replacement.path);
+      const mutate = action === 'supersedeRecord' ? () => supersedeRecord(ws, old.id, replacement.id, 'Revised', SCHEMA)
+        : () => fixRecordFrontmatter(ws, old.id + '.md', NOW);
+      mutate();
+      assert.ok(lstatSync(old.path).isFile(), 'record remains a regular file');
+      const updated = readEntry(old.path);
+      if (action === 'supersedeRecord') {
+        assert.equal(updated.data.status, 'superseded');
+        assert.equal(updated.data.superseded_by, replacement.id);
+        assert.ok(updated.body.includes(`Superseded by ${replacement.id}: Revised`));
+      } else {
+        assert.equal(updated.data.type, 'learning-record');
+        assert.equal(updated.data.title, 'Legacy record');
+        assert.equal(updated.body.trim(), '# Legacy record');
+      }
+      assertLink(temp);
+      assert.equal(readlinkSync(temp), target);
+      assert.deepEqual(readFileSync(replacement.path), before);
+    });
+  }
 }
 
 const RUN_ID = 'c-20261026-205700';
@@ -809,36 +826,54 @@ test('fixRecordFrontmatter refuses a linked record before reading its type', (t)
   assert.deepEqual(readFileSync(target), before);
 });
 
-test('lint --fix refuses a linked temporary name before any record is fixed', (t) => {
-  const { root, ws } = fixture(t);
+test('lint --fix preserves an outside link at the old temporary name while fixing records', (t) => {
+  const { root, ws, marker } = fixture(t);
   const dir = join(ws, 'learning-records');
   mkdirSync(dir);
   const first = join(dir, '0001-first.md'), second = join(dir, '0002-second.md');
   writeFileSync(first, '# First\n');
   writeFileSync(second, '# Second\n');
   const temp = second + '.tmp';
-  if (!link(t, second, temp)) return;
-  refused(cli(root, 'lint', '--fix', ws, '--vault', root), folderError('learning-records/0002-second.md.tmp'));
+  if (!link(t, marker, temp)) return;
+  const before = readFileSync(marker);
+  const result = cli(root, 'lint', '--fix', ws, '--vault', root);
+  assert.equal(result.status, 1, result.stdout + result.stderr); // The minimal workspace still has lint findings.
+  assert.ok(result.stdout.split('\n').includes('fixed 2 record(s)'), result.stdout);
+  assert.equal(result.stderr, '');
   assertLink(temp);
-  assert.equal(readFileSync(first, 'utf8'), '# First\n');
-  assert.equal(readFileSync(second, 'utf8'), '# Second\n');
+  assert.equal(readlinkSync(temp), marker);
+  assert.deepEqual(readFileSync(marker), before);
+  for (const [path, title] of [[first, 'First'], [second, 'Second']]) {
+    assert.ok(lstatSync(path).isFile());
+    const updated = readEntry(path);
+    assert.equal(updated.data.type, 'learning-record');
+    assert.equal(updated.data.title, title);
+    assert.equal(updated.body.trim(), `# ${title}`);
+  }
 });
 
-test('fixRecordFrontmatters refuses a temporary link immediately before writing a planned fix', (t) => {
-  const { ws } = fixture(t);
+test('fixRecordFrontmatters preserves an outside old temporary link introduced before a planned fix', (t) => {
+  const { ws, marker } = fixture(t);
   const dir = join(ws, 'learning-records');
   mkdirSync(dir);
   const first = join(dir, '0001-first.md'), second = join(dir, '0002-second.md');
   writeFileSync(first, '# First\n');
   writeFileSync(second, '# Second\n');
   const staged = join(dir, 'temp.link'), temp = first + '.tmp';
-  if (!link(t, first, staged)) return;
+  if (!link(t, marker, staged)) return;
+  const before = readFileSync(marker);
   afterFsCall(t, 'readFileSync', second, () => renameSync(staged, temp));
-  assert.throws(() => fixRecordFrontmatters(ws, ['0001-first.md', '0002-second.md']),
-    { message: folderError('learning-records/0001-first.md.tmp') });
+  fixRecordFrontmatters(ws, ['0001-first.md', '0002-second.md']);
   assertLink(temp);
-  assert.equal(readFileSync(first, 'utf8'), '# First\n');
-  assert.equal(readFileSync(second, 'utf8'), '# Second\n');
+  assert.equal(readlinkSync(temp), marker);
+  assert.deepEqual(readFileSync(marker), before);
+  for (const [path, title] of [[first, 'First'], [second, 'Second']]) {
+    assert.ok(lstatSync(path).isFile());
+    const updated = readEntry(path);
+    assert.equal(updated.data.type, 'learning-record');
+    assert.equal(updated.data.title, title);
+    assert.equal(updated.body.trim(), `# ${title}`);
+  }
 });
 
 test('supersedeRecord refuses a record destination redirected before its rewrite', (t) => {
