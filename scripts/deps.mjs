@@ -319,6 +319,8 @@ export const COUPLINGS = [
   ['bin/lib/task.mjs', 'docs/REFERENCE.md', "endRun's time line over a limit", 'over the limit of'],
   ['bin/lib/task.mjs', 'docs/REFERENCE.md', "the open run's tail, on runLine, the start's refusal and the end's problem line", 'end: ./check --certify; drop: ./check --cancel'],
   ['bin/lib/task.mjs', 'docs/REFERENCE.md', "startRun's line for a setup that does not exit 0", 'no run started; scopes already reset:'],
+  ['bin/lib/task.mjs', 'docs/REFERENCE.md', "endRun's refusal of a run dropped or replaced during its checks", 'was dropped or replaced while it was being checked; nothing recorded'],
+  ['bin/lib/task.mjs', 'test/teach-task.test.mjs', "endRun's refusal of a run dropped or replaced during its checks", 'was dropped or replaced while it was being checked; nothing recorded'],
   ['bin/commands/teach.mjs', 'docs/REFERENCE.md', "the refusal of --hints while a run holds them back", 'hints are held back in certification run'],
   ['bin/lib/task.mjs', 'docs/REFERENCE.md', "cancelRun's line for an end that did not finish", 'attempts of the run may be recorded'],
   ['bin/lib/task.mjs', 'docs/REFERENCE.md', "cancelRun's line for a dropped run", 'nothing was recorded'],

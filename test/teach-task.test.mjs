@@ -741,7 +741,7 @@ test('teach lint reports the id all as TASK_REQUIREMENTS_INVALID', () => {
 
 // Issue 79 commit 5 (D8): a certification run of one task or several, with one start, one end and one grade. The
 // fixture's second task, 0002-more, has two requirements, c-exists and c-text, which name no record.
-const { startRun, endRun, readRun, runLine, openLine, checkAttempt } = await import('../bin/lib/task.mjs');
+const { startRun, endRun, cancelRun, readRun, runLine, openLine, checkAttempt } = await import('../bin/lib/task.mjs');
 const { certificationRuns, writeAttempt } = await import('../bin/lib/teach.mjs');
 const RUN = '.teach-certify.json';
 const ENDING = '.teach-certify.ending.json';
@@ -1068,6 +1068,144 @@ test('certification start: a --cancel during a setup is not undone; the start ex
   assert.equal(await startRun(ws, ['1', '2'], { minutes: null, pass: null, hints: true }, o), 2);
   assert.deepEqual(o.lines.err, ['teach check: certification run c-20260101-100000 was dropped during its setup; no run started; scopes already reset: 0001, 0002']);
   assert.ok(!existsSync(join(ws, RUN)));
+});
+
+// R-14: a run acts only on its own id.
+const NO_LIMITS = { minutes: null, pass: null, hints: true };
+const filesAndBytes = (ws) => attemptFiles(ws).map((f) => [f, readFileSync(join(ws, 'attempts', f), 'utf8')]);
+
+test('certification ids: a second run in the same second gets -2, the two stay two runs, and --cancel of its stopped end removes only its attempts', SHELL_TEST, async () => {
+  const ws = copy();
+  const schema = loadTeachSchema(ROOT);
+  assert.equal(await startRun(ws, ['1'], NO_LIMITS, io(() => T0)), 0);
+  assert.equal(await endRun(ws, schema, io(() => T0)), 0);
+  const first = filesAndBytes(ws);
+  assert.equal(await startRun(ws, ['1'], NO_LIMITS, io(() => T0)), 0);
+  const second = readFileSync(join(ws, RUN), 'utf8');
+  assert.equal(state(ws).id, 'c-20260101-100000-2');
+  assert.equal(await endRun(ws, schema, io(() => T0)), 0);
+  const attempts = attemptFiles(ws).map((f) => parseFrontmatter(readFileSync(join(ws, 'attempts', f), 'utf8')).data);
+  assert.deepEqual(certificationRuns(attempts).map((r) => r.id), ['c-20260101-100000', 'c-20260101-100000-2']);
+  // The second end stopped before it removed the renamed state, as the code leaves it.
+  writeFileSync(join(ws, ENDING), second);
+  const o = io();
+  assert.equal(cancelRun(ws, o), 0);
+  assert.deepEqual(o.lines.out, ['removed the end of certification run c-20260101-100000-2 that did not finish and the 1 attempt it wrote; nothing of the run is recorded']);
+  assert.deepEqual(filesAndBytes(ws), first);
+});
+
+test('certification start: a failing setup leaves another run that a --cancel and --start put in place during it', SHELL_TEST, async () => {
+  const ws = copy();
+  let other;
+  const o = io(() => T0);
+  o.setup = async () => {
+    assert.equal(cancelRun(ws, io()), 0);
+    assert.equal(await startRun(ws, ['2'], NO_LIMITS, io(() => at(1))), 0);
+    other = readFileSync(join(ws, RUN), 'utf8');
+    return { code: 3 };
+  };
+  assert.equal(await startRun(ws, ['1'], NO_LIMITS, o), 2);
+  assert.equal(existsSync(join(ws, RUN)) && readFileSync(join(ws, RUN), 'utf8'), other);
+  assert.deepEqual(o.lines.err, ['teach check: certification run c-20260101-100000 was dropped during its setup; no run started; scopes already reset: none']);
+});
+
+test('certification end: a --cancel and --start during the checks leave the other run in place and record nothing', SHELL_TEST, async () => {
+  const ws = copy();
+  assert.equal(await startRun(ws, ['1'], NO_LIMITS, io(() => T0)), 0);
+  const before = attemptFiles(ws);
+  let other;
+  const o = io(() => at(5));
+  o.checker = async (w, t) => {
+    if (!other) {
+      assert.equal(cancelRun(ws, io()), 0);
+      assert.equal(await startRun(ws, ['2'], NO_LIMITS, io(() => at(2))), 0);
+      other = readFileSync(join(ws, RUN), 'utf8');
+    }
+    return checkTask(w, t, { err: () => {}, env: testEnv() });
+  };
+  assert.equal(await endRun(ws, loadTeachSchema(ROOT), o), 2);
+  assert.deepEqual(o.lines.err, ['teach check: certification run c-20260101-100000 was dropped or replaced while it was being checked; nothing recorded']);
+  assert.equal(readFileSync(join(ws, RUN), 'utf8'), other);
+  assert.ok(!existsSync(join(ws, ENDING)));
+  assert.deepEqual(attemptFiles(ws), before);
+});
+
+test('certification end: another run put at the state path just before the rename is renamed back and nothing is recorded', SHELL_TEST, async (t) => {
+  const fs = (await import('node:fs')).default;
+  const { syncBuiltinESMExports } = await import('node:module');
+  const ws = copy();
+  assert.equal(await startRun(ws, ['1'], NO_LIMITS, io(() => T0)), 0);
+  const other = JSON.stringify({ id: 'c-20260101-100200', started: at(2).toISOString(), tasks: ['0002'], minutes: null, pass: null, hints: true }) + '\n';
+  const rename = fs.renameSync;
+  const restore = () => { fs.renameSync = rename; syncBuiltinESMExports(); };
+  t.after(restore);
+  // The other run lands after endRun's reread of the state, as the first step of its rename.
+  fs.renameSync = (from, to) => {
+    if (from === join(ws, RUN) && to === join(ws, ENDING)) { restore(); writeFileSync(from, other); }
+    return rename(from, to);
+  };
+  syncBuiltinESMExports();
+  const o = io(() => at(5));
+  assert.equal(await endRun(ws, loadTeachSchema(ROOT), o), 2);
+  assert.equal(o.lines.err.at(-1), 'teach check: certification run c-20260101-100000 was dropped or replaced while it was being checked; nothing recorded');
+  assert.equal(readFileSync(join(ws, RUN), 'utf8'), other);
+  assert.ok(!existsSync(join(ws, ENDING)));
+  assert.deepEqual(attemptFiles(ws), []);
+});
+
+test('certification end: when a third run takes the state path after the rename, the renamed file is left beside it and nothing is recorded', SHELL_TEST, async (t) => {
+  const fs = (await import('node:fs')).default;
+  const { syncBuiltinESMExports } = await import('node:module');
+  const ws = copy();
+  assert.equal(await startRun(ws, ['1'], NO_LIMITS, io(() => T0)), 0);
+  const run = (min, task) => JSON.stringify({ id: `c-20260101-10${min}00`, started: at(Number(min)).toISOString(), tasks: [task], minutes: null, pass: null, hints: true }) + '\n';
+  const other = run('02', '0002'), third = run('03', '0001');
+  const rename = fs.renameSync;
+  const restore = () => { fs.renameSync = rename; syncBuiltinESMExports(); };
+  t.after(restore);
+  // The other run lands before endRun's rename moves it, and the third run at the state path right after.
+  fs.renameSync = (from, to) => {
+    if (from !== join(ws, RUN) || to !== join(ws, ENDING)) return rename(from, to);
+    restore();
+    writeFileSync(from, other);
+    rename(from, to);
+    writeFileSync(from, third);
+  };
+  syncBuiltinESMExports();
+  const o = io(() => at(5));
+  assert.equal(await endRun(ws, loadTeachSchema(ROOT), o), 2);
+  assert.equal(o.lines.err.at(-1), 'teach check: certification run c-20260101-100000 was dropped or replaced while it was being checked; nothing recorded; .teach-certify.ending.json was left beside .teach-certify.json; ./check --cancel removes it');
+  assert.equal(readFileSync(join(ws, RUN), 'utf8'), third);
+  assert.equal(readFileSync(join(ws, ENDING), 'utf8'), other);
+  assert.deepEqual(attemptFiles(ws), []);
+});
+
+test('certification end: a run cancelled and another started in the same second share its id; the end refuses the other by its start time', SHELL_TEST, async () => {
+  const ws = copy();
+  assert.equal(await startRun(ws, ['1'], NO_LIMITS, io(() => T0)), 0);
+  let other;
+  const o = io(() => at(5));
+  o.checker = async (w, t) => {
+    if (!other) {
+      assert.equal(cancelRun(ws, io()), 0);
+      // The other start runs in the same second as this run's start; its started is half a second later.
+      assert.equal(await startRun(ws, ['2'], NO_LIMITS, io(() => new Date(T0.getTime() + 500))), 0);
+      other = readFileSync(join(ws, RUN), 'utf8');
+      assert.equal(JSON.parse(other).id, 'c-20260101-100000');
+    }
+    return checkTask(w, t, { err: () => {}, env: testEnv() });
+  };
+  assert.equal(await endRun(ws, loadTeachSchema(ROOT), o), 2);
+  assert.deepEqual(o.lines.err, ['teach check: certification run c-20260101-100000 was dropped or replaced while it was being checked; nothing recorded']);
+  assert.equal(readFileSync(join(ws, RUN), 'utf8'), other);
+  assert.ok(!existsSync(join(ws, ENDING)));
+  assert.deepEqual(attemptFiles(ws), []);
+});
+
+test('readRun: a run id with a -N suffix is a run', () => {
+  const ws = copy();
+  writeFileSync(join(ws, RUN), JSON.stringify({ id: 'c-20260101-100000-2', started: null, tasks: ['0001'], minutes: null, pass: null, hints: true }));
+  assert.equal(readRun(ws).state?.id, 'c-20260101-100000-2');
 });
 
 test('certificationRuns counts the last attempt of each lesson in a run, oldest run first', () => {

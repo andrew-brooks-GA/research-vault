@@ -207,7 +207,8 @@ export async function checkTask(ws, nnnn, { err, env = process.env, runner = run
 export const RUN_FILE = '.teach-certify.json';
 export const ENDING_FILE = '.teach-certify.ending.json';
 const RUN_KEYS = ['id', 'started', 'tasks', 'minutes', 'pass', 'hints'];
-const RUN_ID_RE = /^c-\d{8}-\d{6}$/;
+// The start's UTC second, with -2, -3, ... when an attempt already holds that id.
+const RUN_ID_RE = /^c-\d{8}-\d{6}(?:-[1-9]\d*)?$/;
 const RUN_BAD = `${RUN_FILE} is not a certification run; drop it with ./check --cancel`;
 const OPEN_TAIL = 'end: ./check --certify; drop: ./check --cancel';
 const inRange = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
@@ -221,6 +222,8 @@ function checkRunFile(ws, name) {
 }
 
 const runIdIn = (file) => { try { const id = JSON.parse(readFileSync(file, 'utf8'))?.id; return RUN_ID_RE.test(id) ? id : null; } catch { return null; } };
+// { id, started } of the run in `file`, or null when it holds no run id: two runs can share an id, not a start time.
+const runKeyIn = (file) => { try { const { id, started } = JSON.parse(readFileSync(file, 'utf8')); return RUN_ID_RE.test(id) ? { id, started } : null; } catch { return null; } };
 const endingProblem = (id) => (id ? `an end of certification run ${id} did not finish; ./check --cancel removes it and the attempts it wrote`
   : 'an end of a certification run did not finish; attempts of the run may be recorded; ./check --cancel removes it');
 // The attempts/*.md files whose certification is `id`.
@@ -288,10 +291,13 @@ export async function startRun(ws, nums, { minutes, pass, hints }, { now, out, e
   const open = readRun(ws);
   if (open.problem) return refuse(open.problem);
   const t0 = now().toISOString();
-  // ponytail: the id changes once a second, so two runs started and ended within one second share an id and
-  // certificationRuns merges them, and a --cancel of the second's stopped end removes the first's attempts too; the fix
-  // is a suffix when attempts already hold the id.
-  const state = { id: `c-${t0.slice(0, 10).replaceAll('-', '')}-${t0.slice(11, 19).replaceAll(':', '')}`, started: null, tasks, minutes: M, pass: P, hints };
+  // Two runs within one second get distinct ids, so certificationRuns keeps them apart and a --cancel of one's end
+  // removes only its attempts.
+  const base = `c-${t0.slice(0, 10).replaceAll('-', '')}-${t0.slice(11, 19).replaceAll(':', '')}`, dir = join(ws, 'attempts');
+  assertInsideWorkspaceFolder(ws, dir);
+  let id = base;
+  for (let n = 2; runAttempts(ws, dir, id).length > 0; n++) id = `${base}-${n}`;
+  const state = { id, started: null, tasks, minutes: M, pass: P, hints };
   try {
     checkRunFile(ws, RUN_FILE);
     writeAtomic(file, JSON.stringify(state) + '\n', { vaultPath: ws, exclusive: true });
@@ -301,19 +307,21 @@ export async function startRun(ws, nums, { minutes, pass, hints }, { now, out, e
     return refuse(r.state ? `certification run ${r.state.id} is open; ${OPEN_TAIL}` : r.problem ?? 'a certification run is open');
   }
   const reset = [];
+  // A --cancel during a setup removed the state, and another start may have written its own: the start leaves it.
+  const dropped = () => refuse(`certification run ${state.id} was dropped during its setup; no run started; scopes already reset: ${reset.join(', ') || 'none'}`);
   for (const t of tasks) {
     out(`setup: evidence/${t}/setup.sh`);
     const r = await setup(ws, t, { env });
     if (r.problem || r.code !== 0) {
       checkRunFile(ws, RUN_FILE);
+      if (runIdIn(file) !== state.id) return dropped();
       rmSync(file, { force: true });
       return refuse(`${t}: ${r.problem ?? `setup.sh exited ${r.code}`}; no run started; scopes already reset: ${reset.join(', ') || 'none'}`);
     }
     reset.push(t);
   }
-  // A --cancel during a setup removed the state: the start does not write it again.
   checkRunFile(ws, RUN_FILE);
-  if (runIdIn(file) !== state.id) return refuse(`certification run ${state.id} was dropped during its setup; no run started; scopes already reset: ${reset.join(', ')}`);
+  if (runIdIn(file) !== state.id) return dropped();
   state.started = now().toISOString();
   checkRunFile(ws, RUN_FILE);
   writeAtomic(file, JSON.stringify(state) + '\n', { vaultPath: ws });
@@ -351,13 +359,30 @@ export async function endRun(ws, schema, { now, out, err, env = process.env, che
   // Check every attempt destination before changing the run state.
   for (const g of graded) nextAttemptId(ws, g.lesson, end);
   const file = join(ws, RUN_FILE), ending = join(ws, ENDING_FILE);
+  // A --cancel and another --start during the checks put another run at the state path: the end takes only its own.
+  // Its own run has its id and its started: a run cancelled and another started in the same second share the id.
+  // ponytail: no lock, so two terminals acting in the same few milliseconds can still cross: between the reread and
+  // the rename, and between the check of the state path and the rename back below, which then replaces the file that
+  // took that path. startRun has no started while its setups run, so a --cancel and a new --start inside the same
+  // second as its start, during its setup, give a state it takes for its own. The upgrade is a workspace lock file
+  // created with the exclusive flag.
+  const own = (k) => k?.id === s.id && k.started === s.started;
+  const replaced = `certification run ${s.id} was dropped or replaced while it was being checked; nothing recorded`;
   try {
     checkRunFile(ws, RUN_FILE);
+    const k = runKeyIn(file);
+    if (k && !own(k)) return refuse(replaced);
     checkRunFile(ws, ENDING_FILE);
     renameSync(file, ending);
   } catch (e) {
     if (e.code === 'ENOENT') return refuse(none);
     throw e;
+  }
+  checkRunFile(ws, ENDING_FILE);
+  if (!own(runKeyIn(ending))) {
+    if (checkRunFile(ws, RUN_FILE)) return refuse(`${replaced}; ${ENDING_FILE} was left beside ${RUN_FILE}; ./check --cancel removes it`);
+    renameSync(ending, file);
+    return refuse(replaced);
   }
   for (const g of graded) writeAttempt(ws, { lesson: g.lesson, task: checkAttempt(g.requirements, g.parsed, s.id), now: end }, schema);
   checkRunFile(ws, ENDING_FILE);
