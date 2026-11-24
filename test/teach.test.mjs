@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { assertVaultUntouched, fixtureVault, outsideVaultRepo, put, testEnv } from './helpers.mjs';
 import { workspaceBrief } from '../hooks/session-start.mjs';
-import { progress, progressHtml, progressText } from '../bin/lib/teach.mjs';
+import { progress, progressHtml, progressText, workspaceKey } from '../bin/lib/teach.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'research-vault.mjs');
@@ -210,6 +210,31 @@ test('CLI teach record add then supersede round-trips', () => {
   const afterCount = readdirSync(join(ws, 'learning-records')).length;
   console.log(`records before ${before}, after ${afterCount}`);
   assert.equal(afterCount, before);
+});
+
+// R-57: the hex is the first 8 characters of `printf '%s' 'Ελληνικός' | shasum -a 256`, computed outside the code.
+test('teach record add with a title of only non-ASCII letters writes record 0001-t-<hex>', () => {
+  const ws = realpathSync(mkdtempSync(join(tmpdir(), 'rv-teach-rec-')));
+  cpSync(join(FIX, 'MISSION.md'), join(ws, 'MISSION.md'));
+  const r = cli(['record', 'add', '--title', 'Ελληνικός', '--kind', 'understanding', ws]);
+  assert.equal(r.stderr, '');
+  assert.equal(r.stdout, '0001-t-e110674c\n');
+  assert.equal(r.status, 0);
+  assert.deepEqual(readdirSync(join(ws, 'learning-records')), ['0001-t-e110674c.md']);
+});
+
+// R-57: the workspace key stays what it was at b8dc71c, so a results file exported before the change still imports.
+test('a workspace folder named with no ASCII word keeps the key "" and imports a results file exported with it', () => {
+  const ws = join(realpathSync(mkdtempSync(join(tmpdir(), 'rv-teach-key-'))), '日本語');
+  cpSync(FIX, ws, { recursive: true });
+  assert.equal(workspaceKey(ws), '');
+  const file = join(dirname(ws), 'results.json');
+  writeFileSync(file, JSON.stringify({ format: 'research-vault-attempts', version: 1, workspace: '',
+    attempts: [{ lesson: '0003-review-good', answers: [0, 2, 1], at: '2026-01-02T03:04:05.000Z', total: 3, wrong: [] }] }));
+  const r = cli(['attempt', 'import', file, ws]);
+  assert.equal(r.stderr, '');
+  assert.equal(r.stdout, 'recorded a-20260102-030405-0003: 3/3\n');
+  assert.equal(r.status, 0);
 });
 
 test('CLI teach attempt add records a graded attempt', () => {

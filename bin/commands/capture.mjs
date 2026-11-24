@@ -48,13 +48,15 @@ export function prepareEntry(vaultPath, opts, ctx = {}) {
   if (opts.type === 'synthesis' && !(opts.contributingIds && String(opts.contributingIds).length)) throw new Error('synthesis requires contributingIds');
 
   const pending = ctx.pending || [];
+  let manifestEntries = ctx.manifestEntries;
+  const entries = () => (manifestEntries ??= buildManifest(vaultPath).entries);
   const hashInput = opts.contentBytes ?? (opts.content || null);
   const newHash = hashInput != null ? sha256(hashInput) : (opts.contentHash || null);
   if (!ctx.ignoreExisting && opts.type === 'source' && opts.url) {
     const normUrl = normalizeUrl(opts.url);
     // Issue 72 item 7: the version this capture stores; with no subject name it stores none (line 80).
     const version = verKey(opts.subjectName ? opts.subjectVersion : null);
-    const existing = ctx.manifestEntries || buildManifest(vaultPath).entries;
+    const existing = entries();
     const candidates = [...existing, ...pending.map(p => ({ id: p.id, source_url: normalizeUrlSafe(p.data.source_url), subject: p.data.subject, content_hash: p.data.content_hash }))];
     for (const e of candidates) {
       if (e.source_url === normUrl && verKey(e.subject?.version) === version) {
@@ -132,6 +134,12 @@ export function prepareEntry(vaultPath, opts, ctx = {}) {
     const skel = opts.scaffold ? loadSkeleton(repoRoot, opts.type) : '';
     body = skel ? `# ${opts.title}\n\n${skel}\n` : `# ${opts.title}\n`;
     if (opts.storeBody && opts.content) body += `\n${opts.content}\n`;
+  }
+  // Each edge must name a vault entry or an earlier item of the batch; with ignoreExisting the caller checks its own.
+  if (!ctx.ignoreExisting) {
+    const unresolved = [...(data.sources || []), ...(data.contributing_ids || []), ...data.related]
+      .filter(ref => !entries().some(e => e.id === ref) && !pending.some(p => p.id === ref));
+    if (unresolved.length) throw Object.assign(new Error(`unresolved reference: ${unresolved[0]}`), { unresolved });
   }
   return { id, path, folder, data, body, order, dedup: null };
 }
@@ -222,10 +230,8 @@ export function runBatch(vaultPath, planPath, cliOpts = {}) {
 // Validate every spec, then write; `cliOpts.continue` writes the specs that validated when others failed.
 function runSpecs(vaultPath, plan, cliOpts, errors = []) {
   const manifestEntries = buildManifest(vaultPath).entries;
-  const knownIds = new Set(manifestEntries.map(e => e.id));
   const skipped = [], pending = [];
   plan.forEach((spec, index) => {
-    const before = errors.length;
     try {
       const prep = prepareEntry(vaultPath, specToOpts(spec, cliOpts), { manifestEntries, pending });
       if (prep.dedup) {
@@ -233,13 +239,11 @@ function runSpecs(vaultPath, plan, cliOpts, errors = []) {
         else skipped.push({ index, id: prep.dedup.id, reason: prep.dedup.reason });
         return;
       }
-      const refs = [...(prep.data.sources || []), ...(prep.data.contributing_ids || []), ...(prep.data.related || [])];
-      for (const ref of refs) {
-        if (!knownIds.has(ref) && !pending.some(p => p.id === ref))
-          errors.push({ index, error: `unresolved reference: ${ref}` });
-      }
-      if (errors.length === before) pending.push({ ...prep, index });
-    } catch (e) { errors.push({ index, error: e.message }); }
+      pending.push({ ...prep, index });
+    } catch (e) {
+      // prepareEntry names every unresolved reference; the batch keeps one error line per reference.
+      for (const ref of e.unresolved || [null]) errors.push({ index, error: ref ? `unresolved reference: ${ref}` : e.message });
+    }
   });
   if (errors.length && !cliOpts.continue) return { errors, created: [], skipped };
 

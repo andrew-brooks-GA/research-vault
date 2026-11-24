@@ -557,3 +557,31 @@ test('R08 ordinary capture preserves the winner when the destination appears bef
   assert.equal(result.dedup.reason, 'entry id 2026-01-01-race already exists in questions/ (supersede via verify, do not overwrite)');
   assert.deepEqual(readdirSync(join(dir, 'questions')), ['2026-01-01-race.md']);
 });
+
+test('two titles with no ASCII word captured on one day get two distinct ids (R-57)', () => {
+  const dir = freshVault();
+  const opts = { type: 'source', now: '2026-11-24', repoRoot: process.cwd() };
+  const a = captureEntry(dir, { ...opts, title: '日本語のタイトル', url: 'https://ja.example/a' });
+  const b = captureEntry(dir, { ...opts, title: 'Ελληνικός τίτλος', url: 'https://el.example/b' });
+  assert.equal(a.dedup, null); assert.equal(b.dedup, null);
+  assert.deepEqual(readdirSync(join(dir, 'sources')).sort(), ['2026-01-01-a.md', '2026-11-24-t-348774f3.md', '2026-11-24-t-7bdc654f.md']);
+});
+
+test('single capture refuses a reference to no entry in --sources, --contributing-ids or --related as the batch does, and writes nothing (R-57)', () => {
+  for (const args of [
+    ['--type', 'note', '--title', 'Note one', '--sources', 'no-such-id'],
+    ['--type', 'synthesis', '--title', 'Synthesis one', '--contributing-ids', 'no-such-id'],
+    ['--type', 'note', '--title', 'Note two', '--sources', '2026-01-01-a', '--related', 'no-such-id'],
+  ]) {
+    const dir = freshVault();
+    const listing = () => readdirSync(dir, { recursive: true }).sort();
+    const manifest = () => existsSync(join(dir, '.vault-manifest.json')) ? readFileSync(join(dir, '.vault-manifest.json')) : null;
+    const listingBefore = listing(), manifestBefore = manifest();
+    const r = spawnSync(process.execPath, ['bin/research-vault.mjs', 'capture', '--vault', dir, ...args],
+      { env: testEnv(), encoding: 'utf8', timeout: 30000 });
+    assert.equal(r.status, 2, args.join(' '));
+    assert.equal(r.stderr, 'error: unresolved reference: no-such-id\n');
+    assert.deepEqual(listing(), listingBefore);
+    assert.deepEqual(manifest(), manifestBefore);
+  }
+});

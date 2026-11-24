@@ -3,12 +3,15 @@ import { createHash } from 'node:crypto';
 const STOPWORDS = new Set(['a','an','the','of','to','in','on','for','and','or','with','is','are','be']);
 const TRACKING = new Set(['utm_source','utm_medium','utm_campaign','utm_term','utm_content','ref','gclid','fbclid']);
 
-export function slugify(title) {
+// `hashEmpty: false` gives the plain ASCII slug, possibly empty: the teach workspace key keeps it (R-57).
+export function slugify(title, { hashEmpty = true } = {}) {
   const words = String(title).toLowerCase()
     .replace(/[^a-z0-9\s-]/g, ' ')
     .split(/[\s-]+/).filter(Boolean)
     .filter(w => !STOPWORDS.has(w));
-  return words.slice(0, 6).join('-');
+  const slug = words.slice(0, 6).join('-');
+  // R-57: a title with no ASCII word left (Japanese, all stopwords) gets `t-` and a hash of the title, so ids stay distinct.
+  return slug || !hashEmpty ? slug : `t-${createHash('sha256').update(String(title)).digest('hex').slice(0, 8)}`;
 }
 
 export function makeId(date, title) { return `${date}-${slugify(title)}`; }

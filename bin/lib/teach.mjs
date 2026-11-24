@@ -225,7 +225,7 @@ export const show = (v) => (v !== null && typeof v === 'object' ? (Array.isArray
   : String(JSON.stringify(v)).replace(ESC_RE, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`));
 const sameList = (xs, ys) => Array.isArray(ys) && ys.length === xs.length && xs.every((x, i) => x === ys[i]);
 // The storage key and `workspace` field of an exported copy: the workspace directory's name through slugify.
-export const workspaceKey = (workspaceDir) => slugify(basename(resolve(workspaceDir)));
+export const workspaceKey = (workspaceDir) => slugify(basename(resolve(workspaceDir)), { hashEmpty: false });
 
 function attemptProblems(workspaceDir, a, now) {
   if (!keysAre(a, ['lesson', 'answers', 'at', 'total', 'wrong'])) return ['keys must be exactly lesson, answers, at, total, wrong'];
