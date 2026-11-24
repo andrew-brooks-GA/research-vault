@@ -109,3 +109,82 @@ test('two serialize/parse cycles are byte-identical to one', () => {
   const twice = serializeFrontmatter(reparsed.data, reparsed.body);
   assert.equal(twice, once);
 });
+
+test('flow-list commas stay inside their item', () => {
+  assert.deepEqual(parseFrontmatter(serializeFrontmatter({ topics: ['a, b', 'c'] }, '')).data.topics, ['a, b', 'c']);
+});
+
+test('empty flow-list items survive alongside an empty scalar', () => {
+  assert.deepEqual(parseFrontmatter(serializeFrontmatter({ title: '', topics: ['', 'c'] }, '')).data, { title: '', topics: ['', 'c'] });
+});
+
+for (const notes of ['first\nsecond', 'first\r\nsecond']) {
+  test(`verification notes keep ${JSON.stringify(notes)} on one serialized line`, () => {
+    const text = serializeFrontmatter({ verifications: [{ notes }] }, '');
+    assert.equal(text.split('\n').length, 5);
+    assert.deepEqual(parseFrontmatter(text).data, { verifications: [{ notes }] });
+  });
+}
+
+for (const value of ['a\rb', 'a\n \nb', 'a\n  ']) {
+  test(`top-level control/whitespace content survives: ${JSON.stringify(value)}`, () => {
+    assert.equal(parseFrontmatter(serializeFrontmatter({ value }, '')).data.value, value);
+  });
+}
+
+test('awkward strings round-trip at every supported value position', () => {
+  const values = ['', 'a, b', ' lead', 'trail ', '42', '-7', '1.2', 'true', 'false', 'null', '~', '2026-01-01', '#', 'a # b', 'a: b', '- x', '[x]', '{x}', '&x', '*x', '!x', '|', '>', '"', "'", 'a\\b', '\\n', '"\\r"', 'a\tb', 'a\nb', 'a\r\nb', 'a\rb', 'a\n \nb', '\n', '\n\n', 'a\n  ', 'a\n\tb'];
+  for (const value of values) for (const position of ['top', 'flow', 'block', 'map', 'row']) {
+    const expected = position === 'top' ? { value } : position === 'map' ? { subject: { name: value } } : position === 'row' ? { verifications: [{ notes: value }] } : { values: [value, 'c'] };
+    let data = expected;
+    if (position === 'block') {
+      // Changed block lists use the serializer's flow-list path; unchanged ones retain RAW.
+      data = parseFrontmatter('---\nvalues:\n  - seed\n  - c\n---\n').data;
+      data.values[0] = value;
+    }
+    assert.deepEqual(parseFrontmatter(serializeFrontmatter(data, '')).data, expected, `${position}: ${JSON.stringify(value)}`);
+  }
+});
+
+test('older writer doubled backslashes remain literal before n and r', () => {
+  assert.deepEqual(parseFrontmatter('---\nvalue: "a\\\\nb"\nother: "a\\\\rb"\n---\n').data,
+    { value: 'a\\nb', other: 'a\\rb' });
+});
+
+test('literal carriage returns in preserved block values are escaped before normalization', () => {
+  const { data, body } = parseFrontmatter('---\ntitle: |-\n  a\rb\ntopics:\n  - c\rd\n---\n');
+  assert.deepEqual(parseFrontmatter(serializeFrontmatter(data, body)).data, { title: 'a\rb', topics: ['c\rd'] });
+});
+
+
+for (const separator of ['\u2028', '\u2029']) {
+  for (const position of ['top', 'flow', 'map', 'row-first', 'row-later']) {
+    test('line separator ' + JSON.stringify(separator) + ' round-trips in ' + position, () => {
+      const value = 'a' + separator + 'b';
+      const expected = position === 'top' ? { value }
+        : position === 'flow' ? { values: [value] }
+        : position === 'map' ? { subject: { value } }
+        : position === 'row-first' ? { rows: [{ value }] }
+        : { rows: [{ first: 'seed', value }] };
+      assert.deepEqual(parseFrontmatter(serializeFrontmatter(expected, '')).data, expected);
+    });
+  }
+}
+
+for (const position of ['top', 'row']) {
+  test('flow apostrophes cannot swallow a later item hash in ' + position, () => {
+    for (const first of ["x 'y", "x['y"]) {
+      const values = [first, "c ' # d"];
+      const expected = position === 'top' ? { values } : { rows: [{ values }] };
+      assert.deepEqual(parseFrontmatter(serializeFrontmatter(expected, '')).data, expected);
+    }
+  });
+}
+
+test('CRLF block lines normalize to the block bytes written by 5b9ddbd', () => {
+  const { data, body } = parseFrontmatter('---\nsummary: |\n  one\r\n  two\r\nvalues:\n  - three\r\n---\n');
+  assert.deepEqual(data, { summary: 'one\ntwo\n', values: ['three'] });
+  assert.equal(serializeFrontmatter(data, body), '---\nsummary: |\n  one\n  two\nvalues:\n  - three\n---\n');
+  assert.equal(serializeFrontmatter(data, body, null, { preserve: false }),
+    '---\nsummary: |\n  one\n  two\nvalues: [three]\n---\n');
+});

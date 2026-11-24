@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, writeFileSync, lstatSync, renameSync } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.mjs';
-import { assertInsideVault, isInsideVault } from './containment.mjs';
+import { assertInsideVault, isInsideVault, escapePathControls } from './containment.mjs';
 
 export const TYPE_FOLDER = { source:'sources', note:'notes', synthesis:'synthesis', snippet:'snippets', experiment:'experiments', question:'questions' };
 export const FOLDER_TYPE = Object.fromEntries(Object.entries(TYPE_FOLDER).map(([t, f]) => [f, t]));
@@ -48,9 +48,41 @@ export function readEntry(absPath, { folderChecked = false } = {}) {
   return { id, folder, data, body, hasBom, hasCrlf };
 }
 
+// Compare the parser's data model: scalar types matter, list order matters, map order
+// and the parser's non-enumerable RAW metadata do not. Dates are strings, not Date objects.
+function firstDifference(want, got, field = '') {
+  if (want === got) return null;
+  if (!want || !got || typeof want !== 'object' || typeof got !== 'object' ||
+      Array.isArray(want) !== Array.isArray(got)) return field;
+  for (const key of new Set([...Object.keys(want), ...Object.keys(got)])) {
+    const path = Array.isArray(want) ? `${field}[${key}]` : field ? `${field}.${key}` : key;
+    if (!Object.hasOwn(want, key) || !Object.hasOwn(got, key)) return path;
+    const difference = firstDifference(want[key], got[key], path);
+    if (difference !== null) return difference;
+  }
+  return null;
+}
+
+export function checkFrontmatter(absPath, data, text) {
+  let parsed;
+  try { parsed = parseFrontmatter(text).data; }
+  catch {
+    // Diagnose the first unparseable field without exposing literal control characters.
+    let field = '<frontmatter>';
+    for (const key of Object.keys(data)) {
+      try { parseFrontmatter(serializeFrontmatter({ [key]: data[key] }, '')); }
+      catch { field = key; break; }
+    }
+    throw new Error(`frontmatter write refused for ${JSON.stringify(escapePathControls(absPath))} at ${JSON.stringify(escapePathControls(field))}: serialized text would not parse`);
+  }
+  const field = firstDifference(data, parsed);
+  if (field !== null) throw new Error(`frontmatter write refused for ${JSON.stringify(escapePathControls(absPath))} at ${JSON.stringify(escapePathControls(field))}: value does not round-trip`);
+}
+
 export function writeEntry(absPath, data, body, order, vaultPath = dirname(dirname(absPath))) {
   const tmp = absPath + '.tmp';
   const text = serializeFrontmatter(data, body, order);
+  checkFrontmatter(absPath, data, text);
   assertInsideVault(vaultPath, absPath);
   assertInsideVault(vaultPath, tmp);
   writeFileSync(tmp, text, 'utf8');

@@ -317,3 +317,50 @@ test('Stop skips an outside vault ledger and gate record refuses it', t => {
   assert.ok(namesPath(gate.stderr, LEDGER_FILENAME), gate.stderr);
   assert.deepEqual(readFileSync(other), bytes);
 });
+
+test('writeEntry refuses a lossy nested value before touching the file', t => {
+  const { vault } = fixture(t);
+  const entry = note(vault, insideId, insideTitle);
+  const before = readFileSync(entry);
+  const names = readdirSync(join(vault, 'notes'));
+  assert.throws(() => writeEntry(entry, { subject: { version: 1.5 } }, ''), err => {
+    assert.ok(err.message.includes(entry), err.message);
+    assert.ok(err.message.includes('subject.version'), err.message);
+    assert.equal(err.message.split('\n').length, 1);
+    return true;
+  });
+  assert.deepEqual(readFileSync(entry), before);
+  assert.deepEqual(readdirSync(join(vault, 'notes')), names);
+});
+
+
+test('writeEntry diagnoses unparseable fields before touching the file', t => {
+  const { vault } = fixture(t);
+  const entry = note(vault, insideId, insideTitle);
+  const before = readFileSync(entry);
+  const names = readdirSync(join(vault, 'notes'));
+  assert.throws(() => writeEntry(entry, { 'bad-key': 'value' }, ''), {
+    message: 'frontmatter write refused for ' + JSON.stringify(entry) + ' at "bad-key": serialized text would not parse',
+  });
+  assert.deepEqual(readFileSync(entry), before);
+  assert.deepEqual(readdirSync(join(vault, 'notes')), names);
+});
+
+test('writeEntry refusal messages escape controls and line separators', t => {
+  const { vault } = fixture(t);
+  const entry = note(vault, 'controls\u2028\u2029\t', insideTitle);
+  const before = readFileSync(entry);
+  const names = readdirSync(join(vault, 'notes'));
+  for (const data of [{ ['bad-key\u2028\u2029\t']: 'value' }, { subject: { version: 1.5 } }]) {
+    assert.throws(() => writeEntry(entry, data, ''), err => {
+      assert.doesNotMatch(err.message, /[\p{Cc}\p{Cf}\p{Cs}\u2028\u2029]/u);
+      assert.ok(err.message.includes('controls\\\\u2028\\\\u2029\\\\u0009.md'), err.message);
+      assert.ok(err.message.includes('bad-key')
+        ? err.message.includes('bad-key\\\\u2028\\\\u2029\\\\u0009')
+        : err.message.includes('subject.version'), err.message);
+      return true;
+    });
+    assert.deepEqual(readFileSync(entry), before);
+    assert.deepEqual(readdirSync(join(vault, 'notes')), names);
+  }
+});

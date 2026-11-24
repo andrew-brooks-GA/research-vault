@@ -4,6 +4,7 @@ import { isDeepStrictEqual } from 'node:util';
 // Supported: plain, double-quoted and single-quoted scalars (each may carry a trailing
 // ` # comment`), flow sequences [a, "b, c"], block sequences of scalars, block sequence of
 // maps (verifications), one nested map (subject), and top-level block scalars (| and >).
+// Double-quoted scalars decode \n, \r, \\, and \" escapes.
 
 const FM = /^﻿?---\n([\s\S]*?)\n---\n?([\s\S]*)$/;
 const BLOCK_HEADER = /^([|>])(?:([1-9])([-+])?|([-+])([1-9])?)?$/;
@@ -58,9 +59,9 @@ function parseScalar(raw) {
   if (s === '') return '';
   if (s === '[]') return [];
   if (s.startsWith('[') && s.endsWith(']')) {
-    return splitFlow(s.slice(1, -1)).map(x => parseScalar(x)).filter(x => x !== '');
+    return splitFlow(s.slice(1, -1)).filter(x => stripComment(x.trim()) !== '').map(x => parseScalar(x));
   }
-  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1).replace(/\\(["\\])/g, '$1');
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1).replace(/\\(["\\nr])/g, (_, c) => c === 'n' ? '\n' : c === 'r' ? '\r' : c);
   if (s.length >= 2 && s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1).replace(/''/g, "'");
   if (s === 'true') return true;
   if (s === 'false') return false;
@@ -86,7 +87,7 @@ function parseBlockScalar(lines, i, header) {
   let j = i + 1;
   let indent = explicit ? Number(explicit) : null;
   for (; j < lines.length; j++) {
-    const l = lines[j];
+    const l = lines[j].replace(/\r$/, '');
     if (l.trim() === '') { body.push(''); continue; }
     const lead = l.length - l.trimStart().length;
     if (indent === null) indent = lead;
@@ -136,7 +137,7 @@ export function parseFrontmatter(text) {
       if (lastKey) raw[lastKey].lines.push(line);
       i++; continue;
     }
-    const top = /^([A-Za-z_][\w]*):(.*)$/.exec(line);
+    const top = /^([A-Za-z_][\w]*):([^\r]*)$/.exec(line);
     if (!top) throw new Error(`unparseable frontmatter line: ${line}`);
     const key = top[1];
     const start = i;
@@ -158,11 +159,11 @@ export function parseFrontmatter(text) {
           const itemFirst = lines[i].replace(/^\s+-\s?/, '');
           if (/^[A-Za-z_][\w]*:/.test(itemFirst)) {
             const obj = {};
-            const kv = /^([A-Za-z_][\w]*):(.*)$/.exec(itemFirst);
+            const kv = /^([A-Za-z_][\w]*):([^\r]*)$/.exec(itemFirst);
             obj[kv[1]] = parseNestedScalar(kv[2], lines[i]);
             i++;
             while (i < lines.length && /^\s{4,}[A-Za-z_][\w]*:/.test(lines[i])) {
-              const kv2 = /^\s+([A-Za-z_][\w]*):(.*)$/.exec(lines[i]);
+              const kv2 = /^\s+([A-Za-z_][\w]*):([^\r]*)$/.exec(lines[i]);
               obj[kv2[1]] = parseNestedScalar(kv2[2], lines[i]);
               i++;
             }
@@ -177,7 +178,7 @@ export function parseFrontmatter(text) {
         const obj = {};
         i++;
         while (i < lines.length && /^\s+[A-Za-z_][\w]*:/.test(lines[i])) {
-          const kv = /^\s+([A-Za-z_][\w]*):(.*)$/.exec(lines[i]);
+          const kv = /^\s+([A-Za-z_][\w]*):([^\r]*)$/.exec(lines[i]);
           obj[kv[1]] = parseNestedScalar(kv[2], lines[i]);
           i++;
         }
@@ -194,21 +195,21 @@ export function parseFrontmatter(text) {
   return { data, body };
 }
 
-function emitScalar(v) {
-  if (Array.isArray(v)) return `[${v.map(emitScalar).join(', ')}]`;
+function emitScalar(v, flow = false) {
+  if (Array.isArray(v)) return `[${v.map(x => emitScalar(x, true)).join(', ')}]`;
   if (typeof v === 'string') {
-    if (v === '' || /[:#"]|^\s|\s$/.test(v) || /^['[|>]/.test(v) ||
+    if (v === '' || /[:#"\n\r]|^\s|\s$/.test(v) || (flow && /,|[\s[]'/.test(v)) || /^['[|>]/.test(v) ||
         v === 'true' || v === 'false' || /^-?\d+$/.test(v)) {
-      return `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+      return `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r')}"`;
     }
     return v;
   }
   return String(v);
 }
 
-// A top-level multi-line string is written as a literal block scalar so it survives a
-// round-trip. Chomping follows the trailing newlines; an indentation indicator is added
-// when the first content line itself starts with a space.
+// Keep the existing block form for top-level multiline strings unless CRs or whitespace-only
+// lines would be lost. Chomping follows the trailing newlines; an indentation indicator is
+// added when the first content line itself starts with a space.
 function emitBlock(key, v) {
   const chomp = !v.endsWith('\n') ? '-' : (v.endsWith('\n\n') || v === '\n') ? '+' : '';
   const content = chomp === '-' ? v : v.slice(0, -1);
@@ -217,6 +218,11 @@ function emitBlock(key, v) {
   const out = [`${key}: |${indicator}${chomp}`];
   for (const l of content.split('\n')) out.push(l === '' ? '' : `  ${l}`);
   return out;
+}
+
+function hasCarriageReturn(v) {
+  if (typeof v === 'string') return v.includes('\r');
+  return v && typeof v === 'object' && Object.values(v).some(hasCarriageReturn);
 }
 
 // `preserve` (default on) re-emits the original source lines of any top-level key whose value
@@ -243,7 +249,9 @@ export function serializeFrontmatter(data, body, order = null, { preserve = true
   const out = ['---'];
   for (const key of keys) {
     const v = data[key];
-    if (raw && raw[key] && isDeepStrictEqual(v, raw[key].value)) {
+    // CRs inside raw block values are content; final normalization would erase them.
+    if (raw && raw[key] && isDeepStrictEqual(v, raw[key].value) &&
+        !(raw[key].lines.some(l => l.includes('\r')) && hasCarriageReturn(v))) {
       out.push(...raw[key].lines);
     } else if (Array.isArray(v) && v.length && typeof v[0] === 'object') {
       out.push(`${key}:`);
@@ -255,7 +263,7 @@ export function serializeFrontmatter(data, body, order = null, { preserve = true
     } else if (v && typeof v === 'object' && !Array.isArray(v)) {
       out.push(`${key}:`);
       for (const k of Object.keys(v)) out.push(`  ${k}: ${emitScalar(v[k])}`);
-    } else if (typeof v === 'string' && v.includes('\n')) {
+    } else if (typeof v === 'string' && v.includes('\n') && !v.includes('\r') && !v.split('\n').some(l => l !== '' && l.trim() === '')) {
       out.push(...emitBlock(key, v));
     } else {
       out.push(`${key}: ${emitScalar(v)}`);

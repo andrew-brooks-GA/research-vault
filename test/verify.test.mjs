@@ -1,12 +1,13 @@
+import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, writeFileSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { mkdtempSync, cpSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { applyVerification, answerQuestion, run as verifyRun } from '../bin/commands/verify.mjs';
 import { advise } from '../bin/lib/advise.mjs';
-import { tmpVault, put } from './helpers.mjs';
+import { tmpVault, put, testEnv } from './helpers.mjs';
 import { listStale } from '../bin/lib/stale.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { readEntry } from '../bin/lib/fsutil.mjs';
@@ -208,4 +209,37 @@ test('verify --answered-by: the flag summary wins, a non-question and a missing 
   put(dir2, 'synthesis', '2026-02-01-s', { summary: 'The answer.', contributing_ids: ['2026-01-01-q'] });
   assert.equal(await verifyRun({ vault: dir2, id: '2026-01-01-q', 'answered-by': '2026-02-01-s' }), 0);
   assert.equal(readEntry(join(dir2, 'questions', '2026-01-01-q.md')).data.state, 'answered');
+});
+
+
+test('verify CLI stores a two-line note without corrupting the entry', () => {
+  const dir = freshVault();
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url)), 'verify', '--vault', dir, '--id', '2026-01-01-a', '--method', 'refetched-source', '--result', 'confirmed', '--notes', 'first\nsecond'], { env: testEnv(), timeout: 30000, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(readEntry(join(dir, 'sources', '2026-01-01-a.md')).data.verifications.at(-1).notes, 'first\nsecond');
+});
+
+
+test('verify CLI reports a refused serialization once and preserves the entry bytes', t => {
+  const dir = freshVault();
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const entry = join(dir, 'sources', '2026-01-01-a.md');
+  const before = readFileSync(entry);
+  const names = readdirSync(join(dir, 'sources'));
+  const seam = join(mkdtempSync(join(tmpdir(), 'rv-write-refusal-')), 'serializer.mjs');
+  t.after(() => rmSync(fileURLToPath(new URL('.', pathToFileURL(seam))), { recursive: true, force: true }));
+  const moduleUrl = new URL('../bin/lib/frontmatter.mjs', import.meta.url).href;
+  // Inject a lossy writer through its module seam, without adding a production test flag.
+  writeFileSync(seam, `import { mock } from 'node:test';
+import * as original from ${JSON.stringify(moduleUrl)};
+mock.module(${JSON.stringify(moduleUrl)}, { namedExports: {
+  ...original,
+  serializeFrontmatter: (data, ...args) => original.serializeFrontmatter({ ...data, title: 'lost title' }, ...args),
+} });
+`);
+  const result = spawnSync(process.execPath, ['--experimental-test-module-mocks', '--disable-warning=ExperimentalWarning', '--disable-warning=DeprecationWarning', '--import', pathToFileURL(seam).href, fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url)), 'verify', '--vault', dir, '--id', '2026-01-01-a', '--method', 'refetched-source', '--result', 'confirmed'], { env: testEnv(), timeout: 30000, encoding: 'utf8' });
+  assert.equal(result.status, 2, result.stderr);
+  assert.match(result.stderr, /^error: frontmatter write refused .* at "title": value does not round-trip\n$/);
+  assert.deepEqual(readFileSync(entry), before);
+  assert.deepEqual(readdirSync(join(dir, 'sources')), names);
 });
