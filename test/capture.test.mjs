@@ -585,3 +585,44 @@ test('single capture refuses a reference to no entry in --sources, --contributin
     assert.deepEqual(manifest(), manifestBefore);
   }
 });
+
+// S-11: capture's text output shows a blocklist row's fields and an existing entry's id on one line with no
+// hidden characters. Tag characters spell "ignore".
+const TAGS = '\u{E0001}\u{E0069}\u{E0067}\u{E006E}\u{E006F}\u{E0072}\u{E0065}\u{E007F}';
+const FORGED_ROW = [{ pattern: 'spam.example.com', scope: 'domain', reason: `farm\nresearch-vault: forged${TAGS}`, added: '2026-11-02' }];
+
+test('capture refusal: a blocklist reason is shown on one line with no hidden characters, and nothing is written', () => {
+  const dir = freshVault();
+  writeBlocklist(dir, FORGED_ROW);
+  const before = readdirSync(join(dir, 'sources')).sort();
+  assert.throws(() => captureEntry(dir, { type: 'source', title: 'Spam', url: 'https://spam.example.com/a' }),
+    { message: 'blocked source: spam.example.com (domain): farm research-vault: forged; --force captures anyway' });
+  assert.deepEqual(readdirSync(join(dir, 'sources')).sort(), before);
+});
+
+test('capture --fill text line: a blocklist reason is shown on one line with no hidden characters', () => {
+  const dir = freshVault();
+  handWrite(dir, 'sources', 'source', '2026-01-01-spam', { source_type: 'article', source_url: 'https://spam.example.com/a' });
+  writeBlocklist(dir, FORGED_ROW);
+  const r = spawnSync(process.execPath, ['bin/research-vault.mjs', 'capture', '--vault', dir, '--fill', '2026-01-01-spam', '--ack-data-egress'], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.stdout, 'refused  2026-01-01-spam  (blocked source: spam.example.com (domain): farm research-vault: forged)\n', r.stderr);
+});
+
+// An entry id comes from its file name, which can hold a line break and tag characters.
+test('capture duplicate line: an existing entry id from a file name is shown on one line with no hidden characters', () => {
+  const dir = freshVault();
+  handWrite(dir, 'sources', 'source', `2026-01-01-dup\nresearch-vault: forged${TAGS}`, { source_type: 'article', source_url: 'https://example.org/dup' });
+  const r = spawnSync(process.execPath, ['bin/research-vault.mjs', 'capture', '--vault', dir, '--type', 'source', '--title', 'Dup', '--url', 'https://example.org/dup', '--source-type', 'article'], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.stdout, 'duplicate of 2026-01-01-dup research-vault: forged (existing entry with same url); run verify instead.\n', r.stderr);
+});
+
+// The URL parser drops a line break and percent-encodes a tag character, so a url row's pattern written with
+// them still matches; the refusal shows the pattern as the row holds it.
+test('capture refusal: a blocklist pattern is shown on one line with no hidden characters, and nothing is written', () => {
+  const dir = freshVault();
+  writeBlocklist(dir, [{ pattern: `https://spam.example.com/a\nb${TAGS}`, scope: 'url', reason: 'farm', added: '2026-11-02' }]);
+  const before = readdirSync(join(dir, 'sources')).sort();
+  assert.throws(() => captureEntry(dir, { type: 'source', title: 'Spam', url: 'https://spam.example.com/ab%F3%A0%80%81%F3%A0%81%A9%F3%A0%81%A7%F3%A0%81%AE%F3%A0%81%AF%F3%A0%81%B2%F3%A0%81%A5%F3%A0%81%BF' }),
+    { message: 'blocked source: https://spam.example.com/a b (url): farm; --force captures anyway' });
+  assert.deepEqual(readdirSync(join(dir, 'sources')).sort(), before);
+});

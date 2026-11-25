@@ -20,6 +20,7 @@ import { loadProjectConfig } from '../bin/lib/projectconfig.mjs';
 import { appendUsage, readUsage } from '../bin/lib/usagelog.mjs';
 import { gatedFiles, ledgerKey } from '../bin/lib/gate.mjs';
 import { langFor, codeFiles, extractCodeLinks, readVersions, checkCodeLinks } from '../bin/lib/codelinks.mjs';
+import { screenText } from '../bin/lib/screen.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -41,9 +42,11 @@ export function citationWarnings(editedPath, repoRoot, vaultPath, cfg, now) {
     lines = code.flatMap((f) => read(f).filter((l) => keys.includes(l.key) && l.version !== versions[l.key])
       .map((l) => `research-vault: STALE ${l.id} in ${ledgerKey(repoRoot, f)}:${l.line} ${l.symbol}  (${l.key} ${l.version} -> ${versions[l.key]})`));
   } else if (code.includes(file)) {
+    // S-11: a reason can carry `superseded by <id>` from an entry, so it is screened; the value (the cited id)
+    // and the symbol are read from the edited file, the user's own, and print as they are.
     const rows = checkCodeLinks(read(file), buildManifest(vaultPath).entries, loadSchema(REPO_ROOT), readVersions(cfg, repoRoot), now);
     lines = rows.filter((r) => r.status !== 'ok')
-      .map((r) => `research-vault: ${r.status.toUpperCase()} ${r.value} in ${key}:${r.line}${r.symbol ? ` ${r.symbol}` : ''}${r.reason ? `  (${r.reason})` : ''}`);
+      .map((r) => `research-vault: ${r.status.toUpperCase()} ${r.value} in ${key}:${r.line}${r.symbol ? ` ${r.symbol}` : ''}${r.reason ? `  (${screenText(r.reason)})` : ''}`);
   } else {
     const entries = buildManifest(vaultPath).entries;
     const citations = extractCitations(readFileSync(file, 'utf8'));

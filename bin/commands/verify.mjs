@@ -8,6 +8,7 @@ import { assertControlledValues } from '../lib/validate.mjs';
 import { listStale } from '../lib/stale.mjs';
 import { readFileSync } from 'node:fs';
 import { checkQuotes } from '../lib/quotes.mjs';
+import { screenText } from '../lib/screen.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -89,7 +90,8 @@ export async function run(args) {
   if (args.stale || !args.id) {
     const stale = listStale(vaultPath, {});
     if (args.json) process.stdout.write(JSON.stringify(stale, null, 2) + '\n');
-    else stale.forEach(s => process.stdout.write(`${s.id}  ${s.volatility}  ${s.reason || s.ageDays + 'd'}\n`));
+    // A text line's values from entries pass screenText (S-11); --json is data.
+    else stale.forEach(s => process.stdout.write(`${screenText(s.id)}  ${screenText(s.volatility)}  ${s.reason || s.ageDays + 'd'}\n`));
     return 0;
   }
   reportFallback(resolved);

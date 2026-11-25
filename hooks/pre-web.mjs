@@ -10,6 +10,7 @@ import { loadBlocklist, matchBlock } from '../bin/lib/blocklist.mjs';
 import { loadProjectConfig } from '../bin/lib/projectconfig.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
 import { normalizeUrlSafe, verKey } from '../bin/lib/ids.mjs';
+import { screenText } from '../bin/lib/screen.mjs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,9 +20,10 @@ export function vaultContext(vaultPath, toolName, toolInput = {}, opts = {}) {
   // The URL key capture uses (normalizeUrl): host and scheme case and tracking parameters do not count, path and query case do.
   const url = toolName === 'WebFetch' ? normalizeUrlSafe(String(toolInput.url || '').trim()) : null;
   // The source blocklist (spec 32): name the reason before a fetch; a broken list never changes the answer.
+  // Every value from the vault or the query passes screenText (S-11): one line each, no hidden characters.
   let block = null;
   try { block = url ? matchBlock(loadBlocklist(vaultPath), toolInput.url) : null; } catch { /* lint reports the list */ }
-  const withBlock = rest => [block && `research-vault: this URL is on the vault's source blocklist (${block.pattern}, ${block.scope}): ${block.reason}.`, rest].filter(Boolean).join('\n');
+  const withBlock = rest => [block && `research-vault: this URL is on the vault's source blocklist (${screenText(block.pattern)}, ${screenText(block.scope)}): ${screenText(block.reason)}.`, rest].filter(Boolean).join('\n');
   const text = [toolInput.query, toolInput.prompt, toolInput.url].filter(Boolean).join(' ');
   const terms = termsOf(text).slice(0, 12);
   // ponytail: term-count scoring over title+topics+summary; swap for the manifest search index if it proves too coarse.
@@ -38,17 +40,17 @@ export function vaultContext(vaultPath, toolName, toolInput = {}, opts = {}) {
     if (score >= min) hits.push({ e, score });
   }
   hits.sort((a, b) => b.score - a.score);
-  const line = e => `- ${e.id} [${e.data.type}${stale.has(e.id) ? ', STALE' : ''}] ${e.data.title}`;
+  const line = e => `- ${screenText(e.id)} [${screenText(e.data.type)}${stale.has(e.id) ? ', STALE' : ''}] ${screenText(e.data.title)}`;
   const top = hits.slice(0, 5);
   // The usage log (spec 29): what was asked, what was surfaced. Free text only behind usage.text.
   urlHits.sort((a, b) => a.id.localeCompare(b.id));
   const ids = urlHits.length ? urlHits.map(e => e.id) : top.map(h => h.e.id);
   try { appendUsage(vaultPath, { kind: 'queried', via: 'pre-web', tool: toolName, outcome: urlHits.length ? 'url-hit' : ids.length ? 'hits' : 'no-match', ids, text: opts.text ? terms.join(' ') : undefined }); } catch { /* never change the hook's answer */ }
   const [urlHit] = urlHits;
-  if (urlHits.length === 1) return withBlock(`research-vault: this URL is already captured as ${urlHit.id}${stale.has(urlHit.id) ? ' (STALE: verify it rather than re-reading from memory)' : ''}. Cite it; do not capture a duplicate.`);
-  if (urlHits.length) return withBlock(`research-vault: this URL is captured as more than one entry: ${urlHits.map(e => `${e.id} (${verKey(e.data.subject?.version) ?? 'no version'}, ${stale.has(e.id) ? 'STALE' : 'fresh'})`).join(', ')}; cite the one for the version you need.`);
+  if (urlHits.length === 1) return withBlock(`research-vault: this URL is already captured as ${screenText(urlHit.id)}${stale.has(urlHit.id) ? ' (STALE: verify it rather than re-reading from memory)' : ''}. Cite it; do not capture a duplicate.`);
+  if (urlHits.length) return withBlock(`research-vault: this URL is captured as more than one entry: ${urlHits.map(e => `${screenText(e.id)} (${screenText(verKey(e.data.subject?.version) ?? 'no version')}, ${stale.has(e.id) ? 'STALE' : 'fresh'})`).join(', ')}; cite the one for the version you need.`);
   if (top.length) return withBlock(`Vault entries matching this query:\n${top.map(h => line(h.e)).join('\n')}`);
-  return withBlock(terms.length ? `research-vault: no entry matches [${terms.join(', ')}].` : '');
+  return withBlock(terms.length ? `research-vault: no entry matches [${screenText(terms.join(', '))}].` : '');
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) {

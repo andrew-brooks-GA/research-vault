@@ -7,6 +7,7 @@ import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, allowedValues, field
 import { BLOCKLIST, loadBlocklist, matchBlock } from './blocklist.mjs';
 import { isUnverifiedSource } from './manifest.mjs';
 import { assertInsideVault, escapePathControls } from './containment.mjs';
+import { screenText } from './screen.mjs';
 
 const MONOLITHIC_SYNTHESIS_WORDS = 1500;
 
@@ -108,8 +109,10 @@ export function lintVault(vaultPath, repoRoot) {
     if (shapes.length) continue;
 
     for (const f of schema.fields.derived_forbidden) if (f in data) add(abs, 'STORED_DERIVED', `stored derived field: ${f}`);
-    if (FOLDER_TYPE[folder] && data.type !== FOLDER_TYPE[folder]) add(abs, 'TYPE_FOLDER', `type ${data.type} in folder ${folder}`);
-    if (data.stage && !stageAllowedInFolder(schema, folder, data.stage)) add(abs, 'STAGE_FOLDER', `stage ${data.stage} not allowed in ${folder}`);
+    // An entry value a message quotes (type, stage, enum value, source_url, ref, topic, title, summary,
+    // subject) passes screenText (S-11): each message is a line of lint's text output.
+    if (FOLDER_TYPE[folder] && data.type !== FOLDER_TYPE[folder]) add(abs, 'TYPE_FOLDER', `type ${screenText(data.type)} in folder ${folder}`);
+    if (data.stage && !stageAllowedInFolder(schema, folder, data.stage)) add(abs, 'STAGE_FOLDER', `stage ${screenText(data.stage)} not allowed in ${folder}`);
     // Enum checks driven from CONTROLLED_FIELDS (validate.mjs). Shape-check array-valued
     // controlled fields (domain) BEFORE enum iteration, or a bare scalar `domain: security`
     // would be walked character-by-character into garbage per-char violations.
@@ -117,9 +120,9 @@ export function lintVault(vaultPath, repoRoot) {
       const val = data[field]; if (!val) continue;
       const meta = ENUM_META[field];
       if (field === 'domain') {
-        for (const d of val) if (!allowedValues(schema, key).includes(d)) add(abs, meta.code, `unknown ${meta.label}: ${d}`);
+        for (const d of val) if (!allowedValues(schema, key).includes(d)) add(abs, meta.code, `unknown ${meta.label}: ${screenText(d)}`);
       } else if (!allowedValues(schema, key).includes(val)) {
-        add(abs, meta.code, `unknown ${meta.label}: ${val}`);
+        add(abs, meta.code, `unknown ${meta.label}: ${screenText(val)}`);
       }
     }
     for (const v of (data.verifications || [])) {
@@ -127,11 +130,11 @@ export function lintVault(vaultPath, repoRoot) {
         const meta = VERIFICATION_ENUM_META[field];
         const val = v[field];
         if (!meta.required && (val === undefined || val === null || val === '')) continue;
-        if (!allowedValues(schema, key).includes(val)) add(abs, meta.code, `unknown ${meta.label}: ${val}`);
+        if (!allowedValues(schema, key).includes(val)) add(abs, meta.code, `unknown ${meta.label}: ${screenText(val)}`);
       }
     }
     if (data.type === 'source' && data.source_url && !isParsableUrl(data.source_url))
-      add(abs, 'URL_INVALID', `source_url is not a valid URL: ${data.source_url}`);
+      add(abs, 'URL_INVALID', `source_url is not a valid URL: ${screenText(data.source_url)}`);
     // A tool-output source is ground truth only for the tool version that produced it;
     // without subject.version it cannot participate in version-pinned reconciliation
     // (tool-probe verification, version succession). Hard violation, unlike the advisory
@@ -140,7 +143,7 @@ export function lintVault(vaultPath, repoRoot) {
       add(abs, 'TOOL_OUTPUT_VERSION', 'authority_basis tool-output requires subject.version (the probed tool version)');
     for (const f of edgeFields) {
       const val = data[f]; if (!val) continue;
-      for (const ref of Array.isArray(val) ? val : [val]) if (ref && !ids.has(ref)) add(abs, 'DANGLING_REF', `${f} -> missing id ${ref}`);
+      for (const ref of Array.isArray(val) ? val : [val]) if (ref && !ids.has(ref)) add(abs, 'DANGLING_REF', `${f} -> missing id ${screenText(ref)}`);
     }
     const required = schema.fields.required_by_type[data.type] || [];
     // Presence-only is not enough: a required field present but empty ('' or []) is as broken
@@ -176,12 +179,13 @@ export function lintVault(vaultPath, repoRoot) {
 
     for (const slot of stringSlots(data))
       if (unwrapQuoteArtifact(slot.get()) !== null)
-        warn(abs, 'WARN_QUOTE_ARTIFACT', `${slot.field} value is itself wrapped in quotes (${slot.get()}); run lint --fix to unwrap`);
+        warn(abs, 'WARN_QUOTE_ARTIFACT', `${slot.field} value is itself wrapped in quotes (${screenText(slot.get())}); run lint --fix to unwrap`);
 
     const blocked = data.type === 'source' && data.source_url ? matchBlock(blocklist, data.source_url) : null;
-    if (blocked) warn(abs, 'WARN_SOURCE_BLOCKED', `source_url matches the blocklist: ${blocked.pattern} (${blocked.scope}): ${blocked.reason}`);
+    // The blocklist row's fields pass screenText (S-11): the message is a line of lint's text output.
+    if (blocked) warn(abs, 'WARN_SOURCE_BLOCKED', `source_url matches the blocklist: ${screenText(blocked.pattern)} (${screenText(blocked.scope)}): ${screenText(blocked.reason)}`);
 
-    for (const t of (data.topics || [])) if (schema.taxonomy.topic_aliases[t]) warn(abs, 'WARN_TOPIC_ALIAS', `topic '${t}' should be normalized to '${schema.taxonomy.topic_aliases[t]}'`);
+    for (const t of (data.topics || [])) if (schema.taxonomy.topic_aliases[t]) warn(abs, 'WARN_TOPIC_ALIAS', `topic '${screenText(t)}' should be normalized to '${screenText(schema.taxonomy.topic_aliases[t])}'`);
 
     // Synthesis note-coverage: a synthesis whose contributing_ids contain only sources
     // (no notes) is non-conforming unless it declares synthesis_basis: primary-rollup.

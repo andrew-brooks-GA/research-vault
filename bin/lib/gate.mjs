@@ -19,6 +19,7 @@ import { parseBlocks, blockSpans, imgAttr, imageTarget } from './lesson.mjs';
 import { findProjectConfig, loadProjectConfig } from './projectconfig.mjs';
 import { assertInsideVault, compareContainment, isInsideVault } from './containment.mjs';
 import { langFor, codeFiles, extractCodeLinks, codeUnits, codeUnitHashes, checkCodeLinks, worstStatus } from './codelinks.mjs';
+import { screenText } from './screen.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -427,9 +428,11 @@ export function evidenceFor(draftPath, vaultPath, { extra = [], code = null, cha
   return out;
 }
 
+// S-11: the id, type and status come from entries and pass screenText; an uncovered value and an image path
+// come from the draft.
 export function renderEvidence({ entries, uncovered, images = [] }) {
   const lines = entries.map((e) =>
-    `${e.id} [${[e.type, e.status, e.stale && 'STALE', e.noBody && 'no-body'].filter(Boolean).join(', ')}]`);
+    `${screenText(e.id)} [${[e.type, e.status, e.stale && 'STALE', e.noBody && 'no-body'].filter(Boolean).map((v) => screenText(v)).join(', ')}]`);
   for (const u of uncovered) lines.push(`uncovered: ${u.value}`);
   for (const i of images) lines.push(`image: ${i.path} sha256:${i.sha256}`);
   return lines.length ? lines.join('\n') + '\n' : '';

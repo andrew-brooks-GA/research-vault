@@ -16,6 +16,7 @@ import { loadBlocklist, matchBlock } from '../lib/blocklist.mjs';
 import { captureOperation } from '../lib/capture-operation.mjs';
 import { extractText } from '../lib/extract.mjs';
 import { fillSource } from '../lib/fill.mjs';
+import { screenText } from '../lib/screen.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -41,9 +42,10 @@ export function prepareEntry(vaultPath, opts, ctx = {}) {
     throw new Error('--store-body requires --ack-data-egress (storing source text is a data-egress / copyright surface)');
   if (!opts.title) throw new Error('title required');
   if (opts.type === 'source' && !opts.url) throw new Error('source requires url');
-  // The source blocklist (spec 32): refused before the dedup check; --force records the override.
+  // The source blocklist (spec 32): refused before the dedup check; --force records the override. The
+  // refusal shows the row's fields through screenText (S-11): one line each, no hidden characters.
   const hit = opts.type === 'source' ? matchBlock(loadBlocklist(vaultPath), opts.url) : null;
-  if (hit && !opts.force) throw new Error(`blocked source: ${hit.pattern} (${hit.scope}): ${hit.reason}; --force captures anyway`);
+  if (hit && !opts.force) throw new Error(`blocked source: ${screenText(hit.pattern)} (${screenText(hit.scope)}): ${screenText(hit.reason)}; --force captures anyway`);
   if (opts.type === 'note' && !(opts.sources && String(opts.sources).length)) throw new Error('note requires sources');
   if (opts.type === 'synthesis' && !(opts.contributingIds && String(opts.contributingIds).length)) throw new Error('synthesis requires contributingIds');
 
@@ -319,7 +321,8 @@ export async function run(args) {
       ackDataEgress: !!args['ack-data-egress'], replace: !!args.replace, discard: !!args.discard, contentFile: args['content-file'],
       byId: args['by-id'], allowNetwork: process.env.RESEARCH_VAULT_ALLOW_NETWORK === '1', fetch: typeof args.fetch === 'function' ? args.fetch : undefined,
     });
-    process.stdout.write(args.json ? JSON.stringify(r) + '\n' : `${r.result}  ${r.id}${r.reason ? `  (${r.reason})` : ''}${r.fetchedFrom ? `  (read from ${r.fetchedFrom})` : ''}\n`);
+    // The text line's reason can quote a blocklist row; it passes screenText (S-11). --json is data.
+    process.stdout.write(args.json ? JSON.stringify(r) + '\n' : `${r.result}  ${r.id}${r.reason ? `  (${screenText(r.reason)})` : ''}${r.fetchedFrom ? `  (read from ${r.fetchedFrom})` : ''}\n`);
     return ['filled', 'kept', 'discarded'].includes(r.result) ? 0 : 1;
   }
   const defaults = captureDefaults(cwd);
@@ -343,7 +346,8 @@ export async function run(args) {
   });
   if (r.dedup) {
     const how = r.dedup.ambiguous ? 'ambiguous' : 'duplicate';
-    process.stdout.write(`${how} of ${r.dedup.id} (${r.dedup.reason}); run verify instead.\n`);
+    // The existing entry's id comes from its file name and passes screenText (S-11).
+    process.stdout.write(`${how} of ${screenText(r.dedup.id)} (${r.dedup.reason}); run verify instead.\n`);
     return 1;
   }
   process.stdout.write(`created ${r.path}\n`);

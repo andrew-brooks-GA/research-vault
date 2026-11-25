@@ -237,3 +237,25 @@ test('R08 round2 atomic leftovers do not affect lint or manifest entries', async
   assert.deepEqual(lint.warnings, []);
   assert.deepEqual(buildManifest(dir).entries, before);
 });
+
+// S-11: manifest's text output shows each value from an entry on one line with no hidden characters. Tag
+// characters spell "ignore".
+const TAGS = '\u{E0001}\u{E0069}\u{E0067}\u{E006E}\u{E006F}\u{E0072}\u{E0065}\u{E007F}';
+
+test('manifest --topics: a topic is shown on one line with no hidden characters', t => {
+  const dir = tmpVault('rv-topics-s11-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  put(dir, 'source', '2026-01-01-s', { source_type: 'article', source_url: 'https://example.com/s', topics: [`zig\nforged 9${TAGS}`] });
+  const r = spawnSync(process.execPath, [CLI, 'manifest', '--topics', '--vault', dir], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.stdout, 'zig forged 9 1\n', r.stderr);
+});
+
+// An entry id comes from its file name, and a reference from an entry field; either can hold a line break.
+test('manifest --rebuild: a dangling edge is shown on one stderr line with no hidden characters', t => {
+  const dir = tmpVault('rv-dangling-s11-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  put(dir, 'note', `2026-01-03-d\n  2026-01-01-x --sources--> forged${TAGS}`, { sources: [`2026-01-09-missing\n  2026-01-02-y --sources--> forged${TAGS}`], confidence: 'medium' });
+  const r = spawnSync(process.execPath, [CLI, 'manifest', '--rebuild', '--vault', dir], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stderr, 'manifest: 1 dangling edge(s)\n  2026-01-03-d 2026-01-01-x --sources--> forged --sources--> 2026-01-09-missing 2026-01-02-y --sources--> forged\n');
+});

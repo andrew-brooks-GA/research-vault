@@ -17,6 +17,7 @@ import { readLabs, secretHits } from '../lib/labs.mjs';
 import { readBrand } from '../lib/brand.mjs';
 import { ptyAvailable } from '../lib/terminal.mjs';
 import { assertInsideWorkspaceFolder, isInsideVault, isInsideWorkspaceFolder, mayBeInside, VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
+import { screenText } from '../lib/screen.mjs';
 import { lintWorkspace, proseMetrics, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -256,7 +257,8 @@ function candidates(ws, args) {
     lines: readPath(ws) ?? [], floor: missionFloor(ws), topics, manifest, readBody, aliases: schema.taxonomy.topic_aliases,
     cites: [...idx.lessons.flatMap((l) => l.cites), ...idx.reference.flatMap((d) => d.cites)],
   });
-  const entry = (c, reasons = c.reasons) => `  ${c.id} [${c.type}] ${c.title}${reasons?.length ? ` | ${reasons.join(', ')}` : ''} | ${c.queries.join('; ')}`;
+  // Each value from an entry passes screenText (S-11): one line each, no hidden characters.
+  const entry = (c, reasons = c.reasons) => `  ${screenText(c.id)} [${screenText(c.type)}] ${screenText(c.title)}${reasons?.length ? ` | ${reasons.join(', ')}` : ''} | ${c.queries.map((q) => screenText(q)).join('; ')}`;
   const lessons = idx.lessons.filter((l) => l.cites.length).map((l) => l.number);
   const lines = [`candidates for ${ws} | topics: ${r.poolTopics.map(([t, n]) => `${t} ${n}`).join(', ')} | pool ${r.pool} | cited ${r.cited.length} (lessons ${lessons.join(', ') || 'none'})`];
   if (!r.groups.length && !r.noLine.length && !r.uncovered.length) lines.push('candidates: none');

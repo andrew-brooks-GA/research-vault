@@ -509,3 +509,61 @@ test('batch scalar options are written as CLI strings', async t => {
   assert.equal(JSON.parse(search.stdout)[0].title, 'Numeric plan');
   });
 });
+
+// S-11: each lint message is a line of lint's text output, so a value it quotes from an entry or the blocklist
+// is shown on one line with no hidden characters. Tag characters spell "ignore".
+const TAGS = '\u{E0001}\u{E0069}\u{E0067}\u{E006E}\u{E006F}\u{E0072}\u{E0065}\u{E007F}';
+
+test('lint WARN_SOURCE_BLOCKED: a blocklist reason is shown on one line with no hidden characters', () => {
+  const dir = freshVault();
+  writeBlocklist(dir, [{ pattern: 'spam.example.com', scope: 'domain', reason: `farm\nwarning WARN_FORGED  x.md: forged${TAGS}`, added: '2026-11-02' }]);
+  handWrite(dir, 'sources', 'source', '2026-01-01-spam', { source_type: 'article', source_url: 'https://spam.example.com/a' });
+  const w = lintVault(dir, process.cwd()).warnings.filter(x => x.code === 'WARN_SOURCE_BLOCKED');
+  assert.deepEqual(w.map(x => x.msg), ['source_url matches the blocklist: spam.example.com (domain): farm warning WARN_FORGED x.md: forged']);
+});
+
+test('lint TYPE_FOLDER: an entry type is shown on one line with no hidden characters', () => {
+  const dir = freshVault();
+  handWrite(dir, 'notes', `note\nTYPE_FOLDER  forged.md: forged${TAGS}`, '2026-01-01-n', { sources: ['2026-01-01-a'], confidence: 'medium' });
+  const v = lintVault(dir, process.cwd()).violations.filter(x => x.code === 'TYPE_FOLDER');
+  assert.deepEqual(v.map(x => x.msg), ['type note TYPE_FOLDER forged.md: forged in folder notes']);
+});
+
+test('lint WARN_QUOTE_ARTIFACT: a quoted title is shown on one line with no hidden characters', () => {
+  const dir = freshVault();
+  handWrite(dir, 'sources', 'source', '2026-01-01-q', { title: `'zig\nwarning WARN_FORGED  x.md: forged${TAGS}'`, source_type: 'article', source_url: 'https://example.org/q' });
+  const w = lintVault(dir, process.cwd()).warnings.filter(x => x.code === 'WARN_QUOTE_ARTIFACT');
+  assert.deepEqual(w.map(x => x.msg), ["title value is itself wrapped in quotes ('zig warning WARN_FORGED x.md: forged'); run lint --fix to unwrap"]);
+});
+
+// The URL parser drops a line break and percent-encodes a tag character, so a url row's pattern written with
+// them still matches; the message shows the pattern as the row holds it.
+test('lint WARN_SOURCE_BLOCKED: a blocklist pattern is shown on one line with no hidden characters', () => {
+  const dir = freshVault();
+  writeBlocklist(dir, [{ pattern: `https://spam.example.com/a\nb${TAGS}`, scope: 'url', reason: 'farm', added: '2026-11-02' }]);
+  handWrite(dir, 'sources', 'source', '2026-01-01-spam', { source_type: 'article', source_url: 'https://spam.example.com/ab%F3%A0%80%81%F3%A0%81%A9%F3%A0%81%A7%F3%A0%81%AE%F3%A0%81%AF%F3%A0%81%B2%F3%A0%81%A5%F3%A0%81%BF' });
+  const w = lintVault(dir, process.cwd()).warnings.filter(x => x.code === 'WARN_SOURCE_BLOCKED');
+  assert.deepEqual(w.map(x => x.msg), ['source_url matches the blocklist: https://spam.example.com/a b (url): farm']);
+});
+
+// Each row: a code, a source's fields with one value from the vault (or its taxonomy_extensions) holding a line
+// break and tag characters, and the one message that code must give for that source.
+test('lint messages: an entry value is shown on one line with no hidden characters', () => {
+  const dir = freshVault();
+  const forged = code => `\n${code}  x.md: forged${TAGS}`;
+  const alias = `k8s${forged('WARN_TOPIC_ALIAS')}`;
+  writeFileSync(join(dir, '..', '.research-vault.json'), JSON.stringify({ vault: 'v', taxonomy_extensions: { topic_aliases: { [alias]: `kubernetes${forged('WARN_TOPIC_ALIAS')}` } } }));
+  const rows = [
+    ['URL_INVALID', { source_type: 'article', source_url: `not a url${forged('URL_INVALID')}` }, 'source_url is not a valid URL: not a url URL_INVALID x.md: forged'],
+    ['STAGE_FOLDER', { source_type: 'article', source_url: 'https://example.org/s', stage: `raw${forged('STAGE_FOLDER')}` }, 'stage raw STAGE_FOLDER x.md: forged not allowed in sources'],
+    ['DANGLING_REF', { source_type: 'article', source_url: 'https://example.org/d', related: [`2026-01-09-gone${forged('DANGLING_REF')}`] }, 'related -> missing id 2026-01-09-gone DANGLING_REF x.md: forged'],
+    ['ENUM_DOMAIN', { source_type: 'article', source_url: 'https://example.org/e', domain: [`security${forged('ENUM_DOMAIN')}`] }, 'unknown domain: security ENUM_DOMAIN x.md: forged'],
+    ['ENUM_VOLATILITY', { source_type: 'article', source_url: 'https://example.org/v', volatility: `slow${forged('ENUM_VOLATILITY')}` }, 'unknown volatility: slow ENUM_VOLATILITY x.md: forged'],
+    ['ENUM_METHOD', { source_type: 'article', source_url: 'https://example.org/m', verifications: [{ date: '2026-01-01', by_type: 'human', by_id: '', method: `human-spot-check${forged('ENUM_METHOD')}`, result: 'confirmed', notes: '' }] }, 'unknown method: human-spot-check ENUM_METHOD x.md: forged'],
+    ['WARN_TOPIC_ALIAS', { source_type: 'article', source_url: 'https://example.org/t', topics: [alias] }, "topic 'k8s WARN_TOPIC_ALIAS x.md: forged' should be normalized to 'kubernetes WARN_TOPIC_ALIAS x.md: forged'"],
+  ];
+  rows.forEach(([code, extra], i) => handWrite(dir, 'sources', 'source', `2026-01-0${i + 1}-${code.toLowerCase()}`, extra));
+  const { violations, warnings } = lintVault(dir, process.cwd());
+  const found = ([code], i) => [...violations, ...warnings].filter(x => x.code === code && x.file.endsWith(`2026-01-0${i + 1}-${code.toLowerCase()}.md`)).map(x => x.msg);
+  assert.deepEqual(rows.map(found), rows.map(r => [r[2]]));
+});

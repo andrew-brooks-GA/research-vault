@@ -10,6 +10,7 @@ import { fetchSource, rawFileUrl } from './fetchsource.mjs';
 import { extractText } from './extract.mjs';
 import { bodyText, MIN_BODY_CHARS } from './gate.mjs';
 import { RUN_KEY } from './packet.mjs';
+import { screenText } from './screen.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const h8 = s => createHash('sha256').update(s).digest('hex').slice(0, 8);
@@ -29,7 +30,8 @@ const hitsIn = (lines, q) => lines.flatMap((l, i) => {
   while (end < x + q.length) end += 1 + lines[++k].length;
   return [[i + 1, k + 1]];
 });
-const around = (lines, at, to = at) => lines.slice(Math.max(0, at - 3), to + 2).filter(l => l.trim()).join(' / ').slice(0, 900);
+// Page text reaches the agent here: screenText makes it one line with no hidden characters (S-11).
+const around = (lines, at, to = at) => screenText(lines.slice(Math.max(0, at - 3), to + 2).filter(l => l.trim()).join(' / '), 900);
 
 // Is each quote on one line of a source's text, or over adjacent lines with no blank line between
 // them (spec 53 point 3; issue 77)? A quote found adds one
@@ -61,10 +63,10 @@ export async function checkQuotes(vaultPath, id, quotes, opts = {}) {
     const hit = matchBlock(blocklist, e.data.source_url) || matchBlock(blocklist, rawFileUrl(e.data.source_url));
     let u;
     try { u = new URL(e.data.source_url); } catch { return (page = { error: 'no fetchable source_url' }); }
-    if (hit) return (page = { error: `blocked source: ${hit.pattern}` });
+    if (hit) return (page = { error: `blocked source: ${screenText(hit.pattern)}` });
     if (u.protocol !== 'https:') return (page = { error: 'source_url is not https' });
     let r;
-    try { r = await fetch(e.data.source_url, {}); } catch (err) { return (page = { error: `page unreachable: ${err.message}` }); }
+    try { r = await fetch(e.data.source_url, {}); } catch (err) { return (page = { error: `page unreachable: ${screenText(err.message)}` }); }
     if (r.status >= 400) return (page = { error: `page unreachable: http ${r.status}` });
     const text = extractText(r.body, new URL(r.url || e.data.source_url).pathname);
     if (text == null) return (page = { error: 'the page gave no text' });

@@ -5,6 +5,7 @@ import { traverse } from '../lib/graph.mjs';
 import { loadSchema } from '../lib/schema.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { csvList } from '../lib/args.mjs';
+import { screenText } from '../lib/screen.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const DIRECTIONS = ['out', 'in', 'both'];
@@ -47,8 +48,10 @@ export async function run(args) {
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
   const id = args._[1];
   const r = relatedTo(vaultPath, id, opts);
+  // Mermaid is text: ids and relations from entries pass screenText (S-11). The default JSON is data,
+  // escaped by JSON.stringify, and not screened.
   if (args.format === 'mermaid') {
-    const lines = ['graph TD', ...(r.edges.length ? r.edges.map(e => `  ${e.from} -->|${e.rel}| ${e.to}`) : [`  ${id}`])];
+    const lines = ['graph TD', ...(r.edges.length ? r.edges.map(e => `  ${screenText(e.from)} -->|${screenText(e.rel)}| ${screenText(e.to)}`) : [`  ${screenText(id)}`])];
     process.stdout.write(lines.join('\n') + '\n');
   } else process.stdout.write(JSON.stringify(r, null, 2) + '\n');
   return 0;

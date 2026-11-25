@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, appendFileSync, existsSync, writeFileSync, readFileSync, realpathSync } from 'node:fs';
+import { mkdtempSync, cpSync, appendFileSync, existsSync, writeFileSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { searchVault, matchRows, semanticSearch, sortRows } from '../bin/commands/search.mjs';
@@ -22,7 +24,7 @@ import {
   assertEmbeddingRefusal, assertEmbeddingReplyRefusal, boundRepo, embeddingEnv, fakeFetch, HTTPS_ENDPOINT,
   LOOPBACK_ENDPOINT, normalisedEndpoints, recordEmbeddingRun, refusedEmbeddingReplies, refusedEndpoints, unapprovedUrls,
 } from './embed.test.mjs';
-import { assertVaultUntouched, outsideVaultRepo, testEnv } from './helpers.mjs';
+import { assertVaultUntouched, outsideVaultRepo, put, testEnv, tmpVault } from './helpers.mjs';
 
 const VAULT = fileURLToPath(new URL('./fixtures/vault', import.meta.url));
 
@@ -390,4 +392,89 @@ test('CLI search --semantic refuses an unapproved address before resolving the b
   const approved = run(HTTPS_ENDPOINT);
   assert.equal(approved.status, 2, approved.stderr);
   assert.match(approved.stderr, /vault that could not be resolved/);
+});
+
+// S-11: a text line shows each value from an entry on one line, with no control, zero-width or bidi character.
+test('search text output: a title and a superseded-by id from an entry cannot add a line or hide text', t => {
+  const v = tmpVault('rv-search-s11-');
+  t.after(() => rmSync(v, { recursive: true, force: true }));
+  put(v, 'source', '2026-01-01-forged', {
+    title: 'zig writer\n2026-01-09-fake  [source]  forged line\u200b\u202e\u0007 tail', source_url: 'https://example.org/forged', source_type: 'article',
+    status: 'superseded', superseded_by: '2026-01-02-x\n2026-01-03-forged  [note]  forged\u2028',
+  });
+  const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+  const r = spawnSync(process.execPath, [cli, 'search', '--vault', v, '--text', 'zig', '--include-superseded', '--now', '2026-01-02'], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, '2026-01-01-forged  [source]  zig writer 2026-01-09-fake [source] forged line tail  (no tier, fresh) (superseded by 2026-01-02-x 2026-01-03-forged [note] forged)\n');
+});
+
+// Tag characters spelling "ignore", invisible in a terminal and in most renderers.
+const TAGS = '\u{E0001}\u{E0069}\u{E0067}\u{E006E}\u{E006F}\u{E0072}\u{E0065}\u{E007F}';
+
+test("search text output: an entry's type and authority tier cannot add a line or hide text", t => {
+  const v = tmpVault('rv-search-s11-type-');
+  t.after(() => rmSync(v, { recursive: true, force: true }));
+  put(v, 'source', '2026-01-01-forged', {
+    type: `source\n2026-01-09-fake  [note]${TAGS}`, authority_tier: `primary\n2026-01-08-fake  [note]${TAGS}`,
+    title: 'zig writer', source_url: 'https://example.org/forged', source_type: 'article',
+  });
+  const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+  const r = spawnSync(process.execPath, [cli, 'search', '--vault', v, '--text', 'zig', '--now', '2026-01-02'], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, '2026-01-01-forged  [source 2026-01-09-fake [note]]  zig writer  (primary 2026-01-08-fake [note], fresh)\n');
+});
+
+// The CLI runs as a child process against a loopback stub endpoint served from this one, which answers every
+// window and the query with one vector, so the one entry scores 1.00. Embeds vault v, then returns the run of
+// `search --semantic 'zig writer'`.
+async function semanticSearchCli(t, v) {
+  const server = createServer((req, res) => {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', c => { body += c; });
+    req.on('end', () => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ data: JSON.parse(body).input.map(() => ({ embedding: [1, 0] })) }));
+    });
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const url = `http://127.0.0.1:${server.address().port}/v1/embeddings`;
+  const repo = boundRepo(v, { url, model: 'fake' });
+  t.after(() => rmSync(repo, { recursive: true, force: true }));
+  const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+  const runCli = async (args) => {
+    const child = spawn(process.execPath, [cli, ...args, '--vault', v, '--ack-data-egress'], {
+      cwd: repo, timeout: 30000, stdio: ['ignore', 'pipe', 'pipe'], env: testEnv({ RESEARCH_VAULT_ALLOW_NETWORK: '1', RESEARCH_VAULT_EMBED_URL: url }),
+    });
+    t.after(() => child.kill('SIGKILL'));
+    let stdout = '', stderr = '';
+    child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
+    child.stdout.on('data', c => { stdout += c; }); child.stderr.on('data', c => { stderr += c; });
+    const [status] = await once(child, 'exit');
+    return { status, stdout, stderr };
+  };
+  const embedded = await runCli(['embed']);
+  assert.equal(embedded.status, 0, embedded.stderr);
+  return runCli(['search', '--semantic', 'zig writer', '--now', '2026-01-02']);
+}
+
+test('search --semantic text output: an entry title cannot add a line or hide text', { timeout: 60000 }, async t => {
+  const v = tmpVault('rv-search-s11-semantic-');
+  t.after(() => rmSync(v, { recursive: true, force: true }));
+  put(v, 'source', '2026-01-01-forged', { title: `zig writer\n2026-01-09-fake  [source]  forged  score 1.00 #0${TAGS}`, source_url: 'https://example.org/forged', source_type: 'article' });
+  const r = await semanticSearchCli(t, v);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, '2026-01-01-forged  [source]  zig writer 2026-01-09-fake [source] forged score 1.00 #0  (no tier, fresh)  score 1.00 #0\n');
+});
+
+// An entry id comes from its file name, which can hold a line break and tag characters.
+test('search --semantic text output: an entry id from a file name cannot add a line or hide text', { timeout: 60000 }, async t => {
+  const v = tmpVault('rv-search-s11-semantic-id-');
+  t.after(() => rmSync(v, { recursive: true, force: true }));
+  put(v, 'source', `2026-01-01-forged\n2026-01-09-fake  [source]  forged${TAGS}`, { title: 'zig writer', source_url: 'https://example.org/forged', source_type: 'article' });
+  const r = await semanticSearchCli(t, v);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, '2026-01-01-forged 2026-01-09-fake [source] forged  [source]  zig writer  (no tier, fresh)  score 1.00 #0\n');
 });

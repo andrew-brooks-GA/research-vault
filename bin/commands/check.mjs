@@ -18,6 +18,7 @@ import { extractCitationsDetailed } from '../lib/citations.mjs';
 import { staleness } from '../lib/stale.mjs';
 import { expandFiles } from '../lib/files.mjs';
 import { langFor, codeFiles, extractCodeLinks, readVersions, checkCodeLinks } from '../lib/codelinks.mjs';
+import { screenText } from '../lib/screen.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -59,7 +60,9 @@ export function checkCitations(citations, entries, schema, now, unverified = new
 }
 
 // The mark beside an ambiguous row's other reason, in the text output and the report.
-const ambiguous = (r) => (r.candidates ? `ambiguous: ${r.candidates.join(', ')}` : '');
+// Text and report values from entries (ids, volatility, a reason such as `superseded by <id>`) pass
+// screenText (S-11): the text output reaches the post-edit hook's context. The JSON report is data.
+const ambiguous = (r) => (r.candidates ? `ambiguous: ${r.candidates.map((c) => screenText(c)).join(', ')}` : '');
 
 // `unattached` and `code` (the code-link count) appear only when a code file was checked.
 function tally(perFile) {
@@ -94,7 +97,7 @@ export function renderReport(perFile, { format, now, versions }) {
   ];
   for (const f of perFile) {
     for (const r of f.rows) {
-      const entry = [r.reason ? r.reason : r.id ? `${r.id} (${r.volatility}${r.unverified ? ', unverified' : ''})` : '', ambiguous(r)].filter(Boolean).join('; ');
+      const entry = [r.reason ? screenText(r.reason) : r.id ? `${screenText(r.id)} (${screenText(r.volatility)}${r.unverified ? ', unverified' : ''})` : '', ambiguous(r)].filter(Boolean).join('; ');
       lines.push(`| ${where(f, r)} | ${r.value} | ${r.status} | ${entry} |`);
     }
   }
@@ -160,7 +163,7 @@ export async function run(args) {
     for (const f of perFile) {
       for (const r of f.rows) {
         if (r.status === 'ok' && !r.unverified && !r.candidates) continue;
-        const note = r.reason ? r.reason : r.unverified ? `${r.id}, unverified` : !f.code && r.id ? `${r.id}, ${r.volatility}` : '';
+        const note = r.reason ? screenText(r.reason) : r.unverified ? `${screenText(r.id)}, unverified` : !f.code && r.id ? `${screenText(r.id)}, ${screenText(r.volatility)}` : '';
         const tag = [note, ambiguous(r)].filter(Boolean).join('; ');
         process.stdout.write(`${r.status.toUpperCase().padEnd(9)} ${where(f, r)}  ${r.value}${tag ? `  (${tag})` : ''}\n`);
       }

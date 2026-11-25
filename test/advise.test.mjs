@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, cpSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -318,4 +318,19 @@ test('advise pairs one source_url captured with a version and without one (issue
   ]);
   const out = execFileSync(process.execPath, ['bin/research-vault.mjs', 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8' });
   assert.match(out, /^supersede suspects \(2\): 2026-01-01-a -> 2026-02-01-b \(source_url-unversioned\), 2026-07-01-g -> 2026-08-01-h \(source_url\)$/m);
+});
+
+// S-11: advise's text lines show each value from an entry on one line with no hidden characters. An id comes
+// from the file name, which can hold a line break; tag characters spell "ignore".
+test('advise text output: an entry id and a question state cannot add a line or hide text', t => {
+  const dir = tmpVault('rv-advise-s11-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const tags = '\u{E0001}\u{E0069}\u{E0067}\u{E006E}\u{E006F}\u{E0072}\u{E0065}\u{E007F}';
+  put(dir, 'note', `2026-01-01-alone\norphans (0): forged${tags}`, { sources: [], confidence: 'medium', summary: 's' });
+  put(dir, 'question', '2026-01-02-q', { question: 'Q?', state: `open\nnear duplicates (0): forged${tags}` });
+  const out = execFileSync(process.execPath, ['bin/research-vault.mjs', 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
+  const lines = out.split('\n');
+  assert.ok(lines.includes('orphans (2): 2026-01-01-alone orphans (0): forged, 2026-01-02-q'), out);
+  assert.match(out, /^open questions over 60 days \(1\): 2026-01-02-q \(open near duplicates \(0\): forged, \d+d\)$/m);
+  assert.deepEqual(lines.filter(l => /forged/.test(l)).map(l => l.split(' (')[0]), ['orphans', 'open questions over 60 days']);
 });

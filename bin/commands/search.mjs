@@ -10,6 +10,7 @@ import { VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { cosine, embeddingDestination, embedTexts, readIndex } from '../lib/embed.mjs';
 import { embeddingGate } from './embed.mjs';
+import { screenText } from '../lib/screen.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -104,10 +105,11 @@ export async function run(args) {
     const cfg = loadProjectConfig(args.cwd ?? process.cwd(), { schema: loadSchema(REPO_ROOT) })?.config;
     appendUsage(vaultPath, { kind: 'queried', via: 'search', type: args.type, topic: args.topic, outcome: rows.length ? 'hits' : 'no-match', ids: rows.map(e => e.id), text: cfg?.usage?.text === true && args.text ? args.text : undefined });
   } catch (e) { warnUsageRefusal(e); }
+  // --json is data (JSON.stringify escapes it); a text line's values from entries pass screenText (S-11).
   if (args.json) process.stdout.write(JSON.stringify(rows, null, 2) + '\n');
   else {
     const schema = loadSchema(REPO_ROOT);
-    rows.forEach(e => process.stdout.write(`${e.id}  [${e.type}]  ${e.title}  ${annotate(e, schema, new Date(now))}${e.status === 'superseded' ? ` (superseded by ${e.superseded_by})` : ''}\n`));
+    rows.forEach(e => process.stdout.write(`${screenText(e.id)}  [${screenText(e.type)}]  ${screenText(e.title)}  ${screenText(annotate(e, schema, new Date(now)))}${e.status === 'superseded' ? ` (superseded by ${screenText(e.superseded_by)})` : ''}\n`));
   }
   return 0;
 }
@@ -129,7 +131,7 @@ async function runSemantic(args, now) {
   if (args.json) process.stdout.write(JSON.stringify(rows, null, 2) + '\n');
   else {
     const schema = loadSchema(REPO_ROOT);
-    rows.forEach(e => process.stdout.write(`${e.id}  [${e.type}]  ${e.title}  ${annotate(e, schema, new Date(now))}  score ${e.score.toFixed(2)} #${e.chunk.index}\n`));
+    rows.forEach(e => process.stdout.write(`${screenText(e.id)}  [${screenText(e.type)}]  ${screenText(e.title)}  ${screenText(annotate(e, schema, new Date(now)))}  score ${e.score.toFixed(2)} #${e.chunk.index}\n`));
   }
   return 0;
 }

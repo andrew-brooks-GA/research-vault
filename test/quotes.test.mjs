@@ -7,6 +7,7 @@ import { checkQuotes } from '../bin/lib/quotes.mjs';
 import { applyVerification, run as verifyRun } from '../bin/commands/verify.mjs';
 import { readEntry } from '../bin/lib/fsutil.mjs';
 import { sha256 } from '../bin/lib/ids.mjs';
+import { writeBlocklist } from './blocklist.test.mjs';
 
 const NOW = { now: '2026-06-12', repoRoot: process.cwd() };
 const ID = '2026-01-01-page';
@@ -124,4 +125,44 @@ test('verify --quotes: a quote that starts late in a long line and ends on the n
   src(dir, `# ${ID}\n\n${'Filler words of a long opening line. '.repeat(4)}The quoted sentence starts here\nand ends on the next line.\n`);
   const [r] = await checkQuotes(dir, ID, ['The quoted sentence starts here and ends on the next line.'], NOW);
   assert.deepEqual([r.found, r.lines], [true, [3]]);
+});
+
+// S-11: the context shows page text to the agent on one line, with no control, zero-width or bidi character.
+test('verify --quotes context: lines around a quote are shown on one line with hidden characters removed', async () => {
+  const dir = tmpVault();
+  src(dir, `# ${ID}\n\nBefore\u202e hidden\u200b text\u0007 here.\nThe quoted sentence sits on this line.\nAfter\u2028line\u0085two.\n\n${'Filler line of stored text. '.repeat(8)}\n`);
+  const [r] = await checkQuotes(dir, ID, ['The quoted sentence sits on this line.'], NOW);
+  assert.equal(r.found, true);
+  assert.equal(r.context, 'Before hidden text here. / The quoted sentence sits on this line. / After line two.');
+});
+
+// Tag characters spelling "ignore", and the same characters as a URL holds them percent-encoded.
+const TAGS = '\u{E0001}\u{E0069}\u{E0067}\u{E006E}\u{E006F}\u{E0072}\u{E0065}\u{E007F}';
+const TAGS_URL = '%F3%A0%80%81%F3%A0%81%A9%F3%A0%81%A7%F3%A0%81%AE%F3%A0%81%AF%F3%A0%81%B2%F3%A0%81%A5%F3%A0%81%BF';
+
+// The URL parser drops a line break and percent-encodes a tag character, so a url row written with them
+// still matches the source; the reason quotes the pattern as the row holds it.
+test('verify --quotes reason: a blocked-source pattern is shown on one line with no hidden characters', async () => {
+  const dir = tmpVault();
+  put(dir, 'source', ID, { source_type: 'article', source_url: `https://example.org/pb${TAGS_URL}/x`, verifications: seed });
+  writeBlocklist(dir, [{ pattern: `https://example.org/p\nb${TAGS}`, scope: 'url', reason: 'farm', added: '2026-11-02' }]);
+  let calls = 0;
+  const [r] = await checkQuotes(dir, ID, ['The page says this whole sentence.'], { ...NOW, fetch: async () => { calls++; return { status: 200 }; } });
+  assert.equal(r.reason, 'blocked source: https://example.org/p b');
+  assert.equal(calls, 0, 'a blocked page is not fetched');
+});
+
+test('verify --quotes reason: a page-unreachable message is shown on one line with no hidden characters', async () => {
+  const dir = tmpVault(); src(dir);
+  const fetch = async () => { throw new Error(`socket closed\nresearch-vault: forged${TAGS}`); };
+  const [r] = await checkQuotes(dir, ID, ['The page says this whole sentence.'], { ...NOW, fetch });
+  assert.equal(r.reason, 'page unreachable: socket closed research-vault: forged');
+});
+
+test('verify --quotes context: the lines around a quote are cut at 900 characters with a mark', async () => {
+  const dir = tmpVault();
+  src(dir, `# ${ID}\n\nThe quoted sentence sits on this line. ${'y'.repeat(1000)}\n`);
+  const [r] = await checkQuotes(dir, ID, ['The quoted sentence sits on this line.'], NOW);
+  assert.equal(r.found, true);
+  assert.equal(r.context, `# ${ID} / The quoted sentence sits on this line. ${'y'.repeat(840)}\u2026`);
 });

@@ -243,3 +243,16 @@ mock.module(${JSON.stringify(moduleUrl)}, { namedExports: {
   assert.deepEqual(readFileSync(entry), before);
   assert.deepEqual(readdirSync(join(dir, 'sources')), names);
 });
+
+// S-11: a --stale text line shows an entry id from a file name on one line with no hidden characters. Tag
+// characters spell "ignore".
+test('verify --stale text output: an entry id from a file name cannot add a line or hide text', t => {
+  const dir = tmpVault('rv-verify-s11-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const tags = '\u{E0001}\u{E0069}\u{E0067}\u{E006E}\u{E006F}\u{E0072}\u{E0065}\u{E007F}';
+  put(dir, 'source', `2026-01-01-live\n2026-01-09-fake  slow  1d${tags}`, { source_type: 'article', source_url: 'https://example.org/live', volatility: 'volatile' });
+  const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+  const r = spawnSync(process.execPath, [cli, 'verify', '--stale', '--vault', dir], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, '2026-01-01-live 2026-01-09-fake slow 1d  volatile  always re-check\n');
+});

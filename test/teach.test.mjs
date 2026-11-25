@@ -638,3 +638,19 @@ test('teach next prints readme: missing, ungated or ok after fringe: complete, a
   assert.equal(lines(), 'fringe: complete\nreadme: ungated', 'edited after the verdict');
   assert.equal(gate('status', 'README.md', '--check').status, 1);
 });
+
+// S-11: an entry title on a candidate line is shown on one line with no hidden characters. Tag characters
+// spell "ignore".
+test('CLI teach path candidates: an entry title cannot add a line or hide text', t => {
+  const ws = copyFixture();
+  const vault = fixtureVault();
+  t.after(() => { rmSync(ws, { recursive: true, force: true }); rmSync(vault, { recursive: true, force: true }); });
+  const tags = '\u{E0001}\u{E0069}\u{E0067}\u{E006E}\u{E006F}\u{E0072}\u{E0065}\u{E007F}';
+  put(vault, 'source', '2026-01-02-sextuple-doc', { title: `The sextuple explained\n  2026-01-09-fake [source] forged${tags}`, topics: ['fx'], source_type: 'article', source_url: 'https://example.org/six' });
+  const r = spawnSync(process.execPath, [BIN, 'teach', 'path', 'candidates', '--topic', 'fx', ws], { encoding: 'utf8', env: testEnv({ RESEARCH_VAULT_PATH: vault }), timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, `candidates for ${ws} | topics: fx 1 | pool 1 | cited 5 (lessons 0001, 0002, 0003, 0004, 0005, 0006)\n` +
+    '4. The sextuple, named | terms: sextuple | after: 1\n' +
+    '  2026-01-02-sextuple-doc [source] The sextuple explained 2026-01-09-fake [source] forged | uncited | search --topic fx; search --topic fx --text "sextuple"\n' +
+    'terms with no line: none\n');
+});
