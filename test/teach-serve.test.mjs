@@ -633,3 +633,21 @@ test('the route list without --labs or --terminal: each listed route answers as 
   }
   assert.equal(attempts(ws), before, 'no unlisted route wrote an attempt');
 });
+
+test('S-18: GET /progress puts no markup from an attempt file\'s wrong list on the page', { timeout: 20000 }, async () => {
+  const ws = copyFixture();
+  writeFileSync(join(ws, 'attempts', 'a-20260102-120000-0001.md'),
+    '---\ntype: attempt\ndate: 2026-01-02\nlesson: 0001-good\ntotal: 3\nwrong: ["<b id=s18>"]\nrecords: []\n---\n');
+  const { server, port } = await start(ws);
+  try {
+    const r = await req(port, { path: '/progress', signal: AbortSignal.timeout(5000) });
+    assert.equal(r.status, 200);
+    assert.ok(!r.text.includes('<b id=s18'), 'the value is not markup on the page');
+    // The fixture's own attempt is still the one attempt shown, and the page ends whole.
+    assert.ok(r.text.includes('<td><a href="/lessons/0001-good.html">What fx returns</a></td><td>1</td><td><b>2/3</b> <small>2026-01-01</small></td>'));
+    assert.ok(r.text.includes('<li><small>2026-01-01</small> <a href="/lessons/0001-good.html">What fx returns</a>: <b>2/3</b> <small>(missed item 2)</small></li></ol></section>\n</body></html>\n'));
+    assert.ok(r.text.includes('<p>1 attempt; '));
+  } finally {
+    server.close();
+  }
+});

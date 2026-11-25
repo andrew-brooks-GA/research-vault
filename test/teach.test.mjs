@@ -707,3 +707,129 @@ test('S-13: a learning record whose id names an Object.prototype member and that
     assert.deepEqual(record.evidence, [], name);
   }
 });
+
+// S-18: a workspace copy with these attempt files beside the fixture's one (0001-good, 2/3, item 2 missed).
+function s18Workspace(t, files) {
+  const ws = copyFixture();
+  t.after(() => rmSync(ws, { recursive: true, force: true }));
+  for (const [id, fields] of Object.entries(files)) writeFileSync(join(ws, 'attempts', `${id}.md`), `---\ntype: attempt\n${fields}\n---\n`);
+  return ws;
+}
+
+test('S-18: progress leaves out an attempt file whose total, wrong or a task list is not what writeAttempt stores', t => {
+  const ws = s18Workspace(t, {
+    'a-20260102-120000-0001': 'date: 2026-01-02\nlesson: 0001-good\ntotal: 3\nwrong: ["<b id=s18>"]\nrecords: []',
+    'a-20260102-120000-0002': 'date: 2026-01-02\nlesson: 0001-good\ntotal: 3\nwrong: "<b id=s18>"\nrecords: []',
+    'a-20260102-120000-0003': 'date: 2026-01-02\nlesson: 0001-good\ntotal: 3\nwrong: [3]\nrecords: []',
+    'a-20260102-120000-0004': 'date: 2026-01-02\nlesson: 0001-good\ntotal: "3"\nwrong: []\nrecords: []',
+    'a-20260102-120000-0005': 'date: 2026-01-02\nlesson: 0004-tool-fxctl\ntotal: 1\nwrong: [0]\nrecords: []\npassed: [1]\ntested: []',
+    'a-20260102-120000-0006': 'date: 2026-01-02\nlesson: 0009-s18\ntotal: 1\nwrong: [-1]\nrecords: []',
+  });
+  const p = progress(ws, { now: new Date('2026-02-01T00:00:00Z') });
+  assert.equal(p.attempts, 1);
+  assert.deepEqual(p.lessons.flatMap((l) => l.attempts.map((a) => a.id)), ['a-20260101-120000-0001']);
+  assert.ok(!JSON.stringify(p).includes('s18'), 'no malformed attempt, and no row for its lesson');
+  assert.ok(!p.lessons.some((l) => l.kind === 'task'), 'no task row from a task attempt with a number in passed');
+});
+
+test('S-18: progressHtml escapes the missed-items text', () => {
+  const a = { id: 'a-20260101-120000-0001', date: '2026-01-01', score: 2, total: 3, wrong: ['<b id=s18>'] };
+  const html = progressHtml({ lessons: [{ id: '0001-good', title: 'T', class: 'lesson', attempts: [a], first: a, latest: a, best: a }],
+    attempts: 1, records: { active: 0, byKind: {} }, reviewDue: null, reviewFailed: [] });
+  assert.ok(!html.includes('<b id=s18'));
+  assert.ok(html.includes('<small>(missed item &lt;b id=s18&gt;1)</small>'));
+});
+
+test('S-18: teach progress text screens an attempt\'s lesson: it cannot add a line or hide text', t => {
+  const esc = String.fromCharCode(27);
+  const ws = s18Workspace(t, { 'a-20260102-120000-0001': `date: 2026-01-02\nlesson: "x${esc}[8m\\n| forged | 9 | 9/9 | 9/9 | 9/9 |"\ntotal: 1\nwrong: []\nrecords: []` });
+  const text = progressText(progress(ws, { now: new Date('2026-02-01T00:00:00Z') }));
+  assert.ok(!text.includes(esc));
+  assert.ok(!text.split('\n').some((l) => l.startsWith('| forged')));
+  assert.ok(text.includes('| x[8m | forged | 9 | 9/9 | 9/9 | 9/9 | | 1 | 1/1 on 2026-01-02 |'));
+});
+
+// The starting commit's page and text (e29a049) for valid attempts of every kind: two missed items, a project run,
+// a task check and an answer, beside the fixture's quiz attempt.
+test('S-18: progress of valid attempts reads as before the change, page and text', t => {
+  const ws = s18Workspace(t, {
+    'a-20260102-120000-0003': 'date: 2026-01-02\nlesson: 0003-review-good\ntotal: 3\nwrong: [0, 2]\nrecords: []',
+    'a-20260103-120000-0006': 'date: 2026-01-03\nlesson: 0006-project-fx\nresult: fail\ntotal: 1\nwrong: [0]\nrecords: []',
+    'a-20260104-120000-0004': 'date: 2026-01-04\nlesson: 0004-tool-fxctl\ntotal: 3\nwrong: [1, 2]\nrecords: []\npassed: [a-exists]\nfailed: [gone]\nunreached: [b-text]\ntested: []',
+    'a-20260105-120000-0004': 'date: 2026-01-05\nlesson: 0004-tool-fxctl\ntotal: 1\nwrong: [0]\nrecords: []\ntested: []\nanswered: [b-text]',
+  });
+  const p = progress(ws, { now: new Date('2026-02-01T00:00:00Z') });
+  const html = progressHtml(p);
+  const row = (href, title, n, cells) => `<tr><td><a href="/lessons/${href}.html">${title}</a></td><td>${n}</td>${cells}</tr>`;
+  const none = '<td>none</td><td>none</td><td>none</td>';
+  assert.equal(html.slice(html.indexOf('<section data-block="progress">')),
+    '<section data-block="progress"><table class="progress"><thead><tr><th>lesson</th><th>attempts</th><th>first</th><th>latest</th><th>best</th></tr></thead><tbody>' +
+    row('0001-good', 'What fx returns', 1, '<td><b>2/3</b> <small>2026-01-01</small></td>'.repeat(3)) +
+    row('0002-bad', 'A bad lesson', 0, none) +
+    row('0003-review-good', 'Review: what fx returns', 1, '<td><b>1/3</b> <small>2026-01-02</small></td>'.repeat(3)) +
+    row('0004-tool-fxctl', 'The fxctl tool', 0, none) +
+    row('0004-tool-fxctl', 'The fxctl tool', 2, '<td></td><td><b>answered b-text</b> <small>2026-01-05</small></td><td></td>') +
+    row('0005-diagnose-fx', 'Reading what fx printed', 0, none) +
+    row('0006-project-fx', 'Project: Predict, then run', 1, '<td><b>fail</b> <small>2026-01-03</small></td>'.repeat(3)) +
+    '</tbody></table>\n<p>5 attempts; 1 active learning record (understanding 1). Review due: 0001-known. Review failed: none.</p></section>\n' +
+    '<section data-block="timeline"><ol class="timeline">' +
+    '<li><small>2026-01-01</small> <a href="/lessons/0001-good.html">What fx returns</a>: <b>2/3</b> <small>(missed item 2)</small></li>' +
+    '<li><small>2026-01-02</small> <a href="/lessons/0003-review-good.html">Review: what fx returns</a>: <b>1/3</b> <small>(missed items 1, 3)</small></li>' +
+    '<li><small>2026-01-03</small> <a href="/lessons/0006-project-fx.html">Project: Predict, then run</a>: <b>fail</b></li>' +
+    '<li><small>2026-01-04</small> <a href="/lessons/0004-tool-fxctl.html">The fxctl tool</a>: <b>ok a-exists; failed gone; not reached b-text</b></li>' +
+    '<li><small>2026-01-05</small> <a href="/lessons/0004-tool-fxctl.html">The fxctl tool</a>: <b>answered b-text</b></li>' +
+    '</ol></section>\n</body></html>\n');
+  assert.equal(progressText(p), '| lesson | attempts | first | latest | best |\n|---|---|---|---|---|\n' +
+    '| 0001-good | 1 | 2/3 on 2026-01-01 | 2/3 on 2026-01-01 | 2/3 on 2026-01-01 |\n| 0002-bad | 0 | none | none | none |\n' +
+    '| 0003-review-good | 1 | 1/3 on 2026-01-02 | 1/3 on 2026-01-02 | 1/3 on 2026-01-02 |\n| 0004-tool-fxctl | 0 | none | none | none |\n' +
+    '| 0004-tool-fxctl | 2 |  | answered b-text on 2026-01-05 |  |\n| 0005-diagnose-fx | 0 | none | none | none |\n' +
+    '| 0006-project-fx | 1 | fail on 2026-01-03 | fail on 2026-01-03 | fail on 2026-01-03 |\n\n' +
+    'attempts: 5\nrecords: 1 active (understanding 1)\nreview-due: 0001-known\nreview-failed: none\n');
+});
+
+test('S-18: progress leaves out an attempt file with a negative total', t => {
+  const ws = s18Workspace(t, { 'a-20260102-120000-0001': 'date: 2026-01-02\nlesson: 0009-s18\ntotal: -1\nwrong: []\nrecords: []' });
+  const p = progress(ws, { now: new Date('2026-02-01T00:00:00Z') });
+  assert.equal(p.attempts, 1);
+  assert.ok(!p.lessons.some((l) => l.id === '0009-s18'), 'no row for the attempt\'s lesson');
+});
+
+test('S-18: progress leaves out an attempt file with a number in failed, unreached, tested or answered', t => {
+  for (const k of ['failed', 'unreached', 'tested', 'answered']) {
+    const ws = s18Workspace(t, { 'a-20260102-120000-0001': `date: 2026-01-02\nlesson: 0004-tool-fxctl\ntotal: 1\nwrong: [0]\nrecords: []\n${k === 'tested' ? '' : 'tested: []\n'}${k}: [1]` });
+    const p = progress(ws, { now: new Date('2026-02-01T00:00:00Z') });
+    assert.equal(p.attempts, 1, k);
+    assert.ok(!p.lessons.some((l) => l.kind === 'task'), `${k}: no task row`);
+  }
+});
+
+test('S-18: progress leaves out an attempt file whose wrong list holds 1.5 (read as text), which is not an integer index', t => {
+  const ws = s18Workspace(t, { 'a-20260102-120000-0001': 'date: 2026-01-02\nlesson: 0009-s18\ntotal: 3\nwrong: [1.5]\nrecords: []' });
+  const p = progress(ws, { now: new Date('2026-02-01T00:00:00Z') });
+  assert.equal(p.attempts, 1);
+  assert.ok(!p.lessons.some((l) => l.id === '0009-s18'), 'no row for the attempt\'s lesson');
+});
+
+test('S-18: teach progress text screens a project\'s result in a table cell: it cannot add a line or hide text', t => {
+  const esc = String.fromCharCode(27);
+  const ws = s18Workspace(t, { 'a-20260102-120000-0006': `date: 2026-01-02\nlesson: 0006-project-fx\nresult: "fail${esc}[8m\\n| forged | 9 |"\ntotal: 1\nwrong: [0]\nrecords: []` });
+  const text = progressText(progress(ws, { now: new Date('2026-02-01T00:00:00Z') }));
+  assert.ok(!text.includes(esc));
+  assert.ok(!text.split('\n').some((l) => l.startsWith('| forged')));
+  assert.ok(text.includes('| 0006-project-fx | 1 | fail[8m | forged | 9 | on 2026-01-02 |'));
+});
+
+test('S-18: teach progress text screens the review-failed line: an id cannot add a line or hide text', () => {
+  const esc = String.fromCharCode(27);
+  const text = progressText({ lessons: [], attempts: 0, records: { active: 1, byKind: {} }, reviewDue: null, reviewFailed: [`r${esc}[8m\nreview-failed: none`] });
+  assert.ok(!text.includes(esc));
+  assert.equal(text.split('\n').filter((l) => l.startsWith('review-failed:')).length, 1);
+  assert.ok(text.endsWith('\nreview-failed: r[8m review-failed: none\n'));
+});
+
+test('S-18: teach progress text prints a valid value longer than 300 characters whole', () => {
+  const a = { id: 'a-20260101-120000-0001', date: '2026-01-01', result: 'r'.repeat(400), total: 1, wrong: [] };
+  const text = progressText({ lessons: [{ id: '0006-project-fx', title: 'T', class: 'project', attempts: [a], first: a, latest: a, best: a }],
+    attempts: 1, records: { active: 0, byKind: {} }, reviewDue: null, reviewFailed: [] });
+  assert.ok(text.includes(`| 0006-project-fx | 1 | ${'r'.repeat(400)} on 2026-01-01 |`));
+});

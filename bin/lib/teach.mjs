@@ -18,6 +18,7 @@ import { HEADING_RE, TABLE_SEP_RE, WORKSPACE_GATES, hasVerdict } from './gate.mj
 import { readLabs, lessonLab, labRunner, secretHits, labCookie, LAB_ACTIONS, LAB_BODY_MAX, LAB_ID_RE } from './labs.mjs';
 import { readBrand, withBrand, brandUrl } from './brand.mjs';
 import { shellTerminal } from './terminal.mjs';
+import { screenText } from './screen.mjs';
 
 export const ATTEMPT_BODY_MAX = 4096;
 export const LESSON_ID_RE = /^\d{4}-[a-z][a-z0-9-]*$/;
@@ -486,13 +487,20 @@ export function teachIndex(workspaceDir, { now }) {
 // chronological order with first, latest and best, plus record counts and what is due for review
 // (null when the mission asks for no reminders, issue 79 D2). Issue 79 D6: a lesson's task attempts make a second row,
 // `kind: 'task'`, right after the lesson's own, each attempt with its summary and no score; its first and best are null.
+// S-18: an attempt file whose total, wrong or task lists are not what writeAttempt stores (wrong: indexes below total;
+// passed, failed, unreached, tested, answered: lists of ids) is left out of the attempt rows, the timeline and the count;
+// the record review state (review-failed, review-due) still reads every attempt, through teachIndex. teach lint does not
+// check these types.
+const idList = (v) => v === undefined || (Array.isArray(v) && v.every((x) => typeof x === 'string'));
+const wellFormed = (a) => Number.isInteger(a.total) && a.total >= 0 && Array.isArray(a.wrong) &&
+  a.wrong.every((i) => Number.isInteger(i) && i >= 0 && i < a.total) && ['passed', 'failed', 'unreached', 'tested', 'answered'].every((k) => idList(a[k]));
 export function progress(workspaceDir, { now }) {
   const idx = teachIndex(workspaceDir, { now });
   const byLesson = new Map(idx.lessons.map((l) => [l.id, { id: l.id, title: l.title, class: l.class, attempts: [] }]));
   const tasks = new Map();
-  for (const a of idx.attempts) {
-    const total = Number(a.total) || 0;
-    const wrong = Array.isArray(a.wrong) ? a.wrong : [];
+  const shown = idx.attempts.filter(wellFormed);
+  for (const a of shown) {
+    const { total, wrong } = a;
     if (!byLesson.has(a.lesson)) byLesson.set(a.lesson, { id: a.lesson, title: a.lesson, class: 'lesson', attempts: [] });
     if (isTaskAttempt(a)) {
       const l = byLesson.get(a.lesson);
@@ -512,7 +520,7 @@ export function progress(workspaceDir, { now }) {
   const byKind = Object.fromEntries(kinds);
   return {
     lessons,
-    attempts: idx.attempts.length,
+    attempts: shown.length,
     records: { active: idx.records.filter((r) => r.status === 'active').length, byKind },
     reviewDue: idx.prefs.reminders ? idx.records.filter((r) => r.reviewDue).map((r) => r.id) : null,
     reviewFailed: idx.records.filter((r) => r.reviewFailed).map((r) => r.id),
@@ -524,11 +532,13 @@ const scoreOf = (a) => a.summary ?? a.result ?? `${a.score}/${a.total}`;
 const fmtScore = (a) => (a ? `${scoreOf(a)} on ${a.date}` : 'none');
 const fmtCell = (l, a) => (l.kind === 'task' && !a ? '' : fmtScore(a));
 
+// S-18: every workspace value goes through screenText, uncut, as progressHtml escapes it: none can add a line or hide text.
 export function progressText(p) {
+  const s = (v) => screenText(v, Infinity);
   const lines = ['| lesson | attempts | first | latest | best |', '|---|---|---|---|---|'];
-  for (const l of p.lessons) lines.push(`| ${l.id} | ${l.attempts.length} | ${fmtCell(l, l.first)} | ${fmtCell(l, l.latest)} | ${fmtCell(l, l.best)} |`);
-  lines.push('', `attempts: ${p.attempts}`, `records: ${p.records.active} active (${Object.entries(p.records.byKind).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'})`,
-    ...(p.reviewDue ? [`review-due: ${p.reviewDue.join(', ') || 'none'}`] : []), `review-failed: ${p.reviewFailed.join(', ') || 'none'}`);
+  for (const l of p.lessons) lines.push(`| ${s(l.id)} | ${l.attempts.length} | ${s(fmtCell(l, l.first))} | ${s(fmtCell(l, l.latest))} | ${s(fmtCell(l, l.best))} |`);
+  lines.push('', `attempts: ${p.attempts}`, `records: ${p.records.active} active (${s(Object.entries(p.records.byKind).map(([k, n]) => `${k} ${n}`).join(', ')) || 'none'})`,
+    ...(p.reviewDue ? [`review-due: ${s(p.reviewDue.join(', ')) || 'none'}`] : []), `review-failed: ${s(p.reviewFailed.join(', ')) || 'none'}`);
   return lines.join('\n') + '\n';
 }
 
@@ -555,7 +565,7 @@ export function progressHtml(p) {
   const rows = p.lessons.map((l) => `<tr><td><a href="/lessons/${esc(l.id)}.html">${esc(l.title)}</a></td><td>${l.attempts.length}</td>${cell(l, l.first)}${cell(l, l.latest)}${cell(l, l.best)}</tr>`).join('');
   const timeline = p.lessons.flatMap((l) => l.attempts.map((a) => ({ ...a, lesson: l.title, lid: l.id })))
     .sort((a, b) => (a.id < b.id ? -1 : 1))
-    .map((a) => `<li><small>${esc(a.date)}</small> <a href="/lessons/${esc(a.lid)}.html">${esc(a.lesson)}</a>: <b>${esc(scoreOf(a))}</b>${a.summary === undefined && a.wrong.length && !a.result ? ` <small>(missed item${a.wrong.length > 1 ? 's' : ''} ${a.wrong.map((i) => i + 1).join(', ')})</small>` : ''}</li>`).join('');
+    .map((a) => `<li><small>${esc(a.date)}</small> <a href="/lessons/${esc(a.lid)}.html">${esc(a.lesson)}</a>: <b>${esc(scoreOf(a))}</b>${a.summary === undefined && a.wrong.length && !a.result ? ` <small>(missed item${a.wrong.length > 1 ? 's' : ''} ${esc(a.wrong.map((i) => i + 1).join(', '))})</small>` : ''}</li>`).join('');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Progress</title><link rel="stylesheet" href="/assets/lesson.css"></head>
 <body>${navHtml()}<h1>Progress</h1>
