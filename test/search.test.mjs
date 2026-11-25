@@ -478,3 +478,22 @@ test('search --semantic text output: an entry id from a file name cannot add a l
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout, '2026-01-01-forged 2026-01-09-fake [source] forged  [source]  zig writer  (no tier, fresh)  score 1.00 #0\n');
 });
+
+// S-13: a topic, a query or an alias target that names an Object.prototype member is a word, not a member.
+test('S-13: a topic or alias target that names an Object.prototype member is matched as a word', () => {
+  for (const name of ['__proto__', 'toString', 'hasOwnProperty', 'constructor']) {
+    const rows = [{ id: 'a', topics: ['al'] }, { id: 'b', topics: [name] }, { id: 'c', topics: ['x'] }];
+    assert.deepEqual(matchRows(rows, { topic: name }, { al: name }).map(e => e.id), ['a', 'b'], name);
+    assert.deepEqual(matchRows(rows, { topic: 'al' }, { al: name }).map(e => e.id), ['a', 'b'], name);
+    assert.deepEqual(matchRows(rows, { topic: name }).map(e => e.id), ['b'], name);
+  }
+});
+
+test('S-13: related on an entry whose id names an Object.prototype member and has no backlinks lists none', t => {
+  for (const name of ['__proto__', 'toString', 'hasOwnProperty', 'constructor']) {
+    const dir = tmpVault('rv-s13-related-');
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    put(dir, 'source', name, { created: '2026-01-01', source_type: 'article', source_url: 'https://example.com/s' });
+    assert.deepEqual(relatedTo(dir, name).backlinks, [], name);
+  }
+});

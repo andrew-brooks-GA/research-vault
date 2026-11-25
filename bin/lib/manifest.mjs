@@ -60,10 +60,11 @@ export function buildManifest(vaultPath) {
   }
   entries.sort((a, b) => a.id.localeCompare(b.id));
   edges.sort((a, b) => a.from.localeCompare(b.from) || a.rel.localeCompare(b.rel) || a.to.localeCompare(b.to));
-  const backlinks = {};
-  for (const e of edges) if (BACKLINK_FIELDS.includes(e.rel)) (backlinks[e.to] ||= new Set()).add(e.from);
-  const sortedBacklinks = {};
-  for (const k of Object.keys(backlinks).sort()) sortedBacklinks[k] = [...backlinks[k]].sort();
+  // Keyed by references from entries, so a Map: `constructor` or `__proto__` is an id like any other (S-13).
+  const backlinks = new Map();
+  for (const e of edges) if (BACKLINK_FIELDS.includes(e.rel)) (backlinks.get(e.to) ?? backlinks.set(e.to, new Set()).get(e.to)).add(e.from);
+  // fromEntries defines each key as its own property, `__proto__` too; read it with Object.hasOwn.
+  const sortedBacklinks = Object.fromEntries([...backlinks.keys()].sort().map(k => [k, [...backlinks.get(k)].sort()]));
   return { generated: new Date().toISOString().slice(0, 10), entries, edges, backlinks: sortedBacklinks };
 }
 
@@ -82,7 +83,7 @@ function refuseShrink(vaultPath, path, manifest) {
   const ids = new Set(manifest.entries.map((e) => e.id));
   const kept = [];
   for (const e of prev.entries ?? []) {
-    const folder = TYPE_FOLDER[e.type];
+    const folder = Object.hasOwn(TYPE_FOLDER, e.type) ? TYPE_FOLDER[e.type] : null;
     if (ids.has(e.id) || !folder) continue;
     const dir = join(vaultPath, folder);
     const entry = join(dir, `${e.id}.md`);

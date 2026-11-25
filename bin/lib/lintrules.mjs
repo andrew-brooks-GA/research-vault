@@ -145,7 +145,8 @@ export function lintVault(vaultPath, repoRoot) {
       const val = data[f]; if (!val) continue;
       for (const ref of Array.isArray(val) ? val : [val]) if (ref && !ids.has(ref)) add(abs, 'DANGLING_REF', `${f} -> missing id ${screenText(ref)}`);
     }
-    const required = schema.fields.required_by_type[data.type] || [];
+    // Types, topics and aliases are strings from the vault: own keys only, so `constructor` is a name like any other (S-13).
+    const required = Object.hasOwn(schema.fields.required_by_type, data.type) ? schema.fields.required_by_type[data.type] : [];
     // Presence-only is not enough: a required field present but empty ('' or []) is as broken
     // as an absent one. Capture refuses to emit these; hand-authored entries still can.
     for (const f of required) {
@@ -185,7 +186,7 @@ export function lintVault(vaultPath, repoRoot) {
     // The blocklist row's fields pass screenText (S-11): the message is a line of lint's text output.
     if (blocked) warn(abs, 'WARN_SOURCE_BLOCKED', `source_url matches the blocklist: ${screenText(blocked.pattern)} (${screenText(blocked.scope)}): ${screenText(blocked.reason)}`);
 
-    for (const t of (data.topics || [])) if (schema.taxonomy.topic_aliases[t]) warn(abs, 'WARN_TOPIC_ALIAS', `topic '${screenText(t)}' should be normalized to '${screenText(schema.taxonomy.topic_aliases[t])}'`);
+    for (const t of (data.topics || [])) if (Object.hasOwn(schema.taxonomy.topic_aliases, t)) warn(abs, 'WARN_TOPIC_ALIAS', `topic '${screenText(t)}' should be normalized to '${screenText(schema.taxonomy.topic_aliases[t])}'`);
 
     // Synthesis note-coverage: a synthesis whose contributing_ids contain only sources
     // (no notes) is non-conforming unless it declares synthesis_basis: primary-rollup.
@@ -228,7 +229,7 @@ export function fixVault(vaultPath, repoRoot, { topics = false } = {}) {
         if (u !== null) slot.set(u);
       }
       // Opt-in: a topic rewrite changes meaning where the quote unwrap changes form (spec 24 D3).
-      if (topics && Array.isArray(entry.data.topics)) entry.data.topics = [...new Set(entry.data.topics.map(t => aliases[t] || t))];
+      if (topics && Array.isArray(entry.data.topics)) entry.data.topics = [...new Set(entry.data.topics.map(t => Object.hasOwn(aliases, t) ? aliases[t] : t))];
       const order = fieldOrder(schema, entry.data.type);
       out = serializeFrontmatter(entry.data, entry.body, order, { preserve: false });
     }

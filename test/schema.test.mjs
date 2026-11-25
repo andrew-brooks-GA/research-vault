@@ -155,3 +155,20 @@ test('loadSchema discovers a vault alias pair from the bound config (spec 24 D1)
   assert.equal(s.taxonomy.topic_aliases.k8s, 'kubernetes');
   assert.equal(s.taxonomy.topic_aliases.tdd, 'test-driven-development');
 });
+
+// S-13: a vault alias key or an entry type that names an Object.prototype member is an ordinary name: the alias is not
+// taken for a built-in one, lint applies it, and a type with no field list orders the common fields only.
+test('S-13: a vault alias or an entry type named after an Object.prototype member is an ordinary name', t => {
+  const run = name => {
+    const dir = tmpVault('rv-s13-schema-');
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    writeFileSync(join(dir, PROJECT_CONFIG_FILENAME), JSON.stringify({ vault: '.', taxonomy_extensions: { topic_aliases: Object.fromEntries([[name, 'target']]) } }));
+    put(dir, 'source', '2026-01-01-s', { source_type: 'article', source_url: 'https://example.com/s', topics: [name] });
+    const schema = loadSchema(process.cwd(), { vaultPath: dir });
+    const warnings = lintVault(dir, process.cwd()).warnings.filter(w => w.code === 'WARN_TOPIC_ALIAS').map(w => w.msg);
+    return JSON.stringify({ alias: Object.hasOwn(schema.taxonomy.topic_aliases, name) && schema.taxonomy.topic_aliases[name], order: fieldOrder(schema, name), warnings }).replaceAll(name, 'NAME');
+  };
+  const plain = run('plainname');
+  assert.equal(plain, JSON.stringify({ alias: 'target', order: JSON.parse(readFileSync('schema/frontmatter.schema.json', 'utf8')).common, warnings: ["topic 'NAME' should be normalized to 'target'"] }));
+  for (const name of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) assert.equal(run(name), plain, name);
+});

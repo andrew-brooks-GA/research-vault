@@ -626,3 +626,41 @@ test('capture refusal: a blocklist pattern is shown on one line with no hidden c
     { message: 'blocked source: https://spam.example.com/a b (url): farm; --force captures anyway' });
   assert.deepEqual(readdirSync(join(dir, 'sources')).sort(), before);
 });
+
+// S-13: a reference that names an Object.prototype member and no entry is refused as any unresolved reference.
+test('S-13: capture refuses --related, --sources or --contributing-ids naming __proto__, constructor, toString or hasOwnProperty and no entry, and writes nothing', () => {
+  for (const name of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+    for (const args of [
+      ['--type', 'question', '--title', 'Question one', '--related', name],
+      ['--type', 'note', '--title', 'Note one', '--sources', name],
+      ['--type', 'synthesis', '--title', 'Synthesis one', '--contributing-ids', name],
+    ]) {
+      const dir = freshVault();
+      const listing = () => readdirSync(dir, { recursive: true }).sort();
+      const manifest = () => existsSync(join(dir, '.vault-manifest.json')) ? readFileSync(join(dir, '.vault-manifest.json')) : null;
+      const listingBefore = listing(), manifestBefore = manifest();
+      const r = spawnSync(process.execPath, ['bin/research-vault.mjs', 'capture', '--vault', dir, ...args],
+        { env: testEnv(), encoding: 'utf8', timeout: 30000 });
+      assert.equal(r.status, 2, args.join(' '));
+      assert.equal(r.stderr, `error: unresolved reference: ${name}\n`, args.join(' '));
+      assert.deepEqual(listing(), listingBefore, args.join(' '));
+      assert.deepEqual(manifest(), manifestBefore, args.join(' '));
+    }
+  }
+});
+
+test('S-13: capture refuses a type that names an Object.prototype member as an invalid type and writes nothing', () => {
+  for (const type of ['__proto__', 'toString', 'hasOwnProperty', 'constructor']) {
+    const dir = freshVault();
+    const before = readdirSync(dir, { recursive: true }).sort();
+    assert.throws(() => captureEntry(dir, { type, title: 'Typed', now: '2026-01-01', repoRoot: process.cwd() }), { message: `invalid type: ${type}` });
+    assert.deepEqual(readdirSync(dir, { recursive: true }).sort(), before);
+  }
+});
+
+test('S-13: capture keeps a topic that names an Object.prototype member as written', () => {
+  const dir = freshVault();
+  const names = ['__proto__', 'toString', 'hasOwnProperty', 'constructor'];
+  const r = captureEntry(dir, { type: 'question', title: 'Topics', topics: names.join(','), now: '2026-01-01', repoRoot: process.cwd() });
+  assert.deepEqual(readEntry(r.path).data.topics, names);
+});

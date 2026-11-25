@@ -1,7 +1,7 @@
 import { TYPE_FOLDER as FOLDER } from './fsutil.mjs';
 function row(e) { return `- ${e.id} — ${e.title || '(untitled)'} [${e.status}] (verified ${e.last_verified || 'never'})`; }
 export function rootIndex(manifest) {
-  const byType = {};
+  const byType = Object.create(null); // keyed by entry types, `constructor` too (S-13)
   for (const e of manifest.entries) (byType[e.type] ||= []).push(e);
   const out = ['# Vault Index', '', '_Generated, derived view — do not edit. Source of truth: entry files + .vault-manifest.json._', ''];
   for (const t of Object.keys(FOLDER)) { const rows = byType[t] || []; out.push(`## ${FOLDER[t]} (${rows.length})`, '', ...rows.map(row), ''); }

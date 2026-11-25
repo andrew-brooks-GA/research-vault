@@ -54,7 +54,8 @@ function lessonFile(ws, id) {
 
 export function validateEntry(data, schema) {
   const msgs = [];
-  for (const f of (schema.required_by_type[data.type] || ['type'])) {
+  // A type is a string from the record: `constructor` is a type with no field list (S-13).
+  for (const f of (Object.hasOwn(schema.required_by_type, data.type) ? schema.required_by_type[data.type] : ['type'])) {
     if (empty(data[f])) msgs.push(`missing required field: ${f}`);
   }
   for (const [field, key] of Object.entries(TEACH_CONTROLLED_FIELDS)) {
@@ -445,8 +446,13 @@ export function teachIndex(workspaceDir, { now }) {
     });
   const tests = Object.fromEntries(lessons.map((l) => [l.id, l.records]));
   const attempts = parsedRows(workspaceDir, 'attempts', ATTEMPT_ID_RE).sort((a, b) => attemptOrder(a.id, b.id));
-  const backlinks = {};
-  for (const a of attempts) for (const r of (Array.isArray(a.records) ? a.records : [])) (backlinks[r] ??= []).push(a.id);
+  // Lessons, record ids and kinds are strings from the workspace's files: own keys or Maps only (S-13).
+  const backlinkMap = new Map();
+  for (const a of attempts) for (const r of (Array.isArray(a.records) ? a.records : [])) {
+    const k = String(r);
+    (backlinkMap.get(k) ?? backlinkMap.set(k, []).get(k)).push(a.id);
+  }
+  const backlinks = Object.fromEntries(backlinkMap);
 
   // Issue 79 D2: review-due only when the mission asks for reminders, every N days.
   const prefs = missionPrefs(workspaceDir);
@@ -454,7 +460,7 @@ export function teachIndex(workspaceDir, { now }) {
   const records = parsedRows(workspaceDir, 'learning-records').map((r) => {
     const wrongIn = (a) => Array.isArray(a.records) && a.records.includes(r.id);
     // A task attempt counts for a record only when its `tested` list names it, never through the lesson's quiz.
-    const last = attempts.filter((a) => (isTaskAttempt(a) ? a.tested.includes(r.id) : wrongIn(a) || (tests[a.lesson] || []).includes(r.id))).at(-1);
+    const last = attempts.filter((a) => (isTaskAttempt(a) ? a.tested.includes(r.id) : wrongIn(a) || (Object.hasOwn(tests, a.lesson) ? tests[a.lesson] : []).includes(r.id))).at(-1);
     const lastAttempt = last
       ? { id: last.id, date: last.date, score: last.total - (last.wrong?.length ?? 0), total: last.total, wrongHere: wrongIn(last),
         kind: Array.isArray(last.answered) ? 'answered' : isTaskAttempt(last) ? 'task' : 'quiz' }
@@ -462,7 +468,7 @@ export function teachIndex(workspaceDir, { now }) {
     const active = r.status === 'active';
     return {
       ...r,
-      evidence: backlinks[r.id] ?? [],
+      evidence: backlinkMap.get(r.id) ?? [],
       lastAttempt,
       // Due when written before the spacing cutoff and not attempted since that cutoff.
       reviewDue: cutoff !== null && active && String(r.date) < cutoff && !(lastAttempt && String(lastAttempt.date) >= cutoff),
@@ -501,8 +507,9 @@ export function progress(workspaceDir, { now }) {
     latest: l.attempts.at(-1) ?? null,
     best: l.attempts.reduce((b, a) => (b === null || ratio(a) > ratio(b) ? a : b), null),
   }, ...(tasks.has(l.id) ? [{ ...tasks.get(l.id), first: null, latest: tasks.get(l.id).attempts.at(-1), best: null }] : [])]);
-  const byKind = {};
-  for (const r of idx.records) if (r.status === 'active') byKind[r.kind] = (byKind[r.kind] ?? 0) + 1;
+  const kinds = new Map();
+  for (const r of idx.records) if (r.status === 'active') kinds.set(String(r.kind), (kinds.get(String(r.kind)) ?? 0) + 1);
+  const byKind = Object.fromEntries(kinds);
   return {
     lessons,
     attempts: idx.attempts.length,
@@ -595,15 +602,16 @@ export function footnoteCitations(html, titles = {}, sourceHref = (id) => `#src-
   const sources = m ? m[3] : '';
   const after = m ? html.slice(m.index + m[0].length) : '';
   const anchor = /<a\b([^>]*)\bdata-cite\s*=\s*(["'])([^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi;
+  const title = (id) => (Object.hasOwn(titles, id) ? titles[id] ?? id : id); // an id from the page: `constructor` is not a title (S-13)
   const body = before.replace(anchor, (_, pre, q, id, post) => {
     const n = num(id);
-    return `<a${pre}data-cite="${id}"${post} class="cite" href="#src-${esc(id)}" title="${esc(titles[id] ?? id)}">[${n}]</a>`;
+    return `<a${pre}data-cite="${id}"${post} class="cite" href="#src-${esc(id)}" title="${esc(title(id))}">[${n}]</a>`;
   });
   if (!m) return body;
   const srcBody = sources.replace(anchor, (_, pre, q, id, post) => {
     const n = num(id);
     const hrefOnly = /\bhref\s*=/.test(pre + post) ? '' : ` href="${esc(sourceHref(id))}"`;
-    return `<a${pre}data-cite="${id}"${post}${hrefOnly} id="src-${esc(id)}">[${n}] ${esc(titles[id] ?? id)}</a>`;
+    return `<a${pre}data-cite="${id}"${post}${hrefOnly} id="src-${esc(id)}">[${n}] ${esc(title(id))}</a>`;
   });
   return body + m[1] + srcBody + m[4] + after;
 }

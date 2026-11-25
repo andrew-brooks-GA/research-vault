@@ -334,3 +334,25 @@ test('advise text output: an entry id and a question state cannot add a line or 
   assert.match(out, /^open questions over 60 days \(1\): 2026-01-02-q \(open near duplicates \(0\): forged, \d+d\)$/m);
   assert.deepEqual(lines.filter(l => /forged/.test(l)).map(l => l.split(' (')[0]), ['orphans', 'open questions over 60 days']);
 });
+
+// S-13: an entry id, a logged id or a topic that names an Object.prototype member is counted as any other name.
+test('S-13: advise reports usage, orphans, cold sources and aliasable topics for an id or topic named after an Object.prototype member as for any other', t => {
+  const ver = [{ date: '2026-01-01', by_type: 'human', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }];
+  const run = name => {
+    const dir = tmpVault('rv-s13-advise-');
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    put(dir, 'source', name, { created: '2026-01-01', verifications: ver, source_type: 'article', source_url: 'https://example.com/s', topics: [name] });
+    put(dir, 'source', 'zz-t', { created: '2026-01-01', verifications: ver, source_type: 'article', source_url: 'https://example.com/t', topics: [name] });
+    appendUsage(dir, { kind: 'queried', via: 'search', topic: name, outcome: 'no-match', ids: [] });
+    appendUsage(dir, { kind: 'queried', via: 'search', topic: name, outcome: 'hits', ids: [name] });
+    appendUsage(dir, { kind: 'cited', via: 'post-tool-use', file: 'docs/x.md', id: name });
+    return JSON.stringify(advise(dir, process.cwd(), { now: '2026-01-03' })).replaceAll(name, 'NAME');
+  };
+  const plain = run('plainname');
+  assert.match(plain, /"orphans":\["NAME","zz-t"\]/);
+  assert.match(plain, /"usage":\{"entries":\[\{"id":"NAME","surfaced":1,"cited":1\}\],"topics":\{"NAME":\{"queried":2,"noMatch":1\}\},"cold":\{"queried":\["zz-t"\],"unqueried":\[\]\}\}/);
+  for (const name of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+    assert.equal(run(name), plain, name);
+    assert.equal(Object.hasOwn(Object.prototype, 'queried'), false, `${name}: a topic counter landed on Object.prototype`);
+  }
+});

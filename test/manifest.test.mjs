@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildManifest, lastVerified, writeManifest, danglingEdges } from '../bin/lib/manifest.mjs';
+import { traverse } from '../bin/lib/graph.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
 import { tmpVault, put, testEnv } from './helpers.mjs';
 
@@ -258,4 +259,46 @@ test('manifest --rebuild: a dangling edge is shown on one stderr line with no hi
   const r = spawnSync(process.execPath, [CLI, 'manifest', '--rebuild', '--vault', dir], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stderr, 'manifest: 1 dangling edge(s)\n  2026-01-03-d 2026-01-01-x --sources--> forged --sources--> 2026-01-09-missing 2026-01-02-y --sources--> forged\n');
+});
+
+// S-13: a reference that names an Object.prototype member, written by hand as an existing vault could hold it,
+// is a dangling reference like any other: the manifest builds, and search and lint run.
+test('S-13: a reference to constructor builds the manifest, and search and lint run', t => {
+  const dir = tmpVault('rv-s13-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  put(dir, 'source', '2026-01-01-s', { source_type: 'article', source_url: 'https://example.com/s', related: ['constructor'] });
+  assert.deepEqual(buildManifest(dir).backlinks, { constructor: ['2026-01-01-s'] });
+  const cli = (...a) => spawnSync(process.execPath, [CLI, ...a, '--vault', dir], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
+  const search = cli('search', '--json');
+  assert.equal(search.status, 0, search.stderr);
+  assert.deepEqual(JSON.parse(search.stdout).map(e => e.id), ['2026-01-01-s']);
+  const lint = cli('lint', '--json');
+  assert.equal(lint.status, 1, lint.stderr);
+  assert.deepEqual(JSON.parse(lint.stdout).violations.map(v => [v.code, v.msg]), [['DANGLING_REF', 'related -> missing id constructor']]);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, '.vault-manifest.json'), 'utf8')).backlinks, { constructor: ['2026-01-01-s'] });
+});
+
+test('S-13: a reference to __proto__, toString, hasOwnProperty or constructor is an edge, a backlink in the file and a traversal node', t => {
+  for (const name of ['__proto__', 'toString', 'hasOwnProperty', 'constructor']) {
+    const dir = tmpVault('rv-s13-rel-');
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    put(dir, 'note', '2026-01-02-n', { sources: [name], confidence: 'medium' });
+    const m = buildManifest(dir);
+    assert.deepEqual(m.edges, [{ from: '2026-01-02-n', rel: 'sources', to: name }], name);
+    assert.deepEqual(Object.entries(m.backlinks), [[name, ['2026-01-02-n']]], name);
+    writeManifest(dir, m);
+    assert.deepEqual(Object.entries(JSON.parse(readFileSync(join(dir, '.vault-manifest.json'), 'utf8')).backlinks), [[name, ['2026-01-02-n']]], name);
+    assert.deepEqual(Object.entries(traverse(m, '2026-01-02-n').parents), [[name, '2026-01-02-n']], name);
+  }
+});
+
+test('S-13: the shrink guard takes a listed row whose type names an Object.prototype member as an unknown type', t => {
+  for (const type of ['__proto__', 'toString', 'hasOwnProperty', 'constructor']) {
+    const dir = tmpVault('rv-s13-shrink-');
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    put(dir, 'source', '2026-01-01-s', { source_type: 'article', source_url: 'https://example.com/s' });
+    writeFileSync(join(dir, '.vault-manifest.json'), JSON.stringify({ entries: [{ id: '2026-01-01-gone', type }] }));
+    writeManifest(dir);
+    assert.deepEqual(JSON.parse(readFileSync(join(dir, '.vault-manifest.json'), 'utf8')).entries.map(e => e.id), ['2026-01-01-s'], type);
+  }
 });

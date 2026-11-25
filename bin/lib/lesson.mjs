@@ -741,7 +741,8 @@ export function lintStore(workspaceDir, ctx) {
         const enumField = /^unknown (\w+):/.exec(msg)?.[1];
         add(enumField ? ENUM_CODES[enumField] : msg.startsWith('stored derived') ? 'STORED_DERIVED' : 'MISSING_REQUIRED', msg);
       }
-      const want = teachSchema.taxonomy.type_folder[data.type];
+      const folders = teachSchema.taxonomy.type_folder;
+      const want = Object.hasOwn(folders, data.type) ? folders[data.type] : undefined; // own key only (S-13)
       if (data.type && want !== folder) add('TYPE_FOLDER', `type ${data.type} in folder ${folder}`);
       for (const f of Object.keys(target)) {
         const val = data[f];
@@ -859,7 +860,7 @@ export function lintPathTerms(lines, newTerms) {
 const uniq = (xs) => [...new Set(xs)];
 export const topicSlug = (s) => String(s).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
 export function pathCandidates({ lines, floor, cites, manifest, topics, aliases = {}, readBody = () => '' }) {
-  const expand = (t) => aliases[t] || t;
+  const expand = (t) => (Object.hasOwn(aliases, t) ? aliases[t] : t); // S-13: a topic is not an Object.prototype member
   const rows = manifest.entries.filter((e) => e.status !== 'superseded');
   const vocab = new Map();
   for (const e of rows) for (const t of e.topics.map(expand)) vocab.set(t, (vocab.get(t) ?? 0) + 1);

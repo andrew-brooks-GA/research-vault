@@ -17,7 +17,7 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // The in-memory filters (type, domain, series, topic through the aliases, text over title, topics and
 // summary) over manifest rows; shared with `teach path candidates`, which runs them over one manifest.
 export function matchRows(rows, q, aliases = {}) {
-  const expand = t => aliases[t] || t;
+  const expand = t => Object.hasOwn(aliases, t) ? aliases[t] : t; // S-13: a topic is not an Object.prototype member
   if (q.type) rows = rows.filter(e => e.type === q.type);
   if (q.domain) rows = rows.filter(e => e.domain.includes(q.domain));
   if (q.series) rows = rows.filter(e => e.series === q.series);

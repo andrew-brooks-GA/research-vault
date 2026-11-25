@@ -6,6 +6,7 @@ import { mkdirSync, readdirSync, realpathSync, rmSync, symlinkSync, mkdtempSync,
 import { tmpdir } from 'node:os';
 import { dirname, relative, join } from 'node:path';
 import { obsidianView } from '../bin/commands/obsidian.mjs';
+import { compileVault } from '../bin/commands/compile.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { escapePathControls, VAULT_PATH_OUTSIDE } from '../bin/lib/containment.mjs';
 import { tmpVault, put, codeRepo, testEnv } from './helpers.mjs';
@@ -377,3 +378,67 @@ for (const outside of [false, true]) {
     });
   });
 }
+
+// S-13: an entry id, an entry type or a code symbol that names an Object.prototype member is shown as any other name
+// in the Obsidian view and the index, and export counts records of such a type. Each run builds the same vault with
+// `name` in those places; a run with a prototype name must match the run with an ordinary name byte for byte.
+const S13_NAMES = ['__proto__', 'constructor', 'toString', 'hasOwnProperty'];
+function s13Vault(t, name) {
+  const { root, vault } = codeRepo();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  put(vault, 'question', name, { created: '2026-01-01', verifications: ver('2026-01-01'), question: 'q?', state: 'open' });
+  const typed = join(vault, 'notes', `${put(vault, 'note', '2026-01-02-typed', { sources: [], confidence: 'medium', related: [name] })}.md`);
+  writeFileSync(typed, readFileSync(typed, 'utf8').replace(/^type: note$/m, `type: ${name}`));
+  writeFileSync(join(root, 'src', 'c.lua'), `-- per 2026-01-01-fx-doc\nlocal function ${name}()\n  return 1\nend\n`);
+  return { root, vault };
+}
+
+test('S-13: obsidian takes an id, a type or a symbol named after an Object.prototype member as any other name', t => {
+  const run = name => {
+    const { root, vault } = s13Vault(t, name);
+    obsidianView(vault, '_obsidian', { now: NOW });
+    const views = [`_obsidian/${name}.md`, '_obsidian/2026-01-02-typed.md', '_obsidian/code/src/c.lua.md', '_obsidian/MOC.md'].map(f => readFileSync(join(vault, f), 'utf8'));
+    return JSON.stringify(views).replaceAll(root, 'ROOT').replaceAll(name, 'NAME');
+  };
+  const plain = run('plainname');
+  assert.match(plain, /## Backlinks\\n\\n- \[\[2026-01-02-typed\]\]/);
+  assert.match(plain, /## NAME\\n\\n- \[\[2026-01-01-fx-doc\]\]/);
+  for (const name of S13_NAMES) assert.equal(run(name), plain, name);
+});
+
+test('S-13: obsidian shows an entry whose id names an Object.prototype member and has no backlinks as any other entry', t => {
+  const run = name => {
+    const dir = tmpVault('rv-s13-obs-');
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    put(dir, 'question', name, { created: '2026-01-01', verifications: ver('2026-01-01'), question: 'q?', state: 'open' });
+    obsidianView(dir, '_obsidian', { now: NOW });
+    return JSON.stringify([`_obsidian/${name}.md`, '_obsidian/MOC.md'].map(f => readFileSync(join(dir, f), 'utf8'))).replaceAll(name, 'NAME');
+  };
+  const plain = run('plainname');
+  assert.match(plain, /^\["---\\ntags:.*# NAME\\n/);
+  assert.doesNotMatch(plain, /## Backlinks/);
+  for (const name of S13_NAMES) assert.equal(run(name), plain, name);
+});
+
+test('S-13: compile takes an id or a type named after an Object.prototype member as any other name', t => {
+  const run = name => {
+    const { root, vault } = s13Vault(t, name);
+    compileVault(vault);
+    return readFileSync(join(vault, '_index/INDEX.md'), 'utf8').replaceAll(root, 'ROOT').replaceAll(name, 'NAME');
+  };
+  const plain = run('plainname');
+  assert.match(plain, /## questions \(1\)\n\n- NAME — NAME \[active\]/);
+  for (const name of S13_NAMES) assert.equal(run(name), plain, name);
+});
+
+test('S-13: export counts records of a type named after an Object.prototype member as any other type', t => {
+  const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+  const run = name => {
+    const { root, vault } = s13Vault(t, name);
+    const ex = spawnSync(process.execPath, [cli, 'export', '--vault', vault, '--scope', name, '--out', join(root, 'out.jsonl')], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
+    return JSON.stringify([ex.status, ex.stdout.replace(/\(\d+ bytes\)/, '(N bytes)'), ex.stderr]).replaceAll(root, 'ROOT').replaceAll(name, 'NAME');
+  };
+  const plain = run('plainname');
+  assert.match(plain, /wrote 1 records \(N bytes\) to ROOT\/out.jsonl — \{\\"NAME\\":1\}/);
+  for (const name of S13_NAMES) assert.equal(run(name), plain, name);
+});

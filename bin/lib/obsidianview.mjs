@@ -20,11 +20,12 @@ function tags(e, schema, now) {
 export function entryNote(manifest, e, { schema, now }) {
   const byRel = {};
   for (const x of manifest.edges) if (x.from === e.id) (byRel[x.rel] ||= []).push(x.to);
-  const back = manifest.backlinks[e.id] || [];
+  // Ids, types and code symbols are strings from the vault or the code: own keys only (S-13).
+  const back = Object.hasOwn(manifest.backlinks, e.id) ? manifest.backlinks[e.id] : [];
   const out = [
     '---', 'tags:', ...tags(e, schema, now).map(t => `  - ${t}`), '---',
     `# ${e.title || e.id}`, '',
-    `_Derived Obsidian view — do not edit. Canonical: ${FOLDER[e.type]}/${e.id}.md. Freshness as of ${now.toISOString().slice(0, 10)}; regenerate to refresh._`, '',
+    `_Derived Obsidian view — do not edit. Canonical: ${Object.hasOwn(FOLDER, e.type) ? FOLDER[e.type] : undefined}/${e.id}.md. Freshness as of ${now.toISOString().slice(0, 10)}; regenerate to refresh._`, '',
     `- type: ${e.type}`, `- status: ${e.status}`, `- verified: ${e.last_verified || 'never'}`, '',
   ];
   if (Object.keys(byRel).length) {
@@ -38,7 +39,7 @@ export function entryNote(manifest, e, { schema, now }) {
 // A linked code file of the repo the vault lives in (spec 15): one heading per declaration, a wikilink
 // per link under it with its pin as text, so Obsidian draws code → entry edges and the entries' backlinks.
 export function codeNote(file, links) {
-  const bySym = {};
+  const bySym = Object.create(null);
   for (const l of links) (bySym[l.symbol ?? '(unattached)'] ||= []).push(l);
   const out = ['---', 'tags:', '  - type/code', '---', `# ${file}`, '', `_Derived Obsidian view — do not edit. Canonical: ${file}._`, ''];
   for (const [sym, ls] of Object.entries(bySym)) {
@@ -48,7 +49,7 @@ export function codeNote(file, links) {
 }
 
 export function moc(manifest, codeNotes = []) {
-  const byType = {};
+  const byType = Object.create(null);
   for (const e of manifest.entries) (byType[e.type] ||= []).push(e);
   const out = ['# Map of Content', '', '_Derived Obsidian view — regenerated from the manifest; do not edit._', ''];
   for (const t of Object.keys(FOLDER)) {

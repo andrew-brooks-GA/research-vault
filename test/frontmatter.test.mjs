@@ -200,3 +200,22 @@ test('CRLF block lines normalize to the block bytes written by 5b9ddbd', () => {
   assert.equal(serializeFrontmatter(data, body, null, { preserve: false }),
     '---\nsummary: |\n  one\n  two\nvalues: [three]\n---\n');
 });
+
+// S-13: a frontmatter key that names an Object.prototype member is an ordinary own key; `__proto__` would set the
+// object's prototype, so the parser refuses it at the top level and in a nested map or list item.
+test('S-13: a frontmatter key named after an Object.prototype member is an ordinary key, and __proto__ is refused', () => {
+  for (const k of ['constructor', 'toString', 'hasOwnProperty', 'plainname']) {
+    const text = `---\ntitle: t\n${k}: x\nsubject:\n  ${k}: y\n---\nbody\n`;
+    const { data, body } = parseFrontmatter(text);
+    assert.deepEqual(Object.entries(data), [['title', 't'], [k, 'x'], ['subject', Object.fromEntries([[k, 'y']])]], k);
+    assert.equal(serializeFrontmatter(data, body), text, k);
+    delete data[k];
+    assert.equal(serializeFrontmatter(data, body), `---\ntitle: t\nsubject:\n  ${k}: y\n---\nbody\n`, k);
+    const added = parseFrontmatter('---\ntitle: t\n---\nbody\n');
+    added.data[k] = 'new';
+    assert.equal(serializeFrontmatter(added.data, added.body), `---\ntitle: t\n${k}: new\n---\nbody\n`, k);
+  }
+  for (const text of ['---\n__proto__:\n  type: source\n---\n', '---\n__proto__: x\n---\n', '---\nsubject:\n  __proto__: [a]\n---\n',
+    '---\nverifications:\n  - __proto__: x\n---\n', '---\nverifications:\n  - date: x\n    __proto__: [y]\n---\n'])
+    assert.throws(() => parseFrontmatter(text), { message: 'unsupported frontmatter key: __proto__' }, text);
+});

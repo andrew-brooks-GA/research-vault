@@ -131,20 +131,23 @@ function validateCode(code, vault) {
     if (t === null || typeof t !== 'object' || Array.isArray(t)) throw bad(`code.${name} must be an object`);
     return t;
   };
-  const languages = {};
-  for (const [ext, row] of Object.entries(table('languages'))) {
+  // A key of the binding is a row name; `__proto__` would set the prototype and drop the row (S-13).
+  const rows = (name) => Object.entries(table(name)).map(([key, row]) => {
+    if (key === '__proto__') throw bad(`code.${name} cannot have the key "__proto__"`);
+    return [key, row];
+  });
+  const languages = Object.fromEntries(rows('languages').map(([ext, row]) => {
     if (row === null || typeof row !== 'object') throw bad(`code.languages[${JSON.stringify(ext)}] must be { comment, decl }`);
-    languages[ext] = {
+    return [ext, {
       comment: compilePattern(`code.languages[${JSON.stringify(ext)}].comment`, row.comment),
       decl: compilePattern(`code.languages[${JSON.stringify(ext)}].decl`, row.decl),
-    };
-  }
-  const versions = {};
-  for (const [key, row] of Object.entries(table('versions'))) {
+    }];
+  }));
+  const versions = Object.fromEntries(rows('versions').map(([key, row]) => {
     if (row === null || typeof row !== 'object' || typeof row.file !== 'string') throw bad(`code.versions.${key} must be { file, pattern }`);
     if (!isRelativeInside(row.file)) throw bad(`code.versions.${key}.file must be a relative path inside the repository with no .. segment`);
-    versions[key] = { file: row.file, pattern: compilePattern(`code.versions.${key}.pattern`, row.pattern, { flags: 'm' }) };
-  }
+    return [key, { file: row.file, pattern: compilePattern(`code.versions.${key}.pattern`, row.pattern, { flags: 'm' }) }];
+  }));
   return { globs, languages, versions };
 }
 

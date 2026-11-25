@@ -5,6 +5,7 @@ import { walkEntries, readEntry, writeEntry, TYPE_FOLDER } from './fsutil.mjs';
 import { loadSchema, fieldOrder } from './schema.mjs';
 import { writeManifest } from './manifest.mjs';
 import { assertInsideVault, mayBeInside } from './containment.mjs';
+import { screenText } from './screen.mjs';
 
 export const RUN_KEY = /^run-[A-Za-z0-9]{6,}$/;
 // As in the prototype measured in spec 54 (T9): a source of 8,000 bytes or less is copied whole.
@@ -30,6 +31,8 @@ export function buildPacket(vaultPath, entries, dir, runKey, repoRoot) {
   for (const abs of walkEntries(vaultPath)) {
     const e = readEntry(abs);
     if (!want.has(e.id)) continue;
+    // The packet keeps the vault's layout, so a type with no entry folder (`constructor` too, S-13) refuses it before any write.
+    if (!Object.hasOwn(TYPE_FOLDER, e.data.type)) throw new Error(`no packet: ${e.id} has type ${screenText(e.data.type)}, which is no entry type`);
     const item = { abs, e, lines: null };
     if (e.data.type === 'source') {
       const rows = (e.data.verifications || []).filter(v => v.method === 'quote-matched').map(v => LINE_ROW.exec(v.notes || '')).filter(Boolean);

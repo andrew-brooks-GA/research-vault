@@ -16,7 +16,7 @@ export function traverse(manifest, startId, { depth = 1, direction = 'both', rel
   const incident = new Map();
   for (const e of edges) for (const id of new Set([e.from, e.to])) (incident.get(id) ?? incident.set(id, []).get(id)).push(e);
   const distance = new Map([[startId, 0]]);
-  const parents = {};
+  const parents = Object.create(null); // keyed by ids from entries (S-13)
   let frontier = [startId];
   for (let d = 1; d <= depth && frontier.length; d++) {
     const next = [];

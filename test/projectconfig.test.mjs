@@ -124,6 +124,23 @@ test('loadProjectConfig accepts a relative path in code.versions', () => {
   assert.equal(loadWithVersionFile('config/deps.txt').config.code.versions.dep.file, 'config/deps.txt');
 });
 
+test('a __proto__ row in code.languages or code.versions is refused; constructor and toString rows are kept as own keys', () => {
+  const lang = '{ "comment": "^#(.*)$", "decl": "^def (\\\\w+)" }';
+  const ver = '{ "file": "deps.txt", "pattern": "^dep (\\\\S+)" }';
+  const parse = (code) => parseProjectConfig(`{ "vault": "v", "code": ${code} }`, SCHEMA);
+  assert.throws(() => parse(`{ "versions": { "__proto__": ${ver} } }`),
+    { message: `invalid ${PROJECT_CONFIG_FILENAME}: code.versions cannot have the key "__proto__"` });
+  assert.throws(() => parse(`{ "languages": { "__proto__": ${lang} } }`),
+    { message: `invalid ${PROJECT_CONFIG_FILENAME}: code.languages cannot have the key "__proto__"` });
+  const { code } = parse(`{ "languages": { "constructor": ${lang}, "toString": ${lang} }, "versions": { "constructor": ${ver}, "toString": ${ver} } }`);
+  for (const t of [code.languages, code.versions]) {
+    assert.deepEqual(Object.keys(t), ['constructor', 'toString']);
+    assert.equal(Object.getPrototypeOf(t), Object.prototype);
+  }
+  assert.equal(code.versions.toString.file, 'deps.txt');
+  assert.ok(code.languages.constructor.decl instanceof RegExp);
+});
+
 // --- taxonomy_extensions ---
 
 test('parseProjectConfig accepts additive taxonomy_extensions', () => {

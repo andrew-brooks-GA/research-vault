@@ -24,7 +24,7 @@ export function relatedTo(vaultPath, id, { depth = 1, direction = 'both', rels =
     const { id: _id, type, title, status, volatility, last_verified, summary, stage, state, confidence, outcome, authority_tier, authority_basis, subject, series, superseded_by } = r;
     return { id: n.id, distance: n.distance, type, title, status, volatility, last_verified, summary, stage, state, confidence, outcome, authority_tier, authority_basis, subject, series, superseded_by };
   });
-  return { id, depth, direction, forward, backlinks: m.backlinks[id] || [], nodes, edges: t.edges };
+  return { id, depth, direction, forward, backlinks: Object.hasOwn(m.backlinks, id) ? m.backlinks[id] : [], nodes, edges: t.edges };
 }
 
 export async function run(args) {

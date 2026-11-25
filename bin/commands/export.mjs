@@ -18,8 +18,10 @@ export async function run(args) {
   } catch (e) { process.stderr.write(`export refused: ${e.message}\n`); return 1; }
   const out = toJsonl(records);
   const bytes = Buffer.byteLength(out, 'utf8');
-  const typeCounts = {};
-  for (const r of records) typeCounts[r.meta.type] = (typeCounts[r.meta.type] || 0) + 1;
+  // Keyed by entry types, so a Map: `__proto__` or `constructor` is counted as any other type (S-13).
+  const counts = new Map();
+  for (const r of records) counts.set(r.meta.type, (counts.get(r.meta.type) ?? 0) + 1);
+  const typeCounts = Object.fromEntries(counts);
   if (args.out) {
     if (mayBeInside(vaultPath, args.out)) { process.stderr.write(`export refused: --out must be outside the vault (got ${args.out})\n`); return 1; }
     writeFileSync(args.out, out, 'utf8'); process.stdout.write(`wrote ${records.length} records (${bytes} bytes) to ${args.out} — ${JSON.stringify(typeCounts)}\n`);

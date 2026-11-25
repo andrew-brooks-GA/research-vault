@@ -138,18 +138,22 @@ function listNearDuplicates(m) {
 // The usage report (spec 30), from the spec 29 log alone: per entry how often a `queried` event
 // surfaced it and a `cited` event cited it; per logged `topic` the query and no-match counts; and
 // the live sources never cited, split by whether one of their topics was ever queried.
+// Ids and topics come from the log, so the counters are Maps: `__proto__` or `constructor` is a name like any other (S-13).
 function listUsage(vaultPath, m) {
-  const surfaced = {}, cited = {}, topics = {};
+  const surfaced = new Map(), cited = new Map(), topics = new Map();
+  // String keys, as the object keys these replaced were: a logged number still matches an id or topic.
+  const count = (map, k) => map.set(String(k), (map.get(String(k)) ?? 0) + 1);
   for (const ev of readUsage(vaultPath)) {
     if (ev.kind === 'queried') {
-      for (const id of ev.ids || []) surfaced[id] = (surfaced[id] || 0) + 1;
-      if (ev.topic) { const t = topics[ev.topic] ||= { queried: 0, noMatch: 0 }; t.queried++; if (ev.outcome === 'no-match') t.noMatch++; }
-    } else if (ev.kind === 'cited' && ev.id) cited[ev.id] = (cited[ev.id] || 0) + 1;
+      for (const id of ev.ids || []) count(surfaced, id);
+      if (ev.topic) { const k = String(ev.topic), t = topics.get(k) ?? topics.set(k, { queried: 0, noMatch: 0 }).get(k); t.queried++; if (ev.outcome === 'no-match') t.noMatch++; }
+    } else if (ev.kind === 'cited' && ev.id) count(cited, ev.id);
   }
-  const entries = m.entries.filter(e => surfaced[e.id] || cited[e.id]).map(e => ({ id: e.id, surfaced: surfaced[e.id] || 0, cited: cited[e.id] || 0 })).sort((a, b) => a.id.localeCompare(b.id));
-  const cold = m.entries.filter(e => e.type === 'source' && e.status !== 'superseded' && !cited[e.id]);
-  const asked = e => e.topics.some(t => topics[t]);
-  return { entries, topics, cold: { queried: cold.filter(asked).map(e => e.id), unqueried: cold.filter(e => !asked(e)).map(e => e.id) } };
+  const entries = m.entries.filter(e => surfaced.has(e.id) || cited.has(e.id)).map(e => ({ id: e.id, surfaced: surfaced.get(e.id) ?? 0, cited: cited.get(e.id) ?? 0 })).sort((a, b) => a.id.localeCompare(b.id));
+  const cold = m.entries.filter(e => e.type === 'source' && e.status !== 'superseded' && !cited.has(e.id));
+  const asked = e => e.topics.some(t => topics.has(t));
+  // fromEntries defines each topic as an own key, `__proto__` too.
+  return { entries, topics: Object.fromEntries(topics), cold: { queried: cold.filter(asked).map(e => e.id), unqueried: cold.filter(e => !asked(e)).map(e => e.id) } };
 }
 
 export function advise(vaultPath, repoRoot, { now } = {}) {
@@ -163,12 +167,12 @@ export function advise(vaultPath, repoRoot, { now } = {}) {
   return {
     stale: listStale(vaultPath, { repoRoot, now: date, manifest: m }),
     staleEvidence: listStaleEvidence(m, schema, date),
-    orphans: m.entries.filter(e => !(m.backlinks[e.id]?.length) && !outgoing.has(e.id)).map(e => e.id),
+    orphans: m.entries.filter(e => !(Object.hasOwn(m.backlinks, e.id) && m.backlinks[e.id].length) && !outgoing.has(e.id)).map(e => e.id),
     sourcesWithoutNotes: m.entries.filter(e => e.type === 'source' && !noteSources.has(e.id)).map(e => e.id),
     unverifiedSources: listUnverifiedSources(vaultPath),
     missingSummaries: m.entries.filter(e => (e.type === 'note' || e.type === 'synthesis') && !(e.summary && e.summary.trim())).map(e => e.id),
     stubBodies: listStubBodies(vaultPath),
-    aliasable: m.entries.filter(e => e.topics.some(t => aliases[t])).map(e => e.id),
+    aliasable: m.entries.filter(e => e.topics.some(t => Object.hasOwn(aliases, t))).map(e => e.id),
     quoteResidue: listQuoteResidue(vaultPath),
     openQuestions: listOpenQuestions(m, date),
     supersedeSuspects: listSupersedeSuspects(m),

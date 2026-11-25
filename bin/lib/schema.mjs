@@ -16,7 +16,7 @@ export function applyTaxonomyExtensions(taxonomy, extensions) {
   }
   // Spec 24: vault alias pairs after the built-ins; a built-in key cannot be redefined. One hop only.
   if (extensions.topic_aliases) {
-    for (const k of Object.keys(extensions.topic_aliases)) if (k in (taxonomy.topic_aliases || {}))
+    for (const k of Object.keys(extensions.topic_aliases)) if (Object.hasOwn(taxonomy.topic_aliases || {}, k))
       throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: taxonomy_extensions.topic_aliases.${k} redefines a built-in alias`);
     merged.topic_aliases = { ...taxonomy.topic_aliases, ...extensions.topic_aliases };
   }
@@ -43,7 +43,8 @@ export function stageAllowedInFolder(schema, folder, stage) {
 }
 
 export function fieldOrder(schema, type) {
-  return [...schema.fields.common, ...(schema.fields.by_type[type] || [])];
+  // A type is a string from an entry: `constructor` is a type with no field list (S-13).
+  return [...schema.fields.common, ...(Object.hasOwn(schema.fields.by_type, type) ? schema.fields.by_type[type] : [])];
 }
 
 // The research-teach workspace schema: field lists from teach.schema.json at the top level,

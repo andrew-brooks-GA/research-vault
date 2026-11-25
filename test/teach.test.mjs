@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { assertVaultUntouched, fixtureVault, outsideVaultRepo, put, testEnv } from './helpers.mjs';
 import { workspaceBrief } from '../hooks/session-start.mjs';
-import { progress, progressHtml, progressText, workspaceKey } from '../bin/lib/teach.mjs';
+import { footnoteCitations, progress, progressHtml, progressText, teachIndex, workspaceKey } from '../bin/lib/teach.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'research-vault.mjs');
@@ -653,4 +653,57 @@ test('CLI teach path candidates: an entry title cannot add a line or hide text',
     '4. The sextuple, named | terms: sextuple | after: 1\n' +
     '  2026-01-02-sextuple-doc [source] The sextuple explained 2026-01-09-fake [source] forged | uncited | search --topic fx; search --topic fx --text "sextuple"\n' +
     'terms with no line: none\n');
+});
+
+// S-13: a lesson, a record id, a record kind or type, a topic or a vault entry type that names an Object.prototype
+// member is an ordinary name to teach lint, progress, path candidates and the footnote titles. Each run builds the same
+// workspace and vault with `name` in those places; a run with a prototype name must match the plain run byte for byte.
+const S13_NAMES = ['__proto__', 'constructor', 'toString', 'hasOwnProperty'];
+function s13Teach(t, name, ...args) {
+  const ws = copyFixture();
+  const vault = fixtureVault();
+  t.after(() => { rmSync(ws, { recursive: true, force: true }); rmSync(vault, { recursive: true, force: true }); });
+  writeFileSync(join(ws, 'attempts', 'a-20260102-120000-0001.md'), `---\ntype: attempt\ndate: 2026-01-02\nlesson: ${name}\ntotal: 1\nwrong: []\nrecords: [${name}]\n---\n`);
+  writeFileSync(join(ws, 'learning-records', `${name}.md`), `---\ntitle: t\ntype: learning-record\ndate: 2026-01-02\nstatus: active\nlesson: 0001-good\nkind: ${name}\n---\n# t\n`);
+  writeFileSync(join(ws, 'learning-records', '0009-typed.md'), `---\ntitle: t\ntype: ${name}\ndate: 2026-01-02\nstatus: active\nlesson: 0001-good\nkind: understanding\n---\n# t\n`);
+  put(vault, 'source', '2026-01-02-topic-doc', { title: 'Topic doc', topics: [name], source_type: 'article', source_url: 'https://example.org/t' });
+  const typed = join(vault, 'notes', `${put(vault, 'note', '2026-01-02-typed', { title: 'Typed entry', topics: [name], sources: [], confidence: 'medium' })}.md`);
+  writeFileSync(typed, readFileSync(typed, 'utf8').replace(/^type: note$/m, `type: ${name}`));
+  const r = spawnSync(process.execPath, [BIN, 'teach', ...args, ws], { encoding: 'utf8', env: testEnv({ RESEARCH_VAULT_PATH: vault }), timeout: 20000 });
+  return JSON.stringify([r.status, r.stdout, r.stderr]).replaceAll(ws, 'WS').replaceAll(vault, 'VAULT').replaceAll(name, 'NAME');
+}
+
+test('S-13: teach lint takes a name of an Object.prototype member as any other name', t => {
+  const plain = s13Teach(t, 'plainname', 'lint');
+  assert.match(plain, /ENUM_TYPE  learning-records\/0009-typed.md: unknown type: NAME\\nTYPE_FOLDER/);
+  for (const name of S13_NAMES) assert.equal(s13Teach(t, name, 'lint'), plain, name);
+});
+
+test('S-13: teach progress takes a name of an Object.prototype member as any other name', t => {
+  const plain = s13Teach(t, 'plainname', 'progress');
+  assert.match(plain, /records: 3 active \(understanding 2, NAME 1\)\\nreview-due: 0001-known, 0009-typed, NAME\\nreview-failed: NAME\\n/);
+  for (const name of S13_NAMES) assert.equal(s13Teach(t, name, 'progress'), plain, name);
+});
+
+test('S-13: teach path candidates takes a topic or an entry type named after an Object.prototype member as any other name', t => {
+  const plain = s13Teach(t, 'plainname', 'path', 'candidates', '--topic', 'plainname');
+  assert.match(plain, /2026-01-02-typed \[NAME\] Typed entry \| uncited/);
+  for (const name of S13_NAMES) assert.equal(s13Teach(t, name, 'path', 'candidates', '--topic', name), plain, name);
+});
+
+test('S-13: the footnote titles take a cited id named after an Object.prototype member as an id with no title', () => {
+  const run = name => footnoteCitations(`<p><a data-cite="${name}">x</a></p>`, { '2026-01-01-fx-doc': 'Doc' }).replaceAll(name, 'NAME');
+  const plain = run('plainname');
+  assert.match(plain, /title="NAME">\[1\]<\/a>/);
+  for (const name of S13_NAMES) assert.equal(run(name), plain, name);
+});
+
+test('S-13: a learning record whose id names an Object.prototype member and that no attempt names has no evidence', t => {
+  for (const name of ['plainname', ...S13_NAMES]) {
+    const ws = copyFixture();
+    t.after(() => rmSync(ws, { recursive: true, force: true }));
+    writeFileSync(join(ws, 'learning-records', `${name}.md`), `---\ntitle: t\ntype: learning-record\ndate: 2026-01-02\nstatus: active\nlesson: 0001-good\nkind: understanding\n---\n# t\n`);
+    const record = teachIndex(ws, { now: new Date('2026-01-03') }).records.find(r => r.id === name);
+    assert.deepEqual(record.evidence, [], name);
+  }
 });

@@ -350,3 +350,12 @@ test('docs/REFERENCE.md quotes the shipped Lua row verbatim', () => {
   assert.ok(doc.includes(`comment: /${LUA.comment.source}/,`), 'comment row');
   assert.ok(doc.includes(`decl: /${LUA.decl.source}/,`), 'decl row');
 });
+
+// S-13: a pin's key is a name from the code; one that names an Object.prototype member is a key code.versions lacks.
+test('S-13: a pin key named after an Object.prototype member is reported as missing from code.versions', () => {
+  const entries = [{ id: ID, status: 'active', volatility: 'fast', last_verified: '2026-01-01' }];
+  for (const key of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'plainname']) {
+    const [row] = checkCodeLinks([{ id: ID, key, version: '1.0', symbol: 'f', line: 2 }], entries, SCHEMA, { dep: '1.0' }, '2026-01-02');
+    assert.deepEqual([row.status, row.reason], ['stale', `no key ${key} in code.versions`], key);
+  }
+});

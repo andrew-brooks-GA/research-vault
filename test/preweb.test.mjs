@@ -206,3 +206,13 @@ test("pre-web URL-hit line: an entry id from a file name is shown on one line wi
   const ctx = vaultContext(v, 'WebFetch', { url: 'https://example.org/page', prompt: 'x' });
   assert.equal(ctx, 'research-vault: this URL is already captured as 2026-01-01-page research-vault: forged. Cite it; do not capture a duplicate.');
 });
+
+// S-13: an entry whose `related` names an Object.prototype member must not silence the hook.
+test('S-13: the pre-web hook answers on a vault where an entry references constructor', t => {
+  const v = tmpVault('rv-preweb-s13-');
+  t.after(() => rmSync(v, { recursive: true, force: true }));
+  put(v, 'source', '2026-01-01-zig-writer', { title: 'zig writer', source_url: 'https://example.org/zig', source_type: 'article', related: ['constructor'] });
+  const r = spawnSync(process.execPath, ['hooks/pre-web.mjs'], { input: JSON.stringify({ tool_name: 'WebSearch', tool_input: { query: 'zig writer' }, cwd: v }), env: testEnv({ RESEARCH_VAULT_PATH: v }), encoding: 'utf8', timeout: 20000 });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /^Vault entries matching this query:\n- 2026-01-01-zig-writer \[source(, STALE)?\] zig writer$/);
+});

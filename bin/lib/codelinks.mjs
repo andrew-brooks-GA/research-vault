@@ -188,7 +188,7 @@ export function checkCodeLinks(links, entries, schema, versions, now) {
     const stale = (reason) => ({ ...row, status: 'stale', reason });
     if (entry.status === 'superseded') return stale(`superseded by ${entry.superseded_by}`);
     if (l.key !== null) {
-      if (!(l.key in versions)) return stale(`no key ${l.key} in code.versions`);
+      if (!Object.hasOwn(versions, l.key)) return stale(`no key ${l.key} in code.versions`); // a pin key may be `constructor` (S-13)
       if (versions[l.key] !== l.version) return stale(`${l.key} ${l.version} -> ${versions[l.key]}`);
       if (schema.taxonomy.volatility[entry.volatility]?.refresh_after_days === 0) return stale('time');
       return { ...row, status: 'ok' };

@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { testEnv } from './helpers.mjs';
+import { put, testEnv } from './helpers.mjs';
 import { captureOperation } from '../bin/lib/capture-operation.mjs';
 import { walkEntries } from '../bin/lib/fsutil.mjs';
 import { defaultVaultPath } from '../bin/lib/resolve.mjs';
@@ -283,4 +283,21 @@ test('R08 round2 atomicJson receipts use explicit private permissions', t => {
   t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
   assert.deepEqual(f.run().errors, []);
   assert.equal(fs.statSync(join(f.vault, '.capture-operations/stable_key.json')).mode & 0o777, 0o600);
+});
+
+// S-13: an entry a vault holds under a hand-chosen name that is an Object.prototype member resolves as any other id
+// when the operation checks references.
+test('S-13: capture --batch --operation-id captures a reference to an existing entry named __proto__, constructor, toString or hasOwnProperty', () => {
+  const cli = join(process.cwd(), 'bin', 'research-vault.mjs');
+  for (const name of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+    const f = fixture([{ type: 'note', title: 'Note one', sources: [name], body: 'x' }]);
+    put(f.vault, 'source', name, { created: '2026-01-01', source_type: 'article', source_url: 'https://example.com/s' });
+    const r = spawnSync(process.execPath, [cli, 'capture', '--batch', f.path, '--operation-id', 'key', '--vault', f.vault], { env: testEnv(), encoding: 'utf8', timeout: 30000 });
+    assert.equal(r.status, 0, `${name}: ${r.stdout}${r.stderr}`);
+    const out = JSON.parse(r.stdout);
+    assert.deepEqual(out.errors, [], name);
+    assert.equal(out.created.length, 1, name);
+    assert.match(fs.readFileSync(out.created[0].path, 'utf8'), new RegExp(`^sources: \\[${name}\\]$`, 'm'), name);
+    fs.rmSync(f.root, { recursive: true, force: true });
+  }
 });

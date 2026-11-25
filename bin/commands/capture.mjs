@@ -36,7 +36,7 @@ export function prepareEntry(vaultPath, opts, ctx = {}) {
   const repoRoot = opts.repoRoot || REPO_ROOT;
   const schema = loadSchema(repoRoot, { vaultPath });
   const now = opts.now || new Date().toISOString().slice(0, 10);
-  const folder = TYPE_FOLDER[opts.type];
+  const folder = Object.hasOwn(TYPE_FOLDER, opts.type) ? TYPE_FOLDER[opts.type] : null;
   if (!folder) throw new Error(`invalid type: ${opts.type}`);
   if (opts.storeBody && !opts.ackDataEgress)
     throw new Error('--store-body requires --ack-data-egress (storing source text is a data-egress / copyright surface)');
@@ -86,7 +86,7 @@ export function prepareEntry(vaultPath, opts, ctx = {}) {
     title: opts.title, type: opts.type, created: now,
     domain: opts.domain ? csvList(opts.domain) : ['software-engineering'],
     stage: schema.taxonomy.stage_by_folder[folder].default,
-    topics: csvList(opts.topics).map(t => schema.taxonomy.topic_aliases[t] || t),
+    topics: csvList(opts.topics).map(t => Object.hasOwn(schema.taxonomy.topic_aliases, t) ? schema.taxonomy.topic_aliases[t] : t),
     status: 'active', related: csvList(opts.related),
     volatility: opts.volatility || 'slow',
     verifications: [{ date: now, by_type: 'agent', by_id: opts.byId || '', method: 'captured', result: 'confirmed', notes: hit ? `captured with --force past the blocklist: ${hit.pattern} (${hit.scope}): ${hit.reason}` : '' }],

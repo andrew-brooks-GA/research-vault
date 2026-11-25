@@ -122,6 +122,13 @@ function parseBlockScalar(lines, i, header) {
   return { value: text, next: consumed };
 }
 
+// S-13: assigning a `__proto__` key would set the object's prototype (an object value) or be dropped (a scalar), so
+// the key is refused; any other key, `constructor` or `toString` too, is an ordinary own key.
+function keyOf(key) {
+  if (key === '__proto__') throw new Error('unsupported frontmatter key: __proto__');
+  return key;
+}
+
 export function parseFrontmatter(text) {
   const m = FM.exec(text.replace(/\r\n/g, '\n'));
   if (!m) throw new Error('missing or malformed frontmatter');
@@ -139,7 +146,7 @@ export function parseFrontmatter(text) {
     }
     const top = /^([A-Za-z_][\w]*):([\s\S]*)$/.exec(line);
     if (!top) throw new Error(`unparseable frontmatter line: ${line}`);
-    const key = top[1];
+    const key = keyOf(top[1]);
     const start = i;
     const rest = stripComment(top[2].trim());
     const header = BLOCK_HEADER.exec(rest);
@@ -160,11 +167,11 @@ export function parseFrontmatter(text) {
           if (/^[A-Za-z_][\w]*:/.test(itemFirst)) {
             const obj = {};
             const kv = /^([A-Za-z_][\w]*):([\s\S]*)$/.exec(itemFirst);
-            obj[kv[1]] = parseNestedScalar(kv[2], lines[i]);
+            obj[keyOf(kv[1])] = parseNestedScalar(kv[2], lines[i]);
             i++;
             while (i < lines.length && /^\s{4,}[A-Za-z_][\w]*:/.test(lines[i])) {
               const kv2 = /^\s+([A-Za-z_][\w]*):([\s\S]*)$/.exec(lines[i]);
-              obj[kv2[1]] = parseNestedScalar(kv2[2], lines[i]);
+              obj[keyOf(kv2[1])] = parseNestedScalar(kv2[2], lines[i]);
               i++;
             }
             seq.push(obj);
@@ -179,7 +186,7 @@ export function parseFrontmatter(text) {
         i++;
         while (i < lines.length && /^\s+[A-Za-z_][\w]*:/.test(lines[i])) {
           const kv = /^\s+([A-Za-z_][\w]*):([\s\S]*)$/.exec(lines[i]);
-          obj[kv[1]] = parseNestedScalar(kv[2], lines[i]);
+          obj[keyOf(kv[1])] = parseNestedScalar(kv[2], lines[i]);
           i++;
         }
         data[key] = obj;
@@ -234,15 +241,15 @@ export function serializeFrontmatter(data, body, order = null, { preserve = true
   if (raw) {
     // Original order for keys that were already there; a new key goes in front of the first
     // existing key that follows it in `order`, else at the end.
-    keys = Object.keys(raw).filter(k => k in data);
+    keys = Object.keys(raw).filter(k => Object.hasOwn(data, k));
     for (const k of Object.keys(data)) {
-      if (k in raw) continue;
+      if (Object.hasOwn(raw, k)) continue;
       const at = order ? order.indexOf(k) : -1;
       const before = at < 0 ? -1 : keys.findIndex(x => order.indexOf(x) > at);
       if (before < 0) keys.push(k); else keys.splice(before, 0, k);
     }
   } else {
-    const ordered = order ? order.filter(k => k in data) : Object.keys(data);
+    const ordered = order ? order.filter(k => Object.hasOwn(data, k)) : Object.keys(data);
     const extra = order ? Object.keys(data).filter(k => !order.includes(k)) : [];
     keys = [...ordered, ...extra];
   }
@@ -250,7 +257,7 @@ export function serializeFrontmatter(data, body, order = null, { preserve = true
   for (const key of keys) {
     const v = data[key];
     // CRs inside raw block values are content; final normalization would erase them.
-    if (raw && raw[key] && isDeepStrictEqual(v, raw[key].value) &&
+    if (raw && Object.hasOwn(raw, key) && isDeepStrictEqual(v, raw[key].value) &&
         !(raw[key].lines.some(l => l.includes('\r')) && hasCarriageReturn(v))) {
       out.push(...raw[key].lines);
     } else if (Array.isArray(v) && v.length && typeof v[0] === 'object') {

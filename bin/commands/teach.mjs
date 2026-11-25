@@ -250,7 +250,8 @@ function candidates(ws, args) {
   const byId = new Map(manifest.entries.map((e) => [e.id, e]));
   const entryPaths = new Set(walkEntries(vaultPath));
   const readBody = (id) => {
-    const p = join(vaultPath, TYPE_FOLDER[byId.get(id)?.type] ?? '', `${id}.md`);
+    const type = byId.get(id)?.type; // a string from the entry: `constructor` names no folder (S-13)
+    const p = join(vaultPath, Object.hasOwn(TYPE_FOLDER, type) ? TYPE_FOLDER[type] : '', `${id}.md`);
     return entryPaths.has(p) && existsSync(p) ? readFileSync(p, 'utf8') : '';
   };
   const r = pathCandidates({

@@ -120,3 +120,17 @@ test('gate evidence --packet: the CLI writes the packet and opens no connection'
   assert.ok(existsSync(join(p, 'sources', `2026-01-01-${BIG}.md`)));
   assert.equal(readFileSync(netLog, 'utf8'), 'loaded\n', 'no socket, lookup or fetch');
 });
+
+// S-13: a listed entry whose type names no entry folder (an Object.prototype member or any other name) refuses the
+// packet before anything is written.
+test('S-13: gate evidence --packet refuses a listed entry whose type names no entry folder and writes nothing', async () => {
+  for (const type of ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'plainname']) {
+    const dir = vault();
+    await checkQuotes(dir, `2026-01-01-${BIG}`, ['The quoted sentence sits on line forty of the page.'], { ...NOW, runKey: RUN });
+    const note = join(dir, 'notes', '2026-01-01-n.md');
+    writeFileSync(note, readFileSync(note, 'utf8').replace(/^type: note$/m, `type: ${type}`));
+    const p = out();
+    assert.throws(() => buildPacket(dir, listed, p, RUN, process.cwd()), { message: `no packet: 2026-01-01-n has type ${type}, which is no entry type` }, type);
+    assert.equal(existsSync(p), false, type);
+  }
+});

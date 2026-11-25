@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, cpSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { lintVault } from '../bin/lib/lintrules.mjs';
+import { lintVault, fixVault } from '../bin/lib/lintrules.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
 import { writeEntry } from '../bin/lib/fsutil.mjs';
 import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
@@ -566,4 +566,38 @@ test('lint messages: an entry value is shown on one line with no hidden characte
   const { violations, warnings } = lintVault(dir, process.cwd());
   const found = ([code], i) => [...violations, ...warnings].filter(x => x.code === code && x.file.endsWith(`2026-01-0${i + 1}-${code.toLowerCase()}.md`)).map(x => x.msg);
   assert.deepEqual(rows.map(found), rows.map(r => [r[2]]));
+});
+
+// S-13: an entry type or a topic that names an Object.prototype member lints and fixes as an ordinary unknown name.
+// Each run builds the same vault with `name` as a topic and a type; a run with a prototype name must match the plain run.
+function s13Vault(t, name) {
+  const dir = tmpVault('rv-s13-lint-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  put(dir, 'source', '2026-01-01-s', { source_type: 'article', source_url: 'https://example.com/s', topics: [name] });
+  const typed = join(dir, 'notes', `${put(dir, 'note', '2026-01-02-n', { sources: ['2026-01-01-s'], confidence: 'medium' })}.md`);
+  writeFileSync(typed, readFileSync(typed, 'utf8').replace(/^type: note$/m, `type: ${name}`));
+  return dir;
+}
+
+test('S-13: lint takes a type or topic named after an Object.prototype member as an ordinary name', t => {
+  const run = name => {
+    const dir = s13Vault(t, name);
+    const { violations, warnings } = lintVault(dir, process.cwd());
+    return JSON.stringify({ violations, warnings }).replaceAll(dir, 'VAULT').replaceAll(name, 'NAME');
+  };
+  const plain = run('plainname');
+  assert.match(plain, /"code":"TYPE_FOLDER","msg":"type NAME in folder notes"/);
+  for (const name of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) assert.equal(run(name), plain, name);
+});
+
+test('S-13: lint --fix --topics takes a type or topic named after an Object.prototype member as an ordinary name', t => {
+  const run = name => {
+    const dir = s13Vault(t, name);
+    const fixed = fixVault(dir, process.cwd(), { topics: true });
+    const files = ['sources/2026-01-01-s.md', 'notes/2026-01-02-n.md'].map(f => readFileSync(join(dir, f), 'utf8'));
+    return JSON.stringify({ fixed, files }).replaceAll(dir, 'VAULT').replaceAll(name, 'NAME');
+  };
+  const plain = run('plainname');
+  assert.match(plain, /^\{"fixed":\{"fixed":0\},"files":\["---\\ntitle: 2026-01-01-s\\n.*topics: \[NAME\]/);
+  for (const name of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) assert.equal(run(name), plain, name);
 });
