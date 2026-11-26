@@ -88,6 +88,33 @@ test('every action a workflow uses is pinned by a full commit SHA', () => {
   }
 });
 
+test('S-21: every actions/checkout step sets persist-credentials: false', () => {
+  const directory = new URL('../.github/workflows/', import.meta.url);
+  const files = readdirSync(directory).filter((name) => /\.ya?ml$/.test(name));
+  for (const file of files) {
+    const config = read(`.github/workflows/${file}`).replace(/#[^\n]*/g, '');
+    const checkoutUses = /(?:uses|"uses"|'uses')\s*:\s*["']?actions\/checkout@/;
+    const checkouts = config.matchAll(new RegExp(`(?:^|[\\s{,])${checkoutUses.source}`, 'gm'));
+    let checked = 0;
+    for (const [step] of config.matchAll(/^( *)-(?= |$)[^\n]*(?:\n(?: *$|\1 +\S[^\n]*))*/gm)) {
+      // A step ends at the next list item or dedent. Match only its direct keys and inputs.
+      const mapping = step.replace('-', ' ');
+      const indent = mapping.match(/^ *(?=\S)/m)?.[0];
+      if (indent === undefined) continue;
+      const fields = mapping.split(new RegExp(`^${indent}(?=\\S)`, 'm')).slice(1);
+      const checkout = fields.find((field) => field.search(checkoutUses) === 0);
+      if (!checkout) continue;
+      const inputs = fields.find((field) => /^(?:with|"with"|'with')[ \t]*:[ \t]*\n/.test(field));
+      const inputIndent = inputs?.match(/\n( +)\S/)?.[1];
+      const setting = /(?:persist-credentials|"persist-credentials"|'persist-credentials')[ \t]*:[ \t]*(?:false|"false"|'false')[ \t]*$/;
+      assert.ok(inputIndent && new RegExp(`^${inputIndent}${setting.source}`, 'm').test(inputs),
+        `${file}: ${checkout.trim()} must set with.persist-credentials to false`);
+      checked++;
+    }
+    assert.equal(checked, [...checkouts].length, `${file}: could not verify the inputs of every checkout step`);
+  }
+});
+
 // Source-scan guard: extract the version step's real heredoc so these cases execute
 // the release check shipped in the workflow, rather than a duplicate implementation.
 for (const { name, plugin, marketplace, status, error, notice } of [

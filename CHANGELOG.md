@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Tests (S-21):** a test fails when an `actions/checkout` step in any workflow no longer sets `persist-credentials: false`. The setting itself has been in both workflows since the actions were pinned by commit SHA; nothing noticed its removal.
+
 - **Security (S-22):** the fetcher behind `refresh`, `capture --batch` over a URL list, `capture --fill` and `verify --quotes` has one deadline of 60 s for a whole fetch, DNS and redirects included, beside its 15 s idle timeout. Before, a server that sent one byte at a time kept a request open without end. A redirect whose `Location` does not parse is now refused (`malformed redirect Location`); before, it was an uncaught exception and the fetch never settled. A redirect hop is closed before the next one starts. A download that takes longer than 60 s in all is now reported unreachable where it finished before. SECURITY.md states the deadline and one limit: Node cannot cancel a system DNS lookup, so a lookup still pending at the deadline can delay the process's exit until the system resolver gives up.
 
 - **Security (S-18):** the `teach serve` progress page (`GET /progress`) escapes the missed-items text of an attempt. Before, an attempt file whose `wrong` held markup put that markup into the page the learner opens. Attempt files are now checked on read: one whose `total`, `wrong` or task lists are not what the plugin's writers store is left out of the attempt rows, the timeline and the count of `/progress`, `/progress.json` and `teach progress`. `teach progress` text shows each workspace value on one line with control and invisible format characters removed.
