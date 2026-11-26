@@ -250,7 +250,7 @@ test('Git status leaves a stale index unchanged', (t) => checkStatusLeavesIndexU
 test('Git status leaves a stale split index unchanged', (t) => checkStatusLeavesIndexUnchanged(t, true));
 
 test('Git reports a missing object without starting a lazy fetch', {
-  skip: gitOlderThan(2, 45, 1) && 'Requires Git 2.45.1 for GIT_NO_LAZY_FETCH.',
+  skip: gitOlderThan(2, 45, 1) && 'Runs on Git 2.45.1 or later; GIT_NO_LAZY_FETCH is in Git since 2.45, and this test has not been run on 2.45.0.',
 }, (t) => {
   const cwd = tempDirectory(t);
   fixtureGit(cwd, 'init', '-q', '--object-format=sha1', '--template=');

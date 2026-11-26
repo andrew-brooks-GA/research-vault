@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Fixed (R-19, #93):** SECURITY.md and the comment in `bin/lib/git.mjs` said `GIT_NO_LAZY_FETCH` needs Git 2.45.1 or later; Git has had it since 2.45. The other three Git versions that paragraph gives (2.36, 2.38, 2.55) were checked against Git's documentation at its release tags and stand. No behaviour changed.
+
 - **Tests (S-15):** the pre-commit gate's acceptance tests carry the finding's id: an unreviewed staged edit is refused though the working copy holds the reviewed bytes; reviewed staged bytes pass and are committed though the working copy has moved on; a git failure in a bound repository, or a bound folder outside any repository, exits 2 and never prints `none`. The fix itself is the R-11 entry below; each test fails on the code before it.
 
 - **Tests (S-12):** the acceptance test for the lesson gate's cover: after a PASS, a paragraph added between blocks, a second block with an existing name, or a change to a script the page loads each reopens the page in `gate status --check` and keeps it out of `teach export`. The fix itself is the R-10 entry below; the test fails on the code before it.
