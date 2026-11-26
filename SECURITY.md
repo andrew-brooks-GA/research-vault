@@ -158,7 +158,7 @@ Known limits:
   - Every resolved address must be public global-unicast. RFC 6890 private, loopback, link-local, CGNAT, ULA, documentation, multicast, and reserved ranges are rejected — including IPv4-mapped IPv6, alt-encoded numeric hosts, and the cloud metadata address `169.254.169.254`.
   - The socket is pinned to the pre-validated IP. No re-resolution, no connection pooling.
   - Redirects are re-validated per hop against every rule above.
-  - A body-size cap and a timeout bound each request. No cookies or auth headers are ever sent.
+  - A body-size cap and a socket idle timeout apply to each request. A 60 s deadline applies to each URL and covers the entire fetch, including DNS and redirects. A list of N URLs waits at most N times 60 s for its fetches. If a system DNS lookup is still pending at the deadline, the plugin refuses the fetch on time. Node cannot cancel the lookup. The lookup holds one of Node's lookup workers until the system resolver gives up, which can delay process exit and make a later lookup wait. No cookies or auth headers are ever sent.
 
 ## Network ingest (`capture --batch <url list>`)
 

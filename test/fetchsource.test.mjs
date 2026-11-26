@@ -1,8 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
+import { spawnSync } from 'node:child_process';
+import { EventEmitter, once } from 'node:events';
+import http from 'node:http';
+import { setImmediate as nextTurn } from 'node:timers/promises';
 import { fetchSource } from '../bin/lib/fetchsource.mjs';
 import { sha256 } from '../bin/lib/ids.mjs';
+import { testEnv } from './helpers.mjs';
 
 // A fake `res` that plays a scripted status/headers, then optionally emits data.
 function fakeRes({ status, headers = {}, data = [] }) {
@@ -139,6 +143,167 @@ test('a request timeout destroys the request', async () => {
     /request timeout/,
   );
   assert.ok(destroyErr && /request timeout/.test(destroyErr.message));
+});
+
+test('the fetch deadline is shared across redirect hops', { timeout: 1000 }, async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  // MockTimers may leave refresh() as a no-op, so check that it is never called.
+  const schedule = globalThis.setTimeout;
+  const refresh = t.mock.fn(function () { return this; });
+  t.mock.method(globalThis, 'setTimeout', (...args) => {
+    const timer = schedule(...args);
+    timer.refresh = refresh;
+    return timer;
+  });
+  const paths = ['/start', '/second', '/finish'];
+  const started = [];
+  const request = ({ path }, cb) => {
+    const hop = started.push(path);
+    const res = hop < paths.length
+      ? fakeRes({ status: 302, headers: { location: paths[hop] } })
+      : fakeRes({ status: 200 });
+    const req = new EventEmitter();
+    let timer;
+    req.end = () => { timer = setTimeout(() => { cb(res); res._play(); }, 60); };
+    req.destroy = () => clearTimeout(timer);
+    return req;
+  };
+  const fetch = fetchSource('https://8.8.8.8/start', { request, totalTimeoutMs: 100 });
+  // Each hop takes 60 ms, so the deadline falls during the second hop.
+  await nextTurn();
+  t.mock.timers.tick(60);
+  await nextTurn();
+  t.mock.timers.tick(40);
+  await assert.rejects(
+    Promise.race([fetch, nextTurn()]),
+    { message: 'fetch deadline exceeded (100 ms)' },
+  );
+  assert.equal(refresh.mock.callCount(), 0, 'the deadline timer must not be refreshed');
+  assert.deepEqual(started, ['/start', '/second']);
+});
+
+test('the fetch deadline ends a lookup that never answers without starting a request', { timeout: 1000 }, async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const lookup = t.mock.fn(() => new Promise(() => {}));
+  let requests = 0;
+  const request = () => { requests++; throw new Error('unexpected request'); };
+  const fetch = fetchSource('https://slow.example/a', { request, lookup, totalTimeoutMs: 25 });
+  await nextTurn();
+  assert.equal(lookup.mock.callCount(), 1);
+  t.mock.timers.tick(25);
+  // Give the rejection a turn to reach the caller without waiting forever for a broken deadline.
+  await assert.rejects(Promise.race([fetch, nextTurn()]), { message: 'fetch deadline exceeded (25 ms)' });
+  assert.equal(requests, 0);
+});
+
+test('a lookup that answers after the fetch deadline starts no request', { timeout: 1000 }, async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const { promise, resolve } = Promise.withResolvers();
+  const lookup = t.mock.fn(() => promise);
+  let requests = 0;
+  const request = () => { requests++; throw new Error('unexpected request'); };
+  const fetch = fetchSource('https://slow.example/a', { request, lookup, totalTimeoutMs: 25 });
+  await nextTurn();
+  assert.equal(lookup.mock.callCount(), 1);
+  t.mock.timers.tick(25);
+  await assert.rejects(fetch, { message: 'fetch deadline exceeded (25 ms)' });
+  resolve([{ address: '93.184.216.34', family: 4 }]);
+  await nextTurn();
+  assert.equal(requests, 0);
+});
+
+test('the default fetch deadline expires at 60 seconds', { timeout: 1000 }, async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const lookup = t.mock.fn(() => new Promise(() => {}));
+  const request = t.mock.fn(() => { throw new Error('unexpected request'); });
+  const fetch = fetchSource('https://slow.example/a', { request, lookup });
+  const pending = Symbol('pending');
+  t.mock.timers.tick(59999);
+  assert.equal(await Promise.race([fetch, nextTurn(pending)]), pending);
+  t.mock.timers.tick(1);
+  await assert.rejects(Promise.race([fetch, nextTurn()]), { message: 'fetch deadline exceeded (60000 ms)' });
+  assert.equal(lookup.mock.callCount(), 1);
+  assert.equal(request.mock.callCount(), 0);
+});
+
+test('a successful fetch clears the default deadline before the child exits', { timeout: 5000 }, () => {
+  const source = new URL('../bin/lib/fetchsource.mjs', import.meta.url);
+  const script = `
+    import { EventEmitter } from 'node:events';
+    import { fetchSource } from ${JSON.stringify(source.href)};
+    const request = (opts, respond) => {
+      const req = new EventEmitter();
+      req.end = () => queueMicrotask(() => {
+        const res = new EventEmitter();
+        res.statusCode = 200;
+        respond(res);
+        res.emit('end');
+      });
+      req.destroy = () => {};
+      return req;
+    };
+    await fetchSource('https://8.8.8.8/a', { request });
+  `;
+  const limit = 2000;
+  const start = performance.now();
+  const child = spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
+    env: testEnv(), stdio: 'ignore', timeout: limit, killSignal: 'SIGKILL',
+  });
+  const elapsed = performance.now() - start;
+  assert.equal(child.status, 0, `child exit within ${limit} ms (${child.error?.code ?? child.signal ?? child.status})`);
+  assert.ok(elapsed < limit, `child took ${Math.round(elapsed)} ms to exit`);
+});
+
+test('S-22: a body trickled without end is refused at the total deadline and the server sees the socket close', { timeout: 5000 }, async (t) => {
+  const host = '127.0.0.1';
+  let bytes = 0;
+  const { promise: closed, resolve: socketClosed } = Promise.withResolvers();
+  const server = http.createServer((req, res) => {
+    res.writeHead(200);
+    res.flushHeaders();
+    const trickle = setInterval(() => { res.write('x'); bytes++; }, 10);
+    req.socket.once('close', () => { clearInterval(trickle); socketClosed(); });
+  });
+  t.after(() => { server.close(); server.closeAllConnections(); });
+  server.listen(0, host);
+  await once(server, 'listening');
+
+  const lookup = async () => [{ address: '93.184.216.34', family: 4 }];
+  const port = server.address().port;
+  // Keep the fetcher's URL and address checks; route only the injected transport to loopback.
+  const request = (opts, cb) => http.request({ ...opts, protocol: 'http:', hostname: host, port }, cb);
+  const totalTimeoutMs = 500;
+  const start = performance.now();
+  await assert.rejects(
+    fetchSource('https://slow.example/a', { request, lookup, totalTimeoutMs }),
+    /fetch deadline exceeded/,
+  );
+  assert.ok(performance.now() - start < totalTimeoutMs + 500, 'the short deadline ends the fetch promptly');
+  await closed;
+  assert.ok(bytes > 1, 'the server sent body bytes while the request was open');
+});
+
+test('a malformed redirect Location rejects without an uncaught exception', { timeout: 1000 }, async (t) => {
+  const uncaught = [];
+  const onUncaught = (err) => uncaught.push(err);
+  process.on('uncaughtException', onUncaught);
+  t.after(() => process.removeListener('uncaughtException', onUncaught));
+
+  const lookup = async () => [{ address: '93.184.216.34', family: 4 }];
+  let calls = 0;
+  let destroyed = false;
+  const request = (opts, cb) => {
+    calls++;
+    const req = new EventEmitter();
+    const res = fakeRes({ status: 302, headers: { location: 'http://[::1' } });
+    req.end = () => { process.nextTick(() => cb(res)); };
+    req.destroy = () => { destroyed = true; };
+    return req;
+  };
+  await assert.rejects(fetchSource('https://start.example/a', { request, lookup }), /malformed redirect Location/);
+  assert.deepEqual(uncaught, []);
+  assert.equal(calls, 1, 'no request is sent to the redirect target');
+  assert.ok(destroyed, 'the redirect response socket is closed');
 });
 
 test('a validated IPv6-literal URL skips DNS and pins the bracket-stripped address', async () => {
