@@ -223,12 +223,19 @@ test('gatedFiles returns workspace lessons and reference docs plus gates.globs',
 
 const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'research-vault.mjs');
 
-function gateCli(cwd, vault, ...args) {
-  const r = spawnSync(process.execPath, [CLI, 'gate', ...args], {
-    cwd, encoding: 'utf8', env: testEnv({ RESEARCH_VAULT_PATH: vault }),
+function runCli(cwd, vault, ...args) {
+  const r = spawnSync(process.execPath, [CLI, ...args], {
+    cwd, encoding: 'utf8', env: testEnv({ RESEARCH_VAULT_PATH: vault }), timeout: 20000,
   });
-  return { code: r.status, out: r.stdout, err: r.stderr };
+  let err = r.stderr;
+  if (r.error) {
+    const signal = r.signal ? ` (${r.signal})` : '';
+    err = [r.error.message + signal, r.stderr].filter(Boolean).join('\n');
+  }
+  return { code: r.status, out: r.stdout, err };
 }
+
+const gateCli = (cwd, vault, ...args) => runCli(cwd, vault, 'gate', ...args);
 
 // gate evidence output without its last line, `review hash: <hex>`. Output with no hash line comes back unchanged, so a
 // comparison through this helper passes without one (the R-12 tests below pin that the line is present); a hash line
@@ -259,6 +266,58 @@ test('CLI gate record then status --check exits 0, after an edit exits 1', () =>
   assert.equal(stale.code, 1);
   assert.equal(stale.out, `docs/reply.md: none @ ${sha2}\n`);
   assert.equal(gateCli(root, vault, 'status', 'docs/reply.md').code, 0, 'without --check a missing verdict exits 0');
+});
+
+test('S-12: after a PASS, an edit outside the blocks, a repeated block name or a change to a loaded script reopens a lesson page and keeps it out of the export', (t) => {
+  const root = tmpVault('rv-gate-s12-');
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const vault = fixtureVault(join(root, 'vault'));
+  writeFileSync(join(root, '.research-vault.json'), JSON.stringify({ vault: 'vault' }) + '\n');
+  const lesson = 'lessons/0001-x.html';
+  const rel = `ws/${lesson}`;
+  const page = join(root, rel);
+  const asset = join(root, 'ws/assets/lesson.js');
+  mkdirSync(dirname(page), { recursive: true });
+  mkdirSync(dirname(asset));
+  writeFileSync(join(root, 'ws/MISSION.md'), '# Mission\n');
+  const sources = '<section data-block="sources"><p>Sources</p></section>';
+  const html = `<!doctype html><html><head><title>Example</title></head><body data-lesson="0001-x">
+<section data-block="mission"><p>Mission</p></section>
+${sources}
+<script src="../assets/lesson.js"></script>
+</body></html>\n`;
+  const script = 'document.title = "Example";\n';
+  writeFileSync(page, html);
+  writeFileSync(asset, script);
+  const check = () => gateCli(root, vault, 'status', rel, '--check');
+  const exportTo = (out) => runCli(root, vault, 'teach', 'export', 'ws', '--out', out);
+  const rec = gateCli(root, vault, 'record', rel, 'PASS');
+  assert.equal(rec.code, 0, rec.err);
+  const passed = check();
+  assert.equal(passed.code, 0, passed.err);
+  assert.ok(passed.out?.startsWith(`${rel}: PASS @ `), passed.out);
+  const baselineOut = join(root, 'export-passed');
+  const baseline = exportTo(baselineOut);
+  assert.equal(baseline.code, 0, baseline.err);
+  assert.ok(existsSync(join(baselineOut, lesson)));
+
+  const cases = [
+    ['paragraph between blocks', html.replace(sources, `<p>A new claim.</p>\n${sources}`), script, 'rest'],
+    ['second mission block', html.replace(sources, `<section data-block="mission"><p>Another claim.</p></section>\n${sources}`), script, 'mission#2, rest'],
+    ['loaded script bytes', html, 'document.title = "Edited";\n', 'script:../assets/lesson.js'],
+  ];
+  for (const [i, [edit, pageBytes, scriptBytes, units]] of cases.entries()) {
+    writeFileSync(page, pageBytes);
+    writeFileSync(asset, scriptBytes);
+    const status = check();
+    assert.equal(status.code, 1, `${edit}\n${status.out ?? ''}${status.err ?? ''}`);
+    assert.equal(status.out?.replace(/ @ [0-9a-f]{12} /, ' '), `${rel}: none (changed units: ${units})\n`, edit);
+    const out = join(root, `export-${i}`);
+    const exported = exportTo(out);
+    assert.equal(exported.code, 1, `${edit}\n${exported.out ?? ''}${exported.err ?? ''}`);
+    assert.ok(exported.out?.split('\n').includes(`ungated ${lesson}`), `${edit}\n${exported.out}`);
+    assert.equal(existsSync(out), false, `${edit} wrote an export`);
+  }
 });
 
 test('CLI gate staged lists staged gated files and --check exits 1 until each has a verdict', () => {
