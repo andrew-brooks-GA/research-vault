@@ -177,36 +177,39 @@ function bound(t, binding = { vault: 'research', gates: { globs: ['*.md'] } }) {
   return { ...ctx, record, draft: join(ctx.root, 'draft.md') };
 }
 
-test('gate staged refuses an unreviewed staged edit while the working copy holds the passed bytes, and the hook commits nothing', posix, (t) => {
+test('S-15: refuses an unreviewed staged edit even with reviewed working bytes, and the hook leaves HEAD unchanged', posix, (t) => {
   const { draft, run, git, hook, cli, record } = bound(t);
   writeFileSync(draft, 'Reviewed draft.\n');
   record('draft.md');
   writeFileSync(draft, 'Unreviewed edit.\n');
   git('add', 'draft.md');
   writeFileSync(draft, 'Reviewed draft.\n');
+  const head = git('rev-parse', 'HEAD'), index = git('write-tree');
   const r = cli('--check');
-  assert.equal(r.status, 1, r.stderr);
-  assert.equal(r.stdout, 'draft.md: none\n');
-  const head = git('rev-parse', 'HEAD');
   hook();
   const c = run('git', ['commit', '-qm', 'Must be refused']);
+  assert.deepEqual([r.status, r.stdout], [1, 'draft.md: none\n'], r.stderr);
   assert.equal(c.status, 1, c.stderr);
+  assert.match(c.stdout + c.stderr, /^draft\.md: none$/m);
   assert.equal(git('rev-parse', 'HEAD'), head);
+  assert.equal(git('write-tree'), index);
+  assert.equal(readFileSync(draft, 'utf8'), 'Reviewed draft.\n');
 });
 
-test('gate staged passes reviewed staged bytes while the working copy has moved on, and the hook commits those bytes', posix, (t) => {
+test('S-15: passes and commits reviewed staged bytes despite further working-copy edits', posix, (t) => {
   const { draft, run, git, hook, cli, record } = bound(t);
   writeFileSync(draft, 'Reviewed draft.\n');
   record('draft.md');
   git('add', 'draft.md');
   writeFileSync(draft, 'Reviewed draft, edited further.\n');
   const r = cli('--check');
-  assert.equal(r.status, 0, r.stderr);
-  assert.equal(r.stdout, 'draft.md: PASS\n');
   hook();
   const c = run('git', ['commit', '-qm', 'Reviewed']);
+  assert.deepEqual([r.status, r.stdout], [0, 'draft.md: PASS\n'], r.stderr);
   assert.equal(c.status, 0, c.stderr);
+  assert.match(c.stdout + c.stderr, /^draft\.md: PASS$/m);
   assert.equal(git('show', 'HEAD:draft.md'), 'Reviewed draft.\n');
+  assert.equal(readFileSync(draft, 'utf8'), 'Reviewed draft, edited further.\n');
 });
 
 test('gate staged hashes the staged blob as bytes, not as decoded text', (t) => {
@@ -238,25 +241,30 @@ test('gate staged applies the per-unit rule to the staged bytes', (t) => {
   assert.equal(ok.stdout, 'draft.md: PASS (by unit)\n');
 });
 
-// A bound folder outside any repository (the ceiling keeps git from finding one above it), and a repository whose index is not an index.
-test('gate staged exits 2 with one line naming the failed git command when git cannot be inspected, and never prints none', (t) => {
+// The ceiling keeps git from discovering a repository above the fixture.
+test('S-15: exits 2 without reporting none when a bound folder is outside any repository', (t) => {
   const plain = realpathSync(tmpVault('rv-norepo-'));
   t.after(() => rmSync(plain, { recursive: true, force: true }));
   mkdirSync(join(plain, 'research'));
   writeFileSync(join(plain, '.research-vault.json'), JSON.stringify({ vault: 'research', gates: { globs: ['*.md'] } }));
   writeFileSync(join(plain, 'draft.md'), 'Draft.\n');
-  const { root, git } = bound(t);
-  writeFileSync(join(root, '.git', 'index'), 'not an index');
+  const r = spawnSync(process.execPath, [CLI, 'gate', 'staged', '--check'], { cwd: plain, env: testEnv({ GIT_CEILING_DIRECTORIES: dirname(plain) }), encoding: 'utf8', timeout: 20_000 });
+  assert.equal(r.status, 2, r.stderr);
+  assert.equal(r.stdout, '');
+  assert.match(r.stderr, /^error: git rev-parse --show-toplevel failed in .+: fatal: not a git repository[^\n]*\n$/);
+  assert.equal(existsSync(join(plain, '.git')), false);
+});
+
+test('S-15: exits 2 without reporting none when Git cannot read the index in a bound repository', (t) => {
+  const { root, git, cli } = bound(t);
+  const index = join(root, '.git', 'index');
+  writeFileSync(index, 'not an index');
   const head = git('rev-parse', 'HEAD');
-  for (const [cwd, line] of [[plain, /^error: git rev-parse --show-toplevel failed in .+: fatal: not a git repository/], [root, /^error: git diff --cached --name-only --diff-filter=ACMRT --ignore-submodules=all -z failed in .+: fatal: /]]) {
-    const index = existsSync(join(cwd, '.git')) && readFileSync(join(cwd, '.git', 'index'));
-    const r = spawnSync(process.execPath, [CLI, 'gate', 'staged', '--check'], { cwd, env: testEnv({ GIT_CEILING_DIRECTORIES: dirname(cwd) }), encoding: 'utf8', timeout: 20_000 });
-    assert.equal(r.status, 2, r.stderr);
-    assert.equal(r.stdout, '');
-    assert.match(r.stderr, line);
-    assert.equal(r.stderr.split('\n').length, 2, r.stderr);
-    assert.deepEqual(existsSync(join(cwd, '.git')) && readFileSync(join(cwd, '.git', 'index')), index, cwd);
-  }
+  const r = cli('--check');
+  assert.equal(r.status, 2, r.stderr);
+  assert.equal(r.stdout, '');
+  assert.match(r.stderr, /^error: git diff --cached --name-only --diff-filter=ACMRT --ignore-submodules=all -z failed in .+: fatal: [^\n]*\n$/);
+  assert.deepEqual(readFileSync(index), Buffer.from('not an index'));
   assert.equal(git('rev-parse', 'HEAD'), head);
 });
 
