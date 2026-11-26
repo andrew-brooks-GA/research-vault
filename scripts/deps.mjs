@@ -155,6 +155,8 @@ export const COUPLINGS = [
   ['bin/lib/codex-review.mjs', 'agents/claims-reviewer.md', 'the shared policy and PASS/FAIL-as-sent review protocol'],
   ['bin/lib/codex-review.mjs', 'agents/lesson-reader.md', 'the shared reader policy and READS/REVISE protocol'],
   ['bin/lib/codex-review.mjs', 'bin/lib/host-install.mjs', 'the generated review command and default model/effort'],
+  ['bin/lib/codex-review.mjs', 'SECURITY.md', 'the Codex CLI handoff and absence of a plugin network gate'],
+  ['SECURITY.md', 'test/codex-review.test.mjs', 'the inventory states that the Codex review has no plugin network gate', 'does not gate the review'],
   ['bin/commands/host.mjs', 'docs/CODEX.md', 'the installation and review CLI contract'],
   ['bin/commands/host.mjs', 'docs/REFERENCE.md', 'the host command reference'],
   ['bin/lib/host-install.mjs', 'hooks/codex.mjs', 'the generated Codex hook event names and adapter command'],

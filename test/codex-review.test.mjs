@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { writeFileSync, readFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { tmpVault, fixtureVault, put, codeRepo } from './helpers.mjs';
+import { fileURLToPath } from 'node:url';
+import { tmpVault, fixtureVault, put, codeRepo, testEnv } from './helpers.mjs';
 import { reviewRequest, runCodexReview } from '../bin/lib/codex-review.mjs';
 
 function setup(t) {
@@ -32,6 +34,38 @@ test('fresh Codex review declares exact evidence and preserves policy, without w
   assert.equal(r.verdict, 'PASS'); assert.equal(r.actualModel, null);
   assert.equal(JSON.parse(readFileSync(options.out)).configuredModel, 'gpt-6.1-sol');
   assert.equal(existsSync(join(options.root, '.research-vault-ledger.jsonl')), false);
+});
+
+test('S-23: host review codex starts the codex CLI with RESEARCH_VAULT_ALLOW_NETWORK unset', t => {
+  const { root, draft, vault, out } = setup(t);
+  const bin = join(root, 'bin');
+  const network = join(root, 'codex-network');
+  const input = join(root, 'codex-input');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'codex'), '#!/bin/sh\nset -e\n' +
+    'printf \'%s\' "${RESEARCH_VAULT_ALLOW_NETWORK-unset}" > "$RV_CODEX_NETWORK"\n' +
+    '/bin/cat > "$RV_CODEX_INPUT"\n' +
+    `printf '%s\\n' '${response('VERDICT: PASS').stdout}'\n`, { mode: 0o700 });
+  const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+  const result = spawnSync(process.execPath, [cli, 'host', 'review', 'codex', '--draft', draft, '--out', out, '--vault', vault], {
+    cwd: root, env: testEnv({ PATH: bin, RV_CODEX_NETWORK: network, RV_CODEX_INPUT: input }), encoding: 'utf8', timeout: 30000,
+  });
+  assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+  assert.equal(readFileSync(network, 'utf8'), 'unset');
+  assert.ok(readFileSync(input, 'utf8').split('\n').includes(`Draft: ${draft}`));
+  assert.ok(existsSync(out));
+});
+
+test("S-23: SECURITY.md's inventory says what host review codex hands to codex and that RESEARCH_VAULT_ALLOW_NETWORK does not gate it", () => {
+  const security = readFileSync(new URL('../SECURITY.md', import.meta.url), 'utf8');
+  const inventory = security.split('\n').find(line => line.startsWith('- **Programs it runs**'));
+  const handoff = '`host review codex` writes a prompt to the `codex` CLI with the body of the role\'s agent file and the draft path, ' +
+    'adding the vault path and evidence list for claims reviews and attaching any existing images referenced by a claims-reviewed page as files.';
+  const provider = '`RESEARCH_VAULT_ALLOW_NETWORK` does not gate the review, and the CLI reads files itself ' +
+    '(the draft and, for a claims review, the vault\'s entries; its read-only sandbox does not limit it to those) ' +
+    'and may send their contents, the prompt and the attached images to its model provider.';
+  assert.ok(inventory?.includes(handoff), 'the inventory must state what the plugin hands to the CLI');
+  assert.ok(inventory?.includes(provider), 'the inventory must state what may reach the model provider and that the plugin network gate does not apply');
 });
 
 test('review rejects process failure, missing/conflicting verdicts and changed inputs', t => {

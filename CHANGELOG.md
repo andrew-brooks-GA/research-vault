@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Security (S-23):** SECURITY.md's opening inventory now says what `host review codex` hands to the `codex` CLI, that the CLI may send it and the files it reads to its model provider, and that `RESEARCH_VAULT_ALLOW_NETWORK` does not gate the review. No behaviour changed. Two tests pin it: the command starts `codex` with the variable unset, and the document says so.
+
 - **Tests (S-21):** a test fails when an `actions/checkout` step in any workflow no longer sets `persist-credentials: false`. The setting itself has been in both workflows since the actions were pinned by commit SHA; nothing noticed its removal.
 
 - **Security (S-22):** the fetcher behind `refresh`, `capture --batch` over a URL list, `capture --fill` and `verify --quotes` has one deadline of 60 s for a whole fetch, DNS and redirects included, beside its 15 s idle timeout. Before, a server that sent one byte at a time kept a request open without end. A redirect whose `Location` does not parse is now refused (`malformed redirect Location`); before, it was an uncaught exception and the fetch never settled. A redirect hop is closed before the next one starts. A download that takes longer than 60 s in all is now reported unreachable where it finished before. SECURITY.md states the deadline and one limit: Node cannot cancel a system DNS lookup, so a lookup still pending at the deadline can delay the process's exit until the system resolver gives up.
