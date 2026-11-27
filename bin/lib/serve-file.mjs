@@ -1,6 +1,6 @@
 // Static workspace files and the navigation, citations and lab steps rendered on their pages.
 import { lstatSync, readFileSync, statSync } from 'node:fs';
-import { extname, join, relative } from 'node:path';
+import { extname, join, relative, resolve, sep } from 'node:path';
 import { isInsideVault, isInsideWorkspaceFolder } from './containment.mjs';
 import { escapeHtml } from './escape.mjs';
 import { extractCites } from './lesson-format.mjs';
@@ -108,4 +108,17 @@ export function serveFile(workspaceDir, urlPath, { titles, sourceHref, bytes = t
   } catch {
     return { status: 404 };
   }
+}
+
+// The file `teach serve` returns for the URL of an <img> src on a page in fromDir, and under lessons/, reference/ or assets/
+// (serveFile decodes, refuses a dot segment and a non-file): its workspace-relative path, ok, and the bytes (body null when
+// there is no such file; with bytes false the file is only stat-ed and body is undefined).
+export function imageTarget(ws, fromDir, src, { bytes = true, dirs = ['lessons', 'reference', 'assets'] } = {}) {
+  const path = src.split(/[?#]/)[0];
+  if (path.includes('\\')) return { path, ok: false, body: null };
+  const raw = relative(ws, src.startsWith('/') ? join(ws, path) : resolve(fromDir, path)).split(sep).join('/');
+  let decoded;
+  try { decoded = decodeURIComponent(raw); } catch { return { path: '', ok: false, body: null }; }
+  const served = !decoded.startsWith('..') && dirs.includes(decoded.split('/')[0]) ? serveFile(ws, `/${raw}`, { bytes }) : { status: 404 };
+  return served.status === 200 ? { path: decoded, ok: true, body: served.body } : { path: decoded, ok: false, body: null };
 }

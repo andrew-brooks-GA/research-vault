@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { navHtml, serveFile } from '../bin/lib/serve-file.mjs';
+import { imageTarget, navHtml, serveFile } from '../bin/lib/serve-file.mjs';
 
 function workspace(t) {
   const dir = mkdtempSync(join(tmpdir(), 'rv-serve-file-'));
@@ -96,4 +96,33 @@ test('navHtml escapes the href of a previous page link', () => {
     { id: '0001-start', path: '/lessons/0001-start.html', title: 'Start' },
   ] };
   assert.match(navHtml(index, '0001-start'), /<a class="lesson-nav-prev" href="\/reference\/a&amp;&quot;b&quot;\.html">&#8592; Previous<\/a>/);
+});
+
+test('imageTarget refuses an image in brand with the default options', (t) => {
+  const ws = workspace(t);
+  const lessons = join(ws, 'lessons');
+  mkdirSync(lessons);
+  mkdirSync(join(ws, 'brand'));
+  writeFileSync(join(ws, 'brand', 'logo.png'), 'Image bytes');
+  assert.equal(serveFile(ws, '/brand/logo.png').status, 200);
+  assert.deepEqual(imageTarget(ws, lessons, '../brand/logo.png'), { path: 'brand/logo.png', ok: false, body: null });
+});
+
+test('imageTarget refuses a backslash and preserves the src path as written', (t) => {
+  const ws = workspace(t);
+  const lessons = join(ws, 'lessons');
+  mkdirSync(join(lessons, 'figures'), { recursive: true });
+  writeFileSync(join(lessons, 'figures\\plot.png'), 'Image bytes');
+  assert.deepEqual(imageTarget(ws, lessons, 'figures\\plot.png?size=small#caption'),
+    { path: 'figures\\plot.png', ok: false, body: null });
+});
+
+test('imageTarget decodes the image filename once', (t) => {
+  const ws = workspace(t);
+  const lessons = join(ws, 'lessons');
+  mkdirSync(lessons);
+  const bytes = Buffer.from('Image bytes');
+  writeFileSync(join(lessons, 'a%20b.png'), bytes);
+  assert.deepEqual(imageTarget(ws, lessons, 'a%2520b.png'), { path: 'lessons/a%20b.png', ok: true, body: bytes });
+  assert.deepEqual(imageTarget(ws, lessons, 'a%20b.png'), { path: 'lessons/a b.png', ok: false, body: null });
 });

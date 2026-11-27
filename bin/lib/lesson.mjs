@@ -1,14 +1,14 @@
 // research-teach lesson parser and the `teach lint` checks for lessons, reference docs and the
 // workspace store (spec 12 "Lesson lint"). Pure over files; the verb lives in bin/commands/teach.mjs.
 import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { parseFrontmatter } from './frontmatter.mjs';
 import { matchRows } from './manifest.mjs';
 import { checkCitations, extractCitations, SPAN_RE } from './citations.mjs';
 import { mayBeInside } from './containment.mjs';
 import { traverse } from './graph.mjs';
 import { extractCites, LESSON_ID_RE, RECORD_ID_RE, FOLLOWUP, CONNECT_LEAD, lessonClass, parseBlocks, blockSpans, parseQuiz, readPath, imgAttr, isProject, README_SECTIONS } from './lesson-format.mjs';
-import { serveFile } from './serve-file.mjs';
+import { imageTarget } from './serve-file.mjs';
 import { validateEntry, ENUM_CODES, missionPrefs } from './teach.mjs';
 import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
 import { readLabs, labPin, lessonLab, sha256, LAB_MANIFEST } from './labs.mjs';
@@ -16,7 +16,7 @@ import { scanCast, PLAYER_FILES, PLAYER_VERSION } from './cast.mjs';
 import { readBrand, BRAND_DEFAULTS, contrast } from './brand.mjs';
 import { readRequirements } from './task.mjs';
 
-export { lessonClass, readPath, CONNECT_LEAD };
+export { lessonClass, readPath, CONNECT_LEAD, imageTarget };
 
 export const QUIZ_MIN_ITEMS = 3;
 export const QUIZ_SPREAD_MAX = 1.6;
@@ -299,19 +299,6 @@ function figureFindings(html, add, branded) {
     if (overflow.length) add('WARN_FIGURE_TEXT_OVERFLOW', `${n}: ${overflow.length} label(s) estimated wider than the shape holding them (${overflow.map((l) => `"${l}"`).join(', ')}); widen the box, shorten the label or break the line`);
     if (long.length) add('WARN_FIGURE_LABEL_LONG', `${n}: ${long.length} label(s) over ${FIGURE_LABEL_MAX} characters (longest ${Math.max(...long)}); a label names, the paragraph explains`);
   });
-}
-
-// The file `teach serve` returns for the URL of an <img> src on a page in fromDir, and under lessons/, reference/ or assets/
-// (serveFile decodes, refuses a dot segment and a non-file): its workspace-relative path, ok, and the bytes (body null when
-// there is no such file; with bytes false the file is only stat-ed and body is undefined).
-export function imageTarget(ws, fromDir, src, { bytes = true, dirs = ['lessons', 'reference', 'assets'] } = {}) {
-  const path = src.split(/[?#]/)[0];
-  if (path.includes('\\')) return { path, ok: false, body: null };
-  const raw = relative(ws, src.startsWith('/') ? join(ws, path) : resolve(fromDir, path)).split(sep).join('/');
-  let decoded;
-  try { decoded = decodeURIComponent(raw); } catch { return { path: '', ok: false, body: null }; }
-  const served = !decoded.startsWith('..') && dirs.includes(decoded.split('/')[0]) ? serveFile(ws, `/${raw}`, { bytes }) : { status: 404 };
-  return served.status === 200 ? { path: decoded, ok: true, body: served.body } : { path: decoded, ok: false, body: null };
 }
 
 // Issue #58: each <img>, in page order. An error when alt is empty or missing, when no <figcaption> sits in its
