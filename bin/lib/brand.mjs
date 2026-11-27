@@ -2,7 +2,7 @@
 import { lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isInsideWorkspaceFolder } from './containment.mjs';
-import { escapeHtml } from './teach.mjs';
+import { escapeHtml } from './escape.mjs';
 
 // D2: the tokens a brand may set are the custom properties of lesson.css's first :root block.
 const CSS = readFileSync(new URL('../../skills/research-teach/assets/lesson.css', import.meta.url), 'utf8');

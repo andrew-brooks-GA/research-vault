@@ -19,6 +19,7 @@ import { readLabs, lessonLab, labRunner, secretHits, labCookie, LAB_ACTIONS, LAB
 import { readBrand, withBrand, brandUrl } from './brand.mjs';
 import { shellTerminal } from './terminal.mjs';
 import { screenText } from './screen.mjs';
+import { escapeHtml, show } from './escape.mjs';
 
 export const ATTEMPT_BODY_MAX = 4096;
 export const LESSON_ID_RE = /^\d{4}-[a-z][a-z0-9-]*$/;
@@ -220,11 +221,6 @@ export const RESULTS_MAX = 1024 * 1024;
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const keysAre = (o, keys) => o !== null && typeof o === 'object' && !Array.isArray(o) &&
   Object.keys(o).length === keys.length && keys.every((k) => Object.hasOwn(o, k));
-// A file value in a printed line: an array or object is named, never walked, so a deeply nested value cannot
-// overflow the stack; JSON.stringify escapes a quote, a backslash and U+0000 to U+001F, ESC_RE what it leaves raw.
-const ESC_RE = /[\u007f-\u009f\u200e\u200f\u202a-\u202e\u2028\u2029\u2066-\u2069]/g;
-export const show = (v) => (v !== null && typeof v === 'object' ? (Array.isArray(v) ? 'an array' : 'an object')
-  : String(JSON.stringify(v)).replace(ESC_RE, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`));
 const sameList = (xs, ys) => Array.isArray(ys) && ys.length === xs.length && xs.every((x, i) => x === ys[i]);
 // The storage key and `workspace` field of an exported copy: the workspace directory's name through slugify.
 export const workspaceKey = (workspaceDir) => slugify(basename(resolve(workspaceDir)), { hashEmpty: false });
@@ -719,8 +715,6 @@ export function readmeDraft(ws) {
   return [`## ${README_SECTIONS[3]}`, '', '| Group | Lessons | What it builds |', '|---|---|---|', ...map, '', `## ${README_SECTIONS[4]}`, '',
     ...(labs.length ? ["| Lesson | Files | Needs on the learner's machine | Fallback |", '|---|---|---|---|', ...labs] : ['No lesson ships files under `lessons/files/`.'])].join('\n') + '\n';
 }
-
-export const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 // Issue 66: the workspace README.md as HTML for GET /: headings, paragraphs, - lists, pipe tables, fenced code,
 // inline code and inline links. All source text goes through escapeHtml, so raw HTML shows as text. A link

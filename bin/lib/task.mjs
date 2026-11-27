@@ -7,7 +7,8 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { parseFrontmatter } from './frontmatter.mjs';
 import { LAB_TEXT_BAD_RE, LAB_OUTPUT_MAX, STOP_GRACE, KILL_WAIT, stopGroup } from './labs.mjs';
-import { show, RECORD_ID_RE, LESSON_ID_RE, nextAttemptId, writeAttempt, missionPrefs } from './teach.mjs';
+import { RECORD_ID_RE, LESSON_ID_RE, nextAttemptId, writeAttempt, missionPrefs } from './teach.mjs';
+import { show } from './escape.mjs';
 import { assertInsideWorkspaceFolder, isInsideVault, VAULT_PATH_OUTSIDE } from './containment.mjs';
 
 const TASK_ID_RE = /^[a-z][a-z0-9-]{0,39}$/;
