@@ -6,7 +6,7 @@ import { traverse, DEPENDENCY_RELS } from './graph.mjs';
 import { loadSchema } from './schema.mjs';
 import { walkEntries, readEntry } from './fsutil.mjs';
 import { verKey } from './ids.mjs';
-import { termsOf } from './terms.mjs';
+import { termsOf } from './terms.ts';
 import { readUsage } from './usagelog.mjs';
 
 export const isStubBody = body => !(body || '').split('\n').some(l => {

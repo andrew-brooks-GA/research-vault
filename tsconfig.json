@@ -1,0 +1,24 @@
+// Check TypeScript sources for Node's type-stripping runtime. Nothing is emitted.
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "module": "nodenext",
+    "target": "esnext",
+    "lib": ["es2024"],
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "types": ["node"],
+    "typeRoots": ["./tooling/node_modules/@types"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowJs": false,
+    "skipLibCheck": true
+  },
+  "include": ["bin/**/*.ts", "hooks/**/*.ts", "scripts/**/*.ts"]
+}

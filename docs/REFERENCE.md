@@ -354,7 +354,7 @@ npm test     # isolated environment; a test or a test file may run 10 minutes an
 
 CI also runs `npm run coverage` on Linux: line, branch and function percentages are a report, with no percentage threshold; a code file loaded by no test fails the job. Arguments such as `npm run coverage -- test/git.test.mjs` select a partial run and skip the not-loaded check. The explicit exclusions are the vendored browser bundles `skills/research-teach/terminal/xterm.mjs` and `skills/research-teach/terminal/addon-fit.mjs`.
 
-CI runs the suite plus `init`, `lint --check`, the AGENTS.md drift check, an encoding check and `npm run lint:self` on Linux and macOS with Node 26.
+On Linux and macOS with Node 26, CI installs the development tools in `tooling/` with `npm ci --ignore-scripts`, then runs the suite, `init`, `lint --check`, the AGENTS.md drift check, the encoding check, `npm run lint:self`, `npm run typecheck` and `npm run lint`.
 
 ## host
 <!-- evidence: 2026-11-13-codex-adapter-implementation 2026-11-13-codex-adapter-validation -->

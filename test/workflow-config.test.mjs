@@ -84,6 +84,67 @@ test('documented Node floors agree with package engines', () => {
   assert.equal(read('AGENTS.md').match(/`engines` >=(\d+(?:\.\d+){0,2})/)?.[1], floor, 'AGENTS.md: Node floor');
 });
 
+// Configuration scan: the CI test job runs its tooling steps on both systems and their failures count.
+function ciTestJob() {
+  const config = read('.github/workflows/ci.yml').replace(/#[^\n]*/g, '');
+  const job = config.match(/^  test:[ \t]*\n((?:^(?: {4}.*| *)\n)*)/m)?.[1];
+  assert.ok(job, 'missing CI test job');
+  return job;
+}
+
+function ciTestSteps() {
+  const steps = ciTestJob().split(/^    steps:[ \t]*$/m)[1] ?? '';
+  return [...steps.matchAll(/^      - ([^\n]*(?:\n {8}[^\n]*)*)/gm)]
+    .map(([, step]) => step.replace(/^ {8}(?=\S)/gm, '').trim());
+}
+
+function ciTestMatrix() {
+  const matrix = ciTestJob().match(/^    strategy:[ \t]*\n(?:^(?: {6,}[^\n]*| *)\n)*?^      matrix:[ \t]*\n((?:^(?: {8,}[^\n]*| *)\n)*)/m)?.[1];
+  assert.ok(matrix, 'missing CI test job matrix');
+  return matrix;
+}
+
+test('the CI test job has no job-level condition', () => {
+  assert.doesNotMatch(ciTestJob(), /^    (?:if|"if"|'if')[ \t]*:/m);
+});
+
+test('the CI test job matrix includes Ubuntu and macOS', () => {
+  const systems = ciTestMatrix().match(/^        os:[ \t]*\[([^\]]*)\]/m)?.[1];
+  assert.ok(systems, 'missing CI operating-system matrix');
+  const names = systems.split(',').map((name) => name.trim().replace(/^(['"])(.*)\1$/, '$2'));
+  for (const name of ['ubuntu-latest', 'macos-latest']) assert.ok(names.includes(name), `missing matrix system: ${name}`);
+});
+
+test('the CI test job selects its runner from the operating-system matrix', () => {
+  assert.equal(ciTestJob().match(/^    runs-on:[ \t]*([^\n]*)/m)?.[1].trim(), '${{ matrix.os }}');
+});
+
+test('the CI test job matrix has no exclude key', () => {
+  assert.doesNotMatch(ciTestMatrix(), /^        (?:exclude|"exclude"|'exclude')[ \t]*:/m);
+});
+
+test('the CI test job has no job-level continue-on-error', () => {
+  assert.doesNotMatch(ciTestJob(), /^    (?:continue-on-error|"continue-on-error"|'continue-on-error')[ \t]*:/m);
+});
+
+test('no CI test job step has continue-on-error', () => {
+  const steps = ciTestSteps();
+  assert.ok(steps.length, 'missing CI test job steps');
+  for (const step of steps) assert.doesNotMatch(step, /^(?:continue-on-error|"continue-on-error"|'continue-on-error')[ \t]*:/m);
+});
+
+for (const command of ['npm run typecheck', 'npm run lint']) {
+  test(`CI runs ${command} after installing tooling on every matrix system`, () => {
+    const steps = ciTestSteps();
+    const find = (run) => steps.findIndex((step) => step.split('\n').includes(`run: ${run}`));
+    const install = find('npm ci --ignore-scripts');
+    const index = find(command);
+    assert.ok(index >= 0, `missing step: ${command}`);
+    assert.ok(install >= 0 && install < index, `${command} must follow the tooling install`);
+    assert.doesNotMatch(steps[index], /^(?:if|"if"|'if')[ \t]*:/m);
+  });
+}
+
 // Source-scan guard: every external action in workflow YAML must use a full commit SHA.
 test('every action a workflow uses is pinned by a full commit SHA', () => {
   const directory = new URL('../.github/workflows/', import.meta.url);

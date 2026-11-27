@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
+import { findSuppressions } from './suppressions.mjs';
 
 const repo = resolve(import.meta.dirname, '..');
 const tools = resolve(process.env.RV_TOOLING_DIR ?? import.meta.dirname);
@@ -32,16 +33,24 @@ try {
   process.exit(1);
 }
 
-const result = spawnSync(process.execPath, [
-  oxlint, '-c', 'tooling/.oxlintrc.json',
-  '--deny-warnings', '--report-unused-disable-directives-severity=error',
-  // Skip legacy JavaScript during the migration. The default folders can still have no TypeScript.
-  '--ignore-pattern=**/*.js', '--ignore-pattern=**/*.mjs',
-  ...(paths.length ? ['--', ...paths] : ['--no-error-on-unmatched-pattern', ...defaultFolders]),
-], {
-  cwd: repo,
-  env: { ...process.env, OXLINT_TSGOLINT_PATH: tsgolint },
-  stdio: 'inherit',
-});
-if (result.error) throw result.error;
-process.exitCode = result.status ?? 1;
+const findings = findSuppressions(repo, paths.length ? paths : defaultFolders);
+if (findings.length) {
+  for (const { file, line, marker } of findings) {
+    console.error(`${file}:${line}: ${marker}: a comment that switches a check off is not allowed`);
+  }
+  process.exitCode = 1;
+} else {
+  const result = spawnSync(process.execPath, [
+    oxlint, '-c', 'tooling/.oxlintrc.json',
+    '--deny-warnings', '--report-unused-disable-directives-severity=error',
+    // Skip legacy JavaScript during the migration.
+    '--ignore-pattern=**/*.js', '--ignore-pattern=**/*.mjs',
+    ...(paths.length ? ['--', ...paths] : defaultFolders),
+  ], {
+    cwd: repo,
+    env: { ...process.env, OXLINT_TSGOLINT_PATH: tsgolint },
+    stdio: 'inherit',
+  });
+  if (result.error) throw result.error;
+  process.exitCode = result.status ?? 1;
+}
