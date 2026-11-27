@@ -16,6 +16,11 @@ test('no reference points at something that no longer exists (spec 14)', () => {
   assert.equal(broken.length, 0, `broken edges; update every dependent listed or add the file back:\n${list}`);
 });
 
+test('the tooling lockfile contributes only coupling edges', () => {
+  const { edges } = build(ctx);
+  assert.deepEqual(edges.filter(({ from, kind }) => from === 'tooling/package-lock.json' && kind !== 'couples'), []);
+});
+
 // Guard shared vocabulary and quoted contracts at both ends of every declared coupling;
 // a run cannot establish that documentation and unvisited code still contain each contract.
 test('source scan: every COUPLINGS literal is still in both files (spec 14)', () => {

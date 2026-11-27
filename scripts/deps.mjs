@@ -18,9 +18,10 @@ const DOC_EXT = `${READ_EXT}|css|html`;
 // extensionless bin/research-vault shim; dotfiles and LICENSE share it and yield nothing.
 export const EXTRACTED = new Set([...CODE_EXT, '.md', '.yml', '.json', '']);
 export const IGNORED = new Set(['.cast', '.css', '.html', '.sh', '.d.ts', '.d.mts']);
-// Files no extractor reads: release history legitimately names removed files; the other two quote
-// every syntax (COUPLINGS rows are couples edges, the sample table is test input).
-const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.mjs']);
+// Files no extractor reads: release history legitimately names removed files; the graph and its test
+// quote every syntax (COUPLINGS rows are couples edges, the sample table is test input); the npm
+// lockfile describes external packages.
+const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.mjs', 'tooling/package-lock.json']);
 
 // Pairs that depend on each other through something other than a path: a copied value, a printed
 // string, a name, a format. Add a row with the change that creates one (AGENTS.md); the test fails
@@ -30,6 +31,17 @@ const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.m
 // literal really is in both files; a row about two values being equal stays prose.
 export const COUPLINGS = [
   ['tooling/package.json', 'AGENTS.md', 'contributors use the tooling package install command', 'npm ci --ignore-scripts'],
+  ['tooling/lint.mjs', 'AGENTS.md', 'the development linter lives in tooling and uses the documented install command', 'npm ci --ignore-scripts'],
+  ['tooling/lint.mjs', 'tooling/.oxlintrc.json', 'the launcher selects the config and the config names the launcher'],
+  ['tooling/lint.mjs', 'test/tooling.test.mjs', 'the launcher tests supply the tooling directory and check the refusals', 'RV_TOOLING_DIR'],
+  ['tooling/lint.mjs', 'test/tooling.test.mjs', 'the fake Oxlint uses the entry point selected by the launcher', 'node_modules/oxlint/bin'],
+  ['tooling/lint.mjs', 'test/tooling.test.mjs', 'the fake companion uses the platform package and binary layout', '@oxlint-tsgolint/'],
+  ['tooling/lint.mjs', 'test/tooling.test.mjs', 'the refusal tests and source scan share the default folders'],
+  ['tooling/lint.mjs', 'test/tooling.test.mjs', 'the missing-folder diagnostic is checked verbatim', 'Missing default lint folder:'],
+  ['tooling/lint.mjs', 'test/tooling.test.mjs', 'the missing-companion diagnostic is checked verbatim', 'The type-aware linter has no package for'],
+  ['tooling/.oxlintrc.json', 'test/tooling.test.mjs', 'the config tests pin the rule names, severities, assertion style, categories and override policy'],
+  ['tooling/.oxlintrc.json', 'test/tooling.test.mjs', 'the config test requires the linter to ignore ESLint disable directives', 'respectEslintDisableDirectives'],
+  ['tooling/package-lock.json', 'test/tooling.test.mjs', 'the linter pin tests check locked versions and the companion peer minimum', 'oxlint-tsgolint'],
   ['tooling/.npmrc', 'test/tooling.test.mjs', 'the npm configuration guard checks that install scripts are disabled', 'ignore-scripts'],
   ['tooling/.npmrc', 'test/tooling.test.mjs', 'the npm configuration guard checks the minimum release age', 'min-release-age'],
   ['tooling/.npmrc', 'test/tooling.test.mjs', 'the npm configuration guard checks that versions are saved exactly', 'save-exact'],
