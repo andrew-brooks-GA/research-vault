@@ -29,6 +29,12 @@ test('a URL backed by a fresh entry is ok', () => {
     [{ type: 'url', value: 'https://vulkan.lunarg.com/sdk/home', status: 'ok', id: '2026-01-10-vulkan-sdk', volatility: 'fast' }],
   );
 });
+test('a URL citation matches a fresh entry by its normalized source URL', () => {
+  assert.deepEqual(
+    checkCitations([{ type: 'url', value: 'https://VULKAN.lunarg.com/sdk/home/?utm_source=notes' }], ENTRIES, SCHEMA, NOW),
+    [{ type: 'url', value: 'https://VULKAN.lunarg.com/sdk/home/?utm_source=notes', status: 'ok', id: '2026-01-10-vulkan-sdk', volatility: 'fast' }],
+  );
+});
 test('a URL backed by a past-window entry is stale', () => {
   const r = checkCitations([{ type: 'url', value: 'https://heroiclabs.com/docs' }], ENTRIES, SCHEMA, NOW)[0];
   assert.equal(r.status, 'stale');

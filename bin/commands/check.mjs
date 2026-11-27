@@ -13,51 +13,14 @@ import { buildManifest, isUnverifiedSource } from '../lib/manifest.mjs';
 import { walkEntries, readEntry } from '../lib/fsutil.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { loadProjectConfig, quotedGlob } from '../lib/projectconfig.mjs';
-import { normalizeUrl } from '../lib/ids.mjs';
-import { extractCitationsDetailed } from '../lib/citations.mjs';
-import { staleness } from '../lib/stale.mjs';
+import { checkCitations, extractCitationsDetailed } from '../lib/citations.mjs';
 import { expandFiles } from '../lib/files.mjs';
 import { langFor, codeFiles, extractCodeLinks, readVersions, checkCodeLinks } from '../lib/codelinks.mjs';
 import { screenText } from '../lib/screen.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-// Pure: classify each citation as ok | stale | uncovered against the manifest entries. A superseded
-// entry is stale for prose as it is for code (spec 15 D3), with its replacement as the reason.
-// An ok row whose entry is in `unverified` (ids of sources nobody checked independently) carries
-// `unverified: true`: marked, never failed.
-// A URL is keyed as capture keys it (normalizeUrl; the manifest stores source_url normalized). Its
-// candidates are its entries that are not superseded, or all of them when every one is; the row is the
-// best candidate's (ok before stale, then the latest id), and two or more active candidates are listed
-// in `candidates`: reported, never failed.
-export function checkCitations(citations, entries, schema, now, unverified = new Set()) {
-  const byUrl = new Map();
-  const byId = new Map();
-  for (const e of entries) {
-    if (e.source_url) byUrl.set(e.source_url, [...(byUrl.get(e.source_url) ?? []), e]);
-    byId.set(e.id, e);
-  }
-  const rowFor = (c, entry) => {
-    const row = { type: c.type, value: c.value, status: 'ok', id: entry.id, volatility: entry.volatility };
-    if (entry.status === 'superseded') return { ...row, status: 'stale', reason: `superseded by ${entry.superseded_by}` };
-    if (staleness(entry, schema, new Date(now))) return { ...row, status: 'stale' };
-    return unverified.has(entry.id) ? { ...row, unverified: true } : row;
-  };
-  return citations.map((c) => {
-    if (c.type !== 'url') {
-      const entry = byId.get(c.value);
-      return entry ? rowFor(c, entry) : { type: c.type, value: c.value, status: 'uncovered' };
-    }
-    let norm = null;
-    try { norm = normalizeUrl(c.value); } catch { norm = null; }
-    const all = (norm && byUrl.get(norm)) || [];
-    if (!all.length) return { type: c.type, value: c.value, status: 'uncovered' };
-    const active = all.filter((e) => e.status !== 'superseded');
-    const rows = (active.length ? active : all).sort((a, b) => a.id.localeCompare(b.id)).map((e) => rowFor(c, e));
-    const best = rows.findLast((r) => r.status === 'ok') ?? rows.at(-1);
-    return active.length > 1 ? { ...best, candidates: rows.map((r) => r.id) } : best;
-  });
-}
+export { checkCitations };
 
 // The mark beside an ambiguous row's other reason, in the text output and the report.
 // Text and report values from entries (ids, volatility, a reason such as `superseded by <id>`) pass

@@ -2,7 +2,11 @@
 // against the vault. Two citation forms: external URLs (bare or inside a markdown
 // link) and date-prefixed vault ids (the filename-is-id convention, e.g. in an
 // Obsidian [[wikilink]] or inline). URLs and ids inside fenced code blocks and inline
-// code spans are examples, not citations. Stdlib-only, no parsing dependency.
+// code spans are examples, not citations.
+// Classify citations against the manifest's entries (checkCitations).
+// Stdlib-only, no parsing dependency.
+import { normalizeUrl } from './ids.mjs';
+import { staleness } from './stale.mjs';
 
 // URLs stop at whitespace, closing paren/bracket/angle, and quotes — so the URL
 // inside [label](url) is captured cleanly. Trailing sentence punctuation and a stray
@@ -77,4 +81,41 @@ export function extractCitationsDetailed(text) {
 
 export function extractCitations(text) {
   return extractCitationsDetailed(text).citations;
+}
+
+// Pure: classify each citation as ok | stale | uncovered against the manifest entries. A superseded
+// entry is stale for prose as it is for code (spec 15 D3), with its replacement as the reason.
+// An ok row whose entry is in `unverified` (ids of sources nobody checked independently) carries
+// `unverified: true`: marked, never failed.
+// A URL is keyed as capture keys it (normalizeUrl; the manifest stores source_url normalized). Its
+// candidates are its entries that are not superseded, or all of them when every one is; the row is the
+// best candidate's (ok before stale, then the latest id), and two or more active candidates are listed
+// in `candidates`: reported, never failed.
+export function checkCitations(citations, entries, schema, now, unverified = new Set()) {
+  const byUrl = new Map();
+  const byId = new Map();
+  for (const e of entries) {
+    if (e.source_url) byUrl.set(e.source_url, [...(byUrl.get(e.source_url) ?? []), e]);
+    byId.set(e.id, e);
+  }
+  const rowFor = (c, entry) => {
+    const row = { type: c.type, value: c.value, status: 'ok', id: entry.id, volatility: entry.volatility };
+    if (entry.status === 'superseded') return { ...row, status: 'stale', reason: `superseded by ${entry.superseded_by}` };
+    if (staleness(entry, schema, new Date(now))) return { ...row, status: 'stale' };
+    return unverified.has(entry.id) ? { ...row, unverified: true } : row;
+  };
+  return citations.map((c) => {
+    if (c.type !== 'url') {
+      const entry = byId.get(c.value);
+      return entry ? rowFor(c, entry) : { type: c.type, value: c.value, status: 'uncovered' };
+    }
+    let norm = null;
+    try { norm = normalizeUrl(c.value); } catch { norm = null; }
+    const all = (norm && byUrl.get(norm)) || [];
+    if (!all.length) return { type: c.type, value: c.value, status: 'uncovered' };
+    const active = all.filter((e) => e.status !== 'superseded');
+    const rows = (active.length ? active : all).sort((a, b) => a.id.localeCompare(b.id)).map((e) => rowFor(c, e));
+    const best = rows.findLast((r) => r.status === 'ok') ?? rows.at(-1);
+    return active.length > 1 ? { ...best, candidates: rows.map((r) => r.id) } : best;
+  });
 }

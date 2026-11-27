@@ -3,9 +3,8 @@
 import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { parseFrontmatter } from './frontmatter.mjs';
-import { checkCitations } from '../commands/check.mjs';
 import { matchRows } from '../commands/search.mjs';
-import { extractCitations, SPAN_RE } from './citations.mjs';
+import { checkCitations, extractCitations, SPAN_RE } from './citations.mjs';
 import { isInsideVault, mayBeInside } from './containment.mjs';
 import { traverse } from './graph.mjs';
 import {

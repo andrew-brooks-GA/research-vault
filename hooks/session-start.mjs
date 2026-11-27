@@ -14,8 +14,7 @@ import { buildManifest } from '../bin/lib/manifest.mjs';
 import { listStale } from '../bin/lib/stale.mjs';
 import { findWorkspaces, reviewerHash, contentHash } from '../bin/lib/gate.mjs';
 import { runGit } from '../bin/lib/git.mjs';
-import { checkCitations } from '../bin/commands/check.mjs';
-import { extractCitations } from '../bin/lib/citations.mjs';
+import { checkCitations, extractCitations } from '../bin/lib/citations.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
 import { teachIndex, taskSummary, isTaskAttempt } from '../bin/lib/teach.mjs';
 
