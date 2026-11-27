@@ -1,8 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { posix } from 'node:path';
-import { build, context, COUPLINGS, extract, EXTRACTED, IGNORED } from '../scripts/deps.mjs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join, posix } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { gitInvocation } from '../bin/lib/git.mjs';
+import { build, context, COUPLINGS, dependents, extensionOf, extract, EXTRACTED, IGNORED } from '../scripts/deps.mjs';
+import { testEnv, tmpVault } from './helpers.mjs';
 
 const ctx = context();
 
@@ -71,9 +75,219 @@ test('running prose and the plugin name are not invocations', () => {
   assert.deepEqual(edges.filter((e) => e.kind === 'invokes-cli'), []);
 });
 
-test('every extension in the tree is extracted or ignored', () => {
-  for (const f of ctx.files) {
-    const e = posix.extname(f);
+function assertKnownExtensions(files) {
+  for (const f of files) {
+    const e = extensionOf(f);
     assert.ok(EXTRACTED.has(e) || IGNORED.has(e), `${f}: add ${JSON.stringify(e)} to EXTRACTED or IGNORED in scripts/deps.mjs`);
   }
+}
+
+test('every extension in the tree is extracted or ignored', () => {
+  assertKnownExtensions(ctx.files);
+});
+
+for (const ext of ['.d.ts', '.d.mts']) {
+  test(`the extension guard accepts ${ext} declaration files`, () => {
+    assert.doesNotThrow(() => assertKnownExtensions([`bin/types${ext}`]));
+  });
+}
+
+test('the extension guard rejects an unclassified extension', () => {
+  assert.throws(() => assertKnownExtensions(['bin/source.xyz']), {
+    message: 'bin/source.xyz: add ".xyz" to EXTRACTED or IGNORED in scripts/deps.mjs',
+  });
+});
+
+test('a TypeScript file imports a JavaScript module', () => {
+  assert.deepEqual(extract('bin/x.ts', "import './y.mjs';", ctx), [
+    { from: 'bin/x.ts', kind: 'import', to: 'bin/y.mjs' },
+  ]);
+});
+
+test('a TypeScript module lists its TypeScript importer as a dependent', () => {
+  const edges = extract('bin/y.ts', "import './x.ts';", ctx);
+  assert.deepEqual(dependents('bin/x.ts', { edges }), ['import bin/y.ts']);
+});
+
+for (const [name, source] of [
+  ['an import type declaration', "import type { T } from './x.ts';"],
+  ['an import with inline type and value specifiers', "import { type T, v } from './x.ts';"],
+  ['an export type declaration', "export type { T } from './x.ts';"],
+  ['a multiline TypeScript import', "import {\n  T,\n  v,\n} from\n  './x.ts';"],
+]) {
+  test(`${name} adds an import edge`, () => {
+    assert.deepEqual(extract('bin/y.ts', source, ctx), [
+      { from: 'bin/y.ts', kind: 'import', to: 'bin/x.ts' },
+    ]);
+  });
+}
+
+test('a TypeScript module adds a reads edge for a joined path', () => {
+  assert.deepEqual(extract('bin/x.ts', "join(root, 'schema', 'x.json')", ctx), [
+    { from: 'bin/x.ts', kind: 'reads', to: 'schema/x.json' },
+  ]);
+});
+
+test('a .js module skips reads edges for a joined path', () => {
+  assert.deepEqual(extract('bin/x.js', "join(root, 'schema', 'x.json')", ctx), []);
+});
+
+test('a quoted TypeScript path under a top-level directory adds a reads edge', () => {
+  assert.deepEqual(extract('bin/x.mjs', "read('schema/x.ts')", ctx), [
+    { from: 'bin/x.mjs', kind: 'reads', to: 'schema/x.ts' },
+  ]);
+});
+
+test('a document code region invoking the TypeScript entry adds an invokes-cli edge', () => {
+  const edges = extract('docs/X.md', '`node bin/research-vault.ts init`', ctx);
+  assert.deepEqual(edges.filter(({ kind }) => kind === 'invokes-cli'), [
+    { from: 'docs/X.md', kind: 'invokes-cli', to: 'cli:init' },
+  ]);
+});
+
+function buildFixture(entries) {
+  const sources = new Map(entries);
+  return build({ ...ctx, files: [...sources.keys()], commands: [], scripts: [] }, (file) => sources.get(file));
+}
+
+test('a missing TypeScript import fails the dependency check', () => {
+  const { broken } = buildFixture([['bin/source.ts', "import './missing.ts';"]]);
+  assert.deepEqual(broken.filter(({ kind }) => kind === 'import'), [
+    { from: 'bin/source.ts', kind: 'import', to: 'bin/missing.ts' },
+  ]);
+});
+
+test('declaration files contribute no outgoing edges to the dependency graph', () => {
+  const { edges } = buildFixture([
+    ['bin/types.d.ts', "export type { Other } from './other.ts';"],
+    ['bin/types.d.mts', "export type { Other } from './other.ts';"],
+  ]);
+  assert.deepEqual(edges.filter(({ from }) => from.startsWith('bin/types.')), []);
+});
+
+function repoFixture(t, sources) {
+  const cwd = tmpVault('rv-deps-fixture-');
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const invocation = gitInvocation(['init', '-q'], { cwd });
+  execFileSync('git', invocation.args, { ...invocation.options, env: testEnv() });
+  for (const [file, source] of Object.entries(sources)) {
+    mkdirSync(join(cwd, posix.dirname(file)), { recursive: true });
+    writeFileSync(join(cwd, file), source);
+  }
+  for (const file of ['bin/lib/git.mjs', 'scripts/deps.mjs']) {
+    mkdirSync(join(cwd, posix.dirname(file)), { recursive: true });
+    cpSync(new URL(`../${file}`, import.meta.url), join(cwd, file));
+  }
+  return join(cwd, 'scripts/deps.mjs');
+}
+
+function cliFixture(t, sources) {
+  const script = repoFixture(t, { 'package.json': '{}', ...sources });
+  return import(pathToFileURL(script));
+}
+
+test('a CLI command dispatches to the TypeScript file in the entry map', { timeout: 30000 }, async (t) => {
+  const { build } = await cliFixture(t, {
+    'bin/research-vault.ts': "  related: () => import('./commands/related.ts'),",
+    'bin/commands/related.ts': '',
+  });
+  const { edges } = build();
+  assert.deepEqual(edges.filter(({ kind }) => kind === 'dispatches'), [
+    { from: 'cli:related', kind: 'dispatches', to: 'bin/commands/related.ts' },
+  ]);
+});
+
+test('a documented option read by a TypeScript command is accepted', { timeout: 30000 }, async (t) => {
+  const { build, context } = await cliFixture(t, {
+    'bin/research-vault.mjs': "  related: () => import('./commands/related.ts'),",
+    'bin/commands/related.ts': 'const depth = args.depth;',
+    'docs/commands.md': '`research-vault related --depth 2`',
+  });
+  const ctx = context();
+  assert.deepEqual(ctx.flags.related, new Set(['depth']));
+  const { edges } = build(ctx);
+  assert.deepEqual(edges.filter(({ kind }) => kind === 'invokes-cli'), [
+    { from: 'docs/commands.md', kind: 'invokes-cli', to: 'cli:related' },
+  ]);
+});
+
+test('an args.ts comment does not make --ts a known option', { timeout: 30000 }, async (t) => {
+  const { build } = await cliFixture(t, {
+    'bin/research-vault.mjs': "  related: () => import('./commands/related.mjs'),",
+    'bin/commands/related.mjs': '// See args.ts for argument parsing.',
+    'docs/commands.md': '`research-vault related --ts`',
+  });
+  const { broken } = build();
+  assert.deepEqual(broken.filter(({ kind }) => kind === 'invokes-cli'), [
+    { from: 'docs/commands.md', kind: 'invokes-cli', to: 'cli:related --ts' },
+  ]);
+});
+
+test('the dispatch map comes from the TypeScript entry when present and the .mjs entry otherwise', { timeout: 30000 }, async (t) => {
+  const withLauncher = await cliFixture(t, {
+    'bin/research-vault.mjs': "import './research-vault.ts';",
+    'bin/research-vault.ts': "  related: () => import('./commands/related.ts'),",
+    'bin/commands/related.ts': '',
+  });
+  assert.deepEqual(withLauncher.context().commands, ['related']);
+
+  const withoutTypeScript = await cliFixture(t, {
+    'bin/research-vault.mjs': "  init: () => import('./commands/init.mjs'),",
+    'bin/commands/init.mjs': '',
+  });
+  assert.deepEqual(withoutTypeScript.context().commands, ['init']);
+});
+
+function order(script = fileURLToPath(new URL('../scripts/deps.mjs', import.meta.url))) {
+  return spawnSync(process.execPath, [script, '--order'], {
+    env: testEnv(), encoding: 'utf8', timeout: 20000,
+  });
+}
+
+test('--order prints exact import levels and sorts paths within a level', { timeout: 30000 }, (t) => {
+  const result = order(repoFixture(t, {
+    'bin/a.ts': "import './b.mjs';\nimport './Z.ts';",
+    'bin/b.mjs': 'export const b = 1;',
+    'bin/Y.js': '',
+    'bin/Z.ts': "import type { T } from './c.ts';",
+    'bin/c.ts': "import './types.d.ts';\nimport './types.d.mts';\nimport '../test/helper.mjs';\nimport 'node:fs';",
+    'bin/d.js': '',
+    'bin/types.d.ts': "export type { T } from './a.ts';",
+    'bin/types.d.mts': "export type { T } from './a.ts';",
+    'test/helper.mjs': "import '../bin/a.ts';",
+  }));
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, [
+    '0\tbin/Y.js', '0\tbin/b.mjs', '0\tbin/c.ts', '0\tbin/d.js', '0\tbin/lib/git.mjs',
+    '1\tbin/Z.ts', '1\tscripts/deps.mjs', '2\tbin/a.ts', '',
+  ].join('\n'));
+});
+
+test('--order refuses cycles and reports each sorted import group once', { timeout: 30000 }, (t) => {
+  const result = order(repoFixture(t, {
+    'bin/z.mjs': "import './z.mjs';",
+    'bin/b.mjs': "import './a.ts';\nimport './c.ts';\nimport './z.mjs';",
+    'bin/c.ts': "import './b.mjs';",
+    'bin/a.ts': "import './b.mjs';",
+    'bin/consumer.mjs': "import './a.ts';",
+    'bin/leaf.mjs': '',
+  }));
+  assert.equal(result.status, 1, result.stderr);
+  assert.equal(result.stdout, '');
+  assert.equal(result.stderr, 'Cyclic import groups:\nbin/a.ts, bin/b.mjs, bin/c.ts\nbin/z.mjs\n');
+});
+
+test('--order lists the real code files once and puts each importer above its dependencies', { timeout: 30000 }, () => {
+  const result = order();
+  assert.equal(result.status, 0, result.stderr);
+  const lines = result.stdout.trimEnd().split('\n').map((line) => line.split('\t'));
+  const expectedFiles = ctx.files.filter((file) => /^(bin|hooks|scripts|skills)\/.*\.(mjs|js|ts)$/.test(file) && !file.endsWith('.d.ts'));
+  assert.deepEqual(lines.map(([, file]) => file).sort(), expectedFiles);
+  const levels = new Map(lines.map(([level, file]) => [file, Number(level)]));
+  for (const { kind, from, to } of build(ctx).edges) {
+    if (kind === 'import' && levels.has(from) && levels.has(to)) {
+      assert.ok(levels.get(from) > levels.get(to), `${from} must follow ${to}`);
+    }
+  }
+  assert.ok(levels.get('scripts/deps.mjs') > levels.get('bin/lib/git.mjs'));
 });

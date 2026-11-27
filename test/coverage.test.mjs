@@ -10,7 +10,12 @@ import { testEnv, tmpVault } from './helpers.mjs';
 const codeDir = 'bin', testDir = 'test';
 const imports = (cwd, names) => names.map((name) => `import ${JSON.stringify(pathToFileURL(join(cwd, codeDir, name)).href)};\n`).join('');
 
-function fixture(t) {
+function git(cwd, ...args) {
+  const invocation = gitInvocation(args, { cwd });
+  return execFileSync('git', invocation.args, { ...invocation.options, env: testEnv() });
+}
+
+function fixture(t, extraCode = {}) {
   const cwd = tmpVault('rv-coverage-fixture-');
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   mkdirSync(join(cwd, codeDir));
@@ -19,16 +24,13 @@ function fixture(t) {
   for (const name of ['taxonomy.json', 'frontmatter.schema.json', 'AGENTS.golden.md']) {
     cpSync(new URL(`../schema/${name}`, import.meta.url), join(cwd, 'schema', name));
   }
-  const git = (...args) => {
-    const invocation = gitInvocation(args, { cwd });
-    return execFileSync('git', invocation.args, { ...invocation.options, env: testEnv() });
-  };
-  git('init', '-q');
+  git(cwd, 'init', '-q');
   writeFileSync(join(cwd, codeDir, 'a.mjs'), 'export const a = 1;\n');
   // Loading a module with an uncalled function must pass: no percentage floor.
   writeFileSync(join(cwd, codeDir, 'b.mjs'), 'export function b() { return 2; }\n');
+  for (const [name, source] of Object.entries(extraCode)) writeFileSync(join(cwd, codeDir, name), source);
   writeFileSync(join(cwd, join(testDir, 'fixture.test.mjs')), imports(cwd, ['a.mjs']));
-  git('add', '--', codeDir, testDir);
+  git(cwd, 'add', '--', codeDir, testDir);
   return cwd;
 }
 function run(cwd, script, args = []) {
@@ -55,6 +57,31 @@ test('coverage passes for a loaded file with an uncalled function', { timeout: 3
   assert.match(loaded.stdout, /TOTAL \(loaded code files\)/);
 });
 
+test('coverage requires a tracked TypeScript module to be loaded', { timeout: 30000 }, (t) => {
+  const cwd = fixture(t, { 'value.ts': 'export const value: number = 1;\n' });
+  writeFileSync(join(cwd, testDir, 'fixture.test.mjs'), imports(cwd, ['a.mjs', 'b.mjs']));
+  const result = run(cwd, 'coverage.mjs');
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /^Loaded by no test:\nbin\/value.ts\n$/m);
+});
+
+test('coverage reports a directly imported TypeScript module under its source path', { timeout: 30000 }, (t) => {
+  const cwd = fixture(t, { 'value.ts': 'export const value: number = 1;\n' });
+  writeFileSync(join(cwd, testDir, 'fixture.test.mjs'), imports(cwd, ['a.mjs', 'b.mjs', 'value.ts']));
+  const result = run(cwd, 'coverage.mjs');
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /^bin\/value.ts \| 100\.00%/m);
+});
+
+test('coverage omits .d.ts declarations from the code file list', { timeout: 30000 }, (t) => {
+  const cwd = fixture(t, { 'types.d.ts': 'export declare const x: number;\n' });
+  writeFileSync(join(cwd, testDir, 'fixture.test.mjs'), imports(cwd, ['a.mjs', 'b.mjs']));
+  const result = run(cwd, 'coverage.mjs');
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const files = result.stdout.split('\n').filter((line) => line.startsWith('bin/')).map((line) => line.split(' | ')[0]);
+  assert.deepEqual(files, [`${codeDir}/a.mjs`, `${codeDir}/b.mjs`]);
+});
+
 test('coverage preserves the runner status when no coverage data was written', { timeout: 30000 }, (t) => {
   const result = run(fixture(t), 'coverage.mjs', ['--bogus-flag']);
   assert.equal(result.status, 9, result.stdout + result.stderr);
@@ -68,8 +95,7 @@ test('coverage excludes an unimported browser bundle from the full-run gate', { 
   const excluded = 'skills/research-teach/terminal/xterm.mjs';
   mkdirSync(join(cwd, 'skills/research-teach/terminal'), { recursive: true });
   writeFileSync(join(cwd, excluded), 'export const browserBundle = true;\n');
-  const invocation = gitInvocation(['add', '--', excluded], { cwd });
-  execFileSync('git', invocation.args, { ...invocation.options, env: testEnv() });
+  git(cwd, 'add', '--', excluded);
   writeFileSync(join(cwd, join(testDir, 'fixture.test.mjs')), imports(cwd, ['a.mjs', 'b.mjs']));
   const result = run(cwd, 'coverage.mjs');
   assert.equal(result.status, 0, result.stdout + result.stderr);
@@ -113,4 +139,20 @@ test('encoding command rejects a tracked BOM without rewriting it', { timeout: 3
   assert.equal(result.status, 1);
   assert.match(result.stderr, /^BOM: bin\/a.mjs$/m);
   assert.deepEqual(readFileSync(file), bytes);
+});
+
+test('encoding command reports the filename of a tracked TypeScript BOM', { timeout: 30000 }, (t) => {
+  const bytes = Buffer.from('\uFEFFexport const value: number = 1;\n');
+  const cwd = fixture(t, { 'value.ts': bytes });
+  const result = run(cwd, 'check-encoding.mjs');
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /^BOM: bin\/value.ts$/m);
+  assert.deepEqual(readFileSync(join(cwd, codeDir, 'value.ts')), bytes);
+});
+
+test('repository attributes apply text auto and LF to a TypeScript file', { timeout: 30000 }, (t) => {
+  const cwd = fixture(t, { 'value.ts': 'export const value: number = 1;\n' });
+  cpSync(new URL('../.gitattributes', import.meta.url), join(cwd, '.gitattributes'));
+  assert.equal(git(cwd, 'check-attr', 'text', 'eol', '--', `${codeDir}/value.ts`),
+    'bin/value.ts: text: auto\nbin/value.ts: eol: lf\n');
 });

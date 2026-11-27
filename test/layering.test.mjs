@@ -3,12 +3,13 @@
 // scripts/deps.mjs, does not scan its own imports.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { build, context } from '../scripts/deps.mjs';
+import { build, context, isCodeFile } from '../scripts/deps.mjs';
 
-const inGraph = /^(?:bin|hooks|scripts)\/.*\.m?js$/;
+const inGraph = (file) => /^(?:bin|hooks|scripts)\//.test(file) && isCodeFile(file);
 const { nodes, edges } = build(context());
-const imports = edges.filter(({ kind, from, to }) =>
-  kind === 'import' && inGraph.test(from) && !to.startsWith('node:'));
+const graphImports = (edges) => edges.filter(({ kind, from, to }) =>
+  kind === 'import' && inGraph(from) && !to.startsWith('node:'));
+const imports = graphImports(edges);
 const isLib = (file) => file.startsWith('bin/lib/');
 const isCommand = (file) => file.startsWith('bin/commands/');
 const isOtherBinFile = (file) => file.startsWith('bin/') && !isLib(file) && !isCommand(file);
@@ -31,7 +32,7 @@ function exampleCycle(start, group, outgoing) {
 }
 
 function cyclicImportGroups() {
-  const edges = imports.filter(({ to }) => inGraph.test(to));
+  const edges = imports.filter(({ to }) => inGraph(to));
   const outgoing = Map.groupBy(edges, ({ from }) => from);
   const incoming = Map.groupBy(edges, ({ to }) => to);
   const visited = new Set();
@@ -76,10 +77,12 @@ function cyclicImportGroups() {
   return groups.sort();
 }
 
-function forbiddenImports(source, allowed) {
-  return imports.filter(({ from, to }) => source(from) && !allowed(to))
+function forbiddenImports(source, allowed, list = imports) {
+  return list.filter(({ from, to }) => source(from) && !allowed(to))
     .map(({ from, to }) => `${from} -> ${to}`).sort();
 }
+
+const libraryViolations = (list) => forbiddenImports(isLib, (to) => isLib(to) || to === 'skills/research-teach/assets/quiz.js', list);
 
 test('imports among code files in bin, hooks and scripts are acyclic', () => {
   const groups = cyclicImportGroups();
@@ -87,8 +90,18 @@ test('imports among code files in bin, hooks and scripts are acyclic', () => {
 });
 
 test('library code imports only library code and the browser quiz', () => {
-  const violations = forbiddenImports(isLib, (to) => isLib(to) || to === 'skills/research-teach/assets/quiz.js');
+  const violations = libraryViolations(imports);
   assert.equal(violations.length, 0, ['Forbidden library imports:', ...violations].join('\n'));
+});
+
+test('the library rule reports a TypeScript import of a command', () => {
+  const imports = graphImports([{ kind: 'import', from: "bin/lib/x.ts", to: "bin/commands/y.ts" }]);
+  assert.deepEqual(libraryViolations(imports), ["bin/lib/x.ts -> bin/commands/y.ts"]);
+});
+
+test('the layering rules receive no imports from declaration files', () => {
+  const imports = graphImports([{ kind: 'import', from: "bin/lib/x.d.ts", to: "bin/commands/y.ts" }]);
+  assert.deepEqual(imports, []);
 });
 
 test('commands import only library code', () => {
@@ -124,6 +137,6 @@ test('the graph has import edges from library code, commands, hooks and scripts'
 });
 
 test('the CLI entry is the only graph file in bin outside bin/lib and bin/commands', () => {
-  const files = [...nodes].filter((file) => inGraph.test(file) && isOtherBinFile(file));
-  assert.deepEqual(files, ['bin/research-vault.mjs']);
+  const files = [...nodes].filter((file) => inGraph(file) && isOtherBinFile(file));
+  assert.deepEqual(files.map((file) => file.replace(/\.ts$/, '.mjs')), ['bin/research-vault.mjs']);
 });

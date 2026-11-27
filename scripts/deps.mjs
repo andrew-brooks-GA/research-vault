@@ -4,17 +4,20 @@
 //   node scripts/deps.mjs          print every broken edge as `<kind> <from> -> <to>`, exit 1 if any
 //   node scripts/deps.mjs <id>     distance-1 dependents of a file, cli:<cmd> or npm:<script>
 //   node scripts/deps.mjs --hook   PostToolUse: additionalContext naming the edited file's dependents
+//   node scripts/deps.mjs --order  leaves-first import levels as `<level><TAB><path>`, exit 1 on a cycle
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, posix, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runGit } from '../bin/lib/git.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const DOC_EXT = 'mjs|js|md|json|yml|css|html';
+const CODE_EXT = ['.mjs', '.js', '.ts'];
+const READ_EXT = 'mjs|js|ts|d\\.mts|md|json|yml';
+const DOC_EXT = `${READ_EXT}|css|html`;
 // Every extension in the tree must be in one of these two sets (test/deps.test.mjs). '' is the
 // extensionless bin/research-vault shim; dotfiles and LICENSE share it and yield nothing.
-export const EXTRACTED = new Set(['.mjs', '.js', '.md', '.yml', '.json', '']);
-export const IGNORED = new Set(['.cast', '.css', '.html', '.sh']);
+export const EXTRACTED = new Set([...CODE_EXT, '.md', '.yml', '.json', '']);
+export const IGNORED = new Set(['.cast', '.css', '.html', '.sh', '.d.ts', '.d.mts']);
 // Files no extractor reads: release history legitimately names removed files; the other two quote
 // every syntax (COUPLINGS rows are couples edges, the sample table is test input).
 const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.mjs']);
@@ -88,6 +91,9 @@ export const COUPLINGS = [
   ['bin/commands/init.mjs', 'bin/commands/trust.mjs', 'the acknowledgement remedy names research-vault trust', 'research-vault trust'],
   ['scripts/coverage.mjs', 'docs/REFERENCE.md', 'coverage percentages, exclusions and partial-run policy'],
   ['scripts/coverage.mjs', 'AGENTS.md', 'new code must be loaded by a test'],
+  ['scripts/deps.mjs', 'scripts/coverage.mjs', 'the order and coverage start from the same code extensions and source directories'],
+  ['scripts/deps.mjs', 'test/deps.test.mjs', 'the order command reports tab-separated levels and sorted import cycle groups'],
+  ['.gitattributes', 'test/coverage.test.mjs', 'the fixture checks the default text and line-ending attributes for TypeScript'],
   ['scripts/check-agentsmd-drift.mjs', 'test/coverage.test.mjs', 'command fixture checks the drift diagnostic and leaves the golden unchanged', 'AGENTS.md drift: generator output differs'],
   ['scripts/check-encoding.mjs', 'test/coverage.test.mjs', 'command fixture checks the BOM diagnostic and leaves the file unchanged', 'BOM: '],
   ['scripts/coverage.mjs', 'test/coverage.test.mjs', 'lcov table and missing-file and partial-run diagnostics'],
@@ -541,10 +547,12 @@ export const COUPLINGS = [
 ];
 
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const ext = f => posix.extname(f);
+export const extensionOf = f => /\.d\.m?ts$/.exec(f)?.[0] ?? posix.extname(f);
+export const isCodeFile = f => CODE_EXT.includes(extensionOf(f));
 const read = f => readFileSync(join(REPO_ROOT, f), 'utf8');
 const lsFiles = (...flags) => runGit(['ls-files', '-z', '--exclude-standard', ...flags], { processCwd: REPO_ROOT, timeout: 0, stderr: 'inherit' }).split('\0').filter(Boolean);
 const fmName = text => text.match(/^---\n[\s\S]*?^name:\s*(\S+)/m)?.[1];
+// The `from` alternative covers type-only imports and re-exports, including across lines.
 const IMPORT_RE = /(?:\bfrom\s*|\bimport\s*\(?\s*)['"](\.{1,2}\/[^'"]+)['"]/g;
 const imports = (file, text) => [...text.matchAll(IMPORT_RE)].map(m => posix.normalize(posix.join(posix.dirname(file), m[1])));
 
@@ -553,18 +561,26 @@ const imports = (file, text) => [...text.matchAll(IMPORT_RE)].map(m => posix.nor
 // ponytail: a flag read by a shared lib module is accepted for every command importing it, and a
 // boolean flag missing from BOOL in bin/lib/args.mjs is not detected.
 function flagsOf(file) {
-  if (!existsSync(join(REPO_ROOT, file))) return new Set();
+  if (!isCodeFile(file) || !existsSync(join(REPO_ROOT, file))) return new Set();
   const text = read(file);
-  const libs = imports(file, text).filter(t => t.startsWith('bin/lib/') && existsSync(join(REPO_ROOT, t)));
-  return new Set([text, ...libs.map(read)].flatMap(t => [...t.matchAll(/\bargs(?:\.([\w$]+)|\['([^']+)'\])/g)].map(m => m[1] ?? m[2]).filter(f => f !== 'mjs')));
+  const libs = imports(file, text).filter(t => t.startsWith('bin/lib/') && isCodeFile(t) && existsSync(join(REPO_ROOT, t)));
+  // A mention of args.mjs or args.ts in a comment is not an option read.
+  return new Set([text, ...libs.map(read)].flatMap(t => [...t.matchAll(/\bargs(?:\.([\w$]+)|\['([^']+)'\])/g)].map(m => m[1] ?? m[2]).filter(f => f !== 'mjs' && f !== 'ts')));
 }
 
 // The universe: tracked and untracked files that are not ignored and still exist (a tracked file
 // that .gitignore lists, such as a force-added spec, is ignored too). Names resolve from files.
-export function context() {
+function repoFiles() {
   const ignored = new Set(lsFiles('--cached', '--ignored'));
-  const files = lsFiles('--cached', '--others').filter(f => !ignored.has(f) && existsSync(join(REPO_ROOT, f))).sort();
-  const commands = [...read('bin/research-vault.mjs').matchAll(/^\s+(\w+): \(\) => import\(/gm)].map(m => m[1]);
+  return lsFiles('--cached', '--others').filter(f => !ignored.has(f) && existsSync(join(REPO_ROOT, f))).sort();
+}
+
+export function context() {
+  const files = repoFiles();
+  const entry = files.includes('bin/research-vault.ts') ? 'bin/research-vault.ts' : 'bin/research-vault.mjs';
+  const dispatches = read(entry).matchAll(/^\s+(\w+): \(\) => import\(\s*['"](\.{1,2}\/[^'"]+)['"]/gm);
+  const commandFiles = Object.fromEntries([...dispatches].map(([, cmd, path]) => [cmd, posix.join(posix.dirname(entry), path)]));
+  const commands = Object.keys(commandFiles);
   const scripts = Object.keys(JSON.parse(read('package.json')).scripts ?? {});
   const names = {};
   for (const f of files) {
@@ -574,8 +590,8 @@ export function context() {
   }
   const topDirs = [...new Set(files.filter(f => f.includes('/')).map(f => f.split('/')[0]))];
   const rootFiles = files.filter(f => !f.includes('/'));
-  const flags = Object.fromEntries(commands.map(c => [c, flagsOf(`bin/commands/${c}.mjs`)]));
-  return { files, commands, scripts, names, topDirs, rootFiles, flags };
+  const flags = Object.fromEntries(commands.map(c => [c, flagsOf(commandFiles[c])]));
+  return { files, commands, commandFiles, scripts, names, topDirs, rootFiles, flags };
 }
 
 // A quoted top-level directory as a call argument followed by further quoted segments (the join(root,
@@ -586,7 +602,7 @@ function reads(text, ctx) {
   const dirs = ctx.topDirs.filter(d => d !== 'docs').map(esc).join('|');
   const out = [...text.matchAll(new RegExp(`(?<=[(,]\\s*)'(${dirs})'((?:,\\s*'[^']+')*)`, 'g'))]
     .map(m => posix.join(m[1], ...[...m[2].matchAll(/'([^']+)'/g)].map(x => x[1])));
-  out.push(...[...text.matchAll(new RegExp(`'((?:${dirs})/[^'\\n*]*\\.(?:mjs|js|md|json|yml))'`, 'g'))].map(m => m[1]));
+  out.push(...[...text.matchAll(new RegExp(`'((?:${dirs})/[^'\\n*]*\\.(?:${READ_EXT}))'`, 'g'))].map(m => m[1]));
   return out.flatMap(p => { const under = ctx.files.filter(f => f.startsWith(p + '/')); return under.length ? under : [p]; });
 }
 
@@ -604,7 +620,7 @@ function documents(file, text, ctx) {
 // Code regions: inline spans and fenced lines in markdown, lines (minus the key) in YAML, string
 // values in JSON. Running prose is never an invocation.
 function codeRegions(file, text) {
-  const e = ext(file);
+  const e = extensionOf(file);
   // A JSON string is code when it is a command line; titles and descriptions are prose.
   if (e === '.json') return [...text.matchAll(/"((?:\$|node)\s(?:[^"\\]|\\.)*)"/g)].map(m => m[1]);
   if (e === '.yml') return text.split('\n').map(l => l.replace(/^\s*(?:-\s*)?[\w-]+:\s*/, ''));
@@ -614,9 +630,9 @@ function codeRegions(file, text) {
   return out;
 }
 
-// An invocation starts its region: `research-vault <cmd>`, `research-vault.mjs <cmd>`,
-// `research-vault.mjs" <cmd>` after an optional `$`, `node` and path, or a bare command word.
-const CLI_RE = /^(?:\$\s+)?(?:node\s+)?(?:"?[^\s"]*\/)?research-vault(?:\.mjs"?)?\s+(\S+)(.*)$/;
+// An invocation starts its region: `research-vault <cmd>` or `research-vault.mjs <cmd>` (also
+// `.ts`), after an optional `$`, `node` and path, or a bare command word.
+const CLI_RE = /^(?:\$\s+)?(?:node\s+)?(?:"?[^\s"]*\/)?research-vault(?:\.(?:mjs|ts)"?)?\s+(\S+)(.*)$/;
 function invocation(region, ctx) {
   const m = region.trim().match(CLI_RE);
   if (m) return /^[<[-]/.test(m[1]) ? null : [m[1], m[2]]; // <command>, [options] and --help are not command words
@@ -626,12 +642,12 @@ function invocation(region, ctx) {
 
 // Every edge one file contributes. Exported so test/deps.test.mjs can feed it one syntax at a time.
 export function extract(file, text, ctx = context()) {
-  const e = ext(file), edges = [];
+  const e = extensionOf(file), edges = [];
   const add = (kind, to) => edges.push({ from: file, kind, to });
   if (UNSCANNED.has(file)) return edges;
-  if (e === '.mjs' || e === '.js') {
+  if (isCodeFile(file)) {
     for (const to of imports(file, text)) add(file.startsWith('test/') ? 'tests' : 'import', to);
-    if (e === '.mjs') for (const to of reads(text, ctx)) add('reads', to);
+    if (e !== '.js') for (const to of reads(text, ctx)) add('reads', to);
     return edges;
   }
   if (file === 'hooks/hooks.json') {
@@ -656,12 +672,12 @@ export function extract(file, text, ctx = context()) {
   return edges;
 }
 
-export function build(ctx = context()) {
+export function build(ctx = context(), readFile = read) {
   const nodes = new Set([...ctx.files, ...ctx.commands.map(c => `cli:${c}`), ...ctx.scripts.map(s => `npm:${s}`)]);
   const seen = new Set(), edges = [];
   const add = e => { const k = `${e.from}\0${e.kind}\0${e.to}`; if (!seen.has(k)) { seen.add(k); edges.push(e); } };
-  for (const f of ctx.files) if (EXTRACTED.has(ext(f))) for (const e of extract(f, read(f), ctx)) add(e);
-  for (const c of ctx.commands) add({ from: `cli:${c}`, kind: 'dispatches', to: `bin/commands/${c}.mjs` });
+  for (const f of ctx.files) if (EXTRACTED.has(extensionOf(f))) for (const e of extract(f, readFile(f), ctx)) add(e);
+  for (const c of ctx.commands) add({ from: `cli:${c}`, kind: 'dispatches', to: ctx.commandFiles[c] });
   for (const [a, b, why] of COUPLINGS) { add({ from: a, kind: 'couples', to: b, why }); add({ from: b, kind: 'couples', to: a, why }); }
   const broken = edges.filter(e => !nodes.has(e.to));
   return { nodes, edges, broken };
@@ -675,6 +691,56 @@ export function dependents(id, { edges }) {
     d.kinds.add(e.kind); d.why ??= e.why; by.set(e.from, d);
   }
   return [...by].sort(([a], [b]) => a < b ? -1 : 1).map(([from, d]) => `${[...d.kinds].sort().join(',')} ${from}${d.why ? `: ${d.why}` : ''}`);
+}
+
+// Tarjan's search emits strongly connected groups in dependency-first order.
+function importGroups(outgoing) {
+  const indices = new Map(), active = new Set(), stack = [], groups = [];
+  function visit(file) {
+    const index = indices.size;
+    indices.set(file, index);
+    active.add(file);
+    stack.push(file);
+    let low = index;
+    for (const to of outgoing.get(file)) {
+      if (!indices.has(to)) low = Math.min(low, visit(to));
+      else if (active.has(to)) low = Math.min(low, indices.get(to));
+    }
+    if (low === index) {
+      const group = [];
+      let member;
+      do {
+        member = stack.pop();
+        active.delete(member);
+        group.push(member);
+      } while (member !== file);
+      groups.push(group);
+    }
+    return low;
+  }
+  for (const file of outgoing.keys()) if (!indices.has(file)) visit(file);
+  return groups;
+}
+
+function printOrder() {
+  const files = repoFiles().filter(f => /^(?:bin|hooks|scripts|skills)\//.test(f) && isCodeFile(f));
+  const code = new Set(files);
+  // Read imports directly so the order includes this script's imports despite UNSCANNED.
+  const outgoing = new Map(files.map(f => [f, imports(f, read(f)).filter(to => code.has(to))]));
+  const groups = importGroups(outgoing);
+  const cycles = groups.filter(([f, ...rest]) => rest.length || outgoing.get(f).includes(f))
+    .map(group => group.sort().join(', ')).sort();
+  if (cycles.length) {
+    console.error(['Cyclic import groups:', ...cycles].join('\n'));
+    return 1;
+  }
+  const levels = new Map();
+  for (const [file] of groups) {
+    levels.set(file, outgoing.get(file).reduce((level, to) => Math.max(level, levels.get(to) + 1), 0));
+  }
+  // The file list is already in code-unit order, which the stable sort preserves within levels.
+  for (const file of files.sort((a, b) => levels.get(a) - levels.get(b))) console.log(`${levels.get(file)}\t${file}`);
+  return 0;
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) {
@@ -691,6 +757,8 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
       } catch { /* never block edits */ }
       process.exit(0);
     });
+  } else if (arg === '--order') {
+    process.exitCode = printOrder();
   } else if (arg) {
     for (const line of dependents(arg, build())) console.log(line);
   } else {

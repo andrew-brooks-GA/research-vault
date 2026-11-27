@@ -14,7 +14,7 @@ const excluded = new Map([
 // test-*.mjs and files under test/). Empty files also have no lcov record.
 // Such code files would be reported as loaded by no test; none are tracked today.
 const files = runGit(['ls-files', '-z', '--', 'bin/', 'hooks/', 'scripts/', 'skills/'])
-  .split('\0').filter((file) => /\.(?:mjs|js)$/.test(file) && !excluded.has(file)).sort();
+  .split('\0').filter((file) => /\.(?:mjs|js|ts)$/.test(file) && !file.endsWith('.d.ts') && !excluded.has(file)).sort();
 const input = process.argv.slice(2);
 // Filters and other runner options can also narrow discovery; only a default run
 // can establish that the complete suite loads every file.
