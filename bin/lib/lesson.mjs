@@ -7,9 +7,8 @@ import { matchRows } from './manifest.mjs';
 import { checkCitations, extractCitations, SPAN_RE } from './citations.mjs';
 import { isInsideVault, mayBeInside } from './containment.mjs';
 import { traverse } from './graph.mjs';
-import {
-  extractQuizJson, extractCites, serveFile, validateEntry, ENUM_CODES, LESSON_ID_RE, RECORD_ID_RE, missionPrefs,
-} from './teach.mjs';
+import { extractQuizJson, extractCites, LESSON_ID_RE, RECORD_ID_RE } from './lesson-format.mjs';
+import { serveFile, validateEntry, ENUM_CODES, missionPrefs } from './teach.mjs';
 import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
 import { readLabs, labPin, lessonLab, sha256, LAB_MANIFEST } from './labs.mjs';
 import { scanCast, PLAYER_FILES, PLAYER_VERSION } from './cast.mjs';

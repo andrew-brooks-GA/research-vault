@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (R-05):** `LESSON_ID_RE`, `RECORD_ID_RE`, `extractQuizJson` and `extractCites` move from `bin/lib/teach.mjs` to the new `bin/lib/lesson-format.mjs`, a file that imports nothing, text unchanged; `labs.mjs`, `task.mjs`, `lesson.mjs` and the teach command import them from there, so `labs.mjs` no longer imports `teach.mjs`. `teach.mjs` re-exports the three names tests import from it. No behaviour changes.
+
 - **Changed (R-05):** `escapeHtml` and `show` move from `bin/lib/teach.mjs` to the new `bin/lib/escape.mjs`, a file that imports nothing, text unchanged; `bin/lib/brand.mjs`, `labs.mjs`, `task.mjs` and the teach command import them from there, so `brand.mjs` no longer imports `teach.mjs` and leaves the import cycle of `bin/lib`. No behaviour changes.
 
 - **Changed (R-05, R-21):** `embeddingGate` moves from `bin/commands/embed.mjs` to `bin/lib/embed.mjs`, text unchanged; `bin/commands/search.mjs` imports it from there and no longer imports the embed command. The refusals, their order and their messages are unchanged.

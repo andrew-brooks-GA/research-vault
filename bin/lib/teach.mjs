@@ -14,6 +14,7 @@ import { assertInsideWorkspaceFolder, escapePathControls, isInsideVault, isInsid
 import { expandFiles } from './files.mjs';
 import { grade, neighbours, pathPosition } from '../../skills/research-teach/assets/quiz.js';
 import { lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWUP, CONNECT_LEAD, imageTarget } from './lesson.mjs';
+import { LESSON_ID_RE, RECORD_ID_RE, extractCites } from './lesson-format.mjs';
 import { HEADING_RE, TABLE_SEP_RE, WORKSPACE_GATES, hasVerdict } from './gate.mjs';
 import { readLabs, lessonLab, labRunner, secretHits, labCookie, LAB_ACTIONS, LAB_BODY_MAX, LAB_ID_RE } from './labs.mjs';
 import { readBrand, withBrand, brandUrl } from './brand.mjs';
@@ -21,9 +22,9 @@ import { shellTerminal } from './terminal.mjs';
 import { screenText } from './screen.mjs';
 import { escapeHtml, show } from './escape.mjs';
 
+export { LESSON_ID_RE, RECORD_ID_RE, extractCites };
+
 export const ATTEMPT_BODY_MAX = 4096;
-export const LESSON_ID_RE = /^\d{4}-[a-z][a-z0-9-]*$/;
-export const RECORD_ID_RE = /^\d{4}-[a-z][a-z0-9-]*$/;
 export const ATTEMPT_ID_RE = /^a-\d{8}-\d{6}-\d{4}(?:-\d+)?$/;
 const TEACH_SCHEMA = loadTeachSchema(fileURLToPath(new URL('../..', import.meta.url)));
 export const STORED_DERIVED = TEACH_SCHEMA.derived_forbidden;
@@ -70,18 +71,6 @@ export function validateEntry(data, schema) {
 function assertValid(data, schema) {
   const msgs = validateEntry(data, schema);
   if (msgs.length) throw new Error(msgs.join('; '));
-}
-
-// HTML extraction (regex; lessons are static HTML written by the skill).
-export function extractQuizJson(html) {
-  for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
-    if (/\bdata-quiz\b/i.test(m[1]) && /\btype\s*=\s*["']application\/json["']/i.test(m[1])) return m[2];
-  }
-  return null;
-}
-
-export function extractCites(html) {
-  return uniq([...html.matchAll(/\bdata-cite\s*=\s*(["'])(.*?)\1/g)].map((m) => m[2]));
 }
 
 const textOf = (s) => s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
