@@ -101,3 +101,15 @@ export function writeManifest(vaultPath, manifest = buildManifest(vaultPath)) {
   const text = JSON.stringify(manifest, null, 2);
   writeAtomic(path, text, { vaultPath });
 }
+
+// The in-memory filters (type, domain, series, topic through the aliases, text over title, topics and
+// summary) over manifest rows; shared with `teach path candidates`, which runs them over one manifest.
+export function matchRows(rows, q, aliases = {}) {
+  const expand = t => Object.hasOwn(aliases, t) ? aliases[t] : t; // S-13: a topic is not an Object.prototype member
+  if (q.type) rows = rows.filter(e => e.type === q.type);
+  if (q.domain) rows = rows.filter(e => e.domain.includes(q.domain));
+  if (q.series) rows = rows.filter(e => e.series === q.series);
+  if (q.topic) { const want = expand(q.topic); rows = rows.filter(e => e.topics.map(expand).includes(want)); }
+  if (q.text) { const t = q.text.toLowerCase(); rows = rows.filter(e => String(e.title ?? '').toLowerCase().includes(t) || e.topics.join(' ').toLowerCase().includes(t) || String(e.summary ?? '').toLowerCase().includes(t)); }
+  return rows;
+}

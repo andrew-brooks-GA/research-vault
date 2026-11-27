@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (R-05, R-21):** `matchRows` moves from `bin/commands/search.mjs` to `bin/lib/manifest.mjs`, text unchanged; `bin/lib/lesson.mjs` imports it from there and no longer imports the search command, which re-exports it. No behaviour changes.
+
 - **Changed (R-05, R-21):** `checkCitations` moves from `bin/commands/check.mjs` to `bin/lib/citations.mjs`, text unchanged; `bin/lib/gate.mjs`, `bin/lib/lesson.mjs`, `bin/lib/codex-review.mjs` and the `post-tool-use` and `session-start` hooks import it from there and no longer import the check command, which re-exports it. No behaviour changes.
 
 - **Changed (R-05, R-21):** `prepareEntry` and `loadSkeleton` move from `bin/commands/capture.mjs` to the new `bin/lib/capture-entry.mjs`, text unchanged, so `bin/lib/capture-operation.mjs` no longer imports a command file and the two-file import cycle between them is gone. No behaviour changes.

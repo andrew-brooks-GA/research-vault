@@ -1,7 +1,7 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSchema } from '../lib/schema.mjs';
-import { buildManifest } from '../lib/manifest.mjs';
+import { buildManifest, matchRows } from '../lib/manifest.mjs';
 import { walkEntries, readEntry } from '../lib/fsutil.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { staleness } from '../lib/stale.mjs';
@@ -14,17 +14,7 @@ import { screenText } from '../lib/screen.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-// The in-memory filters (type, domain, series, topic through the aliases, text over title, topics and
-// summary) over manifest rows; shared with `teach path candidates`, which runs them over one manifest.
-export function matchRows(rows, q, aliases = {}) {
-  const expand = t => Object.hasOwn(aliases, t) ? aliases[t] : t; // S-13: a topic is not an Object.prototype member
-  if (q.type) rows = rows.filter(e => e.type === q.type);
-  if (q.domain) rows = rows.filter(e => e.domain.includes(q.domain));
-  if (q.series) rows = rows.filter(e => e.series === q.series);
-  if (q.topic) { const want = expand(q.topic); rows = rows.filter(e => e.topics.map(expand).includes(want)); }
-  if (q.text) { const t = q.text.toLowerCase(); rows = rows.filter(e => String(e.title ?? '').toLowerCase().includes(t) || e.topics.join(' ').toLowerCase().includes(t) || String(e.summary ?? '').toLowerCase().includes(t)); }
-  return rows;
-}
+export { matchRows };
 
 export const SORTS = ['authority', 'fresh'];
 
