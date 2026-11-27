@@ -2,11 +2,13 @@
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { writeEntry, TYPE_FOLDER } from '../bin/lib/fsutil.mjs';
 import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
 
-const schema = loadSchema(process.cwd());
+export const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const schema = loadSchema(REPO_ROOT);
 
 export const testHome = mkdtempSync(join(tmpdir(), 'rv-test-env-'));
 process.once('exit', () => {

@@ -4,7 +4,7 @@ import { writeFileSync, appendFileSync, mkdirSync, utimesSync, cpSync } from 'no
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { assertVaultUntouched, outsideVaultRepo, tmpVault, testEnv } from './helpers.mjs';
+import { REPO_ROOT, assertVaultUntouched, outsideVaultRepo, tmpVault, testEnv } from './helpers.mjs';
 import { recordVerdict, contentHash } from '../bin/lib/gate.mjs';
 import { missingGates, sinceFrom, TWELVE_HOURS } from '../hooks/stop-gate.mjs';
 
@@ -170,7 +170,7 @@ import { reasonLine } from '../hooks/stop-gate.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
 import { parseProjectConfig } from '../bin/lib/projectconfig.mjs';
 
-const parsed = (root) => parseProjectConfig(readFileSync(join(root, '.research-vault.json'), 'utf8'), loadSchema(process.cwd()));
+const parsed = (root) => parseProjectConfig(readFileSync(join(root, '.research-vault.json'), 'utf8'), loadSchema(REPO_ROOT));
 
 test('missingGates lists linked code files without a verdict, then the links a changed versions file unpins', () => {
   const { root, vault } = codeRepo();

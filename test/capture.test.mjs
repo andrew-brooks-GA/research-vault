@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync, cpSync, existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { testEnv } from './helpers.mjs';
+import { REPO_ROOT, testEnv } from './helpers.mjs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { captureEntry, run, runBatch } from '../bin/commands/capture.mjs';
@@ -16,10 +16,12 @@ import { writeBlocklist } from './blocklist.test.mjs';
 import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
 import { buildExport } from '../bin/lib/exportjsonl.mjs';
 
+const CLI = join(REPO_ROOT, 'bin', 'research-vault.mjs');
+
 // Hand-write an entry to disk (mimicking a non-tooling writer that bypasses fail-fast
 // capture) so the detective floor can be exercised on bad controlled values.
 function handWrite(dir, folder, type, id, extra) {
-  const schema = loadSchema(process.cwd());
+  const schema = loadSchema(REPO_ROOT);
   const data = {
     title: id, type, created: '2026-01-01',
     domain: ['software-engineering'], stage: schema.taxonomy.stage_by_folder[folder].default,
@@ -39,12 +41,12 @@ function freshVault() {
 
 test('capture produces lint-clean entries for ALL six types', () => {
   const dir = freshVault();
-  captureEntry(dir, { type: 'note', title: 'N', sources: '2026-01-01-a', confidence: 'high', now: '2026-05-27', repoRoot: process.cwd() });
-  captureEntry(dir, { type: 'synthesis', title: 'S', contributingIds: '2026-01-01-a', now: '2026-05-27', repoRoot: process.cwd() });
-  captureEntry(dir, { type: 'snippet', title: 'Sn', language: 'python', tested: true, now: '2026-05-27', repoRoot: process.cwd() });
-  captureEntry(dir, { type: 'experiment', title: 'E', provider: 'anthropic', modelId: 'claude-opus-4-7', task: 't', outcome: 'success', now: '2026-05-27', repoRoot: process.cwd() });
-  captureEntry(dir, { type: 'question', title: 'Does X hold?', now: '2026-05-27', repoRoot: process.cwd() });
-  const { violations } = lintVault(dir, process.cwd());
+  captureEntry(dir, { type: 'note', title: 'N', sources: '2026-01-01-a', confidence: 'high', now: '2026-05-27', repoRoot: REPO_ROOT });
+  captureEntry(dir, { type: 'synthesis', title: 'S', contributingIds: '2026-01-01-a', now: '2026-05-27', repoRoot: REPO_ROOT });
+  captureEntry(dir, { type: 'snippet', title: 'Sn', language: 'python', tested: true, now: '2026-05-27', repoRoot: REPO_ROOT });
+  captureEntry(dir, { type: 'experiment', title: 'E', provider: 'anthropic', modelId: 'claude-opus-4-7', task: 't', outcome: 'success', now: '2026-05-27', repoRoot: REPO_ROOT });
+  captureEntry(dir, { type: 'question', title: 'Does X hold?', now: '2026-05-27', repoRoot: REPO_ROOT });
+  const { violations } = lintVault(dir, REPO_ROOT);
   assert.equal(violations.length, 0, 'expected 0 violations, got: ' + JSON.stringify(violations));
 });
 
@@ -54,16 +56,16 @@ test('Kubernetes-ecosystem entry: broad domain + tech in topics is lint-clean', 
     type: 'source', title: 'vcluster config docs', url: 'https://docs.vcluster.com/config',
     domain: 'systems-infrastructure', topics: 'kubernetes,vcluster,multi-tenancy',
     subjectName: 'vcluster', subjectVersion: '0.19', series: 'vcluster-config',
-    now: '2026-05-27', repoRoot: process.cwd(),
+    now: '2026-05-27', repoRoot: REPO_ROOT,
   });
   assert.equal(r.dedup, null);
-  const { violations } = lintVault(dir, process.cwd());
+  const { violations } = lintVault(dir, REPO_ROOT);
   assert.equal(violations.length, 0, 'expected 0 violations, got: ' + JSON.stringify(violations));
 });
 
 test('creates a conformant source entry and is lint-clean', () => {
   const dir = freshVault();
-  const r = captureEntry(dir, { type: 'source', title: 'New Article', url: 'https://new.example.com/post', now: '2026-05-27', repoRoot: process.cwd() });
+  const r = captureEntry(dir, { type: 'source', title: 'New Article', url: 'https://new.example.com/post', now: '2026-05-27', repoRoot: REPO_ROOT });
   assert.equal(r.dedup, null);
   assert.ok(existsSync(r.path));
   assert.match(r.id, /^2026-05-27-new-article$/);
@@ -71,22 +73,22 @@ test('creates a conformant source entry and is lint-clean', () => {
 
 test('dedup: same normalized url + same subject.version returns existing', () => {
   const dir = freshVault();
-  captureEntry(dir, { type: 'source', title: 'Dup', url: 'https://dup.example.com/x', now: '2026-05-27', repoRoot: process.cwd() });
-  const r2 = captureEntry(dir, { type: 'source', title: 'Dup Again', url: 'https://dup.example.com/x/?utm_source=z', now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'source', title: 'Dup', url: 'https://dup.example.com/x', now: '2026-05-27', repoRoot: REPO_ROOT });
+  const r2 = captureEntry(dir, { type: 'source', title: 'Dup Again', url: 'https://dup.example.com/x/?utm_source=z', now: '2026-05-27', repoRoot: REPO_ROOT });
   assert.ok(r2.dedup);
   assert.match(r2.dedup.reason, /url/);
 });
 
 test('dedup bypassed for distinct subject.version (version succession)', () => {
   const dir = freshVault();
-  captureEntry(dir, { type: 'source', title: 'vc 19', url: 'https://docs.vcluster.com/config', subjectName: 'vcluster', subjectVersion: '0.19', series: 'vcluster-config', now: '2026-05-27', repoRoot: process.cwd() });
-  const r2 = captureEntry(dir, { type: 'source', title: 'vc 20', url: 'https://docs.vcluster.com/config', subjectName: 'vcluster', subjectVersion: '0.20', series: 'vcluster-config', now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'source', title: 'vc 19', url: 'https://docs.vcluster.com/config', subjectName: 'vcluster', subjectVersion: '0.19', series: 'vcluster-config', now: '2026-05-27', repoRoot: REPO_ROOT });
+  const r2 = captureEntry(dir, { type: 'source', title: 'vc 20', url: 'https://docs.vcluster.com/config', subjectName: 'vcluster', subjectVersion: '0.20', series: 'vcluster-config', now: '2026-05-27', repoRoot: REPO_ROOT });
   assert.equal(r2.dedup, null);
 });
 
 test('stores content_hash and normalizes topics through aliases', () => {
   const dir = freshVault();
-  const r = captureEntry(dir, { type: 'source', title: 'Hashed', url: 'https://h.example.com/x', content: 'hello world', topics: 'tdd,go', now: '2026-05-27', repoRoot: process.cwd() });
+  const r = captureEntry(dir, { type: 'source', title: 'Hashed', url: 'https://h.example.com/x', content: 'hello world', topics: 'tdd,go', now: '2026-05-27', repoRoot: REPO_ROOT });
   const e = readEntry(r.path);
   assert.equal(e.data.content_hash, sha256('hello world'));
   assert.ok(e.data.topics.includes('test-driven-development')); // 'tdd' alias-normalized
@@ -105,16 +107,16 @@ test('content-file hashes the local file bytes, matching inline content', async 
 
 test('captured_via persists and stays lint-clean', () => {
   const dir = freshVault();
-  const r = captureEntry(dir, { type: 'source', title: 'CV', url: 'https://cv.example.com/x', capturedVia: 'manual paste 2026-05-27', now: '2026-05-27', repoRoot: process.cwd() });
+  const r = captureEntry(dir, { type: 'source', title: 'CV', url: 'https://cv.example.com/x', capturedVia: 'manual paste 2026-05-27', now: '2026-05-27', repoRoot: REPO_ROOT });
   assert.equal(readEntry(r.path).data.captured_via, 'manual paste 2026-05-27');
-  const { violations } = lintVault(dir, process.cwd());
+  const { violations } = lintVault(dir, REPO_ROOT);
   assert.equal(violations.length, 0, 'expected 0 violations, got: ' + JSON.stringify(violations));
 });
 
 test('store-body without ack throws and writes nothing', () => {
   const dir = freshVault();
   assert.throws(
-    () => captureEntry(dir, { type: 'source', title: 'B', url: 'https://b.example.com/x', content: 'BODY TEXT', storeBody: true, now: '2026-05-27', repoRoot: process.cwd() }),
+    () => captureEntry(dir, { type: 'source', title: 'B', url: 'https://b.example.com/x', content: 'BODY TEXT', storeBody: true, now: '2026-05-27', repoRoot: REPO_ROOT }),
     /ack.*egress|egress.*ack/i,
   );
   const id = makeId('2026-05-27', 'B');
@@ -123,20 +125,20 @@ test('store-body without ack throws and writes nothing', () => {
 
 test('store-body with ack appends content to body; default keeps it out', () => {
   const dir = freshVault();
-  const r = captureEntry(dir, { type: 'source', title: 'B', url: 'https://b.example.com/x', content: 'BODY TEXT', storeBody: true, ackDataEgress: true, now: '2026-05-27', repoRoot: process.cwd() });
+  const r = captureEntry(dir, { type: 'source', title: 'B', url: 'https://b.example.com/x', content: 'BODY TEXT', storeBody: true, ackDataEgress: true, now: '2026-05-27', repoRoot: REPO_ROOT });
   const { body } = readEntry(r.path);
   assert.ok(body.startsWith('# B'), 'body should start with H1');
   assert.ok(body.includes('BODY TEXT'), 'body should include the stored content');
 
   const dir2 = freshVault();
-  const r2 = captureEntry(dir2, { type: 'source', title: 'B2', url: 'https://b2.example.com/x', content: 'BODY TEXT', now: '2026-05-27', repoRoot: process.cwd() });
+  const r2 = captureEntry(dir2, { type: 'source', title: 'B2', url: 'https://b2.example.com/x', content: 'BODY TEXT', now: '2026-05-27', repoRoot: REPO_ROOT });
   assert.ok(!readEntry(r2.path).body.includes('BODY TEXT'), 'default capture body must not include the content');
 });
 
 test('tripwire: same url+version but different content surfaces ambiguity', () => {
   const dir = freshVault();
-  captureEntry(dir, { type: 'source', title: 'V1', url: 'https://t.example.com/p', content: 'AAA', now: '2026-05-27', repoRoot: process.cwd() });
-  const r2 = captureEntry(dir, { type: 'source', title: 'V2', url: 'https://t.example.com/p', content: 'BBB', now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'source', title: 'V1', url: 'https://t.example.com/p', content: 'AAA', now: '2026-05-27', repoRoot: REPO_ROOT });
+  const r2 = captureEntry(dir, { type: 'source', title: 'V2', url: 'https://t.example.com/p', content: 'BBB', now: '2026-05-27', repoRoot: REPO_ROOT });
   assert.ok(r2.dedup);
   assert.equal(r2.dedup.ambiguous, true);
   assert.match(r2.dedup.reason, /content/);
@@ -144,8 +146,8 @@ test('tripwire: same url+version but different content surfaces ambiguity', () =
 
 test('exact duplicate: same url+version+content is a plain (non-ambiguous) dup', () => {
   const dir = freshVault();
-  captureEntry(dir, { type: 'source', title: 'V1', url: 'https://e2.example.com/p', content: 'SAME', now: '2026-05-27', repoRoot: process.cwd() });
-  const r2 = captureEntry(dir, { type: 'source', title: 'V1b', url: 'https://e2.example.com/p', content: 'SAME', now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'source', title: 'V1', url: 'https://e2.example.com/p', content: 'SAME', now: '2026-05-27', repoRoot: REPO_ROOT });
+  const r2 = captureEntry(dir, { type: 'source', title: 'V1b', url: 'https://e2.example.com/p', content: 'SAME', now: '2026-05-27', repoRoot: REPO_ROOT });
   assert.ok(r2.dedup);
   assert.ok(!r2.dedup.ambiguous);
 });
@@ -155,12 +157,12 @@ test('captures source with authority_tier and authority_basis, lint-clean', () =
   const r = captureEntry(dir, {
     type: 'source', title: 'Auth K8s', url: 'https://kubernetes.io/docs/x',
     authorityTier: 'primary', authorityBasis: 'official-docs',
-    now: '2026-05-27', repoRoot: process.cwd(),
+    now: '2026-05-27', repoRoot: REPO_ROOT,
   });
   const e = readEntry(r.path);
   assert.equal(e.data.authority_tier, 'primary');
   assert.equal(e.data.authority_basis, 'official-docs');
-  const { violations } = lintVault(dir, process.cwd());
+  const { violations } = lintVault(dir, REPO_ROOT);
   assert.equal(violations.length, 0, 'expected 0 violations, got: ' + JSON.stringify(violations));
 });
 
@@ -168,7 +170,7 @@ test('captures synthesis with synthesis_basis: primary-rollup', () => {
   const dir = freshVault();
   const r = captureEntry(dir, {
     type: 'synthesis', title: 'Version diff', contributingIds: '2026-01-01-a',
-    synthesisBasis: 'primary-rollup', now: '2026-05-27', repoRoot: process.cwd(),
+    synthesisBasis: 'primary-rollup', now: '2026-05-27', repoRoot: REPO_ROOT,
   });
   const e = readEntry(r.path);
   assert.equal(e.data.synthesis_basis, 'primary-rollup');
@@ -181,7 +183,7 @@ test('lint rejects unknown synthesis_basis / authority_tier / authority_basis va
   handWrite(dir, 'synthesis', 'synthesis', '2026-01-01-bad-sb', { contributing_ids: ['2026-01-01-a'], synthesis_basis: 'nonsense' });
   handWrite(dir, 'sources', 'source', '2026-01-01-bad-tier', { source_type: 'article', source_url: 'https://bt.example.com/x', authority_tier: 'mid' });
   handWrite(dir, 'sources', 'source', '2026-01-01-bad-ab', { source_type: 'article', source_url: 'https://bb.example.com/x', authority_basis: 'tweet' });
-  const { violations } = lintVault(dir, process.cwd());
+  const { violations } = lintVault(dir, REPO_ROOT);
   const codes = violations.map(v => v.code);
   assert.ok(codes.includes('ENUM_SYNTHESIS_BASIS'), 'expected ENUM_SYNTHESIS_BASIS: ' + codes.join(','));
   assert.ok(codes.includes('ENUM_AUTHORITY_TIER'), 'expected ENUM_AUTHORITY_TIER: ' + codes.join(','));
@@ -191,7 +193,7 @@ test('lint rejects unknown synthesis_basis / authority_tier / authority_basis va
 test('capture rejects unknown controlled values up front and writes nothing', () => {
   const dir = freshVault();
   assert.throws(
-    () => captureEntry(dir, { type: 'note', title: 'Bad conf', sources: '2026-01-01-a', confidence: 'certain', now: '2026-05-27', repoRoot: process.cwd() }),
+    () => captureEntry(dir, { type: 'note', title: 'Bad conf', sources: '2026-01-01-a', confidence: 'certain', now: '2026-05-27', repoRoot: REPO_ROOT }),
     /unknown confidence: certain/,
   );
   const id = makeId('2026-05-27', 'Bad conf');
@@ -219,39 +221,39 @@ const SCAFFOLD_ARGS = {
 for (const [type, sections] of Object.entries(SECTIONS)) {
   test(`capture --scaffold seeds ${type} body skeleton, lint-clean`, () => {
     const dir = freshVault();
-    const r = captureEntry(dir, { ...SCAFFOLD_ARGS[type], scaffold: true, now: '2026-05-27', repoRoot: process.cwd() });
+    const r = captureEntry(dir, { ...SCAFFOLD_ARGS[type], scaffold: true, now: '2026-05-27', repoRoot: REPO_ROOT });
     const { body, data } = readEntry(r.path);
     assert.ok(body.startsWith(`# ${data.title}`), `body should start with H1: ${body.slice(0, 40)}`);
     for (const s of sections) assert.ok(body.includes(s), `missing section ${s} in ${type} body`);
     const bodyAfterH1 = body.slice(body.indexOf('\n') + 1);
     assert.ok(!/^---/m.test(bodyAfterH1), 'no frontmatter should leak into the body');
-    const { violations } = lintVault(dir, process.cwd());
+    const { violations } = lintVault(dir, REPO_ROOT);
     assert.equal(violations.length, 0, 'expected 0 violations, got: ' + JSON.stringify(violations));
   });
 }
 
 test('capture without --scaffold keeps body as bare H1', () => {
   const dir = freshVault();
-  const r = captureEntry(dir, { type: 'note', title: 'N', sources: '2026-01-01-a', confidence: 'high', now: '2026-05-27', repoRoot: process.cwd() });
+  const r = captureEntry(dir, { type: 'note', title: 'N', sources: '2026-01-01-a', confidence: 'high', now: '2026-05-27', repoRoot: REPO_ROOT });
   const { body } = readEntry(r.path);
   assert.equal(body, '# N\n');
 });
 
 test('capture (all six types) leaves the vault lint-clean under --check', () => {
   const dir = freshVault();
-  captureEntry(dir, { type: 'source', title: 'Src', url: 'https://s.example.com/x', now: '2026-05-27', repoRoot: process.cwd() });
-  captureEntry(dir, { type: 'note', title: 'N', sources: '2026-01-01-a', confidence: 'high', now: '2026-05-27', repoRoot: process.cwd() });
-  captureEntry(dir, { type: 'synthesis', title: 'S', contributingIds: '2026-01-01-a', synthesisBasis: 'primary-rollup', now: '2026-05-27', repoRoot: process.cwd() });
-  captureEntry(dir, { type: 'snippet', title: 'Sn', language: 'python', tested: true, now: '2026-05-27', repoRoot: process.cwd() });
-  captureEntry(dir, { type: 'experiment', title: 'E', provider: 'anthropic', modelId: 'm', task: 't', outcome: 'success', now: '2026-05-27', repoRoot: process.cwd() });
-  captureEntry(dir, { type: 'question', title: 'Does X hold?', now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'source', title: 'Src', url: 'https://s.example.com/x', now: '2026-05-27', repoRoot: REPO_ROOT });
+  captureEntry(dir, { type: 'note', title: 'N', sources: '2026-01-01-a', confidence: 'high', now: '2026-05-27', repoRoot: REPO_ROOT });
+  captureEntry(dir, { type: 'synthesis', title: 'S', contributingIds: '2026-01-01-a', synthesisBasis: 'primary-rollup', now: '2026-05-27', repoRoot: REPO_ROOT });
+  captureEntry(dir, { type: 'snippet', title: 'Sn', language: 'python', tested: true, now: '2026-05-27', repoRoot: REPO_ROOT });
+  captureEntry(dir, { type: 'experiment', title: 'E', provider: 'anthropic', modelId: 'm', task: 't', outcome: 'success', now: '2026-05-27', repoRoot: REPO_ROOT });
+  captureEntry(dir, { type: 'question', title: 'Does X hold?', now: '2026-05-27', repoRoot: REPO_ROOT });
   const { violations } = lintAndReport(dir, { check: true });
   assert.equal(violations.length, 0, 'expected clean --check after captures: ' + JSON.stringify(violations));
 });
 
 test('capture refuses a colliding id and leaves the first entry intact', () => {
   const dir = freshVault();
-  const opts = { type: 'note', title: 'Same Title', sources: '2026-01-01-a', confidence: 'high', now: '2026-05-27', repoRoot: process.cwd() };
+  const opts = { type: 'note', title: 'Same Title', sources: '2026-01-01-a', confidence: 'high', now: '2026-05-27', repoRoot: REPO_ROOT };
   const r1 = captureEntry(dir, opts);
   assert.equal(r1.dedup, null);
   const before = readFileSync(r1.path);
@@ -264,8 +266,8 @@ test('capture refuses a colliding id and leaves the first entry intact', () => {
 
 test('dedup: same url + integer subject.version dedups on recapture', () => {
   const dir = freshVault();
-  captureEntry(dir, { type: 'source', title: 'v20', url: 'https://int.example.com/d', subjectName: 'thing', subjectVersion: '20', series: 'thing-rel', now: '2026-05-27', repoRoot: process.cwd() });
-  const r2 = captureEntry(dir, { type: 'source', title: 'v20 again', url: 'https://int.example.com/d', subjectName: 'thing', subjectVersion: '20', series: 'thing-rel', now: '2026-05-27', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'source', title: 'v20', url: 'https://int.example.com/d', subjectName: 'thing', subjectVersion: '20', series: 'thing-rel', now: '2026-05-27', repoRoot: REPO_ROOT });
+  const r2 = captureEntry(dir, { type: 'source', title: 'v20 again', url: 'https://int.example.com/d', subjectName: 'thing', subjectVersion: '20', series: 'thing-rel', now: '2026-05-27', repoRoot: REPO_ROOT });
   assert.ok(r2.dedup, 'integer version must still dedup (string/number mismatch fixed)');
   assert.equal(r2.dedup.ambiguous, false);
 });
@@ -289,7 +291,7 @@ test('content-file hashes raw bytes (non-UTF-8) and matches what refresh compute
 
 test('capture seeds an honest `captured` verification, not a fake existence-check', () => {
   const dir = freshVault();
-  const r = captureEntry(dir, { type: 'source', title: 'Seed', url: 'https://seed.example.com/x', now: '2026-05-27', repoRoot: process.cwd() });
+  const r = captureEntry(dir, { type: 'source', title: 'Seed', url: 'https://seed.example.com/x', now: '2026-05-27', repoRoot: REPO_ROOT });
   const v = readEntry(r.path).data.verifications;
   assert.equal(v.length, 1);
   assert.equal(v[0].method, 'captured');
@@ -312,7 +314,7 @@ test('capture --summary persists on note and synthesis and stays lint-clean', ()
   // Without --summary the field is absent, not empty.
   const bare = captureEntry(dir, { type: 'note', title: 'Bare note', sources: '2026-01-01-sock-pinning', now: '2026-01-04' });
   assert.ok(!('summary' in readEntry(bare.path).data));
-  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+  assert.equal(lintVault(dir, REPO_ROOT).violations.length, 0);
 });
 
 test('capture body: author prose lands in the body for authored types; source body is gated', () => {
@@ -329,7 +331,7 @@ test('capture body: author prose lands in the body for authored types; source bo
     () => captureEntry(dir, { type: 'source', title: 'Gated', url: 'https://example.com/g', body: 'pasted text', now: '2026-01-03' }),
     /store-body/,
   );
-  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+  assert.equal(lintVault(dir, REPO_ROOT).violations.length, 0);
 });
 
 test('capture --answer-summary writes an answered question the default export emits', () => {
@@ -337,17 +339,17 @@ test('capture --answer-summary writes an answered question the default export em
   const r = captureEntry(dir, {
     type: 'question', title: 'Does X hold?', state: 'answered',
     answerSummary: 'Yes, under contention the syncer shares the bucket.',
-    now: '2026-05-27', repoRoot: process.cwd(),
+    now: '2026-05-27', repoRoot: REPO_ROOT,
   });
   const e = readEntry(r.path);
   assert.equal(e.data.state, 'answered');
   assert.equal(e.data.answer_summary, 'Yes, under contention the syncer shares the bucket.');
-  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+  assert.equal(lintVault(dir, REPO_ROOT).violations.length, 0);
   const recs = buildExport(dir);
   assert.ok(recs.some(x => x.input === 'Does X hold?' && x.output === 'Yes, under contention the syncer shares the bucket.'),
     'default export must emit the answered question: ' + JSON.stringify(recs));
   // Without the flag the field is absent (export would drop the question).
-  const bare = captureEntry(dir, { type: 'question', title: 'Open one?', now: '2026-05-27', repoRoot: process.cwd() });
+  const bare = captureEntry(dir, { type: 'question', title: 'Open one?', now: '2026-05-27', repoRoot: REPO_ROOT });
   assert.ok(!('answer_summary' in readEntry(bare.path).data));
 });
 
@@ -360,15 +362,15 @@ test('capture without a title is refused and writes nothing (spec 31, found by i
 test('single capture enforces the batch requirements: note/synthesis/source', () => {
   const dir = freshVault();
   assert.throws(
-    () => captureEntry(dir, { type: 'note', title: 'No sources', now: '2026-05-27', repoRoot: process.cwd() }),
+    () => captureEntry(dir, { type: 'note', title: 'No sources', now: '2026-05-27', repoRoot: REPO_ROOT }),
     /note requires sources/,
   );
   assert.throws(
-    () => captureEntry(dir, { type: 'synthesis', title: 'No contributors', now: '2026-05-27', repoRoot: process.cwd() }),
+    () => captureEntry(dir, { type: 'synthesis', title: 'No contributors', now: '2026-05-27', repoRoot: REPO_ROOT }),
     /synthesis requires contributingIds/,
   );
   assert.throws(
-    () => captureEntry(dir, { type: 'source', title: 'No url', now: '2026-05-27', repoRoot: process.cwd() }),
+    () => captureEntry(dir, { type: 'source', title: 'No url', now: '2026-05-27', repoRoot: REPO_ROOT }),
     /source requires url/,
   );
   assert.ok(!existsSync(join(dir, 'sources', makeId('2026-05-27', 'No url') + '.md')), 'nothing written on rejection');
@@ -418,20 +420,20 @@ test('capture --body-file reads the body from disk', async () => {
 
 test('capture persists a source summary and a synthesis confidence; synthesis confidence has no default (spec 08)', () => {
   const dir = freshVault();
-  const s = captureEntry(dir, { type: 'source', title: 'Src with summary', url: 'https://example.com/ss', summary: 'The one claim.', now: '2026-05-28', repoRoot: process.cwd() });
+  const s = captureEntry(dir, { type: 'source', title: 'Src with summary', url: 'https://example.com/ss', summary: 'The one claim.', now: '2026-05-28', repoRoot: REPO_ROOT });
   assert.equal(readEntry(s.path).data.summary, 'The one claim.');
-  const y = captureEntry(dir, { type: 'synthesis', title: 'Y conf', contributingIds: '2026-01-01-a', confidence: 'high', now: '2026-05-28', repoRoot: process.cwd() });
+  const y = captureEntry(dir, { type: 'synthesis', title: 'Y conf', contributingIds: '2026-01-01-a', confidence: 'high', now: '2026-05-28', repoRoot: REPO_ROOT });
   assert.equal(readEntry(y.path).data.confidence, 'high');
-  const z = captureEntry(dir, { type: 'synthesis', title: 'Z no conf', contributingIds: '2026-01-01-a', now: '2026-05-28', repoRoot: process.cwd() });
+  const z = captureEntry(dir, { type: 'synthesis', title: 'Z no conf', contributingIds: '2026-01-01-a', now: '2026-05-28', repoRoot: REPO_ROOT });
   assert.ok(!('confidence' in readEntry(z.path).data));
-  assert.throws(() => captureEntry(dir, { type: 'synthesis', title: 'Bad', contributingIds: '2026-01-01-a', confidence: 'certain', now: '2026-05-28', repoRoot: process.cwd() }), /confidence/);
-  const { violations } = lintVault(dir, process.cwd());
+  assert.throws(() => captureEntry(dir, { type: 'synthesis', title: 'Bad', contributingIds: '2026-01-01-a', confidence: 'certain', now: '2026-05-28', repoRoot: REPO_ROOT }), /confidence/);
+  const { violations } = lintVault(dir, REPO_ROOT);
   assert.equal(violations.length, 0, JSON.stringify(violations));
 });
 
 test('comma lists are trimmed: --topics "tdd, go" aliases and stores go, --sources "a, b" stores b (spec 13)', () => {
   const dir = freshVault();
-  const r = captureEntry(dir, { type: 'note', title: 'Trimmed', topics: 'tdd, go', sources: '2026-01-01-a, 2026-01-02-b', related: '2026-01-01-a, ', now: '2026-05-27', repoRoot: process.cwd() });
+  const r = captureEntry(dir, { type: 'note', title: 'Trimmed', topics: 'tdd, go', sources: '2026-01-01-a, 2026-01-02-b', related: '2026-01-01-a, ', now: '2026-05-27', repoRoot: REPO_ROOT });
   const e = readEntry(r.path);
   assert.deepEqual(e.data.topics, ['test-driven-development', 'go']);
   assert.deepEqual(e.data.sources, ['2026-01-01-a', '2026-01-02-b']);
@@ -483,7 +485,7 @@ test('capture refuses a blocklisted source, --force captures it with the overrid
   const e = readEntry(r.path);
   assert.match(e.data.verifications[0].notes, /captured with --force past the blocklist: spam.example.com/);
   assert.equal(e.data.captured_via, undefined);
-  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+  assert.equal(lintVault(dir, REPO_ROOT).violations.length, 0);
   const orig = process.stdout.write.bind(process.stdout);
   process.stdout.write = () => true;
   try {
@@ -495,7 +497,7 @@ test('capture refuses a blocklisted source, --force captures it with the overrid
 // Issue 72 item 7: a title that gives the id of another entry is an error, at the CLI and in --batch; a repeated URL is still a duplicate.
 test('a source whose title gives a taken id is refused as id taken, at the CLI and in --batch; a repeated entry is still a duplicate', () => {
   const dir = freshVault();
-  const cli = (...a) => spawnSync(process.execPath, ['bin/research-vault.mjs', 'capture', '--vault', dir, ...a], { env: testEnv(), encoding: 'utf8' });
+  const cli = (...a) => spawnSync(process.execPath, [CLI, 'capture', '--vault', dir, ...a], { env: testEnv(), encoding: 'utf8' });
   assert.equal(cli('--type', 'source', '--title', 'Install guide', '--url', 'https://one.example/install').status, 0);
   const files = () => ['sources', 'questions'].flatMap(f => existsSync(join(dir, f)) ? readdirSync(join(dir, f)) : []).sort();
   const before = files();
@@ -560,7 +562,7 @@ test('R08 ordinary capture preserves the winner when the destination appears bef
 
 test('two titles with no ASCII word captured on one day get two distinct ids (R-57)', () => {
   const dir = freshVault();
-  const opts = { type: 'source', now: '2026-11-24', repoRoot: process.cwd() };
+  const opts = { type: 'source', now: '2026-11-24', repoRoot: REPO_ROOT };
   const a = captureEntry(dir, { ...opts, title: '日本語のタイトル', url: 'https://ja.example/a' });
   const b = captureEntry(dir, { ...opts, title: 'Ελληνικός τίτλος', url: 'https://el.example/b' });
   assert.equal(a.dedup, null); assert.equal(b.dedup, null);
@@ -577,7 +579,7 @@ test('single capture refuses a reference to no entry in --sources, --contributin
     const listing = () => readdirSync(dir, { recursive: true }).sort();
     const manifest = () => existsSync(join(dir, '.vault-manifest.json')) ? readFileSync(join(dir, '.vault-manifest.json')) : null;
     const listingBefore = listing(), manifestBefore = manifest();
-    const r = spawnSync(process.execPath, ['bin/research-vault.mjs', 'capture', '--vault', dir, ...args],
+    const r = spawnSync(process.execPath, [CLI, 'capture', '--vault', dir, ...args],
       { env: testEnv(), encoding: 'utf8', timeout: 30000 });
     assert.equal(r.status, 2, args.join(' '));
     assert.equal(r.stderr, 'error: unresolved reference: no-such-id\n');
@@ -604,7 +606,7 @@ test('capture --fill text line: a blocklist reason is shown on one line with no 
   const dir = freshVault();
   handWrite(dir, 'sources', 'source', '2026-01-01-spam', { source_type: 'article', source_url: 'https://spam.example.com/a' });
   writeBlocklist(dir, FORGED_ROW);
-  const r = spawnSync(process.execPath, ['bin/research-vault.mjs', 'capture', '--vault', dir, '--fill', '2026-01-01-spam', '--ack-data-egress'], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
+  const r = spawnSync(process.execPath, [CLI, 'capture', '--vault', dir, '--fill', '2026-01-01-spam', '--ack-data-egress'], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
   assert.equal(r.stdout, 'refused  2026-01-01-spam  (blocked source: spam.example.com (domain): farm research-vault: forged)\n', r.stderr);
 });
 
@@ -612,7 +614,7 @@ test('capture --fill text line: a blocklist reason is shown on one line with no 
 test('capture duplicate line: an existing entry id from a file name is shown on one line with no hidden characters', () => {
   const dir = freshVault();
   handWrite(dir, 'sources', 'source', `2026-01-01-dup\nresearch-vault: forged${TAGS}`, { source_type: 'article', source_url: 'https://example.org/dup' });
-  const r = spawnSync(process.execPath, ['bin/research-vault.mjs', 'capture', '--vault', dir, '--type', 'source', '--title', 'Dup', '--url', 'https://example.org/dup', '--source-type', 'article'], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
+  const r = spawnSync(process.execPath, [CLI, 'capture', '--vault', dir, '--type', 'source', '--title', 'Dup', '--url', 'https://example.org/dup', '--source-type', 'article'], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
   assert.equal(r.stdout, 'duplicate of 2026-01-01-dup research-vault: forged (existing entry with same url); run verify instead.\n', r.stderr);
 });
 
@@ -639,7 +641,7 @@ test('S-13: capture refuses --related, --sources or --contributing-ids naming __
       const listing = () => readdirSync(dir, { recursive: true }).sort();
       const manifest = () => existsSync(join(dir, '.vault-manifest.json')) ? readFileSync(join(dir, '.vault-manifest.json')) : null;
       const listingBefore = listing(), manifestBefore = manifest();
-      const r = spawnSync(process.execPath, ['bin/research-vault.mjs', 'capture', '--vault', dir, ...args],
+      const r = spawnSync(process.execPath, [CLI, 'capture', '--vault', dir, ...args],
         { env: testEnv(), encoding: 'utf8', timeout: 30000 });
       assert.equal(r.status, 2, args.join(' '));
       assert.equal(r.stderr, `error: unresolved reference: ${name}\n`, args.join(' '));
@@ -653,7 +655,7 @@ test('S-13: capture refuses a type that names an Object.prototype member as an i
   for (const type of ['__proto__', 'toString', 'hasOwnProperty', 'constructor']) {
     const dir = freshVault();
     const before = readdirSync(dir, { recursive: true }).sort();
-    assert.throws(() => captureEntry(dir, { type, title: 'Typed', now: '2026-01-01', repoRoot: process.cwd() }), { message: `invalid type: ${type}` });
+    assert.throws(() => captureEntry(dir, { type, title: 'Typed', now: '2026-01-01', repoRoot: REPO_ROOT }), { message: `invalid type: ${type}` });
     assert.deepEqual(readdirSync(dir, { recursive: true }).sort(), before);
   }
 });
@@ -661,6 +663,6 @@ test('S-13: capture refuses a type that names an Object.prototype member as an i
 test('S-13: capture keeps a topic that names an Object.prototype member as written', () => {
   const dir = freshVault();
   const names = ['__proto__', 'toString', 'hasOwnProperty', 'constructor'];
-  const r = captureEntry(dir, { type: 'question', title: 'Topics', topics: names.join(','), now: '2026-01-01', repoRoot: process.cwd() });
+  const r = captureEntry(dir, { type: 'question', title: 'Topics', topics: names.join(','), now: '2026-01-01', repoRoot: REPO_ROOT });
   assert.deepEqual(readEntry(r.path).data.topics, names);
 });

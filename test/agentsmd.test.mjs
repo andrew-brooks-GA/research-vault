@@ -2,11 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { REPO_ROOT } from './helpers.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
 import { generateAgentsMd } from '../bin/lib/agentsmd.mjs';
 
 test('generates AGENTS.md containing schema-derived content, no BOM, single offline rule', () => {
-  const md = generateAgentsMd(loadSchema(process.cwd()));
+  const md = generateAgentsMd(loadSchema(REPO_ROOT));
   assert.equal(md.charCodeAt(0), 0x23); // '#'
   assert.match(md, /software-engineering/);
   assert.match(md, /refresh window/i);
@@ -16,7 +17,7 @@ test('generates AGENTS.md containing schema-derived content, no BOM, single offl
 });
 
 test('AGENTS.md introduces every artifact type and the distillation lifecycle', () => {
-  const md = generateAgentsMd(loadSchema(process.cwd()));
+  const md = generateAgentsMd(loadSchema(REPO_ROOT));
   assert.match(md, /Artifact types/);
   for (const folder of ['sources/', 'notes/', 'synthesis/', 'snippets/', 'experiments/', 'questions/']) {
     assert.ok(md.includes('`' + folder + '`'), `AGENTS.md should describe ${folder}`);
@@ -25,7 +26,7 @@ test('AGENTS.md introduces every artifact type and the distillation lifecycle', 
 });
 
 test('AGENTS.md documents tool-probe as offline-valid and version-gated', () => {
-  const md = generateAgentsMd(loadSchema(process.cwd()));
+  const md = generateAgentsMd(loadSchema(REPO_ROOT));
   assert.match(md, /tool-probe/);
   assert.match(md, /probe-manifests/);
 });
@@ -33,6 +34,6 @@ test('AGENTS.md documents tool-probe as offline-valid and version-gated', () => 
 test('generator output matches the committed golden snapshot', () => {
   // De-circularizes the drift gate: a schema/generator edit that forgets to regenerate
   // schema/AGENTS.golden.md fails here (and in scripts/check-agentsmd-drift.mjs).
-  const golden = readFileSync(join(process.cwd(), 'schema', 'AGENTS.golden.md'), 'utf8');
-  assert.equal(generateAgentsMd(loadSchema(process.cwd())), golden);
+  const golden = readFileSync(join(REPO_ROOT, 'schema', 'AGENTS.golden.md'), 'utf8');
+  assert.equal(generateAgentsMd(loadSchema(REPO_ROOT)), golden);
 });

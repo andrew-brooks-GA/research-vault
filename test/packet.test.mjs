@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { tmpVault, put, testEnv, noNetworkArgs } from './helpers.mjs';
+import { REPO_ROOT, tmpVault, put, testEnv, noNetworkArgs } from './helpers.mjs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { checkQuotes } from '../bin/lib/quotes.mjs';
 import { buildPacket } from '../bin/lib/packet.mjs';
 import { readEntry } from '../bin/lib/fsutil.mjs';
 
-const NOW = { now: '2026-06-12', repoRoot: process.cwd() };
+const NOW = { now: '2026-06-12', repoRoot: REPO_ROOT };
 const RUN = 'run-abc123';
 const BIG = 'big', SMALL = 'small';
 const line = k => (k === 40 ? 'The quoted sentence sits on line forty of the page.' : `Line ${k} of a long stored page, with enough words to count as text.`);
@@ -31,7 +31,7 @@ test('gate evidence --packet: a large source is cut to the lines within three of
   await checkQuotes(dir, `2026-01-01-${BIG}`, ['The quoted sentence sits on line forty of the page.'], { ...NOW, runKey: RUN });
   await checkQuotes(dir, `2026-01-01-${SMALL}`, ['The small page says this whole sentence.'], { ...NOW, runKey: RUN });
   const p = out();
-  const r = buildPacket(dir, listed, p, RUN, process.cwd());
+  const r = buildPacket(dir, listed, p, RUN, REPO_ROOT);
   assert.deepEqual({ entries: r.entries, excerpted: r.excerpted }, { entries: 3, excerpted: 1 });
   const big = readEntry(join(p, 'sources', `2026-01-01-${BIG}.md`));
   const kept = big.body.split('\n').filter(l => /^L\d+: /.test(l)).map(l => Number(/^L(\d+)/.exec(l)[1]));
@@ -49,21 +49,21 @@ test('gate evidence --packet: a large source is cut to the lines within three of
 test('gate evidence --packet: refused for rows of another run or none, for a body changed since its rows, with nothing to cut, inside the vault and into a directory that holds files', async () => {
   const dir = vault();
   await checkQuotes(dir, `2026-01-01-${BIG}`, ['The quoted sentence sits on line forty of the page.'], { ...NOW, runKey: 'run-other99' });
-  assert.throws(() => buildPacket(dir, listed, out(), RUN, process.cwd()), /has a quote row of run-other99, not of run-abc123/);
+  assert.throws(() => buildPacket(dir, listed, out(), RUN, REPO_ROOT), /has a quote row of run-other99, not of run-abc123/);
   const none = vault();
   await checkQuotes(none, `2026-01-01-${BIG}`, ['The quoted sentence sits on line forty of the page.'], NOW);
-  assert.throws(() => buildPacket(none, listed, out(), RUN, process.cwd()), /has a quote row of no run/);
+  assert.throws(() => buildPacket(none, listed, out(), RUN, REPO_ROOT), /has a quote row of no run/);
   const stale = vault();
   await checkQuotes(stale, `2026-01-01-${BIG}`, ['The quoted sentence sits on line forty of the page.'], { ...NOW, runKey: RUN });
   const f = join(stale, 'sources', `2026-01-01-${BIG}.md`);
   writeFileSync(f, readFileSync(f, 'utf8') + 'One more line.\n');
-  assert.throws(() => buildPacket(stale, listed, out(), RUN, process.cwd()), /for an earlier text of its body/);
+  assert.throws(() => buildPacket(stale, listed, out(), RUN, REPO_ROOT), /for an earlier text of its body/);
   const bare = vault();
   await checkQuotes(bare, `2026-01-01-${SMALL}`, ['The small page says this whole sentence.'], { ...NOW, runKey: RUN });
-  assert.throws(() => buildPacket(bare, listed, out(), RUN, process.cwd()), /nothing to cut/);
-  assert.throws(() => buildPacket(bare, listed, join(bare, 'packet'), RUN, process.cwd()), /outside the vault/);
-  assert.throws(() => buildPacket(bare, listed, bare.replace(/[^/]+$/, ''), RUN, process.cwd()), /is not empty|outside the vault/);
-  assert.throws(() => buildPacket(bare, listed, out(), '2026-11-14-apf-k3', process.cwd()), /--run <key>/);
+  assert.throws(() => buildPacket(bare, listed, out(), RUN, REPO_ROOT), /nothing to cut/);
+  assert.throws(() => buildPacket(bare, listed, join(bare, 'packet'), RUN, REPO_ROOT), /outside the vault/);
+  assert.throws(() => buildPacket(bare, listed, bare.replace(/[^/]+$/, ''), RUN, REPO_ROOT), /is not empty|outside the vault/);
+  assert.throws(() => buildPacket(bare, listed, out(), '2026-11-14-apf-k3', REPO_ROOT), /--run <key>/);
   await assert.rejects(checkQuotes(bare, `2026-01-01-${SMALL}`, ['The small page says this whole sentence.'], { ...NOW, runKey: 'nope' }), /--run/);
 });
 
@@ -97,7 +97,7 @@ test('gate evidence --packet: a quote over two lines is cut with both of its lin
   put(dir, 'source', `2026-01-01-${BIG}`, { source_type: 'article', source_url: 'https://example.org/big' }, body(BIG).replace(line(40), 'The quoted sentence begins on line forty\nand ends on the line after it.'));
   await checkQuotes(dir, `2026-01-01-${BIG}`, ['The quoted sentence begins on line forty and ends on the line after it.'], { ...NOW, runKey: RUN });
   const p = out();
-  buildPacket(dir, [{ id: `2026-01-01-${BIG}` }], p, RUN, process.cwd());
+  buildPacket(dir, [{ id: `2026-01-01-${BIG}` }], p, RUN, REPO_ROOT);
   const big = readEntry(join(p, 'sources', `2026-01-01-${BIG}.md`));
   assert.ok(big.body.includes('L40: The quoted sentence begins on line forty\nL41: and ends on the line after it.'));
   assert.match(big.data.verifications.at(-1).notes, /^[0-9a-f]{8} L40@[0-9a-f]{8} run-abc123: /);
@@ -130,7 +130,7 @@ test('S-13: gate evidence --packet refuses a listed entry whose type names no en
     const note = join(dir, 'notes', '2026-01-01-n.md');
     writeFileSync(note, readFileSync(note, 'utf8').replace(/^type: note$/m, `type: ${type}`));
     const p = out();
-    assert.throws(() => buildPacket(dir, listed, p, RUN, process.cwd()), { message: `no packet: 2026-01-01-n has type ${type}, which is no entry type` }, type);
+    assert.throws(() => buildPacket(dir, listed, p, RUN, REPO_ROOT), { message: `no packet: 2026-01-01-n has type ${type}, which is no entry type` }, type);
     assert.equal(existsSync(p), false, type);
   }
 });

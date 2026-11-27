@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, cpSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { REPO_ROOT } from './helpers.mjs';
 import { compileVault } from '../bin/commands/compile.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { lintVault } from '../bin/lib/lintrules.mjs';
@@ -36,7 +37,7 @@ test('compile leaves the vault lint-clean and does not pollute the manifest', ()
   const dir = freshVault();
   const before = buildManifest(dir).entries.length;
   compileVault(dir);
-  const { violations } = lintVault(dir, process.cwd());
+  const { violations } = lintVault(dir, REPO_ROOT);
   assert.equal(violations.length, 0, 'expected 0 violations, got: ' + JSON.stringify(violations));
   assert.equal(buildManifest(dir).entries.length, before, '_index/ must not change manifest entry count');
 });

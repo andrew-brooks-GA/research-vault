@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { buildManifest, lastVerified, writeManifest, danglingEdges } from '../bin/lib/manifest.mjs';
 import { traverse } from '../bin/lib/graph.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
-import { tmpVault, put, testEnv } from './helpers.mjs';
+import { REPO_ROOT, tmpVault, put, testEnv } from './helpers.mjs';
 
 const VAULT = fileURLToPath(new URL('./fixtures/vault', import.meta.url));
 
@@ -161,7 +161,7 @@ test('manifest row carries per-type facets and superseded_by, null when absent (
     assert.strictEqual(m['2026-01-07-p'][k], null, k);
 });
 
-const CLI = join(process.cwd(), 'bin', 'research-vault.mjs');
+const CLI = join(REPO_ROOT, 'bin', 'research-vault.mjs');
 const cli = (...args) => spawnSync(process.execPath, [CLI, ...args], { env: testEnv(), encoding: 'utf8' });
 
 test('writeManifest refuses to drop a listed entry whose folder is missing or whose file is present; a deleted file is gone; removing the manifest is the override (spec 18 D1)', () => {
@@ -233,7 +233,7 @@ test('R08 round2 atomic leftovers do not affect lint or manifest entries', async
   const text = readFileSync(join(dir, 'sources/2026-01-01-a.md'), 'utf8');
   for (const folder of [dir, join(dir, 'sources')])
     writeFileSync(join(folder, '.rv-atomic-12345678-1234-1234-1234-123456789abc.tmp'), text);
-  const lint = lintVault(dir, process.cwd());
+  const lint = lintVault(dir, REPO_ROOT);
   assert.deepEqual(lint.violations, []);
   assert.deepEqual(lint.warnings, []);
   assert.deepEqual(buildManifest(dir).entries, before);

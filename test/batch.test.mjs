@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, cpSync, existsSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { REPO_ROOT } from './helpers.mjs';
 import { runBatch, run, ingest } from '../bin/commands/capture.mjs';
 import { makeId, sha256 } from '../bin/lib/ids.mjs';
 import { lintVault } from '../bin/lib/lintrules.mjs';
@@ -22,7 +23,7 @@ function writePlan(entries) {
   return p;
 }
 
-const NOW = { now: '2026-06-12', repoRoot: process.cwd() };
+const NOW = { now: '2026-06-12', repoRoot: REPO_ROOT };
 
 test('batch: any invalid entry → nothing written, per-entry error report', () => {
   const dir = freshVault();
@@ -64,7 +65,7 @@ test('batch: creates all entries, one manifest rebuild, lint-clean, JSON result'
   for (const c of r.created) assert.ok(existsSync(c.path));
   const manifest = JSON.parse(readFileSync(join(dir, '.vault-manifest.json'), 'utf8'));
   assert.ok(manifest.entries.some(e => e.id === '2026-06-12-apf-essentials'));
-  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+  assert.equal(lintVault(dir, REPO_ROOT).violations.length, 0);
 });
 
 test('batch: later entries may reference earlier batch ids; unresolved refs are errors', () => {
@@ -76,7 +77,7 @@ test('batch: later entries may reference earlier batch ids; unresolved refs are 
   ]), NOW);
   assert.equal(ok.errors.length, 0);
   assert.equal(ok.created.length, 3);
-  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+  assert.equal(lintVault(dir, REPO_ROOT).violations.length, 0);
 
   const bad = runBatch(dir, writePlan([
     { type: 'note', title: 'Dangling', sources: ['2026-06-12-no-such-entry'] },
@@ -239,7 +240,7 @@ test('ingest: a URL list fetches each line, fails the item on a thrown fetch, wr
   const off = await ingest(freshVault(), file, NOW);
   assert.equal(off.errors[0].index, -1);
   assert.match(off.errors[0].error, /RESEARCH_VAULT_ALLOW_NETWORK/);
-  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+  assert.equal(lintVault(dir, REPO_ROOT).violations.length, 0);
 });
 
 test('ingest: a Markdown directory takes the URL, title and author from frontmatter, else the first link and heading; a file with no URL fails (spec 31 D1)', async () => {
@@ -259,7 +260,7 @@ test('ingest: a Markdown directory takes the URL, title and author from frontmat
   const a = readFileSync(join(dir, 'sources', '2026-06-12-alpha-doc.md'), 'utf8');
   assert.ok(a.includes(`content_hash: "${sha256(readFileSync(join(md, 'a.md')))}"`));
   assert.match(a, /^source_author: Ada$/m);
-  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+  assert.equal(lintVault(dir, REPO_ROOT).violations.length, 0);
 });
 
 test('capture --batch via run(): a URL list goes to ingest, exits 1 with the failed item under --continue, and refuses without the network variable (spec 31 D1)', async () => {

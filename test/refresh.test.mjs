@@ -5,6 +5,7 @@ import { mkdtempSync, cpSync, readFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
+import { REPO_ROOT } from './helpers.mjs';
 import { refreshVault, run } from '../bin/commands/refresh.mjs';
 import { fetchSource } from '../bin/lib/fetchsource.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
@@ -26,7 +27,7 @@ function sourceTarget(dir) {
 // Hand-write a stale (fast volatility, last verified 2026-01-01) source directly to
 // disk, mirroring the handWrite helper used in lint.test.mjs/capture.test.mjs.
 function handWriteStaleSource(dir, id, sourceUrl, extra = {}) {
-  const schema = loadSchema(process.cwd());
+  const schema = loadSchema(REPO_ROOT);
   const data = {
     title: id, type: 'source', created: '2026-01-01',
     domain: ['software-engineering'], stage: schema.taxonomy.stage_by_folder.sources.default,
@@ -164,7 +165,7 @@ test('refresh reports storedBody on changed results only, and --json prints the 
   const changed = async () => ({ status: 200, hash: 'sha256:deadbeef' });
   let [r] = await refreshVault(dir, { targets: [row()], fetch: changed });
   assert.deepEqual(r, { id: '2026-01-01-a', result: 'changed', detail: 'run verify', storedBody: false });
-  const schema = loadSchema(process.cwd());
+  const schema = loadSchema(REPO_ROOT);
   const { readEntry } = await import('../bin/lib/fsutil.mjs');
   const srcPath = join(dir, 'sources', '2026-01-01-a.md');
   const e = readEntry(srcPath);

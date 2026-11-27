@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, renameSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fixtureVault, tmpVault, put } from './helpers.mjs';
+import { REPO_ROOT, fixtureVault, tmpVault, put } from './helpers.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
 import { checkCitations } from '../bin/commands/check.mjs';
@@ -13,10 +13,10 @@ import {
   lintPathTerms, pathCandidates, topicSlug, pathEdges, lessonUses, SHAPES, FIGURE_VIEWBOX_MAX, FIGURE_LABEL_MIN, FIGURE_LABEL_MAX,
 } from '../bin/lib/lesson.mjs';
 
-const FIX = join(process.cwd(), 'test', 'fixtures', 'teach');
+const FIX = join(REPO_ROOT, 'test', 'fixtures', 'teach');
 const NOW = '2026-10-26';
-const schema = loadSchema(process.cwd());
-const teachSchema = loadTeachSchema(process.cwd());
+const schema = loadSchema(REPO_ROOT);
+const teachSchema = loadTeachSchema(REPO_ROOT);
 const VAULT = fixtureVault();
 const entries = buildManifest(VAULT).entries;
 const ctxFor = (workspaceDir, extra = {}) => ({ workspaceDir, vaultPath: VAULT, entries, schema, teachSchema, now: NOW, ...extra });
@@ -637,7 +637,7 @@ test('a project step with no command, its result in prose, lints clean (spec 43)
 // Issue 79 D9 (after issue 3, spec 46 D4): a checked task is three scripts and requirements.json under evidence/NNNN/,
 // a step line ./check N that quotes each requirement's text, and an experiment in sources; LESSON_TASK_INCOMPLETE names
 // each missing part, TASK_REQUIREMENTS_INVALID each problem of the file. test/fixtures/teach-task is one such task.
-const TASK = join(process.cwd(), 'test', 'fixtures', 'teach-task');
+const TASK = join(REPO_ROOT, 'test', 'fixtures', 'teach-task');
 const TASK_LESSON = 'lessons/0001-files.html';
 const checkedTask = () => {
   const dir = mkdtempSync(join(tmpdir(), 'rv-task-'));

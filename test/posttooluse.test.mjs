@@ -4,7 +4,7 @@ import { writeFileSync, mkdirSync, existsSync, readdirSync, readlinkSync } from 
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { assertVaultUntouched, outsideVaultRepo, tmpVault, put, testEnv, testHome, noNetworkArgs } from './helpers.mjs';
+import { REPO_ROOT, assertVaultUntouched, outsideVaultRepo, tmpVault, put, testEnv, testHome, noNetworkArgs } from './helpers.mjs';
 import { citationWarnings } from '../hooks/post-tool-use.mjs';
 
 const HOOK = join(dirname(fileURLToPath(import.meta.url)), '..', 'hooks', 'post-tool-use.mjs');
@@ -90,7 +90,7 @@ import { readFileSync } from 'node:fs';
 import { loadSchema } from '../bin/lib/schema.mjs';
 import { parseProjectConfig } from '../bin/lib/projectconfig.mjs';
 
-const parsed = (root) => parseProjectConfig(readFileSync(join(root, '.research-vault.json'), 'utf8'), loadSchema(process.cwd()));
+const parsed = (root) => parseProjectConfig(readFileSync(join(root, '.research-vault.json'), 'utf8'), loadSchema(REPO_ROOT));
 
 test('citationWarnings reports code rows for a code.globs file and the unpinned links for a versions file', () => {
   const { root, vault } = codeRepo();

@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
-import { tmpVault, put } from './helpers.mjs';
+import { REPO_ROOT, tmpVault, put } from './helpers.mjs';
 import { fillSource } from '../bin/lib/fill.mjs';
 import { htmlToText, mdToText, extractText } from '../bin/lib/extract.mjs';
 import { fetchSource, rawFileUrl } from '../bin/lib/fetchsource.mjs';
@@ -75,7 +75,7 @@ test('fill: filled stores the text, the bytes\' hash and one row that does not r
   assert.match(row.notes, /^filled: 2026-06-12, \d+ bytes of text, content_hash was sha256:old, read from https:\/\/raw\.example\.org\/p$/);
   assert.equal(buildManifest(dir).entries.find(x => x.id === id).last_verified, before);
   assert.equal(evidenceFor(join(dir, 'sources', `${id}.md`), dir, { extra: [id] }).entries.find(x => x.id === id).noBody, false);
-  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+  assert.equal(lintVault(dir, REPO_ROOT).violations.length, 0);
 });
 
 test('fill: kept leaves the entry byte-identical, and every refusal and failure leaves it too', async () => {
@@ -128,7 +128,7 @@ test('fill: --replace refills what a fill wrote and keeps the first hash; --disc
   await fillSource(dir, bare, { ...NOW, fetch: page() });
   await fillSource(dir, bare, { now: NOW.now, discard: true });
   assert.equal(entry(dir, bare).data.content_hash, undefined, 'a hash the fill set is removed');
-  assert.equal(lintVault(dir, process.cwd()).violations.length, 0);
+  assert.equal(lintVault(dir, REPO_ROOT).violations.length, 0);
 });
 
 test('fill: --content-file stores extracted text, leaves content_hash alone, refuses other file types, and discard leaves the hash', async () => {

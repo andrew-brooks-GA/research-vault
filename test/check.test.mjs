@@ -183,7 +183,7 @@ test('CLI reports a URL found only in code as skipped and --check still exits 0'
 });
 
 // ---- code links (spec 15) ----
-import { codeRepo, testEnv } from './helpers.mjs';
+import { REPO_ROOT, codeRepo, testEnv } from './helpers.mjs';
 import { parseProjectConfig } from '../bin/lib/projectconfig.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
 
@@ -291,7 +291,7 @@ test('check without a code block runs today\'s path on the same fixture', () => 
     ],
     skipped: [],
   });
-  assert.deepEqual(Object.keys(parseProjectConfig(readFileSync(join(root, '.research-vault.json'), 'utf8'), loadSchema(process.cwd()))),
+  assert.deepEqual(Object.keys(parseProjectConfig(readFileSync(join(root, '.research-vault.json'), 'utf8'), loadSchema(REPO_ROOT))),
     ['vault', 'defaults', 'references', 'gates', 'capture', 'usage', 'taxonomyExtensions']);
 });
 

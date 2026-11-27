@@ -13,7 +13,7 @@ import { writeBlocklist } from './blocklist.test.mjs';
 import { BLOCKLIST } from '../bin/lib/blocklist.mjs';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
-import { tmpVault, put, testEnv } from './helpers.mjs';
+import { REPO_ROOT, tmpVault, put, testEnv } from './helpers.mjs';
 import { readEntry } from '../bin/lib/fsutil.mjs';
 
 const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
@@ -129,7 +129,7 @@ function freshVault() {
 // Hand-write an entry directly to disk (mimicking a non-tooling writer that bypasses
 // fail-fast capture) so the detective floor can be exercised on bad enum values.
 function handWrite(dir, folder, type, id, extra) {
-  const schema = loadSchema(process.cwd());
+  const schema = loadSchema(REPO_ROOT);
   const data = {
     title: id, type, created: '2026-01-01',
     domain: ['software-engineering'], stage: schema.taxonomy.stage_by_folder[folder].default,
@@ -142,12 +142,12 @@ function handWrite(dir, folder, type, id, extra) {
 }
 
 test('clean fixture vault passes', () => {
-  const { violations } = lintVault(GOOD, process.cwd());
+  const { violations } = lintVault(GOOD, REPO_ROOT);
   assert.equal(violations.length, 0);
 });
 
 test('detects stored derived field, bad stage, dangling ref', () => {
-  const { violations } = lintVault(BAD, process.cwd());
+  const { violations } = lintVault(BAD, REPO_ROOT);
   const codes = violations.map(v => v.code);
   assert.ok(codes.includes('STORED_DERIVED'));
   assert.ok(codes.includes('STAGE_FOLDER'));
@@ -206,7 +206,7 @@ test('no silent enum gaps: every fail-fast controlled field is actually enforced
     const { code, folder, type, extra } = PROBES[field];
     const dir = freshVault();
     handWrite(dir, folder, type, `2026-01-01-bad-${field}`, extra);
-    const codes = lintVault(dir, process.cwd()).violations.map(v => v.code);
+    const codes = lintVault(dir, REPO_ROOT).violations.map(v => v.code);
     assert.ok(
       codes.includes(code),
       `controlled field '${field}' bad value must emit ${code}; lintVault emitted: ${codes.join(',') || '(none)'}`,
@@ -223,7 +223,7 @@ test('lint validates confidence / outcome / question state / verification by_typ
     sources: ['2026-01-01-a'], confidence: 'high',
     verifications: [{ date: '2026-01-01', by_type: 'robot', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }],
   });
-  const codes = lintVault(dir, process.cwd()).violations.map(v => v.code);
+  const codes = lintVault(dir, REPO_ROOT).violations.map(v => v.code);
   assert.ok(codes.includes('ENUM_CONFIDENCE'), 'expected ENUM_CONFIDENCE: ' + codes.join(','));
   assert.ok(codes.includes('ENUM_OUTCOME'), 'expected ENUM_OUTCOME: ' + codes.join(','));
   assert.ok(codes.includes('ENUM_QUESTION_STATE'), 'expected ENUM_QUESTION_STATE: ' + codes.join(','));
@@ -243,14 +243,14 @@ const VALID_SOURCE = `---\ntitle: R\ntype: source\ncreated: 2026-01-01\ndomain: 
 test('lint emits PARSE for an entry with no frontmatter', () => {
   const dir = rawVault();
   writeFileSync(join(dir, 'sources', '2026-01-01-noyaml.md'), '# just a body, no frontmatter\n', 'utf8');
-  const codes = lintVault(dir, process.cwd()).violations.map(v => v.code);
+  const codes = lintVault(dir, REPO_ROOT).violations.map(v => v.code);
   assert.ok(codes.includes('PARSE'), 'expected PARSE: ' + codes.join(','));
 });
 
 test('lint emits TYPE_FOLDER when an entry type does not match its folder', () => {
   const dir = freshVault();
   handWrite(dir, 'notes', 'source', '2026-01-01-mistyped', { source_type: 'docs', source_url: 'https://x' });
-  const codes = lintVault(dir, process.cwd()).violations.map(v => v.code);
+  const codes = lintVault(dir, REPO_ROOT).violations.map(v => v.code);
   assert.ok(codes.includes('TYPE_FOLDER'), 'expected TYPE_FOLDER: ' + codes.join(','));
 });
 
@@ -259,7 +259,7 @@ test('lint emits MISSING_REQUIRED for an absent AND an empty required field', ()
   // Absent: a snippet with no `tested`. Empty: a note with sources: [] (present but empty).
   handWrite(dir, 'snippets', 'snippet', '2026-01-01-nofield', { language: 'js' });
   handWrite(dir, 'notes', 'note', '2026-01-01-emptyarr', { sources: [], confidence: 'high' });
-  const files = lintVault(dir, process.cwd()).violations.filter(v => v.code === 'MISSING_REQUIRED').map(v => v.file);
+  const files = lintVault(dir, REPO_ROOT).violations.filter(v => v.code === 'MISSING_REQUIRED').map(v => v.file);
   assert.ok(files.some(f => f.includes('2026-01-01-nofield')), 'absent required field must flag MISSING_REQUIRED');
   assert.ok(files.some(f => f.includes('2026-01-01-emptyarr')), 'empty required array must flag MISSING_REQUIRED');
 });
@@ -267,14 +267,14 @@ test('lint emits MISSING_REQUIRED for an absent AND an empty required field', ()
 test('lint emits SUPERSEDE when status is superseded without superseded_by', () => {
   const dir = freshVault();
   handWrite(dir, 'sources', 'source', '2026-01-01-gone', { source_type: 'docs', source_url: 'https://x', status: 'superseded' });
-  const codes = lintVault(dir, process.cwd()).violations.map(v => v.code);
+  const codes = lintVault(dir, REPO_ROOT).violations.map(v => v.code);
   assert.ok(codes.includes('SUPERSEDE'), 'expected SUPERSEDE: ' + codes.join(','));
 });
 
 test('lint emits SUBJECT_SHAPE when subject has no name', () => {
   const dir = freshVault();
   handWrite(dir, 'sources', 'source', '2026-01-01-nameless', { source_type: 'docs', source_url: 'https://x', subject: { version: '1.0' } });
-  const codes = lintVault(dir, process.cwd()).violations.map(v => v.code);
+  const codes = lintVault(dir, REPO_ROOT).violations.map(v => v.code);
   assert.ok(codes.includes('SUBJECT_SHAPE'), 'expected SUBJECT_SHAPE: ' + codes.join(','));
 });
 
@@ -282,7 +282,7 @@ test('lint emits URL_INVALID for a non-empty unparsable source_url (and does not
   const dir = rawVault();
   const bad = VALID_SOURCE.replace('source_url: https://e.com/r', 'source_url: not-a-url');
   writeFileSync(join(dir, 'sources', '2026-01-01-badurl.md'), bad, 'utf8');
-  const codes = lintVault(dir, process.cwd()).violations.map(v => v.code);
+  const codes = lintVault(dir, REPO_ROOT).violations.map(v => v.code);
   assert.ok(codes.includes('URL_INVALID'), 'expected URL_INVALID: ' + codes.join(','));
 });
 
@@ -290,7 +290,7 @@ test('lint emits FIELD_SHAPE (not per-char enum garbage) for a scalar domain', (
   const dir = rawVault();
   const bad = VALID_SOURCE.replace('domain: [meta]', 'domain: security');
   writeFileSync(join(dir, 'sources', '2026-01-01-scalardomain.md'), bad, 'utf8');
-  const codes = lintVault(dir, process.cwd()).violations.map(v => v.code);
+  const codes = lintVault(dir, REPO_ROOT).violations.map(v => v.code);
   assert.ok(codes.includes('FIELD_SHAPE'), 'expected FIELD_SHAPE: ' + codes.join(','));
   assert.ok(!codes.includes('ENUM_DOMAIN'), 'a scalar domain must not produce per-char ENUM_DOMAIN: ' + codes.join(','));
 });
@@ -299,7 +299,7 @@ test('lint emits ENCODING_BOM and ENCODING_CRLF directly (not just via the fix p
   const dir = rawVault();
   writeFileSync(join(dir, 'sources', '2026-01-01-bom.md'), String.fromCharCode(0xFEFF) + VALID_SOURCE, 'utf8');
   writeFileSync(join(dir, 'sources', '2026-01-01-crlf.md'), VALID_SOURCE.replace(/\n/g, '\r\n'), 'utf8');
-  const codes = lintVault(dir, process.cwd()).violations.map(v => v.code);
+  const codes = lintVault(dir, REPO_ROOT).violations.map(v => v.code);
   assert.ok(codes.includes('ENCODING_BOM'), 'expected ENCODING_BOM: ' + codes.join(','));
   assert.ok(codes.includes('ENCODING_CRLF'), 'expected ENCODING_CRLF: ' + codes.join(','));
 });
@@ -374,7 +374,7 @@ test('tool-output source without subject.version is a violation; with version pa
     authority_tier: 'primary', authority_basis: 'tool-output',
     subject: { name: 'vcluster', version: '0.26.0' },
   });
-  const { violations } = lintVault(dir, process.cwd());
+  const { violations } = lintVault(dir, REPO_ROOT);
   const hits = violations.filter(v => v.code === 'TOOL_OUTPUT_VERSION');
   assert.equal(hits.length, 1);
   assert.match(hits[0].file, /probe-noversion/);
@@ -384,20 +384,20 @@ test('intended_targets is documentation only: a note whose sources names a quest
   const dir = freshVault();
   handWrite(dir, 'questions', 'question', '2026-01-02-q', { question: 'q?', state: 'open' });
   handWrite(dir, 'notes', 'note', '2026-01-03-n', { sources: ['2026-01-02-q'], confidence: 'medium' });
-  assert.deepEqual(lintVault(dir, process.cwd()).violations, []);
+  assert.deepEqual(lintVault(dir, REPO_ROOT).violations, []);
 });
 
 test('lint warns WARN_SOURCE_BLOCKED on a source matching the blocklist and reports a list that does not parse as BLOCKLIST_INVALID (spec 32 D2)', () => {
   const dir = freshVault();
   writeBlocklist(dir);
   handWrite(dir, 'sources', 'source', '2026-01-01-spam', { source_type: 'article', source_url: 'https://spam.example.com/a' });
-  const r = lintVault(dir, process.cwd());
+  const r = lintVault(dir, REPO_ROOT);
   assert.equal(r.violations.length, 0);
   const w = r.warnings.filter(x => x.code === 'WARN_SOURCE_BLOCKED');
   assert.equal(w.length, 1);
   assert.match(w[0].msg, /content farm/);
   writeFileSync(join(dir, BLOCKLIST), '{}', 'utf8');
-  const bad = lintVault(dir, process.cwd());
+  const bad = lintVault(dir, REPO_ROOT);
   assert.equal(bad.violations.filter(x => x.code === 'BLOCKLIST_INVALID').length, 1);
 });
 
@@ -518,21 +518,21 @@ test('lint WARN_SOURCE_BLOCKED: a blocklist reason is shown on one line with no 
   const dir = freshVault();
   writeBlocklist(dir, [{ pattern: 'spam.example.com', scope: 'domain', reason: `farm\nwarning WARN_FORGED  x.md: forged${TAGS}`, added: '2026-11-02' }]);
   handWrite(dir, 'sources', 'source', '2026-01-01-spam', { source_type: 'article', source_url: 'https://spam.example.com/a' });
-  const w = lintVault(dir, process.cwd()).warnings.filter(x => x.code === 'WARN_SOURCE_BLOCKED');
+  const w = lintVault(dir, REPO_ROOT).warnings.filter(x => x.code === 'WARN_SOURCE_BLOCKED');
   assert.deepEqual(w.map(x => x.msg), ['source_url matches the blocklist: spam.example.com (domain): farm warning WARN_FORGED x.md: forged']);
 });
 
 test('lint TYPE_FOLDER: an entry type is shown on one line with no hidden characters', () => {
   const dir = freshVault();
   handWrite(dir, 'notes', `note\nTYPE_FOLDER  forged.md: forged${TAGS}`, '2026-01-01-n', { sources: ['2026-01-01-a'], confidence: 'medium' });
-  const v = lintVault(dir, process.cwd()).violations.filter(x => x.code === 'TYPE_FOLDER');
+  const v = lintVault(dir, REPO_ROOT).violations.filter(x => x.code === 'TYPE_FOLDER');
   assert.deepEqual(v.map(x => x.msg), ['type note TYPE_FOLDER forged.md: forged in folder notes']);
 });
 
 test('lint WARN_QUOTE_ARTIFACT: a quoted title is shown on one line with no hidden characters', () => {
   const dir = freshVault();
   handWrite(dir, 'sources', 'source', '2026-01-01-q', { title: `'zig\nwarning WARN_FORGED  x.md: forged${TAGS}'`, source_type: 'article', source_url: 'https://example.org/q' });
-  const w = lintVault(dir, process.cwd()).warnings.filter(x => x.code === 'WARN_QUOTE_ARTIFACT');
+  const w = lintVault(dir, REPO_ROOT).warnings.filter(x => x.code === 'WARN_QUOTE_ARTIFACT');
   assert.deepEqual(w.map(x => x.msg), ["title value is itself wrapped in quotes ('zig warning WARN_FORGED x.md: forged'); run lint --fix to unwrap"]);
 });
 
@@ -542,7 +542,7 @@ test('lint WARN_SOURCE_BLOCKED: a blocklist pattern is shown on one line with no
   const dir = freshVault();
   writeBlocklist(dir, [{ pattern: `https://spam.example.com/a\nb${TAGS}`, scope: 'url', reason: 'farm', added: '2026-11-02' }]);
   handWrite(dir, 'sources', 'source', '2026-01-01-spam', { source_type: 'article', source_url: 'https://spam.example.com/ab%F3%A0%80%81%F3%A0%81%A9%F3%A0%81%A7%F3%A0%81%AE%F3%A0%81%AF%F3%A0%81%B2%F3%A0%81%A5%F3%A0%81%BF' });
-  const w = lintVault(dir, process.cwd()).warnings.filter(x => x.code === 'WARN_SOURCE_BLOCKED');
+  const w = lintVault(dir, REPO_ROOT).warnings.filter(x => x.code === 'WARN_SOURCE_BLOCKED');
   assert.deepEqual(w.map(x => x.msg), ['source_url matches the blocklist: https://spam.example.com/a b (url): farm']);
 });
 
@@ -563,7 +563,7 @@ test('lint messages: an entry value is shown on one line with no hidden characte
     ['WARN_TOPIC_ALIAS', { source_type: 'article', source_url: 'https://example.org/t', topics: [alias] }, "topic 'k8s WARN_TOPIC_ALIAS x.md: forged' should be normalized to 'kubernetes WARN_TOPIC_ALIAS x.md: forged'"],
   ];
   rows.forEach(([code, extra], i) => handWrite(dir, 'sources', 'source', `2026-01-0${i + 1}-${code.toLowerCase()}`, extra));
-  const { violations, warnings } = lintVault(dir, process.cwd());
+  const { violations, warnings } = lintVault(dir, REPO_ROOT);
   const found = ([code], i) => [...violations, ...warnings].filter(x => x.code === code && x.file.endsWith(`2026-01-0${i + 1}-${code.toLowerCase()}.md`)).map(x => x.msg);
   assert.deepEqual(rows.map(found), rows.map(r => [r[2]]));
 });
@@ -582,7 +582,7 @@ function s13Vault(t, name) {
 test('S-13: lint takes a type or topic named after an Object.prototype member as an ordinary name', t => {
   const run = name => {
     const dir = s13Vault(t, name);
-    const { violations, warnings } = lintVault(dir, process.cwd());
+    const { violations, warnings } = lintVault(dir, REPO_ROOT);
     return JSON.stringify({ violations, warnings }).replaceAll(dir, 'VAULT').replaceAll(name, 'NAME');
   };
   const plain = run('plainname');
@@ -593,7 +593,7 @@ test('S-13: lint takes a type or topic named after an Object.prototype member as
 test('S-13: lint --fix --topics takes a type or topic named after an Object.prototype member as an ordinary name', t => {
   const run = name => {
     const dir = s13Vault(t, name);
-    const fixed = fixVault(dir, process.cwd(), { topics: true });
+    const fixed = fixVault(dir, REPO_ROOT, { topics: true });
     const files = ['sources/2026-01-01-s.md', 'notes/2026-01-02-n.md'].map(f => readFileSync(join(dir, f), 'utf8'));
     return JSON.stringify({ fixed, files }).replaceAll(dir, 'VAULT').replaceAll(name, 'NAME');
   };

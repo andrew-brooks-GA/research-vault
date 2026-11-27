@@ -2,12 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { isAbsolute, join, relative, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { put, testEnv } from './helpers.mjs';
+import { REPO_ROOT, put, testEnv } from './helpers.mjs';
 import { captureOperation } from '../bin/lib/capture-operation.mjs';
 import { walkEntries } from '../bin/lib/fsutil.mjs';
 import { defaultVaultPath } from '../bin/lib/resolve.mjs';
+const CLI = join(REPO_ROOT, 'bin', 'research-vault.mjs');
 const now = '2026-11-13';
 function fixture(plan = [{ type: 'question', title: 'First' }, { type: 'question', title: 'Second' }]) {
   const root = fs.mkdtempSync(join(tmpdir(), 'rv-op $; ')), vault = join(root, 'vault B');
@@ -67,7 +68,7 @@ test('relative content inputs, missing/changed inputs and schema drift block rep
   fs.writeFileSync(join(f.root, 'body.txt'), 'original'); assert.equal(f.run().errors.length, 0);
   const before = bytes(f.vault); fs.writeFileSync(join(f.root, 'body.txt'), 'changed'); assert.equal(f.run().errors[0].code, 'INPUT_CHANGED');
   fs.unlinkSync(join(f.root, 'body.txt')); assert.ok(f.run().errors.length); assert.deepEqual(bytes(f.vault), before);
-  const s = fixture(); s.run(); const repo = join(s.root, 'repo'); fs.mkdirSync(repo); fs.cpSync('schema', join(repo, 'schema'), { recursive: true });
+  const s = fixture(); s.run(); const repo = join(s.root, 'repo'); fs.mkdirSync(repo); fs.cpSync(join(REPO_ROOT, 'schema'), join(repo, 'schema'), { recursive: true });
   const taxonomy = join(repo, 'schema/taxonomy.json'); const data = JSON.parse(fs.readFileSync(taxonomy)); data.extra = 'changed'; fs.writeFileSync(taxonomy, JSON.stringify(data));
   assert.equal(s.run({ repoRoot: repo }).errors[0].code, 'INPUT_CHANGED');
 });
@@ -96,13 +97,12 @@ test('CLI explicit vault overrides binding/env from unrelated cwd with metachara
   const f = fixture([{ type: 'question', title: 'payload $(); quote "', body: '$(touch forbidden); `literal`' }]);
   const a = join(f.root, 'vault A'), d = join(f.root, 'default'), cwd = join(f.root, 'cwd'); for (const dir of [a, d, cwd]) fs.mkdirSync(dir);
   fs.writeFileSync(join(cwd, '.research-vault.json'), JSON.stringify({ vault: a }));
-  const cli = resolve('bin/research-vault.mjs');
   const overrides = { RESEARCH_VAULT_PATH: d, HOME: f.root, USERPROFILE: f.root, APPDATA: join(f.root, 'AppData', 'Roaming'), LOCALAPPDATA: join(f.root, 'AppData', 'Local'), XDG_CONFIG_HOME: join(f.root, 'config'), XDG_DATA_HOME: join(f.root, 'data') };
   const osDefault = defaultVaultPath({ platform: process.platform, home: f.root, env: overrides });
   const relativeDefault = relative(f.root, osDefault);
   assert.ok(relativeDefault && !isAbsolute(relativeDefault) && relativeDefault.split(sep)[0] !== '..', `Test refuses to write outside its root: ${osDefault}`);
   fs.mkdirSync(osDefault, { recursive: true }); fs.writeFileSync(join(osDefault, 'sentinel'), 'unchanged');
-  const args = [cli, 'capture', '--batch', f.path, '--operation-id', 'explicit', '--vault', f.vault];
+  const args = [CLI, 'capture', '--batch', f.path, '--operation-id', 'explicit', '--vault', f.vault];
   const r = spawnSync(process.execPath, args, { cwd, env: testEnv(overrides), encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(JSON.parse(r.stdout).created.length, 1);
   assert.deepEqual(fs.readdirSync(a), []); assert.deepEqual(fs.readdirSync(d), []); assert.equal(fs.existsSync(join(cwd, 'forbidden')), false); assert.deepEqual(fs.readdirSync(osDefault), ['sentinel']); assert.equal(fs.readFileSync(join(osDefault, 'sentinel'), 'utf8'), 'unchanged');
   const bad = spawnSync(process.execPath, [...args, '--continue'], { cwd, env: testEnv(overrides), encoding: 'utf8' }); assert.equal(bad.status, 2); assert.equal(JSON.parse(bad.stdout).recoveryStateCreated, false);
@@ -142,9 +142,8 @@ test('canonical object keys replay identically; array order and semantic options
   fs.writeFileSync(f.path, JSON.stringify([{ topics: ['b', 'a'], title: 'One', type: 'question' }])); assert.equal(f.run().errors[0].code, 'INPUT_CHANGED');
 });
 test('CLI historical flags, ingest/consent refusals, and validation/conflict/storage/finalization exits', () => {
-  const cli = resolve('bin/research-vault.mjs');
   const run = (f, key, extra = [], nodeArgs = []) => {
-    const r = spawnSync(process.execPath, [...nodeArgs, cli, 'capture', '--batch', f.path, '--operation-id', key, '--vault', f.vault, ...extra], { env: testEnv(), encoding: 'utf8' });
+    const r = spawnSync(process.execPath, [...nodeArgs, CLI, 'capture', '--batch', f.path, '--operation-id', key, '--vault', f.vault, ...extra], { env: testEnv(), encoding: 'utf8' });
     return { status: r.status, report: JSON.parse(r.stdout) };
   };
   const f = fixture(); assert.equal(run(f, 'key').status, 0); const before = bytes(f.vault);
@@ -179,9 +178,9 @@ test('actual temporary-open and rename failures preserve prior receipt bytes', a
   }
 });
 test('connected host paths output is explicit without installing a host', () => {
-  const f = fixture(); const r = spawnSync(process.execPath, [resolve('bin/research-vault.mjs'), 'host', 'paths', '--vault', f.vault], { env: testEnv(), encoding: 'utf8' });
+  const f = fixture(); const r = spawnSync(process.execPath, [CLI, 'host', 'paths', '--vault', f.vault], { env: testEnv(), encoding: 'utf8' });
   assert.equal(r.status, 0); const result = JSON.parse(r.stdout);
-  assert.equal(result.vault, f.vault); assert.equal(result.cli, resolve('bin/research-vault.mjs')); assert.equal(result.package, resolve('.')); assert.equal(result.assets, resolve('skills/research-teach/assets'));
+  assert.equal(result.vault, f.vault); assert.equal(result.cli, CLI); assert.equal(result.package, REPO_ROOT); assert.equal(result.assets, join(REPO_ROOT, 'skills', 'research-teach', 'assets'));
 });
 test('unwritable receipt directory reports receipt I/O and creates no artifacts', () => {
   const f = fixture(); fs.writeFileSync(join(f.vault, '.capture-operations'), 'obstruction');
@@ -288,11 +287,10 @@ test('R08 round2 atomicJson receipts use explicit private permissions', t => {
 // S-13: an entry a vault holds under a hand-chosen name that is an Object.prototype member resolves as any other id
 // when the operation checks references.
 test('S-13: capture --batch --operation-id captures a reference to an existing entry named __proto__, constructor, toString or hasOwnProperty', () => {
-  const cli = join(process.cwd(), 'bin', 'research-vault.mjs');
   for (const name of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
     const f = fixture([{ type: 'note', title: 'Note one', sources: [name], body: 'x' }]);
     put(f.vault, 'source', name, { created: '2026-01-01', source_type: 'article', source_url: 'https://example.com/s' });
-    const r = spawnSync(process.execPath, [cli, 'capture', '--batch', f.path, '--operation-id', 'key', '--vault', f.vault], { env: testEnv(), encoding: 'utf8', timeout: 30000 });
+    const r = spawnSync(process.execPath, [CLI, 'capture', '--batch', f.path, '--operation-id', 'key', '--vault', f.vault], { env: testEnv(), encoding: 'utf8', timeout: 30000 });
     assert.equal(r.status, 0, `${name}: ${r.stdout}${r.stderr}`);
     const out = JSON.parse(r.stdout);
     assert.deepEqual(out.errors, [], name);

@@ -1,15 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { testEnv } from './helpers.mjs';
 
 const runs = new Map();
 const script = fileURLToPath(new URL('../scripts/run-tests.mjs', import.meta.url));
-function fixture(t, source) {
+function fixture(t, source, beforeRemove) {
   const cwd = mkdtempSync(join(tmpdir(), 'rv-npm-test-'));
   runs.set(cwd, []);
   t.after(async () => {
@@ -24,17 +24,13 @@ function fixture(t, source) {
       await Promise.all(runs.get(cwd).map(result));
       if (info) await waitFor(() => gone(info.pid), 'fixture process cleanup');
     } finally {
+      beforeRemove?.();
       if (info) rmSync(info.home, { recursive: true, force: true });
       runs.delete(cwd);
       rmSync(cwd, { recursive: true, force: true });
     }
   });
-  // The helper loads the bundled schema at import time. An otherwise empty cwd also
-  // prevents an argument-forwarding regression from discovering the real suite.
-  mkdirSync(join(cwd, 'schema'));
-  for (const name of ['taxonomy.json', 'frontmatter.schema.json']) {
-    cpSync(new URL(`../schema/${name}`, import.meta.url), join(cwd, 'schema', name));
-  }
+  // A separate cwd prevents an argument-forwarding regression from discovering the real suite.
   const file = join(cwd, 'fixture.mjs');
   writeFileSync(file, "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\n" + `
 import { writeFileSync as recordFile } from 'node:fs';
@@ -42,6 +38,34 @@ import { dirname as parentDir } from 'node:path';
 recordFile('process.json', JSON.stringify({ pid: process.pid, runner: process.ppid, home: parentDir(process.env.HOME) }));
 ` + source);
   return { cwd, file };
+}
+
+function tempFixture(t, source, beforeRemove) {
+  const { cwd, file } = fixture(t, `
+import { chmodSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+test('fixture leaves a temporary directory', () => {
+  const leftover = mkdtempSync(join(tmpdir(), 'rv-leftover-'));
+  ${source}
+});
+`, beforeRemove && (() => beforeRemove(parentTemp)));
+  const parentTemp = join(cwd, 'parent-tmp');
+  mkdirSync(parentTemp);
+  return { cwd, file, parentTemp, overrides: { TMPDIR: parentTemp, TEMP: parentTemp, TMP: parentTemp } };
+}
+
+const skipReadOnlyTemp = process.platform === 'win32' || process.geteuid?.() === 0;
+function readOnlyTempFixture(t, source = '') {
+  return tempFixture(t, `
+  recordFile(join(leftover, 'file'), 'leftover');
+  chmodSync(leftover, 0o500);
+  ${source}
+`, (parentTemp) => {
+    for (const entry of readdirSync(parentTemp, { recursive: true, withFileTypes: true })) {
+      if (entry.isDirectory()) chmodSync(join(entry.parentPath, entry.name), 0o700);
+    }
+  });
 }
 
 // macOS reports EPERM for a group holding only ended processes; treat it as gone.
@@ -62,7 +86,7 @@ async function waitFor(predicate, description, limit = 3000) {
 }
 function start(cwd, args, overrides = {}, nodeArgs = []) {
   const child = spawn(process.execPath, [...nodeArgs, script, '--test-reporter=tap', ...args], {
-    cwd, env: testEnv({ TMPDIR: cwd, ...overrides }), detached: process.platform !== 'win32',
+    cwd, env: testEnv({ TMPDIR: cwd, TEMP: cwd, TMP: cwd, ...overrides }), detached: process.platform !== 'win32',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let stdout = '', stderr = '';
@@ -127,6 +151,47 @@ test('isolated runner', () => {
   assert.equal(readFileSync(sentinel, 'utf8'), 'parent home untouched');
 });
 
+test('npm test removes directories left by passing tests', { timeout: 30000 }, async (t) => {
+  const { cwd, file, parentTemp, overrides } = tempFixture(t, '');
+  const outcome = await run(cwd, [file], overrides);
+  assert.equal(outcome.status, 0, outcome.stdout + outcome.stderr);
+  assert.deepEqual(readdirSync(parentTemp), []);
+  assert.match(outcome.stdout, /^ok \d+ - fixture leaves a temporary directory$/m);
+});
+
+test('npm test keeps a passing status when temporary home cleanup fails', { timeout: 30000, skip: skipReadOnlyTemp }, async (t) => {
+  const { cwd, file, parentTemp, overrides } = readOnlyTempFixture(t);
+  const outcome = await run(cwd, [file], overrides);
+  assert.equal(outcome.status, 0, outcome.stdout + outcome.stderr);
+  assert.match(outcome.stdout, /^ok \d+ - fixture leaves a temporary directory$/m);
+  const { home } = JSON.parse(readFileSync(join(cwd, 'process.json'), 'utf8'));
+  assert.equal(dirname(home), parentTemp);
+  assert.match(outcome.stderr, new RegExp(String.raw`^Could not remove temporary test home ${RegExp.escape(home)}: EACCES\b[^\r\n]+\r?\n$`));
+});
+
+test('npm test removes directories left by failing tests', { timeout: 30000 }, async (t) => {
+  const { cwd, file, parentTemp, overrides } = tempFixture(t, "assert.fail('deliberate fixture failure');");
+  const outcome = await run(cwd, [file], overrides);
+  assert.notEqual(outcome.status, 0);
+  assert.deepEqual(readdirSync(parentTemp), []);
+  assert.match(outcome.stdout, /^not ok \d+ - fixture leaves a temporary directory$/m);
+});
+
+test('npm test removes directories left when the child is killed', { timeout: 30000, skip: process.platform === 'win32' }, async (t) => {
+  const { cwd, file, parentTemp, overrides } = tempFixture(t, "process.kill(process.ppid, 'SIGKILL');");
+  const outcome = await result(start(cwd, [file], overrides));
+  assert.equal(outcome.signal, 'SIGKILL', outcome.stdout + outcome.stderr);
+  assert.deepEqual(readdirSync(parentTemp), []);
+});
+
+test('test helpers load from a working directory outside the repository', { timeout: 30000 }, async (t) => {
+  const { cwd } = fixture(t, '');
+  const file = fileURLToPath(new URL('./schema.test.mjs', import.meta.url));
+  const outcome = await run(cwd, [file]);
+  assert.equal(outcome.status, 0, outcome.stdout + outcome.stderr);
+  assert.match(outcome.stdout, /^ok \d+ - verification scalar types remain searchable with existing enum findings$/m);
+});
+
 test('npm test removes its temporary home before propagating a child signal', { timeout: 30000, skip: process.platform === 'win32' }, async (t) => {
   const { cwd, file } = fixture(t, `
 import { writeFileSync } from 'node:fs';
@@ -140,6 +205,18 @@ process.kill(process.ppid, 'SIGKILL');
   assert.ifError(outcome.error);
   assert.equal(outcome.signal, 'SIGKILL', outcome.stdout + outcome.stderr);
   assert.equal(existsSync(runnerHome), false, 'temporary runner home was removed');
+});
+
+test('npm test propagates SIGTERM when temporary home cleanup fails', { timeout: 30000, skip: skipReadOnlyTemp }, async (t) => {
+  const { cwd, file, overrides } = readOnlyTempFixture(t, `
+  recordFile('ready.txt', 'ready');
+  setInterval(() => {}, 1000);
+`);
+  const child = start(cwd, [file], overrides);
+  await waitFor(() => existsSync(join(cwd, 'ready.txt')), 'fixture must be ready');
+  kill(child.pid, false, 'SIGTERM');
+  const outcome = await result(child);
+  assert.equal(outcome.signal, 'SIGTERM', outcome.stderr);
 });
 
 test('npm test cleans up and propagates the signal when its group probe gets EPERM', { timeout: 30000, skip: process.platform === 'win32' }, async (t) => {

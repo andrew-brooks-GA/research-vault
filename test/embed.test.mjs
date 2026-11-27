@@ -11,7 +11,7 @@ import { embedTexts, cosine, readIndex, INDEX } from '../bin/lib/embed.mjs';
 import { run as embedRun } from '../bin/commands/embed.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
 import { applyVerification } from '../bin/commands/verify.mjs';
-import { testEnv, tmpVault, put } from './helpers.mjs';
+import { REPO_ROOT, testEnv, tmpVault, put } from './helpers.mjs';
 import { VAULT_PATH_OUTSIDE } from '../bin/lib/containment.mjs';
 
 export const LOOPBACK_ENDPOINT = 'http://127.0.0.1:1/v1/embeddings';
@@ -126,7 +126,7 @@ test('embed writes the index (a header, one row per window, superseded entries l
   const dir = freshVault();
   captureEntry(dir, { type: 'note', title: 'Zig writer', sources: ['2026-01-01-a'], summary: 'zig', body: 'zig zig zig' });
   const gone = captureEntry(dir, { type: 'note', title: 'Old zig', sources: ['2026-01-01-a'], summary: 'zig', body: 'zig' });
-  applyVerification(dir, { id: gone.id, method: 'cross-referenced', result: 'outdated', supersededBy: '2026-01-01-a', repoRoot: process.cwd() });
+  applyVerification(dir, { id: gone.id, method: 'cross-referenced', result: 'outdated', supersededBy: '2026-01-01-a', repoRoot: REPO_ROOT });
   const repo = boundRepo(dir);
   const orig = process.stdout.write.bind(process.stdout), origErr = process.stderr.write.bind(process.stderr);
   const errs = [];

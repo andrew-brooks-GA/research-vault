@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { buildManifest } from '../bin/lib/manifest.mjs';
-import { codeRepo, put, testEnv } from './helpers.mjs';
+import { REPO_ROOT, codeRepo, put, testEnv } from './helpers.mjs';
 
 const ENTRY = ['id', 'type', 'title', 'summary', 'domain', 'topics', 'source_url', 'content_hash', 'volatility', 'last_verified', 'status',
   'subject', 'series', 'stage', 'state', 'confidence', 'outcome', 'authority_tier', 'authority_basis', 'superseded_by', 'related', 'contributing_ids', 'sources'];
@@ -23,7 +23,7 @@ test('manifest: top-level keys, entry fields, edge shape and backlinks', () => {
 test('check --json: top-level keys, a code row and a prose row', () => {
   const { root } = codeRepo();
   writeFileSync(join(root, 'docs', 'd.md'), 'See 2026-01-01-fx-doc and 2026-01-01-fx-missing.\n');
-  const out = execFileSync(process.execPath, [join(process.cwd(), 'bin', 'research-vault.mjs'), 'check', '--json'], { env: testEnv(), cwd: root, encoding: 'utf8' });
+  const out = execFileSync(process.execPath, [join(REPO_ROOT, 'bin', 'research-vault.mjs'), 'check', '--json'], { env: testEnv(), cwd: root, encoding: 'utf8' });
   const j = JSON.parse(out);
   assert.deepEqual(Object.keys(j), ['generated', 'summary', 'rows', 'skipped', 'versions']);
   const code = j.rows.filter((r) => 'symbol' in r);
@@ -33,13 +33,13 @@ test('check --json: top-level keys, a code row and a prose row', () => {
   assert.deepEqual(Object.keys(prose.find((r) => r.status === 'ok')), ['file', 'type', 'value', 'status', 'id', 'volatility']);
   assert.deepEqual(Object.keys(prose.find((r) => r.status === 'uncovered')), ['file', 'type', 'value', 'status']);
   assert.deepEqual(j.versions, { dep: '1.2.3' });
-  const doc = readFileSync(join(process.cwd(), 'docs', 'REFERENCE.md'), 'utf8');
+  const doc = readFileSync(join(REPO_ROOT, 'docs', 'REFERENCE.md'), 'utf8');
   for (const k of ENTRY) assert.ok(doc.includes('`' + k + '`'), `REFERENCE names ${k}`);
 });
 
 test('examples/graph-dot.mjs joins the two outputs into DOT with an edge per manifest edge and per code link', () => {
   const { root } = codeRepo();
-  const dot = execFileSync(process.execPath, [join(process.cwd(), 'examples', 'graph-dot.mjs'), root], { env: testEnv(), encoding: 'utf8' });
+  const dot = execFileSync(process.execPath, [join(REPO_ROOT, 'examples', 'graph-dot.mjs'), root], { env: testEnv(), encoding: 'utf8' });
   assert.ok(dot.startsWith('digraph research {'));
   assert.ok(dot.includes('"src/a.lua#f" -> "2026-01-01-fx-doc" [label="" color=black];'), dot);
   assert.ok(dot.includes('"src/b.lua#ns.g" -> "2026-01-01-fx-missing" [label="dep=1.2.3" color=red];'), dot);
@@ -53,10 +53,10 @@ test('examples/blast-radius.mjs walks sources and contributing_ids inward and li
   put(vault, 'synthesis', '2026-01-03-fx-syn', { contributing_ids: ['2026-01-02-fx-note'] });
   writeFileSync(join(root, 'src', 'c.lua'), '-- per 2026-01-03-fx-syn\nlocal function h()\n  return 3\nend\n');
   writeFileSync(join(root, 'docs', 'e.md'), 'See 2026-01-02-fx-note.\n');
-  const bin = join(process.cwd(), 'bin', 'research-vault.mjs');
+  const bin = join(REPO_ROOT, 'bin', 'research-vault.mjs');
   execFileSync(process.execPath, [bin, 'manifest', '--rebuild', '--vault', vault], { env: testEnv(), cwd: root });
   writeFileSync(join(root, 'check.json'), execFileSync(process.execPath, [bin, 'check', '--json'], { env: testEnv(), cwd: root, encoding: 'utf8' }));
-  const out = execFileSync(process.execPath, [join(process.cwd(), 'examples', 'blast-radius.mjs'), join(vault, '.vault-manifest.json'), '2026-01-01-fx-doc', 'check.json'], { env: testEnv(), cwd: root, encoding: 'utf8' });
+  const out = execFileSync(process.execPath, [join(REPO_ROOT, 'examples', 'blast-radius.mjs'), join(vault, '.vault-manifest.json'), '2026-01-01-fx-doc', 'check.json'], { env: testEnv(), cwd: root, encoding: 'utf8' });
   const lines = out.trim().split('\n');
   assert.equal(lines[0], 'downstream of 2026-01-01-fx-doc: 2026-01-02-fx-note (1), 2026-01-03-fx-syn (2)');
   assert.deepEqual(lines.slice(1), [

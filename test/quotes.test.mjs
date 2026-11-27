@@ -2,14 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpVault, put } from './helpers.mjs';
+import { REPO_ROOT, tmpVault, put } from './helpers.mjs';
 import { checkQuotes } from '../bin/lib/quotes.mjs';
 import { applyVerification, run as verifyRun } from '../bin/commands/verify.mjs';
 import { readEntry } from '../bin/lib/fsutil.mjs';
 import { sha256 } from '../bin/lib/ids.mjs';
 import { writeBlocklist } from './blocklist.test.mjs';
 
-const NOW = { now: '2026-06-12', repoRoot: process.cwd() };
+const NOW = { now: '2026-06-12', repoRoot: REPO_ROOT };
 const ID = '2026-01-01-page';
 const BODY = `# ${ID}\n\nThe flag reads one file — and it’s “stable” today.\nA sentence that begins on this line and\nends on the next one here.\nRepeat me here please.\nRepeat me here please.\nx\nRepeat me here please.\n${'Filler line of stored text. '.repeat(8)}\n`;
 const seed = [{ date: '2026-01-01', by_type: 'agent', by_id: '', method: 'captured', result: 'confirmed', notes: '' }];

@@ -6,7 +6,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { tmpVault, put, fixtureVault, testEnv } from './helpers.mjs';
+import { REPO_ROOT, tmpVault, put, fixtureVault, testEnv } from './helpers.mjs';
 import { missingGates } from '../hooks/stop-gate.mjs';
 import { run as gateRun } from '../bin/commands/gate.mjs';
 import { VAULT_PATH_OUTSIDE } from '../bin/lib/containment.mjs';
@@ -584,7 +584,7 @@ test('gatedFiles includes a code.globs file only when it has an attached link', 
   const { root, vault, cfg } = codeRepo();
   writeFileSync(join(root, 'src', 'plain.lua'), 'local x = 1\n');
   writeFileSync(join(root, 'src', 'loose.lua'), '-- 2026-01-01-fx-doc\n  local function nested() end\n');
-  const parsed = parseProjectConfig(readFileSync(join(root, '.research-vault.json'), 'utf8'), loadSchema(process.cwd()));
+  const parsed = parseProjectConfig(readFileSync(join(root, '.research-vault.json'), 'utf8'), loadSchema(REPO_ROOT));
   assert.deepEqual(gatedFiles(root, vault, parsed), [join(root, 'src', 'a.lua'), join(root, 'src', 'b.lua')]);
   assert.deepEqual(gatedFiles(root, vault, { ...cfg, code: undefined }), [], 'no code block, no code file gated');
 });
@@ -634,7 +634,7 @@ test('a row carries the reviewer hash; a row from another reviewer counts for no
   const file = join(root, 'docs', 'reply.md');
   writeFileSync(file, 'hello\n\n## One\n\ntext\n');
   const row = recordVerdict(root, file, 'PASS');
-  assert.equal(row.reviewer, contentHash(readFileSync(join(process.cwd(), 'agents', 'claims-reviewer.md'))));
+  assert.equal(row.reviewer, contentHash(readFileSync(join(REPO_ROOT, 'agents', 'claims-reviewer.md'))));
   assert.equal(reviewerHash(), row.reviewer);
   assert.equal(gateStatus(root, file).verdict, 'PASS');
   const ledger = join(root, LEDGER_FILENAME);

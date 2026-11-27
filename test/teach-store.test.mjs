@@ -4,6 +4,7 @@ import { cpSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSyn
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { REPO_ROOT } from './helpers.mjs';
 import { loadTeachSchema } from '../bin/lib/schema.mjs';
 import { parseFrontmatter } from '../bin/lib/frontmatter.mjs';
 import {
@@ -16,7 +17,8 @@ import { footnoteCitations } from '../bin/lib/teach.mjs';
 // Copied from bin/lib/citations.mjs (not exported there): the vault citation id pattern.
 const CITATION_RE = /\b\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*\b/;
 
-const schema = loadTeachSchema(process.cwd());
+const FIX = join(REPO_ROOT, 'test', 'fixtures', 'teach');
+const schema = loadTeachSchema(REPO_ROOT);
 const ws = () => mkdtempSync(join(tmpdir(), 'rv-teach-'));
 const NOW = new Date('2026-10-26T12:34:56Z');
 const DAY = 86400000;
@@ -345,7 +347,7 @@ test('teachIndex: a record 30 days old with no attempt is review-due only with r
 
 test('fixRecordFrontmatter migrates frontmatter that has only the old Status line', () => {
   const dir = ws();
-  cpSync(join(process.cwd(), 'test', 'fixtures', 'teach', 'learning-records'), join(dir, 'learning-records'), { recursive: true });
+  cpSync(join(FIX, 'learning-records'), join(dir, 'learning-records'), { recursive: true });
   const lr = join(dir, 'learning-records');
   // A lowercase status pointing at a record that does not exist stays active.
   writeFileSync(join(lr, '0004-dangling-fm.md'), '---\ntitle: Kept title\nstatus: superseded by LR-0099\n---\nbody\n');
@@ -404,7 +406,7 @@ test('footnoteCitations numbers citations by their position in the sources list,
 
 test('writeAttempt merges the predict item as item 0 of the one attempt', () => {
   const dir = ws();
-  cpSync('test/fixtures/teach/lessons/0005-diagnose-fx.html', join(dir, 'lessons', '0005-diagnose-fx.html'), { recursive: true });
+  cpSync(join(FIX, 'lessons', '0005-diagnose-fx.html'), join(dir, 'lessons', '0005-diagnose-fx.html'), { recursive: true });
   const { items } = readQuiz(dir, '0005-diagnose-fx');
   assert.deepEqual(items.map((it) => it.q.slice(0, 22)), ['The function printed 4', 'fx printed 60. What wa', 'fx printed 72. What wa', 'How do you read an out']);
   assert.throws(() => writeAttempt(dir, { lesson: '0005-diagnose-fx', answers: [0, 0, 0], now: NOW }, schema), /\(4 items\)/);
@@ -414,7 +416,7 @@ test('writeAttempt merges the predict item as item 0 of the one attempt', () => 
 });
 
 test('lessonIndex carries the PATH.md line count, each lesson line, shape and closing project; the index groups by project', () => {
-  const fx = lessonIndex('test/fixtures/teach');
+  const fx = lessonIndex(FIX);
   const P = 'Project: Predict, then run'; // the fixture's line 9 closes every lesson's group (spec 22 D3)
   assert.equal(fx.lines, 9);
   assert.deepEqual(fx.lessons.map((l) => [l.id, l.line, l.shape, l.project]), [
@@ -432,7 +434,7 @@ test('lessonIndex carries the PATH.md line count, each lesson line, shape and cl
   const html = indexHtml(dir);
   assert.match(html, /<section data-block="index"><h2>Project: build it<\/h2><ol class="lesson-index"><li><a href="\/lessons\/0001-a.html">A<\/a> <small>0001-a<\/small><\/li><li>.*0003-c.*<\/ol><ol class="lesson-index"><li><a href="\/lessons\/0004-d.html">D<\/a>/);
   assert.deepEqual(lessonIndex(ws()), { lines: null, lessons: [], reference: [] });
-  assert.match(indexHtml('test/fixtures/teach'), /Reading what fx printed<\/a> <span class="lesson-shape">diagnose<\/span>/);
+  assert.match(indexHtml(FIX), /Reading what fx printed<\/a> <span class="lesson-shape">diagnose<\/span>/);
 });
 
 test('the reading page exists, links lesson.css, and explains every label of the format\'s Blocks table; indexHtml links it before the index (spec 38)', () => {
@@ -445,7 +447,7 @@ test('the reading page exists, links lesson.css, and explains every label of the
   const labels = table.map((row) => row.split('|')[2].trim()).filter(Boolean);
   assert.ok(labels.length >= 14, `labels parsed: ${labels.length}`);
   for (const label of labels) assert.ok(page.includes(`aria-label="${label}"`), label);
-  const html = indexHtml('test/fixtures/teach');
+  const html = indexHtml(FIX);
   assert.ok(html.indexOf('<a href="/assets/reading.html">How to read a lesson</a>') < html.indexOf('<section data-block="index">'));
 });
 

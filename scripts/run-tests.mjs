@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { testEnv, testHome } from '../test/helpers.mjs';
 
 // A test or a test file may run 10 minutes; this script bounds the whole run to 20 on
@@ -25,8 +26,10 @@ for (const name of ['TERM', 'COLORTERM', 'FORCE_COLOR', 'NO_COLOR']) {
   if (process.env[name] !== undefined) colours[name] = process.env[name];
 }
 const windows = process.platform === 'win32';
+const temp = join(testHome, 'tmp');
+mkdirSync(temp);
 const child = spawn(process.execPath, ['--test', ...timeout, ...args], {
-  stdio: 'inherit', env: testEnv(colours), detached: !windows,
+  stdio: 'inherit', env: testEnv({ ...colours, TMPDIR: temp, TEMP: temp, TMP: temp }), detached: !windows,
 });
 let ended = false;
 let status;
@@ -50,7 +53,8 @@ function send(sig) {
 }
 function finish() {
   clearTimeout(deadline);
-  rmSync(testHome, { recursive: true, force: true });
+  try { rmSync(testHome, { recursive: true, force: true }); }
+  catch (error) { console.error(`Could not remove temporary test home ${testHome}: ${error.message}`); }
   for (const [sig, handler] of handlers) process.removeListener(sig, handler);
   if (signal) process.kill(process.pid, signal);
   else process.exitCode = timedOut ? 1 : status;

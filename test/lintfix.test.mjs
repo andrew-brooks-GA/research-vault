@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, cpSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { REPO_ROOT } from './helpers.mjs';
 import { fixVault } from '../bin/lib/lintrules.mjs';
 import { run } from '../bin/commands/lint.mjs';
 
@@ -12,7 +13,7 @@ test('--fix strips BOM and CRLF and re-serializes canonically', () => {
   cpSync(fileURLToPath(new URL('./fixtures/vault', import.meta.url)), dir, { recursive: true });
   const f = join(dir, 'sources', '2026-01-01-a.md');
   writeFileSync(f, '﻿' + readFileSync(f, 'utf8').replace(/\n/g, '\r\n'), 'utf8');
-  const { fixed } = fixVault(dir, process.cwd());
+  const { fixed } = fixVault(dir, REPO_ROOT);
   const after = readFileSync(f, 'utf8');
   assert.notEqual(after.charCodeAt(0), 0xFEFF);
   assert.ok(!/\r/.test(after));
@@ -45,9 +46,9 @@ const topicsOf = f => readFileSync(f, 'utf8').match(/^topics:.*$/m)[0];
 
 test('lint --fix --topics rewrites aliased topics through built-in and vault pairs and deduplicates; --fix alone does not (spec 24 D3)', async () => {
   const { dir, f } = aliasVault();
-  fixVault(dir, process.cwd());
+  fixVault(dir, REPO_ROOT);
   assert.equal(topicsOf(f), 'topics: [k8s, kubernetes, tdd]', '--fix alone leaves topics');
-  fixVault(dir, process.cwd(), { topics: true });
+  fixVault(dir, REPO_ROOT, { topics: true });
   assert.equal(topicsOf(f), 'topics: [kubernetes, test-driven-development]');
   const { dir: dir2, f: f2 } = aliasVault();
   const so = process.stdout.write; process.stdout.write = () => true;
@@ -65,7 +66,7 @@ test('R08 fixVault replaces entries and leaves the old temporary name untouched'
   writeFileSync(path, raw);
   writeFileSync(path + '.tmp', 'sentinel');
   linkSync(path, join(dir, 'original'));
-  fixVault(dir, process.cwd());
+  fixVault(dir, REPO_ROOT);
   assert.equal(readFileSync(path, 'utf8').startsWith('\uFEFF'), false);
   assert.equal(readFileSync(join(dir, 'original'), 'utf8'), raw);
   assert.equal(readFileSync(path + '.tmp', 'utf8'), 'sentinel');

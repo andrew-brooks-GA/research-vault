@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { tmpVault, put, testEnv } from './helpers.mjs';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { REPO_ROOT, tmpVault, put, testEnv } from './helpers.mjs';
+
+const CLI = join(REPO_ROOT, 'bin', 'research-vault.mjs');
 
 test('CLI prints usage and exits 0 with no args', () => {
-  const out = execFileSync(process.execPath, ['bin/research-vault.mjs', '--help'], { env: testEnv(), encoding: 'utf8' });
+  const out = execFileSync(process.execPath, [CLI, '--help'], { env: testEnv(), encoding: 'utf8' });
   assert.match(out, /research-vault/);
   assert.match(out, /init\|lint\|capture\|verify\|search\|related\|manifest/);
 });
@@ -16,7 +18,7 @@ test('CLI prints usage and exits 0 with no args', () => {
 test('CLI does not truncate large piped stdout (process.exit after write)', () => {
   const dir = tmpVault('rv-pipe-');
   for (let i = 0; i < 400; i++) put(dir, 'source', `2026-01-01-s${i}`, { source_type: 'article', source_url: `https://example.com/${i}` });
-  const out = execFileSync(process.execPath, ['bin/research-vault.mjs', 'manifest', '--vault', dir], { env: testEnv(), maxBuffer: 1 << 26 });
+  const out = execFileSync(process.execPath, [CLI, 'manifest', '--vault', dir], { env: testEnv(), maxBuffer: 1 << 26 });
   assert.ok(out.length > 65536, `expected > 64 KB, got ${out.length}`);
   assert.doesNotThrow(() => JSON.parse(out.toString()));
 });
@@ -25,13 +27,11 @@ test('CLI does not truncate large piped stdout (process.exit after write)', () =
 test('a command given --help or -h prints its row of the command table and writes nothing', () => {
   const root = mkdtempSync(join(tmpdir(), 'rv-help-'));
   const overrides = { HOME: root, USERPROFILE: root, APPDATA: join(root, 'AppData', 'Roaming'), LOCALAPPDATA: join(root, 'AppData', 'Local'), XDG_CONFIG_HOME: join(root, 'config'), XDG_DATA_HOME: join(root, 'data'), RESEARCH_VAULT_PATH: join(root, 'vault') };
-  const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
-  const cli = join(repo, 'bin', 'research-vault.mjs');
-  const run = (...argv) => spawnSync(process.execPath, [cli, ...argv], { cwd: root, env: testEnv(overrides), encoding: 'utf8', timeout: 20000 });
+  const run = (...argv) => spawnSync(process.execPath, [CLI, ...argv], { cwd: root, env: testEnv(overrides), encoding: 'utf8', timeout: 20000 });
   const usage = run('--help');
   assert.equal(usage.status, 0, usage.stderr);
   const names = usage.stdout.match(/commands: ([\w|-]+)/)[1].split('|');
-  const table = readFileSync(join(repo, 'docs', 'REFERENCE.md'), 'utf8');
+  const table = readFileSync(join(REPO_ROOT, 'docs', 'REFERENCE.md'), 'utf8');
   for (const [cmd, flag] of [...names.map((c) => [c, '--help']), ['init', '-h']]) {
     const r = run(cmd, flag);
     assert.equal(r.status, 0, `${cmd} ${flag}: ${r.stderr}`);
@@ -61,11 +61,10 @@ test('the Node version check refuses a Node older than 24 with one line and acce
 // bin/: a preload fakes the version and fails the load of every bin/ module but the entry and the check, so a static
 // import of one (which ESM loads before any module body runs) makes the run fail with that error instead.
 test('the CLI entry refuses an older Node before it loads any other module of the plugin', (t) => {
-  const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
   const dir = mkdtempSync(join(tmpdir(), 'rv-old-node-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const preload = join(dir, 'old-node.mjs');
-  const bin = pathToFileURL(join(repo, 'bin')).href + '/';
+  const bin = pathToFileURL(join(REPO_ROOT, 'bin')).href + '/';
   writeFileSync(preload, `import { registerHooks } from 'node:module';
 Object.defineProperty(process, 'versions', { value: { ...process.versions, node: '22.0.0' } });
 const allowed = new Set([${JSON.stringify(bin + 'research-vault.mjs')}, ${JSON.stringify(bin + 'lib/node-floor.mjs')}]);
@@ -74,7 +73,7 @@ registerHooks({ load(url, context, next) {
   return next(url, context);
 } });
 `);
-  const r = spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, join(repo, 'bin', 'research-vault.mjs'), '--help'], { cwd: dir, env: testEnv(), encoding: 'utf8', timeout: 20000 });
+  const r = spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, CLI, '--help'], { cwd: dir, env: testEnv(), encoding: 'utf8', timeout: 20000 });
   assert.equal(r.status, 1, r.stderr);
   assert.equal(r.stderr, 'research-vault: Node.js 24 or newer is required (this is 22.0.0)\n');
   assert.equal(r.stdout, '', 'no usage');

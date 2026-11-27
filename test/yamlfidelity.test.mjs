@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, cpSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { REPO_ROOT } from './helpers.mjs';
 import { parseFrontmatter, serializeFrontmatter } from '../bin/lib/frontmatter.mjs';
 import { lintVault, fixVault, unwrapQuoteArtifact } from '../bin/lib/lintrules.mjs';
 import { applyVerification } from '../bin/commands/verify.mjs';
@@ -137,12 +138,12 @@ test('lint warns on a quote artifact and --fix repairs it; clean entries are not
   const dir = freshVault();
   const f = join(dir, 'sources', '2026-01-01-a.md');
   writeFileSync(f, readFileSync(f, 'utf8').replace(/^title: .*$/m, `title: "'Tool: X install'"`), 'utf8');
-  const hits = lintVault(dir, process.cwd()).warnings.filter(w => w.code === 'WARN_QUOTE_ARTIFACT');
+  const hits = lintVault(dir, REPO_ROOT).warnings.filter(w => w.code === 'WARN_QUOTE_ARTIFACT');
   assert.equal(hits.length, 1, JSON.stringify(hits));
   assert.match(hits[0].file, /2026-01-01-a\.md$/);
-  fixVault(dir, process.cwd());
+  fixVault(dir, REPO_ROOT);
   assert.equal(parseFrontmatter(readFileSync(f, 'utf8')).data.title, 'Tool: X install');
-  assert.equal(lintVault(dir, process.cwd()).warnings.filter(w => w.code === 'WARN_QUOTE_ARTIFACT').length, 0);
+  assert.equal(lintVault(dir, REPO_ROOT).warnings.filter(w => w.code === 'WARN_QUOTE_ARTIFACT').length, 0);
 });
 
 test('reportFallback names the vault for config/default writes only', () => {

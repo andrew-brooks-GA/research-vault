@@ -24,7 +24,7 @@ import {
   assertEmbeddingRefusal, assertEmbeddingReplyRefusal, boundRepo, embeddingEnv, fakeFetch, HTTPS_ENDPOINT,
   LOOPBACK_ENDPOINT, normalisedEndpoints, recordEmbeddingRun, refusedEmbeddingReplies, refusedEndpoints, unapprovedUrls,
 } from './embed.test.mjs';
-import { assertVaultUntouched, outsideVaultRepo, put, testEnv, tmpVault } from './helpers.mjs';
+import { REPO_ROOT, assertVaultUntouched, outsideVaultRepo, put, testEnv, tmpVault } from './helpers.mjs';
 
 const VAULT = fileURLToPath(new URL('./fixtures/vault', import.meta.url));
 
@@ -78,7 +78,7 @@ test('search --body matches entry body text, not just title/topics', () => {
   const dir = freshVault();
   const r = captureEntry(dir, {
     type: 'note', title: 'Plain Title', sources: '2026-01-01-a',
-    confidence: 'high', now: '2026-05-30', repoRoot: process.cwd(),
+    confidence: 'high', now: '2026-05-30', repoRoot: REPO_ROOT,
   });
   appendFileSync(r.path, 'The syncer shares the host APF bucket under contention.\n');
 
@@ -116,7 +116,7 @@ test('search hides superseded entries unless --include-superseded (spec 09)', as
   captureEntry(dir, { type: 'source', title: 'New', url: 'https://example.com/new', now: '2026-01-03' });
   captureEntry(dir, { type: 'source', title: 'Z last', url: 'https://example.com/z', now: '2026-01-04' });
   const { applyVerification } = await import('../bin/commands/verify.mjs');
-  applyVerification(dir, { id: '2026-01-02-old', method: 'refetched-source', result: 'outdated', supersededBy: '2026-01-03-new', now: '2026-01-05', repoRoot: process.cwd() });
+  applyVerification(dir, { id: '2026-01-02-old', method: 'refetched-source', result: 'outdated', supersededBy: '2026-01-03-new', now: '2026-01-05', repoRoot: REPO_ROOT });
   const ACTIVE = ['2026-01-01-first', '2026-01-03-new', '2026-01-04-z-last'];
   const ALL = ['2026-01-01-first', '2026-01-02-old', '2026-01-03-new', '2026-01-04-z-last'];
   assert.deepEqual(searchVault(dir, { type: 'source' }).map(e => e.id), ACTIVE, 'default drops only the superseded row, order preserved');
@@ -149,14 +149,14 @@ test('matchRows is searchVault without the body walk and the superseded gate (sp
 });
 
 test('sortRows authority: taxonomy order, untiered last, ties keep incoming order (spec 23 D2)', () => {
-  const schema = loadSchema(process.cwd());
+  const schema = loadSchema(REPO_ROOT);
   const rows = ['tertiary', null, 'primary', 'secondary', null].map((authority_tier, i) => ({ id: `r${i}`, authority_tier }));
   assert.deepEqual(sortRows(rows, 'authority', schema).map(e => e.id), ['r2', 'r3', 'r0', 'r1', 'r4']);
   assert.throws(() => sortRows(rows, 'nope', schema), /--sort must be authority or fresh/);
 });
 
 test('sortRows fresh: fresh, stale, not assessable, ties keep incoming order (spec 23 D3)', () => {
-  const schema = loadSchema(process.cwd());
+  const schema = loadSchema(REPO_ROOT);
   const now = new Date('2026-06-01');
   const rows = [
     { id: 'stable-fresh', volatility: 'stable', last_verified: '2026-05-31' },
@@ -170,11 +170,10 @@ test('sortRows fresh: fresh, stale, not assessable, ties keep incoming order (sp
 
 test('search --sort authority through a vault, default order unchanged, text annotation (spec 23 D1, D4)', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'rv-sort-'));
-  const repoRoot = process.cwd();
-  captureEntry(dir, { type: 'source', title: 'T', url: 'https://example.com/t', authorityTier: 'tertiary', now: '2026-01-01', repoRoot });
-  captureEntry(dir, { type: 'source', title: 'N', url: 'https://example.com/n', now: '2026-01-02', repoRoot });
-  captureEntry(dir, { type: 'source', title: 'P', url: 'https://example.com/p', authorityTier: 'primary', now: '2026-01-03', repoRoot });
-  captureEntry(dir, { type: 'note', title: 'Note', sources: '2026-01-03-p', now: '2026-01-04', repoRoot });
+  captureEntry(dir, { type: 'source', title: 'T', url: 'https://example.com/t', authorityTier: 'tertiary', now: '2026-01-01', repoRoot: REPO_ROOT });
+  captureEntry(dir, { type: 'source', title: 'N', url: 'https://example.com/n', now: '2026-01-02', repoRoot: REPO_ROOT });
+  captureEntry(dir, { type: 'source', title: 'P', url: 'https://example.com/p', authorityTier: 'primary', now: '2026-01-03', repoRoot: REPO_ROOT });
+  captureEntry(dir, { type: 'note', title: 'Note', sources: '2026-01-03-p', now: '2026-01-04', repoRoot: REPO_ROOT });
   const ids = q => searchVault(dir, q).map(e => e.id);
   assert.deepEqual(ids({}), ['2026-01-01-t', '2026-01-02-n', '2026-01-03-p', '2026-01-04-note'], 'default is manifest order');
   assert.deepEqual(ids({ sort: 'authority' }), ['2026-01-03-p', '2026-01-01-t', '2026-01-02-n', '2026-01-04-note']);
@@ -192,7 +191,7 @@ test('a vault alias pair reaches search: --topic kubernetes finds an entry carry
   const root = mkdtempSync(join(tmpdir(), 'rv-alias-'));
   writeFileSync(join(root, '.research-vault.json'), '{"vault":"v","taxonomy_extensions":{"topic_aliases":{"k8s":"kubernetes"}}}');
   const dir = join(root, 'v');
-  captureEntry(dir, { type: 'source', title: 'K', url: 'https://example.com/k', topics: 'k8s', now: '2026-01-01', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'source', title: 'K', url: 'https://example.com/k', topics: 'k8s', now: '2026-01-01', repoRoot: REPO_ROOT });
   const f = join(dir, 'sources', '2026-01-01-k.md');
   writeFileSync(f, readFileSync(f, 'utf8').replace(/^topics:.*$/m, 'topics: [k8s]'), 'utf8');
   assert.deepEqual(searchVault(dir, { topic: 'kubernetes' }).map(e => e.id), ['2026-01-01-k']);
@@ -212,7 +211,7 @@ test('search logs a queried event with its facets and the ids returned, no text 
 
 test('search --semantic ranks by cosine over the index, weights stale rows down, drops superseded rows, honours --limit and refuses as the plan says (spec 34 D3)', async (t) => {
   const dir = freshVault();
-  const schema = loadSchema(process.cwd());
+  const schema = loadSchema(REPO_ROOT);
   const src = (id, body, extra = {}) => {
     const data = { title: id, type: 'note', created: '2026-01-01', domain: ['software-engineering'], stage: 'distilled', topics: [], status: 'active', related: [], volatility: 'slow', sources: ['2026-01-01-a'], confidence: 'medium', summary: body,
       verifications: [{ date: '2026-11-02', by_type: 'human', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }], ...extra };
@@ -232,7 +231,7 @@ test('search --semantic ranks by cosine over the index, weights stale rows down,
     assert.equal(await searchRun({ _: ['search'], vault: dir, cwd: repo, semantic: 'zig writer', 'ack-data-egress': true, fetch: fakeFetch() }), 1);
     assert.match(errs.at(-1), /run embed first/);
     assert.equal(await embedRun({ vault: dir, cwd: repo, 'ack-data-egress': true, fetch: fakeFetch() }), 0);
-    applyVerification(dir, { id: '2026-01-01-zig-old', method: 'cross-referenced', result: 'outdated', supersededBy: '2026-01-01-zig-note', repoRoot: process.cwd() });
+    applyVerification(dir, { id: '2026-01-01-zig-old', method: 'cross-referenced', result: 'outdated', supersededBy: '2026-01-01-zig-note', repoRoot: REPO_ROOT });
     out.length = 0;
     assert.equal(await searchRun({ _: ['search'], vault: dir, cwd: repo, semantic: 'zig writer', 'ack-data-egress': true, fetch: fakeFetch(), json: true, now: '2026-11-02' }), 0);
     const rows = JSON.parse(out.join(''));

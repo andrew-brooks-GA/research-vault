@@ -4,9 +4,11 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync, writeFileSync, rmSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { assertVaultUntouched, outsideVaultRepo, tmpVault, put, testEnv } from './helpers.mjs';
+import { REPO_ROOT, assertVaultUntouched, outsideVaultRepo, tmpVault, put, testEnv } from './helpers.mjs';
 import { vaultContext } from '../hooks/pre-web.mjs';
 import { writeBlocklist } from './blocklist.test.mjs';
+
+const HOOK = join(REPO_ROOT, 'hooks', 'pre-web.mjs');
 
 test('pre-web hook surfaces matching entries and exact URL hits', () => {
   const v = tmpVault('rv-preweb-');
@@ -26,7 +28,7 @@ test('pre-web hook surfaces matching entries and exact URL hits', () => {
 test('pre-web hook CLI emits PreToolUse additionalContext and exits 0', () => {
   const v = tmpVault('rv-preweb-');
   put(v, 'source', '2026-01-01-vcluster-sleep', { title: 'vcluster sleep mode', topics: ['vcluster'], source_url: 'https://docs.vcluster.com/sleep-mode', source_type: 'official-docs', subject: { name: 'vcluster', version: '0.20' } });
-  const r = spawnSync(process.execPath, ['hooks/pre-web.mjs'], { input: JSON.stringify({ tool_name: 'WebSearch', tool_input: { query: 'vcluster sleep mode' }, cwd: v }), env: testEnv({ RESEARCH_VAULT_PATH: v }), encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'WebSearch', tool_input: { query: 'vcluster sleep mode' }, cwd: v }), env: testEnv({ RESEARCH_VAULT_PATH: v }), encoding: 'utf8' });
   assert.equal(r.status, 0);
   const out = JSON.parse(r.stdout);
   assert.equal(out.hookSpecificOutput.hookEventName, 'PreToolUse');
@@ -36,7 +38,7 @@ test('pre-web hook CLI emits PreToolUse additionalContext and exits 0', () => {
 test('PreToolUse stays silent for a refused outside vault', (t) => {
   const fixture = outsideVaultRepo(t);
   const { cwd, vault, title, id } = fixture;
-  const run = env => spawnSync(process.execPath, ['hooks/pre-web.mjs'], {
+  const run = env => spawnSync(process.execPath, [HOOK], {
     env: testEnv(env), encoding: 'utf8', input: JSON.stringify({ cwd, tool_name: 'WebSearch', tool_input: { query: title } }),
   });
   const result = run();
@@ -212,7 +214,7 @@ test('S-13: the pre-web hook answers on a vault where an entry references constr
   const v = tmpVault('rv-preweb-s13-');
   t.after(() => rmSync(v, { recursive: true, force: true }));
   put(v, 'source', '2026-01-01-zig-writer', { title: 'zig writer', source_url: 'https://example.org/zig', source_type: 'article', related: ['constructor'] });
-  const r = spawnSync(process.execPath, ['hooks/pre-web.mjs'], { input: JSON.stringify({ tool_name: 'WebSearch', tool_input: { query: 'zig writer' }, cwd: v }), env: testEnv({ RESEARCH_VAULT_PATH: v }), encoding: 'utf8', timeout: 20000 });
+  const r = spawnSync(process.execPath, [HOOK], { input: JSON.stringify({ tool_name: 'WebSearch', tool_input: { query: 'zig writer' }, cwd: v }), env: testEnv({ RESEARCH_VAULT_PATH: v }), encoding: 'utf8', timeout: 20000 });
   assert.equal(r.status, 0, r.stderr);
   assert.match(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /^Vault entries matching this query:\n- 2026-01-01-zig-writer \[source(, STALE)?\] zig writer$/);
 });

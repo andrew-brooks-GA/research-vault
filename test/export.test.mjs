@@ -14,12 +14,12 @@ import { run } from '../bin/commands/export.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
 import { readEntry } from '../bin/lib/fsutil.mjs';
 import { spawnSync } from 'node:child_process';
-import { testEnv } from './helpers.mjs';
+import { REPO_ROOT, testEnv } from './helpers.mjs';
 
 // Hand-write an entry directly to disk (mirroring capture/lint tests) so we can build
 // question entries with controlled state/answer_summary the fixture vault lacks.
 function handWrite(dir, folder, type, id, extra) {
-  const schema = loadSchema(process.cwd());
+  const schema = loadSchema(REPO_ROOT);
   const data = {
     title: id, type, created: '2026-01-01',
     domain: ['software-engineering'], stage: schema.taxonomy.stage_by_folder[folder].default,
@@ -132,7 +132,7 @@ test("export meta.last_verified matches the manifest and ignores a non-confirmin
   captureEntry(dir, { type: 'note', title: 'Claim', sources: '2026-01-01-src', summary: 'x', now: '2026-01-02' });
   const noteId = buildManifest(dir).entries.find(e => e.type === 'note').id;
   // A failed check must not move either surface's clock off the capture seed.
-  applyVerification(dir, { id: noteId, method: 'refetched-source', result: 'unreachable', now: '2027-01-01', repoRoot: process.cwd() });
+  applyVerification(dir, { id: noteId, method: 'refetched-source', result: 'unreachable', now: '2027-01-01', repoRoot: REPO_ROOT });
   const rec = buildExport(dir, { scope: ['note'] }).find(r => r.meta.id === noteId);
   const row = buildManifest(dir).entries.find(e => e.id === noteId);
   assert.equal(rec.meta.last_verified, row.last_verified, 'export meta matches manifest row');

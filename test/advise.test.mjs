@@ -8,11 +8,13 @@ import { execFileSync } from 'node:child_process';
 import { advise, OPEN_QUESTION_DAYS } from '../bin/lib/advise.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
-import { tmpVault, put, testEnv } from './helpers.mjs';
+import { REPO_ROOT, tmpVault, put, testEnv } from './helpers.mjs';
 import { run as adviseRun } from '../bin/commands/advise.mjs';
 import { listStale } from '../bin/lib/stale.mjs';
 import { applyVerification } from '../bin/commands/verify.mjs';
 import { appendUsage } from '../bin/lib/usagelog.mjs';
+
+const CLI = join(REPO_ROOT, 'bin', 'research-vault.mjs');
 
 function freshVault() {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');
@@ -22,7 +24,7 @@ function freshVault() {
 
 test('advise returns the signal arrays', () => {
   const dir = freshVault();
-  const r = advise(dir, process.cwd());
+  const r = advise(dir, REPO_ROOT);
   for (const k of ['stale', 'orphans', 'sourcesWithoutNotes', 'aliasable', 'unverifiedSources']) {
     assert.ok(Array.isArray(r[k]), `${k} must be an array`);
   }
@@ -30,16 +32,16 @@ test('advise returns the signal arrays', () => {
 
 test('a source whose only verification is capture appears in unverifiedSources', () => {
   const dir = freshVault();
-  const { id } = captureEntry(dir, { type: 'source', title: 'Captured Only', url: 'https://cap.example.com/x', now: '2026-05-27', repoRoot: process.cwd() });
-  const r = advise(dir, process.cwd());
+  const { id } = captureEntry(dir, { type: 'source', title: 'Captured Only', url: 'https://cap.example.com/x', now: '2026-05-27', repoRoot: REPO_ROOT });
+  const r = advise(dir, REPO_ROOT);
   assert.ok(r.unverifiedSources.includes(id), 'captured-only source should be flagged unverified');
   assert.ok(!r.unverifiedSources.includes('2026-01-01-a'), 'the human-spot-check fixture source is verified, not flagged');
 });
 
 test('a source with no distilling note appears in sourcesWithoutNotes', () => {
   const dir = freshVault();
-  const { id } = captureEntry(dir, { type: 'source', title: 'Lonely', url: 'https://lonely.example.com/x', now: '2026-05-27', repoRoot: process.cwd() });
-  assert.ok(advise(dir, process.cwd()).sourcesWithoutNotes.includes(id));
+  const { id } = captureEntry(dir, { type: 'source', title: 'Lonely', url: 'https://lonely.example.com/x', now: '2026-05-27', repoRoot: REPO_ROOT });
+  assert.ok(advise(dir, REPO_ROOT).sourcesWithoutNotes.includes(id));
 });
 
 test('advise lists notes/synthesis lacking a summary', () => {
@@ -47,29 +49,29 @@ test('advise lists notes/synthesis lacking a summary', () => {
   captureEntry(dir, { type: 'source', title: 'Src', url: 'https://example.com/z', now: '2026-01-01' });
   captureEntry(dir, { type: 'note', title: 'Bare', sources: '2026-01-01-src', now: '2026-01-02' });
   captureEntry(dir, { type: 'note', title: 'Crisp', sources: '2026-01-01-src', summary: 'A claim.', now: '2026-01-03' });
-  const r = advise(dir, process.cwd());
+  const r = advise(dir, REPO_ROOT);
   assert.deepEqual(r.missingSummaries, ['2026-01-02-bare']);
 });
 
 test('advise flags scaffold-only and empty bodies on authored types, not sources', () => {
   const dir = mkdtempSync(join(tmpdir(), 'rv-stub-'));
   captureEntry(dir, { type: 'source', title: 'Src', url: 'https://example.com/st', now: '2026-01-01' });
-  captureEntry(dir, { type: 'note', title: 'Hollow', sources: '2026-01-01-src', scaffold: true, now: '2026-01-02', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'note', title: 'Hollow', sources: '2026-01-01-src', scaffold: true, now: '2026-01-02', repoRoot: REPO_ROOT });
   captureEntry(dir, { type: 'note', title: 'Bare', sources: '2026-01-01-src', now: '2026-01-03' });
   captureEntry(dir, {
     type: 'note', title: 'Full', sources: '2026-01-01-src',
     body: '## Load-bearing claims\n- A real claim.', now: '2026-01-04',
   });
-  const r = advise(dir, process.cwd());
+  const r = advise(dir, REPO_ROOT);
   assert.deepEqual(r.stubBodies.sort(), ['2026-01-02-hollow', '2026-01-03-bare']);
 });
 
 test('advise does not mutate the vault (lint-clean before and after)', () => {
   const dir = freshVault();
   lintAndReport(dir, { check: false }); // establish a clean baseline manifest
-  advise(dir, process.cwd());
+  advise(dir, REPO_ROOT);
   assert.equal(lintAndReport(dir, { check: true }).violations.length, 0, 'clean before');
-  advise(dir, process.cwd());
+  advise(dir, REPO_ROOT);
   assert.equal(lintAndReport(dir, { check: true }).violations.length, 0, 'clean after');
 });
 
@@ -77,13 +79,13 @@ test('advise flags entries with baked-in quote residue in frontmatter', () => {
   const dir = freshVault();
   writeFileSync(join(dir, 'sources', '2026-01-01-residue.md'),
     '---\ntitle: say \\"hi\\" now\ntype: source\n---\nbody\n', 'utf8');
-  const r = advise(dir, process.cwd());
+  const r = advise(dir, REPO_ROOT);
   assert.ok(r.quoteResidue.includes('2026-01-01-residue'));
 });
 
 test('advise reports no residue for clean frontmatter', () => {
   const dir = freshVault();
-  const r = advise(dir, process.cwd());
+  const r = advise(dir, REPO_ROOT);
   assert.equal(r.quoteResidue.length, 0);
 });
 
@@ -94,7 +96,7 @@ test('orphans weigh every edge rel: source_id and superseded_by links are not or
   put(dir, 'note', '2026-01-03-old', { sources: [], confidence: 'medium', status: 'superseded', superseded_by: '2026-01-04-new' });
   put(dir, 'note', '2026-01-04-new', { sources: [], confidence: 'medium' });
   put(dir, 'note', '2026-01-05-alone', { sources: [], confidence: 'medium' });
-  assert.deepEqual(advise(dir, process.cwd()).orphans, ['2026-01-04-new', '2026-01-05-alone']);
+  assert.deepEqual(advise(dir, REPO_ROOT).orphans, ['2026-01-04-new', '2026-01-05-alone']);
 });
 
 // Spec 04: stale evidence dependencies. `now` pinned; a `fast` entry verified 2026-01-01 is 200 days old.
@@ -103,7 +105,7 @@ const src = (dir, id, extra = {}) => put(dir, 'source', id, { source_type: 'arti
 const ver = date => [{ date, by_type: 'human', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }];
 const STALE = { volatility: 'fast', verifications: ver('2026-01-01') };
 const FRESH = { volatility: 'fast', verifications: ver('2026-07-10') };
-const evidence = dir => advise(dir, process.cwd(), { now: NOW }).staleEvidence;
+const evidence = dir => advise(dir, REPO_ROOT, { now: NOW }).staleEvidence;
 
 test('staleEvidence reports each dependent with the path to the stale source', () => {
   const dir = tmpVault('rv-se-');
@@ -193,20 +195,20 @@ test('advise with a pinned now agrees with listStale on the same clock', () => {
   const dir = tmpVault('rv-se-');
   src(dir, '2026-01-01-s', STALE);
   src(dir, '2026-01-01-f', FRESH);
-  assert.deepEqual(advise(dir, process.cwd(), { now: NOW }).stale, listStale(dir, { now: NOW, repoRoot: process.cwd() }));
+  assert.deepEqual(advise(dir, REPO_ROOT, { now: NOW }).stale, listStale(dir, { now: NOW, repoRoot: REPO_ROOT }));
 });
 
 test('a vault alias pair reaches advise: aliasable before lint --fix --topics, empty after (spec 24 D2, D3)', async () => {
   const root = mkdtempSync(join(tmpdir(), 'rv-alias-'));
   writeFileSync(join(root, '.research-vault.json'), '{"vault":"v","taxonomy_extensions":{"topic_aliases":{"k8s":"kubernetes"}}}');
   const dir = join(root, 'v');
-  captureEntry(dir, { type: 'source', title: 'K', url: 'https://example.com/k', topics: 'k8s', now: '2026-01-01', repoRoot: process.cwd() });
+  captureEntry(dir, { type: 'source', title: 'K', url: 'https://example.com/k', topics: 'k8s', now: '2026-01-01', repoRoot: REPO_ROOT });
   const f = join(dir, 'sources', '2026-01-01-k.md');
   writeFileSync(f, readFileSync(f, 'utf8').replace(/^topics:.*$/m, 'topics: [k8s]'), 'utf8'); // capture already normalised it; put the alias back
-  assert.deepEqual(advise(dir, process.cwd()).aliasable, ['2026-01-01-k']);
+  assert.deepEqual(advise(dir, REPO_ROOT).aliasable, ['2026-01-01-k']);
   const { fixVault } = await import('../bin/lib/lintrules.mjs');
-  fixVault(dir, process.cwd(), { topics: true });
-  assert.deepEqual(advise(dir, process.cwd()).aliasable, []);
+  fixVault(dir, REPO_ROOT, { topics: true });
+  assert.deepEqual(advise(dir, REPO_ROOT).aliasable, []);
 });
 
 test('advise lists active questions not yet answered and older than 60 days by their id date (spec 25 D1)', () => {
@@ -215,11 +217,11 @@ test('advise lists active questions not yet answered and older than 60 days by t
   put(dir, 'question', '2026-01-01-i', { question: 'I?', state: 'investigating' });
   put(dir, 'question', '2026-01-01-a', { question: 'A?', state: 'answered', answer_summary: 'Yes.' });
   assert.equal(OPEN_QUESTION_DAYS, 60);
-  assert.deepEqual(advise(dir, process.cwd(), { now: '2026-03-15' }).openQuestions,
+  assert.deepEqual(advise(dir, REPO_ROOT, { now: '2026-03-15' }).openQuestions,
     [{ id: '2026-01-01-i', state: 'investigating', ageDays: 73 }, { id: '2026-01-01-q', state: 'open', ageDays: 73 }]);
-  assert.deepEqual(advise(dir, process.cwd(), { now: '2026-03-02' }).openQuestions, []);
-  assert.equal(advise(dir, process.cwd(), { now: '2026-03-03' }).openQuestions.length, 2);
-  const out = execFileSync(process.execPath, ['bin/research-vault.mjs', 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8' });
+  assert.deepEqual(advise(dir, REPO_ROOT, { now: '2026-03-02' }).openQuestions, []);
+  assert.equal(advise(dir, REPO_ROOT, { now: '2026-03-03' }).openQuestions.length, 2);
+  const out = execFileSync(process.execPath, [CLI, 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8' });
   assert.match(out, /^open questions over 60 days \(2\): 2026-01-01-i \(investigating, \d+d\), 2026-01-01-q \(open, \d+d\)$/m);
 });
 
@@ -237,14 +239,14 @@ test('advise pairs supersede suspects by source_url or subject at one version, o
   src('2026-10-01-v1', 'https://example.com/v', { subject: { name: 'v', version: '1' } });
   src('2026-11-01-v2', 'https://example.com/v', { subject: { name: 'v', version: '2' } });
   put(dir, 'note', '2026-09-01-n', { subject: { name: 'tool', version: '1' }, sources: ['2026-03-01-c'], confidence: 'medium' });
-  assert.deepEqual(advise(dir, process.cwd()).supersedeSuspects, [
+  assert.deepEqual(advise(dir, REPO_ROOT).supersedeSuspects, [
     { older: '2026-01-01-a', newer: '2026-02-01-b', by: 'source_url' },
     { older: '2026-03-01-c', newer: '2026-04-01-d', by: 'subject' },
     { older: '2026-06-01-f', newer: '2026-07-01-g', by: 'subject' },
   ]);
-  applyVerification(dir, { id: '2026-01-01-a', method: 'cross-referenced', result: 'outdated', supersededBy: '2026-02-01-b', repoRoot: process.cwd() });
-  assert.equal(advise(dir, process.cwd()).supersedeSuspects.length, 2);
-  const out = execFileSync(process.execPath, ['bin/research-vault.mjs', 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8' });
+  applyVerification(dir, { id: '2026-01-01-a', method: 'cross-referenced', result: 'outdated', supersededBy: '2026-02-01-b', repoRoot: REPO_ROOT });
+  assert.equal(advise(dir, REPO_ROOT).supersedeSuspects.length, 2);
+  const out = execFileSync(process.execPath, [CLI, 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8' });
   assert.match(out, /^supersede suspects \(2\): 2026-03-01-c -> 2026-04-01-d \(subject\), 2026-06-01-f -> 2026-07-01-g \(subject\)$/m);
 });
 
@@ -256,7 +258,7 @@ test('advise pairs near duplicates by host and path or by title terms, older fir
   src('2026-03-01-c', 'Linux install guide, second edition', 'https://other.example.com/guide/install/linux');
   src('2026-04-01-d', 'Unrelated post', 'https://docs.example.com/guide/blog/post');
   src('2026-05-01-e', 'Install guide for Linux', 'https://docs.example.com/guide/install/linux/');
-  const r = advise(dir, process.cwd());
+  const r = advise(dir, REPO_ROOT);
   assert.deepEqual(r.nearDuplicates, [
     { older: '2026-01-01-a', newer: '2026-02-01-b', by: 'url' },
     { older: '2026-01-01-a', newer: '2026-03-01-c', by: 'title' },
@@ -264,9 +266,9 @@ test('advise pairs near duplicates by host and path or by title terms, older fir
     { older: '2026-03-01-c', newer: '2026-05-01-e', by: 'title' },
   ]);
   assert.deepEqual(r.supersedeSuspects, [{ older: '2026-01-01-a', newer: '2026-05-01-e', by: 'source_url' }]);
-  applyVerification(dir, { id: '2026-01-01-a', method: 'cross-referenced', result: 'outdated', supersededBy: '2026-05-01-e', repoRoot: process.cwd() });
-  assert.ok(advise(dir, process.cwd()).nearDuplicates.every(p => p.older !== '2026-01-01-a' && p.newer !== '2026-01-01-a'));
-  const out = execFileSync(process.execPath, ['bin/research-vault.mjs', 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8' });
+  applyVerification(dir, { id: '2026-01-01-a', method: 'cross-referenced', result: 'outdated', supersededBy: '2026-05-01-e', repoRoot: REPO_ROOT });
+  assert.ok(advise(dir, REPO_ROOT).nearDuplicates.every(p => p.older !== '2026-01-01-a' && p.newer !== '2026-01-01-a'));
+  const out = execFileSync(process.execPath, [CLI, 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8' });
   assert.match(out, /^near duplicates \(2\): 2026-02-01-b -> 2026-05-01-e \(url\), 2026-03-01-c -> 2026-05-01-e \(title\)$/m);
 });
 
@@ -284,15 +286,15 @@ test('advise reports usage from the log: surfaced and cited counts, topic counts
   appendUsage(dir, { kind: 'cited', via: 'post-tool-use', file: 'docs/x.md', id: '2026-05-01-n' });
   appendUsage(dir, { kind: 'cited', via: 'post-tool-use', file: 'docs/y.md', id: '2026-05-01-n' });
   appendUsage(dir, { kind: 'cited', via: 'post-tool-use', file: 'docs/y.md', id: '2026-02-01-b' });
-  assert.deepEqual(advise(dir, process.cwd()).usage, {
+  assert.deepEqual(advise(dir, REPO_ROOT).usage, {
     entries: [{ id: '2026-01-01-a', surfaced: 2, cited: 0 }, { id: '2026-02-01-b', surfaced: 0, cited: 1 }, { id: '2026-05-01-n', surfaced: 1, cited: 2 }],
     topics: { kubernetes: { queried: 2, noMatch: 1 } },
     cold: { queried: ['2026-01-01-a'], unqueried: ['2026-03-01-c'] },
   });
   const empty = tmpVault();
   put(empty, 'source', '2026-01-01-s', { source_type: 'article', source_url: 'https://example.com/s' });
-  assert.deepEqual(advise(empty, process.cwd()).usage, { entries: [], topics: {}, cold: { queried: [], unqueried: ['2026-01-01-s'] } });
-  const out = execFileSync(process.execPath, ['bin/research-vault.mjs', 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8' });
+  assert.deepEqual(advise(empty, REPO_ROOT).usage, { entries: [], topics: {}, cold: { queried: [], unqueried: ['2026-01-01-s'] } });
+  const out = execFileSync(process.execPath, [CLI, 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8' });
   assert.match(out, /^usage \(3\): 2026-01-01-a \(surfaced 2, cited 0\), 2026-02-01-b \(surfaced 0, cited 1\), 2026-05-01-n \(surfaced 1, cited 2\)$/m);
   assert.match(out, /^topics queried \(1\): kubernetes \(2 queried, 1 no-match\)$/m);
   assert.match(out, /^cold sources under a queried topic \(1\): 2026-01-01-a$/m);
@@ -312,11 +314,11 @@ test('advise pairs one source_url captured with a version and without one (issue
   src('2026-06-01-f', 'https://example.com/plain', { subject: { name: 'plain', version: '1' }, status: 'superseded', superseded_by: '2026-05-01-e' });
   src('2026-07-01-g', 'https://example.com/empty', { subject: { name: 'empty', version: '' } });
   src('2026-08-01-h', 'https://example.com/empty');
-  assert.deepEqual(advise(dir, process.cwd()).supersedeSuspects, [
+  assert.deepEqual(advise(dir, REPO_ROOT).supersedeSuspects, [
     { older: '2026-01-01-a', newer: '2026-02-01-b', by: 'source_url-unversioned' },
     { older: '2026-07-01-g', newer: '2026-08-01-h', by: 'source_url' },
   ]);
-  const out = execFileSync(process.execPath, ['bin/research-vault.mjs', 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8' });
+  const out = execFileSync(process.execPath, [CLI, 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8' });
   assert.match(out, /^supersede suspects \(2\): 2026-01-01-a -> 2026-02-01-b \(source_url-unversioned\), 2026-07-01-g -> 2026-08-01-h \(source_url\)$/m);
 });
 
@@ -328,7 +330,7 @@ test('advise text output: an entry id and a question state cannot add a line or 
   const tags = '\u{E0001}\u{E0069}\u{E0067}\u{E006E}\u{E006F}\u{E0072}\u{E0065}\u{E007F}';
   put(dir, 'note', `2026-01-01-alone\norphans (0): forged${tags}`, { sources: [], confidence: 'medium', summary: 's' });
   put(dir, 'question', '2026-01-02-q', { question: 'Q?', state: `open\nnear duplicates (0): forged${tags}` });
-  const out = execFileSync(process.execPath, ['bin/research-vault.mjs', 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
+  const out = execFileSync(process.execPath, [CLI, 'advise', '--vault', dir], { env: testEnv(), encoding: 'utf8', timeout: 20000 });
   const lines = out.split('\n');
   assert.ok(lines.includes('orphans (2): 2026-01-01-alone orphans (0): forged, 2026-01-02-q'), out);
   assert.match(out, /^open questions over 60 days \(1\): 2026-01-02-q \(open near duplicates \(0\): forged, \d+d\)$/m);
@@ -346,7 +348,7 @@ test('S-13: advise reports usage, orphans, cold sources and aliasable topics for
     appendUsage(dir, { kind: 'queried', via: 'search', topic: name, outcome: 'no-match', ids: [] });
     appendUsage(dir, { kind: 'queried', via: 'search', topic: name, outcome: 'hits', ids: [name] });
     appendUsage(dir, { kind: 'cited', via: 'post-tool-use', file: 'docs/x.md', id: name });
-    return JSON.stringify(advise(dir, process.cwd(), { now: '2026-01-03' })).replaceAll(name, 'NAME');
+    return JSON.stringify(advise(dir, REPO_ROOT, { now: '2026-01-03' })).replaceAll(name, 'NAME');
   };
   const plain = run('plainname');
   assert.match(plain, /"orphans":\["NAME","zz-t"\]/);
