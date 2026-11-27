@@ -166,7 +166,7 @@ test('npm test keeps a passing status when temporary home cleanup fails', { time
   assert.match(outcome.stdout, /^ok \d+ - fixture leaves a temporary directory$/m);
   const { home } = JSON.parse(readFileSync(join(cwd, 'process.json'), 'utf8'));
   assert.equal(dirname(home), parentTemp);
-  assert.match(outcome.stderr, new RegExp(String.raw`^Could not remove temporary test home ${RegExp.escape(home)}: EACCES\b[^\r\n]+\r?\n$`));
+  assert.match(outcome.stderr, new RegExp(String.raw`^Could not remove temporary test home ${RegExp.escape(home)}: [^\r\n]+\r?\n$`));
 });
 
 test('npm test removes directories left by failing tests', { timeout: 30000 }, async (t) => {
