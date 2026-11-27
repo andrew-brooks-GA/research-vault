@@ -4,7 +4,7 @@ A research notes folder with provenance and freshness metadata for your coding a
 
 ![CI](https://github.com/andrew-brooks-GA/research-vault/actions/workflows/ci.yml/badge.svg)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
-![Node ≥24](https://img.shields.io/badge/node-%E2%89%A524-brightgreen.svg)
+![Node ≥24.12.0](https://img.shields.io/badge/node-%E2%89%A524.12.0-brightgreen.svg)
 ![dependencies: 0](https://img.shields.io/badge/dependencies-0-brightgreen.svg)
 
 ## The problem
@@ -60,7 +60,7 @@ versions: sdk=0.21.0
 
 You need:
 
-- Node 24 or newer, and git.
+- Node 24.12.0 or newer, and git.
 - For the plugin route, Claude Code (tested with 2.1.331).
 - Per feature: `python3` with its `pty` module for `teach serve --terminal`, which also runs your `$SHELL` (`/bin/bash` when it is unset); the `codex` CLI for `host review codex`; for a teach lab or checked task, the interpreter named on its script's `#!` line.
 
@@ -107,7 +107,7 @@ Explicit commands are listed in the reference. Agent workflows such as teaching 
 
 ## Learning something
 
-This section is for someone learning a topic rather than building software, and it assumes Claude Code. You need Node 24 or newer; the four install lines above are typed into Claude Code, and the command file of the last of them tells the agent to run `init`. On a first install, `init` records the vault as the default and prints a `RESEARCH_VAULT_PATH` line only when the vault would not be found without it (checked on macOS).
+This section is for someone learning a topic rather than building software, and it assumes Claude Code. You need Node 24.12.0 or newer; the four install lines above are typed into Claude Code, and the command file of the last of them tells the agent to run `init`. On a first install, `init` records the vault as the default and prints a `RESEARCH_VAULT_PATH` line only when the vault would not be found without it (checked on macOS).
 
 Start Claude Code in a project folder (a repo) you want the lessons kept in and say "teach me X". The teaching skill instructs the agent to bind the folder to your vault, then ask an interview as multiple-choice questions in its dialog, one per term or tool it needs to know about, in groups of up to four, and write a mission and a path of lessons from your answers. Each lesson is a web page served on your own machine, with an index of every lesson and a navigation bar. Concept, diagnose and review lessons carry a quiz; answered on the served page, it records your score. The lesson format requires a reminder to ask follow-up questions in the terminal; answering them remains an agent task.
 

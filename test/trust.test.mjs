@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { syncBuiltinESMExports } from 'node:module';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, existsSync, realpathSync, symlinkSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, existsSync, realpathSync, symlinkSync, rmSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -348,7 +348,7 @@ test('identity changed during confirmation refuses identical bytes', async t => 
   let error = '';
   const status = await run({ _: ['trust', alias] }, {
     ...f.options, stdin: { isTTY: true }, stdout: { write() {} }, stderr: { write(v) { error += v; } },
-    ask: async () => { rmSync(alias); symlinkSync(other, alias, 'dir'); return 'y'; },
+    ask: async () => { unlinkSync(alias); symlinkSync(other, alias, 'dir'); return 'y'; },
   });
   assert.equal(status, 2); assert.match(error, /binding changed/);
   assert.deepEqual(readdirSync(f.folder), ['trusted-bindings.json']);

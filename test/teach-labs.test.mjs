@@ -3,7 +3,7 @@
 // under a temp directory, and every test leaves no process of a group it started.
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, symlinkSync, rmSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, readdirSync, symlinkSync, rmSync, unlinkSync, chmodSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -421,7 +421,7 @@ test('readLabs: the shape D1 lists, the pin over the entry as returned, and ever
   rmSync(join(ws, 'evidence'), { recursive: true });
   symlinkSync(outside, join(ws, 'evidence'));
   assert.deepEqual(problems({ script: 'evidence/x.sh' }), ['lab demo: up evidence/x.sh has a root, evidence/, that resolves outside the workspace']);
-  rmSync(join(ws2, 'labs'));
+  unlinkSync(join(ws2, 'labs'));
   mkdirSync(join(ws2, 'labs'));
   writeFileSync(join(ws2, 'labs', 'labs.json'), JSON.stringify({ version: 1, labs: { demo: { cost: 'c', timeout: 1, up: { script: 'lessons/files/up.sh', sha256: 'a'.repeat(64) }, down: { script: 'lessons/files/0001-lab/down.sh', sha256: 'a'.repeat(64) } } } }));
   symlinkSync(join(outside, 'labs'), join(ws2, 'lessons', 'files', 'x'));

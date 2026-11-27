@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -91,7 +91,7 @@ test('gate staged refuses a binding entry that cannot be followed without writin
     assert.deepEqual(snapshot(outside), outsideBefore);
     assert.equal(git('write-tree'), index);
     assert.equal(git('rev-parse', 'HEAD'), head);
-    rmSync(binding);
+    unlinkSync(binding);
   }
 });
 

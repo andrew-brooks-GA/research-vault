@@ -4,11 +4,20 @@
 import { readFileSync } from 'node:fs';
 
 const ENGINES = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).engines.node;
-const FLOOR = Number(ENGINES.match(/\d+/)[0]);
+const [major, minor = 0, patch = 0] = ENGINES.match(/\d+(?:\.\d+){0,2}/)[0].split('.').map(Number);
+const FLOOR = [major, minor, patch];
 
 // The line to print for a Node version string such as process.versions.node, or null when it is new enough.
-export const nodeTooOld = (version) => Number(String(version).split('.')[0]) < FLOOR
-  ? `research-vault: Node.js ${FLOOR} or newer is required (this is ${version})` : null;
+export const nodeTooOld = (version) => {
+  const [major, minor = '0', patch = '0'] = String(version).split('.', 3);
+  const parts = [Number(major), Number(minor), parseInt(patch, 10)];
+  for (let i = 0; i < FLOOR.length; i++) {
+    if (parts[i] === FLOOR[i]) continue;
+    return parts[i] < FLOOR[i]
+      ? `research-vault: Node.js ${FLOOR.join('.')} or newer is required (this is ${version})` : null;
+  }
+  return null;
+};
 
 const problem = nodeTooOld(process.versions.node);
 if (problem) { process.stderr.write(problem + '\n'); process.exit(1); }

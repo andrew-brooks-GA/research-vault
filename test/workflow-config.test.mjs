@@ -56,18 +56,18 @@ test('release configuration checks out and targets the CI head_sha', () => {
 
 test('documented Node floors agree with package engines', () => {
   const engines = JSON.parse(read('package.json')).engines.node;
-  assert.match(engines, /^>=\d+$/);
+  assert.match(engines, /^>=\d+(?:\.\d+){0,2}$/);
   const floor = engines.slice(2);
   for (const path of ['README.md', 'docs/CODEX.md']) {
-    const matches = [...read(path).matchAll(/Node (\d+) or newer/g)];
+    const matches = [...read(path).matchAll(/Node (\d+(?:\.\d+){0,2}) or newer/g)];
     assert.ok(matches.length, `${path}: missing Node floor`);
     for (const match of matches) assert.equal(match[1], floor, `${path}: Node floor`);
   }
-  const badge = read('README.md').match(/!\[Node ≥(\d+)\]\(https:\/\/img\.shields\.io\/badge\/node-%E2%89%A5(\d+)-[^)]+\)/);
+  const badge = read('README.md').match(/!\[Node ≥(\d+(?:\.\d+){0,2})\]\(https:\/\/img\.shields\.io\/badge\/node-%E2%89%A5(\d+(?:\.\d+){0,2})-[^)]+\)/);
   assert.ok(badge, 'README.md: missing Node badge');
   assert.equal(badge[1], floor, 'README.md: badge alt Node floor');
   assert.equal(badge[2], floor, 'README.md: badge URL Node floor');
-  assert.equal(read('AGENTS.md').match(/`engines` >=(\d+)/)?.[1], floor, 'AGENTS.md: Node floor');
+  assert.equal(read('AGENTS.md').match(/`engines` >=(\d+(?:\.\d+){0,2})/)?.[1], floor, 'AGENTS.md: Node floor');
 });
 
 // Source-scan guard: every external action in workflow YAML must use a full commit SHA.

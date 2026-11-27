@@ -12,7 +12,7 @@ From a research-vault checkout, run:
 node bin/research-vault.mjs host install codex --at /absolute/path/to/your/project
 ```
 
-Use Node 24 or newer. Create the destination project first. The installer defines a `launcher` result field containing the absolute launcher path. In your project, use that launcher to create and bind a vault:
+Use Node 24.12.0 or newer. Create the destination project first. The installer defines a `launcher` result field containing the absolute launcher path. In your project, use that launcher to create and bind a vault:
 
 ```sh
 node .research-vault-host/codex/run.mjs init --vault research

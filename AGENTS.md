@@ -1,6 +1,6 @@
 # Contributing to research-vault
 
-This repo is the research-vault plugin: a Node CLI with no runtime dependencies (`bin/`, `engines` >=24), Claude Code hooks (`hooks/`), skills (`skills/`), agents (`agents/`) and the vault template (`vault-template/`). The file you are reading is for working on the plugin; the instructions for a vault itself are written into each vault's `AGENTS.md` by `generateAgentsMd` at `init`.
+This repo is the research-vault plugin: a Node CLI with no runtime dependencies (`bin/`, `engines` >=24.12.0), Claude Code hooks (`hooks/`), skills (`skills/`), agents (`agents/`) and the vault template (`vault-template/`). The file you are reading is for working on the plugin; the instructions for a vault itself are written into each vault's `AGENTS.md` by `generateAgentsMd` at `init`.
 
 ## Before you commit
 
