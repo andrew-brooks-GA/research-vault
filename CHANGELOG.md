@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (R-05, R-21):** `compileVault` moves from `bin/commands/compile.mjs` to `bin/lib/indexview.mjs`, text unchanged; `bin/commands/init.mjs` imports it from there and no longer imports the compile command, which re-exports it. No behaviour changes.
+
 - **Changed (R-05, R-21):** `lintAndReport` moves from `bin/commands/lint.mjs` to `bin/lib/lintrules.mjs`, text unchanged; the `post-tool-use` hook imports it from there and no longer imports the lint command, which re-exports it. No behaviour changes.
 
 - **Changed (R-05, R-21):** `matchRows` moves from `bin/commands/search.mjs` to `bin/lib/manifest.mjs`, text unchanged; `bin/lib/lesson.mjs` imports it from there and no longer imports the search command, which re-exports it. No behaviour changes.

@@ -6,7 +6,7 @@ import { generateAgentsMd } from '../lib/agentsmd.mjs';
 import { checkProjectVault, resolveVault, configPath, hasVaultContent } from '../lib/resolve.mjs';
 import { writeManifest } from '../lib/manifest.mjs';
 import { ENTRY_FOLDERS } from '../lib/fsutil.mjs';
-import { compileVault } from './compile.mjs';
+import { compileVault } from '../lib/indexview.mjs';
 import { scaffoldProjectConfig, quotedGlob } from '../lib/projectconfig.mjs';
 import { acknowledgeBinding } from '../lib/trust.mjs';
 import { csvList } from '../lib/args.mjs';
