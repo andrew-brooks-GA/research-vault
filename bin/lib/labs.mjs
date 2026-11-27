@@ -7,8 +7,7 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { isInsideVault, isInsideWorkspaceFolder } from './containment.mjs';
-import { parseBlocks } from './lesson.mjs';
-import { LESSON_ID_RE } from './lesson-format.mjs';
+import { LESSON_ID_RE, parseBlocks } from './lesson-format.mjs';
 import { show } from './escape.mjs';
 
 export const LAB_ID_RE = /^[a-z][a-z0-9-]{0,39}$/;

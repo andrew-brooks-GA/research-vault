@@ -5,9 +5,9 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { parseFrontmatter } from './frontmatter.mjs';
 import { matchRows } from './manifest.mjs';
 import { checkCitations, extractCitations, SPAN_RE } from './citations.mjs';
-import { isInsideVault, mayBeInside } from './containment.mjs';
+import { mayBeInside } from './containment.mjs';
 import { traverse } from './graph.mjs';
-import { extractQuizJson, extractCites, LESSON_ID_RE, RECORD_ID_RE } from './lesson-format.mjs';
+import { extractCites, LESSON_ID_RE, RECORD_ID_RE, FOLLOWUP, CONNECT_LEAD, lessonClass, parseBlocks, blockSpans, parseQuiz, readPath, imgAttr, isProject, README_SECTIONS } from './lesson-format.mjs';
 import { serveFile, validateEntry, ENUM_CODES, missionPrefs } from './teach.mjs';
 import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
 import { readLabs, labPin, lessonLab, sha256, LAB_MANIFEST } from './labs.mjs';
@@ -15,15 +15,14 @@ import { scanCast, PLAYER_FILES, PLAYER_VERSION } from './cast.mjs';
 import { readBrand, BRAND_DEFAULTS, contrast } from './brand.mjs';
 import { readRequirements } from './task.mjs';
 
+export { lessonClass, readPath, CONNECT_LEAD };
+
 export const QUIZ_MIN_ITEMS = 3;
 export const QUIZ_SPREAD_MAX = 1.6;
 // Figure constants (spec 22 D4): lesson.css sets min-width 27.5rem (440px) so 440 units draw at scale 1.
 export const FIGURE_VIEWBOX_MAX = 440;
 export const FIGURE_LABEL_MIN = 14;
 export const FIGURE_LABEL_MAX = 40;
-export const FOLLOWUP = 'You can ask follow-up questions in the terminal.';
-// Spec 48 D7: the connect block's opening sentence; `teach export` replaces it, and WARN_CONNECT_LEAD flags another.
-export const CONNECT_LEAD = 'Type your answer to Claude Code in the terminal, in a few sentences:';
 // Spec 22 D1: a lesson is the frame (prereq optional) around its shape's middle, in this one table.
 // D3: a project's scaffold is optional (the mission's first project carries one), so it is not listed.
 const FRAME = ['mission', 'sources', 'followup'];
@@ -47,56 +46,6 @@ const textOf = (s) => s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 export const TIME_WORDS = ['currently', 'recently', 'nowadays', 'at the moment', 'as of now', 'as of today'];
 const listDir = (dir, ext) => (existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(ext)).sort() : []);
 
-export function lessonClass(filePath) {
-  const parent = basename(dirname(filePath));
-  const name = basename(filePath);
-  if (!name.endsWith('.html')) return null;
-  if (parent === 'reference') return 'reference';
-  const id = name.slice(0, -5);
-  if (parent !== 'lessons' || !LESSON_ID_RE.test(id)) return null;
-  return /^\d{4}-review-/.test(id) ? 'review' : 'lesson';
-}
-
-// Each `data-block` element: its opening tag's attributes and its inner HTML, matched to the
-// closing tag of the same name by depth. First occurrence of a block name wins.
-export function parseBlocks(html) {
-  const blocks = new Map();
-  for (const { name, attrs, html: inner, start } of blockSpans(html)) {
-    if (!blocks.has(name)) blocks.set(name, { attrs, html: inner, start });
-  }
-  return blocks;
-}
-
-// All occurrences in document order, including the exact inner-HTML offsets for the gate.
-export function blockSpans(html) {
-  const blocks = [];
-  for (const m of html.matchAll(/<([a-z][a-z0-9]*)\b([^>]*\bdata-block\s*=\s*(["'])([^"']+)\3[^>]*)>/gi)) {
-    const [open, tag, attrs, , name] = m;
-    const start = m.index + open.length;
-    const re = new RegExp(`<(/?)${tag}\\b[^>]*>`, 'gi');
-    re.lastIndex = start;
-    let depth = 1;
-    let end = html.length;
-    for (let t; (t = re.exec(html));) {
-      depth += t[1] ? -1 : 1;
-      if (depth === 0) { end = t.index; break; }
-    }
-    blocks.push({ name, attrs, html: html.slice(start, end), start, end });
-  }
-  return blocks;
-}
-
-function parseQuiz(html) {
-  const json = extractQuizJson(html);
-  if (json === null) return { error: 'no quiz data block' };
-  let quiz;
-  try { quiz = JSON.parse(json); } catch (e) { return { error: `quiz JSON does not parse: ${e.message}` }; }
-  if (!quiz || !Array.isArray(quiz.items)) return { error: 'quiz JSON has no items array' };
-  const bad = quiz.items.findIndex((it) => !it || !Array.isArray(it.options));
-  if (bad !== -1) return { error: `quiz item ${bad} has no options array` };
-  return { items: quiz.items };
-}
-
 export function parseLesson(html) {
   const blocks = parseBlocks(html);
   return {
@@ -105,17 +54,6 @@ export function parseLesson(html) {
     cites: extractCites(html),
     links: [...html.matchAll(/\bhref\s*=\s*(["'])(.*?)\1/gi)].map((m) => m[2]),
   };
-}
-
-// The items of the lesson's one attempt (spec 22 D1, D6.5): the predict block's item first, as item 0,
-// then the quiz block's items (the whole page's first data-quiz when there is neither block). quiz.js
-// renders the same order. `{ error }` when either part does not parse.
-export function lessonItems(html) {
-  const blocks = parseBlocks(html);
-  const parts = [blocks.get('predict')?.html, blocks.get('quiz')?.html ?? (blocks.has('predict') ? undefined : html)]
-    .filter((h) => h !== undefined).map(parseQuiz);
-  const bad = parts.find((p) => p.error);
-  return bad ?? (parts.length ? { items: parts.flatMap((p) => p.items) } : { error: 'no quiz data block' });
 }
 
 // GitHub-style heading slug: lowercase, punctuation other than hyphens dropped, spaces to hyphens.
@@ -188,30 +126,6 @@ export function missionFloor(workspaceDir) {
     knownTerms: missionList(workspaceDir, /^#{1,6}\s+known terms\b/i),
     newTerms: missionList(workspaceDir, /^#{1,6}\s+new to me\b/i),
   };
-}
-
-// PATH.md lines: `N. <title> | terms: a, b | tool: x | after: 1, 2 | lesson: <id>`.
-export function readPath(workspaceDir) {
-  const p = join(workspaceDir, 'PATH.md');
-  if (!isInsideVault(workspaceDir, p) || !existsSync(p)) return null;
-  const lines = [];
-  for (const raw of readFileSync(p, 'utf8').split(/\r?\n/)) {
-    const m = /^\s*(\d+)\.\s+([^|]+?)\s*((?:\|[^|]*)*)$/.exec(raw);
-    if (!m) continue;
-    const line = { n: Number(m[1]), title: m[2].trim(), terms: [], tool: null, after: [], lesson: null };
-    for (const part of m[3].split('|').map((x) => x.trim()).filter(Boolean)) {
-      const f = /^([a-z]+):\s*(.*)$/i.exec(part);
-      if (!f) continue;
-      const key = f[1].toLowerCase();
-      const vals = f[2].split(',').map((x) => x.trim()).filter(Boolean);
-      if (key === 'terms') line.terms = vals.map((x) => x.toLowerCase());
-      else if (key === 'tool') line.tool = (vals[0] ?? '').toLowerCase() || null;
-      else if (key === 'after') line.after = vals.map((x) => x.toLowerCase());
-      else if (key === 'lesson') line.lesson = vals[0] ?? null;
-    }
-    lines.push(line);
-  }
-  return lines;
 }
 
 const bodyAttrList = (html, attr) => {
@@ -385,9 +299,6 @@ function figureFindings(html, add, branded) {
     if (long.length) add('WARN_FIGURE_LABEL_LONG', `${n}: ${long.length} label(s) over ${FIGURE_LABEL_MAX} characters (longest ${Math.max(...long)}); a label names, the paragraph explains`);
   });
 }
-
-// An attribute's value in an <img> tag's attribute text, or undefined.
-export const imgAttr = (attrs, name) => new RegExp(`\\s${name}\\s*=\\s*(["'])(.*?)\\1`, 'i').exec(attrs)?.[2];
 
 // The file `teach serve` returns for the URL of an <img> src on a page in fromDir, and under lessons/, reference/ or assets/
 // (serveFile decodes, refuses a dot segment and a non-file): its workspace-relative path, ok, and the bytes (body null when
@@ -763,7 +674,6 @@ export function lintStore(workspaceDir, ctx) {
 // line whose lesson is not a review and that no other such line names in after:, most recently built first.
 // Spec 22 D3: a `Project:` line counts as a review here, so a built project keeps the lines it names inner.
 const isReview = (l) => /^\d{4}-review-/.test(l.lesson ?? '');
-export const isProject = (l) => /^project:/i.test(l.title);
 export function pathFringe(lines) {
   const taken = new Set(lines.filter((l) => l.lesson).map((l) => String(l.n)));
   const fringe = lines.filter((l) => !l.lesson && l.after.every((a) => a === 'floor' || taken.has(a)));
@@ -957,7 +867,6 @@ export function proseMetrics(workspaceDir) {
 // order; teach readme prints the last two. A New to me term or one a lesson introduces (trackedTerms) that the Floor's known terms do not
 // hold is a finding, as in a lesson; fenced code and inline link targets are not read for terms. A cited vault id, an inline
 // link into evidence/ or the vault outside code (each target once), and a missing section are advisory.
-export const README_SECTIONS = ['What this is for', 'Before you start', 'How to take it', 'Lesson map', 'Labs'];
 function lintReadme(ws, ctx) {
   const text = readFileSync(join(ws, 'README.md'), 'utf8');
   const findings = [];

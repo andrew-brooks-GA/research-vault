@@ -47,7 +47,7 @@ export function pathPosition(index, id) {
 }
 
 // Spec 22 D1, D6.5: the lesson's one attempt takes the predict block's quiz first (item 0), then every
-// other quiz in page order. `parts` are { predict, items } in page order; bin/lib/lesson.mjs lessonItems
+// other quiz in page order. `parts` are { predict, items } in page order; bin/lib/lesson-format.mjs lessonItems
 // reads the same order on the server.
 export function mergeQuizzes(parts) {
   return [...parts.filter((p) => p.predict), ...parts.filter((p) => !p.predict)];

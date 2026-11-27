@@ -10,7 +10,7 @@ import { TYPE_FOLDER, walkEntries } from '../lib/fsutil.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { csvList } from '../lib/args.mjs';
 import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatters, teachIndex, createServer, progress, progressText, readmeDraft, exportWorkspace, writeExport, lessonIndex, missionPrefs, taskSummary, previousTaskAttempt, certificationRuns } from '../lib/teach.mjs';
-import { LESSON_ID_RE } from '../lib/lesson-format.mjs';
+import { LESSON_ID_RE, readPath } from '../lib/lesson-format.mjs';
 import { escapeHtml } from '../lib/escape.mjs';
 import { readRequirements, reportLines, checkAttempt, answeredAttempt, taskLesson, checkTask, readRun, runLine, openLine, startRun, endRun, cancelRun } from '../lib/task.mjs';
 import { scanCast, castTranscript } from '../lib/cast.mjs';
@@ -20,7 +20,7 @@ import { readBrand } from '../lib/brand.mjs';
 import { ptyAvailable } from '../lib/terminal.mjs';
 import { assertInsideWorkspaceFolder, isInsideVault, isInsideWorkspaceFolder, mayBeInside, VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
 import { screenText } from '../lib/screen.mjs';
-import { lintWorkspace, proseMetrics, readPath, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
+import { lintWorkspace, proseMetrics, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const USAGE = 'usage: research-vault teach record add|supersede ... | attempt add ... | attempt import <file> [workspace] | cast check <file> [--needle <value>]... | cast transcript <file> | check [--dry-run] [--hints] <N> [workspace] | check --start <N>... [--minutes <M>] [--pass <P>] [--no-hints] [workspace] | check --certify [workspace] | check --cancel [workspace] | export [workspace] --out <dir> [--skip-ungated] | lint [--fix] [--prose] [workspace] | next [workspace] | path candidates [--topic a,b] [workspace] | path edges [workspace] | progress [workspace] | readme [workspace] | serve [--labs] [--terminal] [workspace]';
