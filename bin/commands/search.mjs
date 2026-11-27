@@ -8,8 +8,7 @@ import { staleness } from '../lib/stale.mjs';
 import { appendUsage, USAGE_LOG } from '../lib/usagelog.mjs';
 import { VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
-import { cosine, embeddingDestination, embedTexts, readIndex } from '../lib/embed.mjs';
-import { embeddingGate } from './embed.mjs';
+import { cosine, embeddingDestination, embeddingGate, embedTexts, readIndex } from '../lib/embed.mjs';
 import { screenText } from '../lib/screen.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');

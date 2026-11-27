@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (R-05, R-21):** `embeddingGate` moves from `bin/commands/embed.mjs` to `bin/lib/embed.mjs`, text unchanged; `bin/commands/search.mjs` imports it from there and no longer imports the embed command. The refusals, their order and their messages are unchanged.
+
 - **Changed (R-05, R-21):** `compileVault` moves from `bin/commands/compile.mjs` to `bin/lib/indexview.mjs`, text unchanged; `bin/commands/init.mjs` imports it from there and no longer imports the compile command, which re-exports it. No behaviour changes.
 
 - **Changed (R-05, R-21):** `lintAndReport` moves from `bin/commands/lint.mjs` to `bin/lib/lintrules.mjs`, text unchanged; the `post-tool-use` hook imports it from there and no longer imports the lint command, which re-exports it. No behaviour changes.

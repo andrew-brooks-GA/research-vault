@@ -1,28 +1,13 @@
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolveVault } from '../lib/resolve.mjs';
-import { loadSchema } from '../lib/schema.mjs';
-import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { buildExport } from '../lib/exportjsonl.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { TYPE_FOLDER } from '../lib/fsutil.mjs';
-import { EMBEDDING_REQUEST_FAILED, INDEX, embeddingDestination, embedTexts } from '../lib/embed.mjs';
+import { EMBEDDING_REQUEST_FAILED, INDEX, embeddingGate, embedTexts } from '../lib/embed.mjs';
 import { assertInsideVault } from '../lib/containment.mjs';
 
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BATCH = 64;
-
-// Check before resolving the vault and collecting text. embedTexts checks again at the request.
-export function embeddingGate(name, args) {
-  const cfg = loadProjectConfig(args.cwd ?? process.cwd(), { schema: loadSchema(REPO_ROOT) })?.config?.embedding;
-  if (!cfg) { process.stderr.write(`${name} refused: no embedding endpoint in .research-vault.json\n`); return null; }
-  const { display, refusal } = embeddingDestination(cfg.url);
-  if (process.env.RESEARCH_VAULT_ALLOW_NETWORK !== '1') { process.stderr.write(`${name} refused: set RESEARCH_VAULT_ALLOW_NETWORK=1 to send text to ${display}\n`); return null; }
-  if (!args['ack-data-egress']) { process.stderr.write(`${name} refused: --ack-data-egress is required (the text leaves this process for ${display})\n`); return null; }
-  if (refusal) { process.stderr.write(`${name} refused: ${refusal}\n`); return null; }
-  return { cfg, display };
-}
 
 export async function run(args) {
   const gate = embeddingGate('embed', args);
