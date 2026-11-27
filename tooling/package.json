@@ -1,0 +1,10 @@
+{
+  "name": "research-vault-tooling",
+  "private": true,
+  "description": "Development tools for the research-vault plugin. Never shipped and never imported by shipped code. Install with: npm ci --ignore-scripts",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2"
+  }
+}

@@ -26,6 +26,15 @@ const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.m
 // text itself, and the test fails when either file stops containing it. Give one only when the
 // literal really is in both files; a row about two values being equal stays prose.
 export const COUPLINGS = [
+  ['tooling/package.json', 'AGENTS.md', 'contributors use the tooling package install command', 'npm ci --ignore-scripts'],
+  ['tooling/.npmrc', 'test/tooling.test.mjs', 'the npm configuration guard checks that install scripts are disabled', 'ignore-scripts'],
+  ['tooling/.npmrc', 'test/tooling.test.mjs', 'the npm configuration guard checks the minimum release age', 'min-release-age'],
+  ['tooling/.npmrc', 'test/tooling.test.mjs', 'the npm configuration guard checks that versions are saved exactly', 'save-exact'],
+  ['tooling/package.json', 'test/tooling.test.mjs', 'the tooling manifest guard checks exact dependency pins and their locked versions', 'devDependencies'],
+  ['tooling/package.json', 'test/tooling.test.mjs', 'the tooling manifest guard checks that the package is private', 'private'],
+  ['AGENTS.md', 'test/tooling.test.mjs', 'the root manifest and tracked lockfile guards enforce the contributor rules', 'the repository root keeps no dependency'],
+  ['scripts/deps.mjs', 'test/tooling.test.mjs', 'the tooling import guard uses the import edge kind and paths', "'import'"],
+  ['bin/lib/host-install.mjs', 'test/tooling.test.mjs', 'the tooling exclusion guard checks the generated Codex payload', 'installationFiles'],
   ['bin/lib/args.mjs', 'docs/REFERENCE.md', 'the strict-option error lines', 'unknown option --'],
   ['bin/lib/args.mjs', 'docs/REFERENCE.md', 'the strict-option error lines', 'needs a value'],
   ['bin/lib/args.mjs', 'docs/REFERENCE.md', 'the strict-option error lines', 'takes no value'],

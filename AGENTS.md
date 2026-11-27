@@ -1,6 +1,6 @@
 # Contributing to research-vault
 
-This repo is the research-vault plugin: a zero-dependency Node CLI (`bin/`, `engines` >=24), Claude Code hooks (`hooks/`), skills (`skills/`), agents (`agents/`) and the vault template (`vault-template/`). The file you are reading is for working on the plugin; the instructions for a vault itself are written into each vault's `AGENTS.md` by `generateAgentsMd` at `init`.
+This repo is the research-vault plugin: a Node CLI with no runtime dependencies (`bin/`, `engines` >=24), Claude Code hooks (`hooks/`), skills (`skills/`), agents (`agents/`) and the vault template (`vault-template/`). The file you are reading is for working on the plugin; the instructions for a vault itself are written into each vault's `AGENTS.md` by `generateAgentsMd` at `init`.
 
 ## Before you commit
 
@@ -26,5 +26,5 @@ This repo is the research-vault plugin: a zero-dependency Node CLI (`bin/`, `eng
 
 - `schema/AGENTS.golden.md` is generated from `schema/` by `bin/lib/agentsmd.mjs`. Never edit it by hand; change the schema or the generator and regenerate it (the drift script's failure message carries the regenerate command).
 - Every change gets a line under `## [Unreleased]` in `CHANGELOG.md`.
-- ESM only, no dependencies, no classes. `skills/research-teach/terminal/` holds, beside the plugin's `terminal.mjs` and `terminal.css`, five browser files copied from npm and pinned by SHA-256; they are not a Node dependency. Keep a change small and in the style of the code around it.
+- ESM only, no runtime dependencies, no classes. Development tools (the TypeScript compiler, Node's type declarations and the linter) live in `tooling/`, pinned to exact versions by `tooling/package-lock.json` and installed by running `npm ci --ignore-scripts` in `tooling/`. Shipped code never imports them, and the repository root keeps no dependency and no lockfile. `skills/research-teach/terminal/` holds, beside the plugin's `terminal.mjs` and `terminal.css`, five browser files copied from npm and pinned by SHA-256; they are not a Node dependency. Keep a change small and in the style of the code around it.
 - Before renaming or removing a file, a CLI flag, a skill, an agent or an npm script, run `node scripts/deps.mjs <path>` (or `cli:<command>`, `npm:<script>`) and update every dependent it lists; `npm test` fails on a reference to something that no longer exists. When a change makes two files depend on each other through anything other than a path (a copied value, a printed string, a name, a format), add a `COUPLINGS` row in `scripts/deps.mjs`.
