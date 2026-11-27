@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import { dirname, join, resolve, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { prepareEntry } from '../commands/capture.mjs';
+import { prepareEntry } from './capture-entry.mjs';
 import { serializeFrontmatter } from './frontmatter.mjs';
 import { readEntry, walkEntries, writeAtomic, TYPE_FOLDER, ENTRY_FOLDERS } from './fsutil.mjs';
 import { loadSchema } from './schema.mjs';
