@@ -1,29 +1,11 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, readFileSync } from 'node:fs';
-import { lintVault, fixVault } from '../lib/lintrules.mjs';
-import { buildManifest, writeManifest } from '../lib/manifest.mjs';
+import { lintAndReport, fixVault } from '../lib/lintrules.mjs';
 import { resolveVault, reportFallback } from '../lib/resolve.mjs';
-import { assertInsideVault } from '../lib/containment.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-export function lintAndReport(vaultPath, { check = false } = {}) {
-  const { violations, warnings } = lintVault(vaultPath, REPO_ROOT);
-  // An incomplete graph must never replace (or be compared with) the stored manifest.
-  if (violations.some(v => v.code === 'PARSE' || v.code === 'FIELD_SHAPE')) return { violations, warnings };
-  if (check) {
-    const norm = m => { const { generated, ...rest } = m; return JSON.stringify(rest); };
-    const fresh = norm(buildManifest(vaultPath));
-    const mfPath = join(vaultPath, '.vault-manifest.json');
-    assertInsideVault(vaultPath, mfPath);
-    const cur = existsSync(mfPath) ? norm(JSON.parse(readFileSync(mfPath, 'utf8'))) : null;
-    if (cur !== fresh) violations.push({ file: mfPath, code: 'MANIFEST_STALE', msg: 'manifest out of date (run lint)' });
-  } else {
-    writeManifest(vaultPath);
-  }
-  return { violations, warnings };
-}
+export { lintAndReport };
 
 export async function run(args) {
   const resolved = resolveVault({ flag: args.vault ?? null });

@@ -1,14 +1,16 @@
-import { readFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { readFileSync, existsSync } from 'node:fs';
+import { basename, join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { walkEntries, readEntry, FOLDER_TYPE, writeAtomic } from './fsutil.mjs';
 import { loadSchema, stageAllowedInFolder, fieldOrder } from './schema.mjs';
 import { serializeFrontmatter } from './frontmatter.mjs';
 import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, allowedValues, fieldShapeErrors } from './validate.mjs';
 import { BLOCKLIST, loadBlocklist, matchBlock } from './blocklist.mjs';
-import { isUnverifiedSource } from './manifest.mjs';
+import { isUnverifiedSource, buildManifest, writeManifest } from './manifest.mjs';
 import { assertInsideVault, escapePathControls } from './containment.mjs';
 import { screenText } from './screen.mjs';
 
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MONOLITHIC_SYNTHESIS_WORDS = 1500;
 
 // lint's enum coverage is driven from the same CONTROLLED_FIELDS / VERIFICATION_CONTROLLED_FIELDS
@@ -240,4 +242,21 @@ export function fixVault(vaultPath, repoRoot, { topics = false } = {}) {
     }
   }
   return { fixed };
+}
+
+export function lintAndReport(vaultPath, { check = false } = {}) {
+  const { violations, warnings } = lintVault(vaultPath, REPO_ROOT);
+  // An incomplete graph must never replace (or be compared with) the stored manifest.
+  if (violations.some(v => v.code === 'PARSE' || v.code === 'FIELD_SHAPE')) return { violations, warnings };
+  if (check) {
+    const norm = m => { const { generated, ...rest } = m; return JSON.stringify(rest); };
+    const fresh = norm(buildManifest(vaultPath));
+    const mfPath = join(vaultPath, '.vault-manifest.json');
+    assertInsideVault(vaultPath, mfPath);
+    const cur = existsSync(mfPath) ? norm(JSON.parse(readFileSync(mfPath, 'utf8'))) : null;
+    if (cur !== fresh) violations.push({ file: mfPath, code: 'MANIFEST_STALE', msg: 'manifest out of date (run lint)' });
+  } else {
+    writeManifest(vaultPath);
+  }
+  return { violations, warnings };
 }
