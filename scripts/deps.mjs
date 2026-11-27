@@ -30,6 +30,12 @@ const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.m
 // text itself, and the test fails when either file stops containing it. Give one only when the
 // literal really is in both files; a row about two values being equal stays prose.
 export const COUPLINGS = [
+  ['tooling/d6-compare.mjs', 'package.json', 'the comparison refuses Node versions below the plugin floor', '24.12.0'],
+  ['tooling/d6-compare.mjs', 'tooling/d6-tokens.mjs', 'the comparison uses Acorn token labels, comment kinds and original source ranges'],
+  ['tooling/d6-compare.mjs', 'test/d6-compare.test.mjs', 'the tests pin the comparison line-break diagnostic and command exit statuses', 'line break changed between tokens'],
+  ['tooling/d6-tokens.mjs', 'test/d6-compare.test.mjs', 'the tests pin Acorn token kinds, source spelling and half-open ranges'],
+  ['tooling/d6-tokens.mjs', 'tooling/package.json', 'the token wrapper imports the pinned parser', 'acorn'],
+  ['.github/workflows/ci.yml', 'test/workflow-config.test.mjs', 'the test job installs pinned tools before running the tests', 'npm ci --ignore-scripts'],
   ['tooling/package.json', 'AGENTS.md', 'contributors use the tooling package install command', 'npm ci --ignore-scripts'],
   ['tooling/lint.mjs', 'AGENTS.md', 'the development linter lives in tooling and uses the documented install command', 'npm ci --ignore-scripts'],
   ['tooling/lint.mjs', 'tooling/.oxlintrc.json', 'the launcher selects the config and the config names the launcher'],

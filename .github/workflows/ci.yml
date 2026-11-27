@@ -24,6 +24,8 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           package-manager-cache: false
+      - run: npm ci --ignore-scripts
+        working-directory: tooling
       - run: npm test
       # Report once on Linux; both systems already run the suite without coverage.
       - run: npm run coverage

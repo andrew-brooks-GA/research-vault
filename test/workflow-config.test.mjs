@@ -8,6 +8,20 @@ import { testEnv } from './helpers.mjs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
+// Source-scan guard: the CI test job needs the pinned tooling before it runs tests.
+test('the CI test job installs tooling with scripts disabled before npm test', () => {
+  const config = read('.github/workflows/ci.yml').replace(/#[^\n]*/g, '');
+  const job = config.match(/^  test:[ \t]*\n((?:^ *$\n|^ {4}[^\n]*(?:\n|$))*)/m)?.[1];
+  assert.ok(job, 'missing test job');
+  const steps = [...job.matchAll(/^ {6}- [^\n]*(?:\n {8,}[^\n]*)*/gm)].map(([step]) => step);
+  const tests = steps.findIndex(step => /^ {6}- run: npm test[ \t]*$/m.test(step));
+  assert.ok(tests >= 0, 'missing npm test step');
+  const install = steps.slice(0, tests).find(step => /^ {6}- run: npm ci --ignore-scripts[ \t]*$/m.test(step));
+  assert.ok(install, 'expected npm ci --ignore-scripts before npm test');
+  assert.match(install, /^ {8}working-directory: tooling[ \t]*$/m);
+  assert.doesNotMatch(install, /^ {8}(?:if|continue-on-error|"if"|"continue-on-error"|'if'|'continue-on-error')[ \t]*:/m);
+});
+
 // Configuration scans: guard release eligibility and commit identity, not GitHub execution.
 const releaseConfig = () => read('.github/workflows/release.yml').replace(/#[^\n]*/g, '');
 
