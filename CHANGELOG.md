@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (spec 56, D2):** the four hooks, `hooks/codex.mjs` and `scripts/deps.mjs` each export an entry function, `main()`, that holds what ran when the file was started directly, and the file's main-module guard is one line that calls it. Behaviour is unchanged: started directly each file does what it did, and merely imported it does nothing. The launchers of the TypeScript migration will call `main()`; new `test/entry-functions.test.mjs` holds the three behaviours for each of the six files.
+
 - **Changed (spec 56, W1):** the supported Node floor is 24.12.0, where it was any Node 24: `engines.node` is `>=24.12.0`, and the check the CLI runs before it loads anything else (`bin/lib/node-floor.mjs`) now compares the major, minor and patch numbers that `engines` declares and names the full floor in its one line, `research-vault: Node.js 24.12.0 or newer is required (this is <version>)`. `README.md`, `docs/CODEX.md` and `AGENTS.md` state the new floor. Three tests removed a symbolic link with `rmSync`, which on Node 24.11.1 and 24.12.0 fails for a link to a directory and silently does nothing for a dangling link; they use `unlinkSync` now, and the whole suite passes on Node 24.12.0.
 
 - **Tests (R-67):** the test of the runner's line for a temporary home it cannot remove no longer names an error code: Linux reports `EACCES` there and macOS `ENOTEMPTY`.

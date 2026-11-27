@@ -72,6 +72,12 @@ export const COUPLINGS = [
   ['bin/lib/trust.mjs', 'SECURITY.md', 'acknowledgement storage and byte matching limits', 'trusted-bindings.json'],
   ['bin/lib/trust.mjs', 'test/preweb.test.mjs', 'a config record alone does not make a vault', 'trusted-bindings.json'],
   ['hooks/codex.mjs', 'test/codex-hooks.test.mjs', 'Dependencies invokes the script in hook mode', '--hook'],
+  ['hooks/session-start.mjs', 'test/entry-functions.test.mjs', 'the launcher calls the exported entry point', /\bmain\(\);/],
+  ['hooks/pre-web.mjs', 'test/entry-functions.test.mjs', 'the launcher calls the exported entry point', /\bmain\(\);/],
+  ['hooks/post-tool-use.mjs', 'test/entry-functions.test.mjs', 'the launcher calls the exported entry point', /\bmain\(\);/],
+  ['hooks/stop-gate.mjs', 'test/entry-functions.test.mjs', 'the launcher calls the exported entry point', /\bmain\(\);/],
+  ['hooks/codex.mjs', 'test/entry-functions.test.mjs', 'the launcher calls the exported entry point', /\bmain\(\);/],
+  ['scripts/deps.mjs', 'test/entry-functions.test.mjs', 'the launcher calls the exported entry point', /\bmain\(\);/],
   ['bin/commands/trust.mjs', 'test/trust.test.mjs', 'linked-folder alternate vault label and fixed notice are asserted', 'Binding-folder vault: '],
   ['bin/commands/trust.mjs', 'docs/REFERENCE.md', 'found-folder and real-folder vault labels and linked-folder notice', 'Linked folder: vault locations differ depending on the path.'],
   ['bin/commands/trust.mjs', 'test/trust.test.mjs', 'binding display pieces and reconstruction use fixed prefixes and a 76-character total line limit', '76'],
@@ -744,7 +750,8 @@ function printOrder() {
   return 0;
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) {
+// Entry point for this script, called by the guard below when started directly and by the launcher after conversion.
+export function main() {
   const arg = process.argv[2];
   if (arg === '--hook') {
     let input = '';
@@ -768,3 +775,5 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
     process.exit(broken.length ? 1 : 0);
   }
 }
+
+if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) main();

@@ -70,7 +70,8 @@ export function sinceFrom(transcriptPath, now = Date.now(), stat = statSync) {
   return now - TWELVE_HOURS;
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) {
+// Entry point for this hook, called by the guard below when started directly and by the launcher after conversion.
+export function main() {
   try {
     const evt = JSON.parse(readFileSync(0, 'utf8') || '{}');
     const cwd = evt.cwd || process.cwd();
@@ -90,3 +91,5 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
   }
   process.exit(0);
 }
+
+if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) main();

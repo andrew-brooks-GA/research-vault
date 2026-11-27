@@ -68,7 +68,8 @@ export function adaptCodex(event, evt, { invoke, now = Date.now } = {}) {
   };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// Entry point for this adapter, called by the guard below when started directly and by the launcher after conversion.
+export function main() {
   try {
     const evt = JSON.parse(readFileSync(0, 'utf8') || '{}');
     console.log(JSON.stringify(adaptCodex(process.argv[2] || evt.hook_event_name, evt)));
@@ -76,3 +77,5 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.log(JSON.stringify({ systemMessage: `research-vault Codex hook skipped: ${err.message}` }));
   }
 }
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

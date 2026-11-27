@@ -53,7 +53,8 @@ export function vaultContext(vaultPath, toolName, toolInput = {}, opts = {}) {
   return withBlock(terms.length ? `research-vault: no entry matches [${screenText(terms.join(', '))}].` : '');
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) {
+// Entry point for this hook, called by the guard below when started directly and by the launcher after conversion.
+export function main() {
   let input = '';
   process.stdin.on('data', d => input += d);
   process.stdin.on('end', () => {
@@ -68,3 +69,5 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '
     process.exit(0);
   });
 }
+
+if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) main();
