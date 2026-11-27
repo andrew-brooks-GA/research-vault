@@ -13,7 +13,7 @@ import { listStale } from './stale.mjs';
 import { loadSchema } from './schema.mjs';
 import { SKIP_DIRS, expandFiles } from './files.mjs';
 import { runGit } from './git.mjs';
-import { STATIC_DIRS } from './teach.mjs';
+import { STATIC_DIRS } from './serve-file.mjs';
 import { parseBlocks, blockSpans, imgAttr } from './lesson-format.mjs';
 import { imageTarget } from './lesson.mjs';
 import { findProjectConfig, loadProjectConfig } from './projectconfig.mjs';

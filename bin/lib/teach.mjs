@@ -1,7 +1,7 @@
 // research-teach workspace store: learning records, attempts and the derived index.
 // Pure logic over a workspace directory; the verbs live in bin/commands/teach.mjs.
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, statSync, lstatSync, realpathSync, rmSync, openSync, closeSync } from 'node:fs';
-import { join, resolve, basename, dirname, extname, relative } from 'node:path';
+import { join, resolve, basename, dirname } from 'node:path';
 import http from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -12,8 +12,9 @@ import { allowedValues } from './validate.mjs';
 import { slugify } from './ids.mjs';
 import { assertInsideWorkspaceFolder, escapePathControls, isInsideVault, isInsideWorkspaceFolder } from './containment.mjs';
 import { expandFiles } from './files.mjs';
-import { grade, neighbours, pathPosition } from '../../skills/research-teach/assets/quiz.js';
+import { grade } from '../../skills/research-teach/assets/quiz.js';
 import { imageTarget } from './lesson.mjs';
+import { CONTENT_TYPES, STATIC_DIRS, navHtml, serveFile, withNav } from './serve-file.mjs';
 import { LESSON_ID_RE, RECORD_ID_RE, extractCites, lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWUP, CONNECT_LEAD } from './lesson-format.mjs';
 import { HEADING_RE, TABLE_SEP_RE, WORKSPACE_GATES, hasVerdict } from './gate.mjs';
 import { readLabs, lessonLab, labRunner, secretHits, labCookie, LAB_ACTIONS, LAB_BODY_MAX, LAB_ID_RE } from './labs.mjs';
@@ -23,6 +24,7 @@ import { screenText } from './screen.mjs';
 import { escapeHtml, show } from './escape.mjs';
 
 export { LESSON_ID_RE, RECORD_ID_RE, extractCites };
+export { serveFile, navHtml, footnoteCitations, labStepsHtml } from './serve-file.mjs';
 
 export const ATTEMPT_BODY_MAX = 4096;
 export const ATTEMPT_ID_RE = /^a-\d{8}-\d{6}-\d{4}(?:-\d+)?$/;
@@ -527,23 +529,6 @@ export function progressText(p) {
   return lines.join('\n') + '\n';
 }
 
-// The navigation bar of a page that does not load quiz.js; renderNav in quiz.js builds the same links
-// (plus previous, next and the path position) on a lesson page. Spec 48 D3: given lessonIndex's index and a
-// lesson id, it adds those three as renderNav does, for an exported lesson that fetches nothing. Spec 51 D4: previous
-// and next follow index.pages, the reading order with the divider pages, when withDividers set it.
-export function navHtml(index = null, id = null) {
-  const links = '<nav class="lesson-nav"><a class="lesson-nav-index" href="/">All lessons</a><a class="lesson-nav-progress" href="/progress">Progress</a><a class="lesson-nav-reading" href="/assets/reading.html">How to read</a>';
-  if (!index) return links + '</nav>';
-  const { prev, next } = neighbours(index.pages ?? index.lessons ?? [], id);
-  const pos = pathPosition(index, id);
-  const a = (e, text, cls) => `<a class="${cls}" href="${escapeHtml(e.path)}">${text}</a>`;
-  return links + (prev ? a(prev, `&#8592; ${escapeHtml(prev.title)}`, 'lesson-nav-prev') : '') +
-    (pos ? `<span class="lesson-nav-line">${pos}</span>` : '') + (next ? a(next, `${escapeHtml(next.title)} &#8594;`, 'lesson-nav-next') : '') + '</nav>';
-}
-
-// The server-inserted bar: after <body> on an HTML page that does not load quiz.js.
-export const withNav = (html) => (/<script[^>]*quiz\.js/i.test(html) ? html : html.replace(/<body\b[^>]*>/i, (m) => m + navHtml()));
-
 export function progressHtml(p) {
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const cell = (l, a) => (a ? `<td><b>${esc(scoreOf(a))}</b> <small>${esc(a.date)}</small></td>` : l.kind === 'task' ? '<td></td>' : '<td>none</td>');
@@ -561,14 +546,6 @@ export function progressHtml(p) {
 `;
 }
 
-// `teach serve` (spec 12 "Serving and recording"). Order matters: Host before anything;
-// for POST, Origin, Content-Type and Content-Length before a byte of the body is read.
-export const STATIC_DIRS = ['lessons', 'reference', 'assets', 'brand'];
-const CONTENT_TYPES = {
-  '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-  '.md': 'text/markdown; charset=utf-8', '.json': 'application/json',
-  '.png': 'image/png', '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-};
 const CLIENT_ERROR = /^(invalid lesson id|no lesson|answers must be)/;
 
 function send(req, res, status, body = '', type = 'text/plain; charset=utf-8', close = false) {
@@ -579,85 +556,6 @@ function send(req, res, status, body = '', type = 'text/plain; charset=utf-8', c
   }
   res.writeHead(status, headers);
   res.end(body);
-}
-
-// Citations as the learner sees them: every `<a data-cite="ID">` outside the sources block becomes a
-// numbered footnote `[n]` (its position in the sources list, as an unserved page's authored [n] is; an id
-// the list lacks numbers after it) carrying the entry's title, and the sources block's
-// anchors get `id="src-ID"`, their title as text, and their number. The file on disk is untouched, so
-// the claims-gate hash is unaffected. `titles` maps vault id to title; an unknown id keeps the id as its title.
-// `sourceHref(id)` is the href given a sources-block anchor that has none (`teach export` points it at sources.html).
-export function footnoteCitations(html, titles = {}, sourceHref = (id) => `#src-${id}`) {
-  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const srcRe = /(<[a-z][a-z0-9]*\b[^>]*\bdata-block\s*=\s*(["'])sources\2[^>]*>)([\s\S]*?)(<\/section>|<\/div>)/i;
-  const m = srcRe.exec(html);
-  const order = m ? extractCites(m[3]) : [];
-  const num = (id) => { let i = order.indexOf(id); if (i === -1) { order.push(id); i = order.length - 1; } return i + 1; };
-  const before = m ? html.slice(0, m.index) : html;
-  const sources = m ? m[3] : '';
-  const after = m ? html.slice(m.index + m[0].length) : '';
-  const anchor = /<a\b([^>]*)\bdata-cite\s*=\s*(["'])([^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi;
-  const title = (id) => (Object.hasOwn(titles, id) ? titles[id] ?? id : id); // an id from the page: `constructor` is not a title (S-13)
-  const body = before.replace(anchor, (_, pre, q, id, post) => {
-    const n = num(id);
-    return `<a${pre}data-cite="${id}"${post} class="cite" href="#src-${esc(id)}" title="${esc(title(id))}">[${n}]</a>`;
-  });
-  if (!m) return body;
-  const srcBody = sources.replace(anchor, (_, pre, q, id, post) => {
-    const n = num(id);
-    const hrefOnly = /\bhref\s*=/.test(pre + post) ? '' : ` href="${esc(sourceHref(id))}"`;
-    return `<a${pre}data-cite="${id}"${post}${hrefOnly} id="src-${esc(id)}">[${n}] ${esc(title(id))}</a>`;
-  });
-  return body + m[1] + srcBody + m[4] + after;
-}
-
-// Spec 49 D3: what the server shows of a lab: its cost line and the paths of the steps the author ran, escaped.
-export const labStepsHtml = (lab) => `<p class="lab-cost">${escapeHtml(lab.cost)}</p><p>The author ran:</p>` +
-  [lab.up, lab.verify, lab.down].filter(Boolean).map((c) => `<pre>${escapeHtml(c.script)}</pre>`).join('');
-export const LAB_OPEN_LINE = '<p class="lab-open">To run this lab from the page, open the lab address teach serve printed when it started.</p>';
-// After the opening tag of the lab block parseBlocks returns, when labs/labs.json is valid and names its data-lab:
-// the steps, then under --labs on a request without the lab cookie (`lab: 'open'`) the lab-open line. With the
-// cookie (`lab: 'live'`) the opening tag gains data-lab-live, and data-lab-verify when the lab has one, which the
-// widget's buttons need. Else nothing.
-function withLabSteps(ws, html, mode) {
-  const l = lessonLab(html);
-  if (!l?.id) return html;
-  let labs;
-  try { ({ labs } = readLabs(ws)); } catch { return html; }
-  if (!Object.hasOwn(labs, l.id)) return html;
-  const live = mode === 'live' ? ` data-lab-live${labs[l.id].verify ? ' data-lab-verify' : ''}` : '';
-  return html.slice(0, l.start - 1) + live + '>' + labStepsHtml(labs[l.id]) + (mode === 'open' ? LAB_OPEN_LINE : '') + html.slice(l.start);
-}
-
-// The resolved file to serve for a URL path, or a status: 400 undecodable, 404 anything not allowlisted.
-// `lab` is 'open' or 'live' under teach serve --labs (withLabSteps), else undefined.
-export function serveFile(workspaceDir, urlPath, { titles, sourceHref, bytes = true, lab } = {}) {
-  let decoded;
-  try { decoded = decodeURIComponent(urlPath); } catch { return { status: 400 }; }
-  if (decoded.includes('\0') || decoded.includes('\\') || decoded.split('/').some((seg) => seg.startsWith('.'))) return { status: 404 };
-  const target = join(workspaceDir, decoded);
-  const glossary = target === join(workspaceDir, 'GLOSSARY.md');
-  // Check the URL's own folder before following its links.
-  const allowed = glossary || STATIC_DIRS.some((d) => {
-    const folder = join(workspaceDir, d);
-    return relative(folder, target) !== '' && isInsideVault(folder, target, undefined, null) && isInsideWorkspaceFolder(workspaceDir, folder, target);
-  });
-  if (!allowed) return { status: 404 };
-  try {
-    if (glossary && (!lstatSync(target).isFile() || !isInsideVault(workspaceDir, target))) return { status: 404 };
-    if (!statSync(target).isFile()) return { status: 404 };
-    if (!bytes) return { status: 200 };
-    const body = readFileSync(target);
-    const isPage = /\.html$/i.test(target) && (decoded.startsWith('/lessons/') || decoded.startsWith('/reference/'));
-    const text = isPage && decoded.startsWith('/lessons/') ? withLabSteps(workspaceDir, body.toString('utf8'), lab) : isPage ? body.toString('utf8') : null;
-    let out = isPage ? footnoteCitations(text, titles ?? {}, sourceHref) : body;
-    if (/\.html$/i.test(target)) {
-      out = withNav(out.toString('utf8'));
-    }
-    return { status: 200, body: out, type: CONTENT_TYPES[extname(target).toLowerCase()] ?? 'application/octet-stream' };
-  } catch {
-    return { status: 404 };
-  }
 }
 
 // The workspace's lessons and reference docs for navigation: id, title and served path, lessons in id
@@ -1130,6 +1028,8 @@ const same = (a, b) => {
   return x.length === y.length && timingSafeEqual(x, y);
 };
 
+// `teach serve` (spec 12 "Serving and recording"). Order matters: Host before anything;
+// for POST, Origin, Content-Type and Content-Length before a byte of the body is read.
 // Spec 49 D4, under teach serve --labs only (`labs`). `t` is the lab address value, 64 hex characters, which the
 // caller prints; every GET /labs/open?t=<t> for the life of the server sets the lab cookie to one session value, made at
 // the first. Under labs every response forbids framing. `env` is the
