@@ -10,6 +10,7 @@ import { installationFiles } from '../bin/lib/host-install.mjs';
 import { build } from '../scripts/deps.mjs';
 import { findSuppressions } from '../tooling/suppressions.mjs';
 import { testEnv } from './helpers.mjs';
+import { javascriptFiles } from './launcher-paths.mjs';
 
 const repo = new URL('../', import.meta.url);
 const tooling = new URL('tooling/', repo);
@@ -130,11 +131,32 @@ test('test/ has no tracked .ts files', { timeout: 10000 }, () => {
   assert.deepEqual(trackedFiles('test/').filter((file) => file.endsWith('.ts')), []);
 });
 
-// There are no launchers beside converted files yet. A later conversion adds the launcher list.
-test('tracked TypeScript files have no tracked .mjs file of the same name beside them', { timeout: 10000 }, () => {
-  const tracked = new Set(trackedFiles());
-  const pairs = [...tracked].filter((file) => file.endsWith('.ts') && tracked.has(file.replace(/\.ts$/, '.mjs')));
-  assert.deepEqual(pairs, []);
+function unexpectedTypeScriptPairs(paths) {
+  return [...paths].filter((file) => {
+    if (!file.endsWith('.ts')) return false;
+    const launcher = file.replace(/\.ts$/, '.mjs');
+    return paths.has(launcher) && javascriptFiles.get(launcher) !== file;
+  });
+}
+
+// A tracked .mjs sibling is allowed only when the launcher list maps it to that .ts file.
+test('tracked TypeScript files may have tracked .mjs siblings only as listed launcher pairs', { timeout: 10000 }, () => {
+  assert.deepEqual(unexpectedTypeScriptPairs(new Set(trackedFiles())), []);
+});
+
+test('the tracked pair guard accepts a listed launcher and its TypeScript source', () => {
+  const paths = new Set(["scripts/check-encoding.ts", "scripts/check-encoding.mjs"]);
+  assert.deepEqual(unexpectedTypeScriptPairs(paths), []);
+});
+
+test('the tracked pair guard reports an unlisted pair by name', () => {
+  const paths = new Set(["bin/lib/terms.ts", "bin/lib/terms.mjs"]);
+  assert.deepEqual(unexpectedTypeScriptPairs(paths), ["bin/lib/terms.ts"]);
+});
+
+test('the tracked pair guard reports a listed JavaScript file with no mapped source when it has a TypeScript sibling', () => {
+  const paths = new Set(["bin/lib/node-floor.ts", "bin/lib/node-floor.mjs"]);
+  assert.deepEqual(unexpectedTypeScriptPairs(paths), ["bin/lib/node-floor.ts"]);
 });
 
 test('the tooling manifest declares dependencies only under devDependencies', () => {

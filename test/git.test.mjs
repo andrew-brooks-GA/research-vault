@@ -42,6 +42,14 @@ function fixtureGit(cwd, ...args) {
   return execFileSync('git', ['-C', cwd, ...args], { env: testEnv(), encoding: 'utf8', timeout: GIT_TIMEOUT_MS });
 }
 
+function copyEncodingScript(cwd) {
+  mkdirSync(join(cwd, 'scripts'));
+  mkdirSync(join(cwd, 'bin/lib'), { recursive: true });
+  for (const file of ['scripts/check-encoding.mjs', 'scripts/check-encoding.ts', 'bin/lib/node-floor.mjs', 'bin/lib/git.ts', 'package.json']) {
+    copyFileSync(new URL(`../${file}`, import.meta.url), join(cwd, file));
+  }
+}
+
 function commitDraft(cwd, ...options) {
   fixtureGit(cwd, ...options, 'add', '--', 'draft.md');
   fixtureGit(cwd, ...options, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'fixture');
@@ -66,10 +74,7 @@ test('encoding gate reports a CR byte in any tracked text file without changing 
   const cwd = tempDirectory(t);
   fixtureGit(cwd, 'init', '-q', '--template=');
   fixtureGit(cwd, 'config', 'core.autocrlf', 'false');
-  mkdirSync(join(cwd, 'scripts'));
-  mkdirSync(join(cwd, 'bin/lib'), { recursive: true });
-  copyFileSync(new URL('../scripts/check-encoding.mjs', import.meta.url), join(cwd, 'scripts/check-encoding.mjs'));
-  copyFileSync(new URL('../bin/lib/git.ts', import.meta.url), join(cwd, 'bin/lib/git.ts'));
+  copyEncodingScript(cwd);
   const file = join(cwd, 'page.html');
   const markdown = join(cwd, 'lonecr.md');
   const clean = Buffer.from('<p>clean</p>\n');
@@ -99,10 +104,7 @@ test('encoding gate skips tracked binary files containing CR bytes', (t) => {
   const cwd = tempDirectory(t);
   fixtureGit(cwd, 'init', '-q', '--template=');
   fixtureGit(cwd, 'config', 'core.autocrlf', 'false');
-  mkdirSync(join(cwd, 'scripts'));
-  mkdirSync(join(cwd, 'bin/lib'), { recursive: true });
-  copyFileSync(new URL('../scripts/check-encoding.mjs', import.meta.url), join(cwd, 'scripts/check-encoding.mjs'));
-  copyFileSync(new URL('../bin/lib/git.ts', import.meta.url), join(cwd, 'bin/lib/git.ts'));
+  copyEncodingScript(cwd);
   writeFileSync(join(cwd, '.gitattributes'), '* text=auto eol=lf\nexplicit.md -text\n');
   writeFileSync(join(cwd, 'explicit.md'), 'a line\rwith a lone CR\n');
   writeFileSync(join(cwd, 'nul.md'), Buffer.from([0x61, 0x00, 0x0d, 0x0a]));
