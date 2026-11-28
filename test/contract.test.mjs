@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { buildManifest } from '../bin/lib/manifest.mjs';
+import { buildManifest } from '../bin/lib/manifest.ts';
 import { REPO_ROOT, codeRepo, put, testEnv } from './helpers.mjs';
 
 const ENTRY = ['id', 'type', 'title', 'summary', 'domain', 'topics', 'source_url', 'content_hash', 'volatility', 'last_verified', 'status',

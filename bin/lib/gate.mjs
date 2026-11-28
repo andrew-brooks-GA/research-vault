@@ -6,7 +6,7 @@ import { readFileSync, appendFileSync, existsSync, readdirSync, statSync } from 
 import { join, resolve, relative, dirname, extname, basename, isAbsolute, matchesGlob, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkCitations, extractCitations } from './citations.mjs';
-import { buildManifest } from './manifest.mjs';
+import { buildManifest } from './manifest.ts';
 import { walkEntries, readEntry } from './fsutil.ts';
 import { listStale } from './stale.mjs';
 import { loadSchema } from './schema.mjs';

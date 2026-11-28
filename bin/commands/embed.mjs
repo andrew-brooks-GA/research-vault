@@ -2,7 +2,7 @@ import { join, dirname } from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { buildExport } from '../lib/exportjsonl.mjs';
-import { buildManifest } from '../lib/manifest.mjs';
+import { buildManifest } from '../lib/manifest.ts';
 import { TYPE_FOLDER } from '../lib/fsutil.ts';
 import { EMBEDDING_REQUEST_FAILED, INDEX, embeddingGate, embedTexts } from '../lib/embed.mjs';
 import { assertInsideVault } from '../lib/containment.ts';

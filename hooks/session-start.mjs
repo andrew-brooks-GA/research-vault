@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { escapePathControls } from '../bin/lib/containment.ts';
 import { resolveVault, hasVaultContent } from '../bin/lib/resolve.mjs';
 import { findProjectConfig } from '../bin/lib/projectconfig.ts';
-import { buildManifest } from '../bin/lib/manifest.mjs';
+import { buildManifest } from '../bin/lib/manifest.ts';
 import { listStale } from '../bin/lib/stale.mjs';
 import { findWorkspaces, reviewerHash, contentHash } from '../bin/lib/gate.mjs';
 import { runGit } from '../bin/lib/git.ts';

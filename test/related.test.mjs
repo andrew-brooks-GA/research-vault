@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { relatedTo, run } from '../bin/commands/related.mjs';
-import { buildManifest } from '../bin/lib/manifest.mjs';
+import { buildManifest } from '../bin/lib/manifest.ts';
 import { traverse } from '../bin/lib/graph.ts';
 import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, rmSync } from 'node:fs';

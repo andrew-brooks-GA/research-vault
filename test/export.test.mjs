@@ -8,7 +8,7 @@ import { writeEntry, walkEntries } from '../bin/lib/fsutil.ts';
 import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
 import { buildExport, toJsonl } from '../bin/lib/exportjsonl.mjs';
-import { buildManifest } from '../bin/lib/manifest.mjs';
+import { buildManifest } from '../bin/lib/manifest.ts';
 import { applyVerification } from '../bin/commands/verify.mjs';
 import { run } from '../bin/commands/export.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';

@@ -1,7 +1,7 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSchema } from './schema.mjs';
-import { buildManifest } from './manifest.mjs';
+import { buildManifest } from './manifest.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 

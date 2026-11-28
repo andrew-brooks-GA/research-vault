@@ -9,7 +9,7 @@ import { fillSource } from '../bin/lib/fill.mjs';
 import { htmlToText, mdToText, extractText } from '../bin/lib/extract.ts';
 import { fetchSource, rawFileUrl } from '../bin/lib/fetchsource.ts';
 import { readEntry } from '../bin/lib/fsutil.ts';
-import { buildManifest } from '../bin/lib/manifest.mjs';
+import { buildManifest } from '../bin/lib/manifest.ts';
 import { evidenceFor } from '../bin/lib/gate.mjs';
 import { sha256Tagged } from '../bin/lib/hash.ts';
 import { lintVault } from '../bin/lib/lintrules.mjs';

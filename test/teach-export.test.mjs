@@ -10,7 +10,7 @@ import vm from 'node:vm';
 import { fixtureVault, put, testEnv } from './helpers.mjs';
 import { recordVerdict } from '../bin/lib/gate.mjs';
 import { lessonIndex, serveFile, navHtml, extractCites, MENTION_RE, exportWorkspace } from '../bin/lib/teach.mjs';
-import { buildManifest } from '../bin/lib/manifest.mjs';
+import { buildManifest } from '../bin/lib/manifest.ts';
 import { createHash } from 'node:crypto';
 import { CONNECT_LEAD } from '../bin/lib/lesson.mjs';
 

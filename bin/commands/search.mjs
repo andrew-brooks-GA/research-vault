@@ -1,7 +1,7 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSchema } from '../lib/schema.mjs';
-import { buildManifest, matchRows } from '../lib/manifest.mjs';
+import { buildManifest, matchRows } from '../lib/manifest.ts';
 import { walkEntries, readEntry } from '../lib/fsutil.ts';
 import { resolveVault } from '../lib/resolve.mjs';
 import { staleness } from '../lib/stale.mjs';

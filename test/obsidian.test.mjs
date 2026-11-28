@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { dirname, relative, join } from 'node:path';
 import { obsidianView } from '../bin/commands/obsidian.mjs';
 import { compileVault } from '../bin/commands/compile.mjs';
-import { buildManifest } from '../bin/lib/manifest.mjs';
+import { buildManifest } from '../bin/lib/manifest.ts';
 import { escapePathControls, VAULT_PATH_OUTSIDE } from '../bin/lib/containment.ts';
 import { tmpVault, put, codeRepo, testEnv } from './helpers.mjs';
 

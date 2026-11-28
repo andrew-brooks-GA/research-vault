@@ -9,7 +9,7 @@ import { readEntry, walkEntries, writeAtomic, TYPE_FOLDER, ENTRY_FOLDERS } from 
 import { loadSchema } from './schema.mjs';
 import { normalizeUrl, verKey } from './ids.ts';
 import { sha256Tagged } from './hash.ts';
-import { buildManifest, danglingEdges, writeManifest } from './manifest.mjs';
+import { buildManifest, danglingEdges, writeManifest } from './manifest.ts';
 import { assertInsideVault, isInsideVault } from './containment.ts';
 import { errorCode } from './unknowns.ts';
 

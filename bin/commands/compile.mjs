@@ -1,4 +1,4 @@
-import { buildManifest } from '../lib/manifest.mjs';
+import { buildManifest } from '../lib/manifest.ts';
 import { compileVault, rootIndex } from '../lib/indexview.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 

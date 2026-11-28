@@ -3,7 +3,7 @@
 import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { parseFrontmatter } from './frontmatter.ts';
-import { matchRows } from './manifest.mjs';
+import { matchRows } from './manifest.ts';
 import { checkCitations, extractCitations, SPAN_RE } from './citations.mjs';
 import { mayBeInside } from './containment.ts';
 import { traverse } from './graph.ts';

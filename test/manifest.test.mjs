@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, readdirSync, renam
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildManifest, lastVerified, writeManifest, danglingEdges, matchRows } from '../bin/lib/manifest.mjs';
+import { buildManifest, lastVerified, writeManifest, danglingEdges, matchRows } from '../bin/lib/manifest.ts';
 import { traverse } from '../bin/lib/graph.ts';
 import { captureEntry } from '../bin/commands/capture.mjs';
 import { REPO_ROOT, tmpVault, put, testEnv } from './helpers.mjs';

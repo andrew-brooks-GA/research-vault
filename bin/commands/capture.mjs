@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdirSync, readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { assertInsideVault } from '../lib/containment.ts';
 import { loadSchema } from '../lib/schema.mjs';
-import { buildManifest, writeManifest } from '../lib/manifest.mjs';
+import { buildManifest, writeManifest } from '../lib/manifest.ts';
 import { writeEntry } from '../lib/fsutil.ts';
 import { resolveVault, reportFallback } from '../lib/resolve.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.ts';

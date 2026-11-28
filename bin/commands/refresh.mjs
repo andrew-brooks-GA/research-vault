@@ -1,5 +1,5 @@
 import { resolveVault } from '../lib/resolve.mjs';
-import { buildManifest } from '../lib/manifest.mjs';
+import { buildManifest } from '../lib/manifest.ts';
 import { listStale } from '../lib/stale.mjs';
 import { fetchSource } from '../lib/fetchsource.ts';
 import { loadBlocklist, sourceBlockCheck, SOURCE_BLOCKED } from '../lib/blocklist.ts';

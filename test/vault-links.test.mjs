@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readEntry, walkEntries, writeEntry } from '../bin/lib/fsutil.ts';
 import { fixVault, lintVault } from '../bin/lib/lintrules.mjs';
-import { buildManifest } from '../bin/lib/manifest.mjs';
+import { buildManifest } from '../bin/lib/manifest.ts';
 import { captureOperation } from '../bin/lib/capture-operation.mjs';
 import { VAULT_PATH_OUTSIDE } from '../bin/lib/containment.ts';
 import { LEDGER_FILENAME } from '../bin/lib/gate.mjs';

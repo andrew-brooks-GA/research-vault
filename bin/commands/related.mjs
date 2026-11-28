@@ -1,6 +1,6 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildManifest } from '../lib/manifest.mjs';
+import { buildManifest } from '../lib/manifest.ts';
 import { traverse } from '../lib/graph.ts';
 import { loadSchema } from '../lib/schema.mjs';
 import { resolveVault } from '../lib/resolve.mjs';

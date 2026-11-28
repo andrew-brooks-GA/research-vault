@@ -6,7 +6,7 @@ import { loadSchema, stageAllowedInFolder, fieldOrder } from './schema.mjs';
 import { serializeFrontmatter } from './frontmatter.ts';
 import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, isAllowedValue, fieldShapeErrors } from './validate.ts';
 import { BLOCKLIST, loadBlocklist, matchBlock } from './blocklist.ts';
-import { isUnverifiedSource, buildManifest, writeManifest } from './manifest.mjs';
+import { isUnverifiedSource, buildManifest, writeManifest } from './manifest.ts';
 import { assertInsideVault, escapePathControls } from './containment.ts';
 import { screenText } from './screen.ts';
 

@@ -1,7 +1,7 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { walkEntries, readEntry } from './fsutil.ts';
-import { lastVerified } from './manifest.mjs';
+import { lastVerified } from './manifest.ts';
 import { loadSchema } from './schema.mjs';
 import { staleness } from './stale.mjs';
 

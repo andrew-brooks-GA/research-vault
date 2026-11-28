@@ -1,7 +1,7 @@
 import { join, resolve, dirname, relative, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeFileSync, mkdirSync, readFileSync, existsSync, lstatSync } from 'node:fs';
-import { buildManifest } from '../lib/manifest.mjs';
+import { buildManifest } from '../lib/manifest.ts';
 import { entryNote, codeNote, moc, graphSettings } from '../lib/obsidianview.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.ts';
 import { codeFiles, extractCodeLinks, langFor } from '../lib/codelinks.mjs';

@@ -9,7 +9,7 @@ import { PACKAGE_ROOT } from './host-install.ts';
 import { resolveVault } from './resolve.mjs';
 import { ledgerRoot, evidenceFor, renderEvidence, changedUnits, referencedImages, codeLang, ledgerKey } from './gate.mjs';
 import { checkCitations, extractCitations } from './citations.mjs';
-import { buildManifest } from './manifest.mjs';
+import { buildManifest } from './manifest.ts';
 import { readVersions, extractCodeLinks, checkCodeLinks } from './codelinks.mjs';
 import { walkEntries } from './fsutil.ts';
 import { loadSchema } from './schema.mjs';

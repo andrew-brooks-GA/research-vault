@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { searchVault, matchRows, semanticSearch, sortRows } from '../bin/commands/search.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
-import { buildManifest } from '../bin/lib/manifest.mjs';
+import { buildManifest } from '../bin/lib/manifest.ts';
 import { relatedTo } from '../bin/commands/related.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
 import { run as searchRun, STALE_WEIGHT } from '../bin/commands/search.mjs';

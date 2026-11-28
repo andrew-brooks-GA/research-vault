@@ -1,4 +1,4 @@
-import { buildManifest, writeManifest, danglingEdges } from '../lib/manifest.mjs';
+import { buildManifest, writeManifest, danglingEdges } from '../lib/manifest.ts';
 import { resolveVault } from '../lib/resolve.mjs';
 import { screenText } from '../lib/screen.ts';
 

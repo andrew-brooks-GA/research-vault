@@ -14,7 +14,7 @@ import { fixtureVault, testEnv } from './helpers.mjs';
 import { parseCast, scanCast, castTranscript, PLAYER_FILES } from '../bin/lib/cast.ts';
 import { createServer, exportWorkspace } from '../bin/lib/teach.mjs';
 import { recordVerdict } from '../bin/lib/gate.mjs';
-import { buildManifest } from '../bin/lib/manifest.mjs';
+import { buildManifest } from '../bin/lib/manifest.ts';
 import { loadTeachSchema } from '../bin/lib/schema.mjs';
 import { mountReplays } from '../skills/research-teach/assets/quiz.js';
 

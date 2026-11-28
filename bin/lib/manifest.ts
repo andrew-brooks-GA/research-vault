@@ -5,18 +5,62 @@ import { dirname, join } from 'node:path';
 import { walkEntries, readEntry, TYPE_FOLDER, writeAtomic } from './fsutil.ts';
 import { normalizeUrlSafe } from './ids.ts';
 import { isRecord, parseJson } from './unknowns.ts';
+import type { ShapedFields } from './validate.ts';
+
+type MatchRow = {
+  type?: unknown;
+  domain: readonly unknown[];
+  series?: unknown;
+  topics: readonly unknown[];
+  title?: unknown;
+  summary?: unknown;
+};
+
+type Query = { type?: unknown; domain?: unknown; series?: unknown; topic?: unknown; text?: string | undefined };
+type ManifestEntry = MatchRow & {
+  id: string;
+  type: unknown;
+  title: unknown;
+  summary: string | null;
+  source_url: unknown;
+  content_hash: unknown;
+  volatility: unknown;
+  last_verified: unknown;
+  status: unknown;
+  subject: object | null;
+  series: unknown;
+  stage: unknown;
+  state: unknown;
+  confidence: unknown;
+  outcome: unknown;
+  authority_tier: unknown;
+  authority_basis: unknown;
+  superseded_by: string | null;
+  related: readonly string[];
+  contributing_ids: readonly string[];
+  sources: readonly string[];
+};
+
+type ManifestEdge = { from: string; rel: string; to: string };
+type ManifestEntries = { entries: readonly { id: string }[] };
+type Manifest = {
+  generated: string;
+  entries: ManifestEntry[];
+  edges: ManifestEdge[];
+  backlinks: Record<string, string[]>;
+};
 
 // Edge fields are declared once in the schema (see edge_fields) and shared with lint's
 // dangling-ref check; read the plugin's own schema so callers can pass just the vault path.
 const SCHEMA_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'schema', 'frontmatter.schema.json');
 const schemaText = readFileSync(SCHEMA_PATH, 'utf8');
-let schema;
+let schema: unknown;
 try { schema = parseJson(schemaText); } catch { throw new Error(`${SCHEMA_PATH}: expected valid JSON`); }
 if (!isRecord(schema)) throw new Error(`${SCHEMA_PATH}: expected an object`);
 const edgeFields = schema.edge_fields;
 if (!isRecord(edgeFields)) throw new Error(`${SCHEMA_PATH}: edge_fields must be an object`);
-const requireEdgeField = (name, value) => {
-  if (!Array.isArray(value) || !value.every(item => typeof item === 'string'))
+const requireEdgeField = (name: string, value: unknown): string[] => {
+  if (!Array.isArray(value) || !value.every((item: unknown): item is string => typeof item === 'string'))
     throw new Error(`${SCHEMA_PATH}: edge_fields.${name} must be an array of strings`);
   return value;
 };
@@ -26,23 +70,23 @@ const EDGE_FIELDS = [...BACKLINK_FIELDS, ...REFERENCE_ONLY_FIELDS];
 
 // Only these results attest freshness. `captured`-method seeds carry `confirmed`, so
 // capture-time freshness counts; `outdated`/`unreachable`/`inconclusive` must not reset the clock.
-export const CONFIRMING_RESULTS = ['confirmed', 'changed-trivially'];
+export const CONFIRMING_RESULTS: readonly unknown[] = ['confirmed', 'changed-trivially'];
 // Rows that are not an independent check of a source: the capture-time seed, and a quote found on
 // its page by a program (spec 53 point 4: the words are on the page and no more).
-const UNCHECKED_METHODS = ['captured', 'quote-matched'];
-export const isUnverifiedSource = data => data.type === 'source' && !(data.verifications || []).some(v => v.method && !UNCHECKED_METHODS.includes(v.method));
+const UNCHECKED_METHODS: readonly unknown[] = ['captured', 'quote-matched'];
+export const isUnverifiedSource = (data: { type?: unknown; verifications?: ShapedFields['verifications'] }): boolean => data.type === 'source' && !(data.verifications || []).some((v: Readonly<Record<string, unknown>>) => v.method && !UNCHECKED_METHODS.includes(v.method));
 
-export function lastVerified(verifications) {
+export function lastVerified(verifications?: ShapedFields['verifications'] | null): unknown {
   return (verifications || [])
-    .filter(v => CONFIRMING_RESULTS.includes(v.result))
-    .map(v => v.date).sort().pop() || null;
+    .filter((v: Readonly<Record<string, unknown>>) => CONFIRMING_RESULTS.includes(v.result))
+    .map((v: Readonly<Record<string, unknown>>) => v.date).sort().pop() || null;
 }
 
-export function buildManifest(vaultPath, now = new Date()) {
+export function buildManifest(vaultPath: string, now: unknown = new Date()): Manifest {
   if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw new Error('buildManifest: now must be a Date');
-  const entries = [];
-  const edgeKeys = new Set();
-  const edges = [];
+  const entries: ManifestEntry[] = [];
+  const edgeKeys = new Set<string>();
+  const edges: ManifestEdge[] = [];
   for (const abs of walkEntries(vaultPath)) {
     const { id, data } = readEntry(abs, { vaultPath });
     const last = lastVerified(data.verifications);
@@ -72,41 +116,41 @@ export function buildManifest(vaultPath, now = new Date()) {
       edges.push({ from: id, rel, to });
     }
   }
-  entries.sort((a, b) => a.id.localeCompare(b.id));
-  edges.sort((a, b) => a.from.localeCompare(b.from) || a.rel.localeCompare(b.rel) || a.to.localeCompare(b.to));
+  entries.sort((a: ManifestEntry, b: ManifestEntry) => a.id.localeCompare(b.id));
+  edges.sort((a: ManifestEdge, b: ManifestEdge) => a.from.localeCompare(b.from) || a.rel.localeCompare(b.rel) || a.to.localeCompare(b.to));
   // Keyed by references from entries, so a Map: `constructor` or `__proto__` is an id like any other (S-13).
-  const backlinks = new Map();
+  const backlinks = new Map<string, Set<string>>();
   for (const e of edges) if (BACKLINK_FIELDS.includes(e.rel)) {
     let from = backlinks.get(e.to);
     if (!from) {
-      from = new Set();
+      from = new Set<string>();
       backlinks.set(e.to, from);
     }
     from.add(e.from);
   }
   // fromEntries defines each key as its own property, `__proto__` too; read it with Object.hasOwn.
-  const sortedBacklinks = Object.fromEntries([...backlinks].sort(([a], [b]) => a < b ? -1 : Number(a > b)).map(([k, from]) => [k, [...from].sort()]));
+  const sortedBacklinks = Object.fromEntries([...backlinks].sort(([a]: [string, Set<string>], [b]: [string, Set<string>]) => a < b ? -1 : Number(a > b)).map(([k, from]: [string, Set<string>]): [string, string[]] => [k, [...from].sort()]));
   return { generated: now.toISOString().slice(0, 10), entries, edges, backlinks: sortedBacklinks };
 }
 
 // Edges whose `to` names no entry: what lint reports as DANGLING_REF, for the command that writes.
-export function danglingEdges(manifest) {
-  const ids = new Set(manifest.entries.map((e) => e.id));
-  return manifest.edges.filter((e) => !ids.has(e.to));
+export function danglingEdges(manifest: ManifestEntries & { edges: readonly ManifestEdge[] }): ManifestEdge[] {
+  const ids = new Set(manifest.entries.map((e: { id: string }) => e.id));
+  return manifest.edges.filter((e: ManifestEdge) => !ids.has(e.to));
 }
 
-const hasTypeFolder = type => Object.hasOwn(TYPE_FOLDER, type);
+const hasTypeFolder = (type: string): type is keyof typeof TYPE_FOLDER => Object.hasOwn(TYPE_FOLDER, type);
 
 // Shrink guard (spec 18 D1). A missing row counts as a shrink when its type folder is missing or its
 // file still exists, except when the folder or file is known to resolve outside the vault.
 // Removing the derived file overrides the guard.
-function refuseShrink(vaultPath, path, manifest) {
-  let prev;
+function refuseShrink(vaultPath: string, path: string, manifest: ManifestEntries): void {
+  let prev: unknown;
   try { prev = parseJson(readFileSync(path, 'utf8')); } catch { return; } // none, or unreadable: nothing to guard
   if (!isRecord(prev)) return;
   const entries = prev.entries ?? [];
   if (!Array.isArray(entries)) return;
-  const ids = new Set(manifest.entries.map((e) => e.id));
+  const ids = new Set(manifest.entries.map((e: { id: string }) => e.id));
   const kept = [];
   for (const e of entries) {
     if (!isRecord(e) || typeof e.id !== 'string' || typeof e.type !== 'string') continue;
@@ -121,7 +165,7 @@ function refuseShrink(vaultPath, path, manifest) {
   if (kept.length) throw new Error(`manifest not written: it would drop ${kept.length} listed ${kept.length === 1 ? 'entry that is' : 'entries that are'} not gone (${kept[0]}); remove ${path} to accept the shrink`);
 }
 
-export function writeManifest(vaultPath, manifest = buildManifest(vaultPath)) {
+export function writeManifest(vaultPath: string, manifest: ManifestEntries & Readonly<Record<string, unknown>> = buildManifest(vaultPath)): void {
   const path = join(vaultPath, '.vault-manifest.json');
   assertInsideVault(vaultPath, path);
   refuseShrink(vaultPath, path, manifest);
@@ -131,15 +175,15 @@ export function writeManifest(vaultPath, manifest = buildManifest(vaultPath)) {
 
 // The in-memory filters (type, domain, series, topic through the aliases, text over title, topics and
 // summary) over manifest rows; shared with `teach path candidates`, which runs them over one manifest.
-export function matchRows(rows, q, aliases = {}) {
-  const expand = t => {
+export function matchRows<Row extends MatchRow>(rows: Row[], q: Query, aliases: Readonly<Record<string, unknown>> = {}): Row[] {
+  const expand = (t: unknown): unknown => {
     const key = String(t);
     return Object.hasOwn(aliases, key) ? aliases[key] : t; // S-13: a topic is not an Object.prototype member
   };
-  if (q.type) rows = rows.filter(e => e.type === q.type);
-  if (q.domain) rows = rows.filter(e => e.domain.includes(q.domain));
-  if (q.series) rows = rows.filter(e => e.series === q.series);
-  if (q.topic) { const want = expand(q.topic); rows = rows.filter(e => e.topics.map(expand).includes(want)); }
-  if (q.text) { const t = q.text.toLowerCase(); rows = rows.filter(e => String(e.title ?? '').toLowerCase().includes(t) || e.topics.join(' ').toLowerCase().includes(t) || String(e.summary ?? '').toLowerCase().includes(t)); }
+  if (q.type) rows = rows.filter((e: Row) => e.type === q.type);
+  if (q.domain) rows = rows.filter((e: Row) => e.domain.includes(q.domain));
+  if (q.series) rows = rows.filter((e: Row) => e.series === q.series);
+  if (q.topic) { const want = expand(q.topic); rows = rows.filter((e: Row) => e.topics.map(expand).includes(want)); }
+  if (q.text) { const t = q.text.toLowerCase(); rows = rows.filter((e: Row) => String(e.title ?? '').toLowerCase().includes(t) || e.topics.join(' ').toLowerCase().includes(t) || String(e.summary ?? '').toLowerCase().includes(t)); }
   return rows;
 }

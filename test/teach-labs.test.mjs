@@ -15,7 +15,7 @@ import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { createServer, labStepsHtml, readmeDraft } from '../bin/lib/teach.mjs';
 import { readLabs, labPin, lessonLab, lineRedactor, secretHits, isLabText } from '../bin/lib/labs.mjs';
 import { lintWorkspace } from '../bin/lib/lesson.mjs';
-import { buildManifest } from '../bin/lib/manifest.mjs';
+import { buildManifest } from '../bin/lib/manifest.ts';
 import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
 import { fixtureVault, testEnv } from './helpers.mjs';
 

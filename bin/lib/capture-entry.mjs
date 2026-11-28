@@ -5,7 +5,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { loadSchema, fieldOrder } from './schema.mjs';
 import { makeId, normalizeUrl, normalizeUrlSafe, verKey } from './ids.ts';
 import { sha256Tagged } from './hash.ts';
-import { buildManifest } from './manifest.mjs';
+import { buildManifest } from './manifest.ts';
 import { TYPE_FOLDER } from './fsutil.ts';
 import { assertControlledValues } from './validate.ts';
 import { csvList } from './args.ts';
