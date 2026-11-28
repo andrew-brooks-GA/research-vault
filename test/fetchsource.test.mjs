@@ -306,6 +306,18 @@ test('a malformed redirect Location rejects without an uncaught exception', { ti
   assert.ok(destroyed, 'the redirect response socket is closed');
 });
 
+test('fetchSource refuses an IPv6 literal in 3fff::/20 before lookup or request', async () => {
+  let resolverCalls = 0;
+  let requests = 0;
+  const lookup = async () => { resolverCalls++; throw new Error('unexpected lookup'); };
+  const request = () => { requests++; throw new Error('unexpected request'); };
+  await assert.rejects(() => fetchSource('https://[3fff:0abc::1]/', { request, lookup }), {
+    message: 'refused non-public host: [3fff:abc::1]',
+  });
+  assert.equal(resolverCalls, 0);
+  assert.equal(requests, 0);
+});
+
 test('a validated IPv6-literal URL skips DNS and pins the bracket-stripped address', async () => {
   let resolverCalls = 0;
   const lookup = async () => { resolverCalls++; return [{ address: 'should-not-be-used', family: 4 }]; };

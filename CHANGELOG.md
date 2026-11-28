@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Security (S-38):** the public-address rule for fetches now also refuses the IPv6 documentation range `3fff::/20` (RFC 9637), as it already refused `2001:db8::/32`.
 - **Changed (spec 56, stage 6):** `bin/lib/extract.mjs` is now `bin/lib/extract.ts` (types added, nothing else: the conversion check reports no difference). Its three importers and its test name the new path.
 - **Changed (spec 56, stage 6):** several lines of `bin/lib/args.mjs` are rewritten, with no change in what `parseArgs`, `commandAt`, `wantsHelp` and `csvList` do for any list of words, so that the file can be converted to TypeScript with types only.
 - **Fixed:** `mdToText` leaves alone a placeholder sequence (NUL, digits, NUL) that is already in its input and that it did not make; it used to replace one whose digits named no escaped character with the text `undefined`. No command reaches this today, since a file holding a NUL byte is refused before its text is extracted.

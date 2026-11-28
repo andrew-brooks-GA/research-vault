@@ -57,6 +57,26 @@ test('isPublicAddress accepts global unicast IPv6', () => {
   for (const ip of ACCEPT_V6) assert.equal(isPublicAddress(ip), true, `should accept ${ip}`);
 });
 
+test('isPublicAddress rejects the first address of 3fff::/20', () => {
+  assert.equal(isPublicAddress('3fff::'), false);
+});
+
+test('isPublicAddress rejects an interior address of 3fff::/20', () => {
+  assert.equal(isPublicAddress('3fff:0abc::1'), false);
+});
+
+test('isPublicAddress rejects the last address of 3fff::/20', () => {
+  assert.equal(isPublicAddress('3fff:0fff:ffff:ffff:ffff:ffff:ffff:ffff'), false);
+});
+
+test('isPublicAddress accepts the address immediately below 3fff::/20', () => {
+  assert.equal(isPublicAddress('3ffe:ffff:ffff:ffff:ffff:ffff:ffff:ffff'), true);
+});
+
+test('isPublicAddress accepts the address immediately above 3fff::/20', () => {
+  assert.equal(isPublicAddress('3fff:1000::'), true);
+});
+
 test('assertSafeUrl rejects non-https and accepts https', () => {
   assert.throws(() => assertSafeUrl('http://example.com/a'), /https/);
   assert.doesNotThrow(() => assertSafeUrl('https://example.com/a'));
@@ -79,6 +99,10 @@ test('assertSafeUrl refuses non-public bracketed IPv6 literals', () => {
   assert.throws(() => assertSafeUrl('https://[::ffff:169.254.169.254]/'), /host/i);
 });
 
+test('assertSafeUrl refuses a bracketed IPv6 literal in 3fff::/20', () => {
+  assert.throws(() => assertSafeUrl('https://[3fff:0abc::1]/'), /refused non-public host: \[3fff:abc::1\]/);
+});
+
 test('assertSafeUrl accepts a global-unicast bracketed IPv6 literal', () => {
   assert.doesNotThrow(() => assertSafeUrl('https://[2606:4700:4700::1111]/'));
 });
@@ -86,6 +110,18 @@ test('assertSafeUrl accepts a global-unicast bracketed IPv6 literal', () => {
 test('resolveSafe throws if any resolved address is private', async () => {
   const lookup = async () => [{ address: '8.8.8.8', family: 4 }, { address: '10.0.0.1', family: 4 }];
   await assert.rejects(() => resolveSafe('evil.example', { lookup }), /private|public|address/i);
+});
+
+test('resolveSafe refuses a hostname when one lookup answer is in 3fff::/20', async () => {
+  let resolverCalls = 0;
+  const lookup = async () => {
+    resolverCalls++;
+    return [{ address: '8.8.8.8', family: 4 }, { address: '3fff::1', family: 6 }];
+  };
+  await assert.rejects(() => resolveSafe('evil.example', { lookup }), {
+    message: 'refused private/non-public address 3fff::1 for host: evil.example',
+  });
+  assert.equal(resolverCalls, 1);
 });
 
 test('resolveSafe returns validated addresses when all are public', async () => {

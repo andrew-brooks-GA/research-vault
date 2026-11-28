@@ -22,6 +22,7 @@ const v6Special = new net.BlockList();
 v6Special.addSubnet('2001::', 23, 'ipv6'); // IETF protocol assignments (incl. Teredo 2001::/32)
 v6Special.addSubnet('2001:db8::', 32, 'ipv6'); // documentation
 v6Special.addSubnet('2002::', 16, 'ipv6'); // 6to4
+v6Special.addSubnet('3fff::', 20, 'ipv6'); // documentation (RFC 9637)
 
 export function isPublicAddress(ip) {
   const v = net.isIP(ip);
