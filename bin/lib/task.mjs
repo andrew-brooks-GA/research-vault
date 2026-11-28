@@ -6,14 +6,14 @@ import { writeAtomic } from './fsutil.ts';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { parseFrontmatter } from './frontmatter.ts';
-import { LAB_TEXT_BAD_RE, LAB_OUTPUT_MAX, STOP_GRACE, KILL_WAIT, isLabText, stopGroup } from './labs.mjs';
+import { LAB_ID_RE, LAB_TEXT_BAD_RE, LAB_OUTPUT_MAX, STOP_GRACE, KILL_WAIT, isLabText, stopGroup } from './labs.mjs';
 import { RECORD_ID_RE, LESSON_ID_RE } from './lesson-format.ts';
 import { nextAttemptId, writeAttempt, missionPrefs } from './teach.mjs';
 import { show } from './escape.ts';
 import { assertInsideWorkspaceFolder, isInsideVault, VAULT_PATH_OUTSIDE } from './containment.ts';
 import { isRecord, isIntegerInRange } from './unknowns.ts';
 
-const TASK_ID_RE = /^[a-z][a-z0-9-]{0,39}$/;
+const TASK_ID_RE = LAB_ID_RE;
 const KEYS = ['id', 'text', 'records', 'read'];
 const extraKey = (o, keys) => Object.keys(o).find((k) => !keys.includes(k));
 

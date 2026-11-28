@@ -93,6 +93,24 @@ test('readRequirements: the fixture file, with the timeout 60 when absent', () =
   assert.deepEqual(readRequirements(ws, '0001'), { timeout: 600, requirements: REQS, problems: [] });
 });
 
+test('readRequirements accepts a 40-character requirement id and refuses a 41-character id', (t) => {
+  const ws = copy();
+  t.after(() => rmSync(ws, { recursive: true, force: true }));
+  writeReqs(ws, {
+    version: 1,
+    requirements: [
+      { id: 'abcdefghijklmnopqrstuvwxyz0123456789-req', text: 'Do the first step', records: [], read: 'Read the first step' },
+      { id: 'abcdefghijklmnopqrstuvwxyz0123456789-reqs', text: 'Do the next step', records: [], read: 'Read the next step' },
+    ],
+  });
+  const path = join(ws, 'evidence', '0001', 'requirements.json');
+  const before = readFileSync(path);
+  const { requirements, problems } = readRequirements(ws, '0001');
+  assert.deepEqual(requirements.map((r) => r.id), ['abcdefghijklmnopqrstuvwxyz0123456789-req']);
+  assert.deepEqual(problems, ['requirement 2: id "abcdefghijklmnopqrstuvwxyz0123456789-reqs" does not match ^[a-z][a-z0-9-]{0,39}$']);
+  assert.deepEqual(readFileSync(path), before);
+});
+
 test('readRequirements: one problem for each broken rule', () => {
   const doc = JSON.parse(readFileSync(join(FIX, 'evidence', '0001', 'requirements.json'), 'utf8'));
   const req = (i, patch) => ({ ...doc, requirements: doc.requirements.map((r, j) => (j === i ? { ...r, ...patch } : r)) });

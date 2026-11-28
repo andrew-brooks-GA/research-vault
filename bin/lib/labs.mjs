@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { isInsideVault, isInsideWorkspaceFolder } from './containment.ts';
-import { LESSON_ID_RE, parseBlocks } from './lesson-format.ts';
+import { LESSON_ID_RE, attrOf, parseBlocks } from './lesson-format.ts';
 import { show } from './escape.ts';
 import { sha256Hex } from './hash.ts';
 import { isRecord } from './unknowns.ts';
@@ -104,12 +104,6 @@ export const actionScripts = (lab, action) =>
 
 // D2: the lab block parseBlocks returns, the one the gate hashes: data-lab from its opening tag, and the value of
 // the first <data> element of class lab-pin in its inner HTML; nothing else on the page counts. null with no lab block.
-// An attribute's value, the attributes read in order with each quoted value skipped whole, so a name inside another
-// attribute's value is not read; '' for a bare attribute, null when absent.
-const attrOf = (attrs, name) => {
-  for (const m of attrs.matchAll(/([^\s=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g)) if (m[1].toLowerCase() === name) return m[2] ?? m[3] ?? m[4] ?? '';
-  return null;
-};
 export function lessonLab(html) {
   const b = parseBlocks(html).get('lab');
   if (!b) return null;

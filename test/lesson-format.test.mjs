@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LESSON_ID_RE, RECORD_ID_RE, blockSpans, extractCites, imgAttr, lessonItems, parseQuiz, readPath, uniq } from '../bin/lib/lesson-format.ts';
+import { LESSON_ID_RE, RECORD_ID_RE, attrOf, blockSpans, extractCites, imgAttr, lessonItems, parseQuiz, readPath, uniq } from '../bin/lib/lesson-format.ts';
 
 function pathFixture(t, text) {
   const dir = mkdtempSync(join(tmpdir(), 'rv-lesson-format-'));
@@ -79,6 +79,38 @@ test('readPath treats CRLF as a line ending, including on an untitled draft line
     { n: 1, title: 'Inspect results', terms: ['output'], tool: null, after: [], lesson: null },
     { n: 3, title: 'Check status', terms: [], tool: null, after: [], lesson: '0003-status' },
   ]);
+});
+
+test('attrOf reads a double-quoted value', () => {
+  assert.equal(attrOf(' data-lab="one two"', 'data-lab'), 'one two');
+});
+
+test('attrOf reads a single-quoted value', () => {
+  assert.equal(attrOf(" data-lab='one two'", 'data-lab'), 'one two');
+});
+
+test('attrOf reads an unquoted value', () => {
+  assert.equal(attrOf(' data-lab=demo class=card', 'data-lab'), 'demo');
+});
+
+test('attrOf returns an empty string for a bare attribute', () => {
+  assert.equal(attrOf(' hidden class=card', 'hidden'), '');
+});
+
+test('attrOf returns null for an absent attribute', () => {
+  assert.equal(attrOf(' class=card', 'data-lab'), null);
+});
+
+test('attrOf skips a name found only inside another attribute value', () => {
+  assert.equal(attrOf(' title=" data-lab=demo" class=card', 'data-lab'), null);
+});
+
+test('attrOf returns the first value for a repeated name', () => {
+  assert.equal(attrOf(' data-lab="first" data-lab="second"', 'data-lab'), 'first');
+});
+
+test('attrOf matches a mixed-case attribute name with a lowercase lookup', () => {
+  assert.equal(attrOf(' DaTa-LaB="demo"', 'data-lab'), 'demo');
 });
 
 test('imgAttr matches an uppercase attribute name with a lowercase lookup', () => {

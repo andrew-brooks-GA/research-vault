@@ -462,6 +462,30 @@ test('readLabs attaches LAB_MANIFEST_INVALID and the individual problems to the 
   assert.equal(readFileSync(path, 'utf8'), raw);
 });
 
+test('readLabs accepts a 40-character lab id', () => {
+  const { ws, entry } = labWorkspace();
+  const id = 'abcdefghijklmnopqrstuvwxyz0123456789-lab';
+  writeFileSync(join(ws, 'labs', 'labs.json'), JSON.stringify({ version: 1, labs: { [id]: entry } }));
+  assert.deepEqual(Object.keys(readLabs(ws).labs), ['abcdefghijklmnopqrstuvwxyz0123456789-lab']);
+});
+
+test('lab POST bodies accept a 40-character id and refuse a 41-character id', { timeout: 10000 }, async () => {
+  const { ws } = labWorkspace();
+  const path = join(ws, 'labs', 'labs.json');
+  const manifest = readFileSync(path);
+  const t = newT();
+  const { server, port } = await start(ws, { labs: true, t, env: {} });
+  try {
+    const { cookie } = await openLab(port, t);
+    const valid = await post(port, 'run', { lab: 'a'.repeat(40) }, { cookie });
+    assert.deepEqual([valid.status, valid.text], [404, 'no lab\n']);
+    const invalid = await post(port, 'run', { lab: 'a'.repeat(41) }, { cookie });
+    assert.deepEqual([invalid.status, invalid.text], [400, 'body must be {"lab": "<id>"}\n']);
+    assert.deepEqual(readFileSync(path), manifest);
+    assert.equal(existsSync(join(ws, 'up-ran')), false);
+  } finally { server.close(); }
+});
+
 test('teach lint: every LAB_* code, and lintLab reads labs/ (spec 49 D3)', () => {
   const { ws, entry, script } = labWorkspace();
   const vault = fixtureVault();

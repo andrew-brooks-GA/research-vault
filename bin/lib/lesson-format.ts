@@ -12,6 +12,17 @@ export const RECORD_ID_RE: RegExp = LESSON_ID_RE;
 export const uniq = <T>(xs: Iterable<T>): T[] => [...new Set(xs)];
 
 // HTML extraction (regex; lessons are static HTML written by the skill).
+// An attribute's value from a tag's attribute text, read in order with each quoted value skipped whole,
+// so a name inside another attribute's value is not read; '' for a bare attribute, null when absent.
+export const attrOf = (attrs: string, name: string): string | null => {
+  for (const m of attrs.matchAll(/([^\s=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g)) {
+    const attr = m[1];
+    if (attr === undefined) throw new Error('attrOf: expected an attribute name');
+    if (attr.toLowerCase() === name) return m[2] ?? m[3] ?? m[4] ?? '';
+  }
+  return null;
+};
+
 export function extractQuizJson(html: string): string | null {
   for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
     const [, attrs, json] = m;
