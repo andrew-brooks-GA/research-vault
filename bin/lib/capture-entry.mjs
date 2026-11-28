@@ -6,7 +6,7 @@ import { loadSchema, fieldOrder } from './schema.mjs';
 import { makeId, normalizeUrl, normalizeUrlSafe, verKey } from './ids.ts';
 import { sha256Tagged } from './hash.ts';
 import { buildManifest } from './manifest.mjs';
-import { TYPE_FOLDER } from './fsutil.mjs';
+import { TYPE_FOLDER } from './fsutil.ts';
 import { assertControlledValues } from './validate.ts';
 import { csvList } from './args.ts';
 import { loadBlocklist, matchBlock } from './blocklist.ts';

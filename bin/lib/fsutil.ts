@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, writeFileSync, lstatSync, renameSync, linkSync, unlinkSync, openSync, closeSync, copyFileSync, constants } from 'node:fs';
+import type { Dirent } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { dirname, join, sep, relative } from 'node:path';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.ts';
@@ -6,11 +7,16 @@ import { assertInsideVault, isInsideVault, escapePathControls } from './containm
 import { errorCode } from './unknowns.ts';
 import { assertFieldShapes } from './validate.ts';
 
-export const TYPE_FOLDER = { source:'sources', note:'notes', synthesis:'synthesis', snippet:'snippets', experiment:'experiments', question:'questions' };
-export const FOLDER_TYPE = Object.fromEntries(Object.entries(TYPE_FOLDER).map(([t, f]) => [f, t]));
-export const ENTRY_FOLDERS = Object.values(TYPE_FOLDER);
+type ReadEntryOptions = { folderChecked?: boolean; vaultPath?: string; validateShapes?: boolean };
+type Entry = ReturnType<typeof parseFrontmatter> & { id: string; folder: string | undefined; hasBom: boolean; hasCrlf: boolean };
+type EntryData = Parameters<typeof serializeFrontmatter>[0];
+type WriteAtomicOptions = { exclusive?: boolean; vaultPath?: string; mode?: number };
 
-export function walkEntries(vaultPath, { onSkippedLink } = {}) {
+export const TYPE_FOLDER: Record<'source' | 'note' | 'synthesis' | 'snippet' | 'experiment' | 'question', string> = { source:'sources', note:'notes', synthesis:'synthesis', snippet:'snippets', experiment:'experiments', question:'questions' };
+export const FOLDER_TYPE: Record<string, string> = Object.fromEntries(Object.entries(TYPE_FOLDER).map(([t, f]: [string, string]) => [f, t]));
+export const ENTRY_FOLDERS: string[] = Object.values(TYPE_FOLDER);
+
+export function walkEntries(vaultPath: string, { onSkippedLink }: { onSkippedLink?: (path: string) => void } = {}): string[] {
   const files = [];
   for (const folder of ENTRY_FOLDERS) {
     const dir = join(vaultPath, folder);
@@ -21,7 +27,7 @@ export function walkEntries(vaultPath, { onSkippedLink } = {}) {
       continue;
     }
     const entries = readdirSync(dir, { withFileTypes: true });
-    entries.sort((a, b) => a.name < b.name ? -1 : Number(a.name > b.name));
+    entries.sort((a: Dirent, b: Dirent) => a.name < b.name ? -1 : Number(a.name > b.name));
     for (const entry of entries) {
       if (!entry.name.endsWith('.md') || entry.name === 'INDEX.md') continue;
       const abs = join(dir, entry.name);
@@ -36,7 +42,7 @@ export function walkEntries(vaultPath, { onSkippedLink } = {}) {
 }
 
 // Pass folderChecked only for paths returned by walkEntries in the same synchronous call.
-export function readEntry(absPath, { folderChecked = false, vaultPath, validateShapes = true } = {}) {
+export function readEntry(absPath: string, { folderChecked = false, vaultPath, validateShapes = true }: ReadEntryOptions = {}): Entry {
   let phase = 'ENTRY_READ';
   try {
     const folderPath = dirname(absPath);
@@ -56,7 +62,7 @@ export function readEntry(absPath, { folderChecked = false, vaultPath, validateS
   } catch (cause) {
     if (!(cause instanceof Error)) throw cause;
     const path = escapePathControls(vaultPath ? relative(vaultPath, absPath) : absPath);
-    const error = new Error(`${path}: ${escapePathControls(cause.message)}`, { cause });
+    const error: Error & { code?: unknown; entryCode?: string } = new Error(`${path}: ${escapePathControls(cause.message)}`, { cause });
     error.code = ('code' in cause ? cause.code : undefined) ?? phase;
     error.entryCode = phase;
     throw error;
@@ -65,9 +71,9 @@ export function readEntry(absPath, { folderChecked = false, vaultPath, validateS
 
 // Compare the parser's data model: scalar types matter, list order matters, map order
 // and the parser's non-enumerable RAW metadata do not. Dates are strings, not Date objects.
-function firstDifference(want, got, field = '') {
+function firstDifference(want: unknown, got: unknown, field: string = ''): string | null {
   if (want === got) return null;
-  const isIndexable = (v) => v !== null && typeof v === 'object';
+  const isIndexable = (v: unknown): v is Readonly<Record<string, unknown>> => v !== null && typeof v === 'object';
   if (!isIndexable(want) || !isIndexable(got) ||
       Array.isArray(want) !== Array.isArray(got)) return field;
   for (const key of new Set([...Object.keys(want), ...Object.keys(got)])) {
@@ -79,7 +85,7 @@ function firstDifference(want, got, field = '') {
   return null;
 }
 
-export function checkFrontmatter(absPath, data, text) {
+export function checkFrontmatter(absPath: string, data: EntryData, text: string): void {
   let parsed;
   try { parsed = parseFrontmatter(text).data; }
   catch {
@@ -95,14 +101,14 @@ export function checkFrontmatter(absPath, data, text) {
   if (field !== null) throw new Error(`frontmatter write refused for ${JSON.stringify(escapePathControls(absPath))} at ${JSON.stringify(escapePathControls(field))}: value does not round-trip`);
 }
 
-export function writeEntry(absPath, data, body, order, vaultPath = dirname(dirname(absPath)), options = {}) {
+export function writeEntry(absPath: string, data: EntryData, body: string, order?: readonly string[] | null, vaultPath: string = dirname(dirname(absPath)), options: WriteAtomicOptions = {}): void {
   const text = serializeFrontmatter(data, body, order);
   checkFrontmatter(absPath, data, text);
   writeAtomic(absPath, text, { ...options, vaultPath });
 }
 
 // Same-directory publication; only remove a temporary file this call created.
-export function writeAtomic(path, text, { exclusive = false, vaultPath = dirname(path), mode } = {}) {
+export function writeAtomic(path: string, text: string, { exclusive = false, vaultPath = dirname(path), mode }: WriteAtomicOptions = {}): void {
   const tmp = join(dirname(path), `.rv-atomic-${randomUUID()}.tmp`);
   let created = false;
   assertInsideVault(vaultPath, path);

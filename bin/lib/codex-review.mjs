@@ -11,7 +11,7 @@ import { ledgerRoot, evidenceFor, renderEvidence, changedUnits, referencedImages
 import { checkCitations, extractCitations } from './citations.mjs';
 import { buildManifest } from './manifest.mjs';
 import { readVersions, extractCodeLinks, checkCodeLinks } from './codelinks.mjs';
-import { walkEntries } from './fsutil.mjs';
+import { walkEntries } from './fsutil.ts';
 import { loadSchema } from './schema.mjs';
 
 const hash = b => createHash('sha256').update(b).digest('hex');

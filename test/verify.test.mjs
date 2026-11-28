@@ -10,7 +10,7 @@ import { advise } from '../bin/lib/advise.mjs';
 import { REPO_ROOT, tmpVault, put, testEnv } from './helpers.mjs';
 import { listStale } from '../bin/lib/stale.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
-import { readEntry } from '../bin/lib/fsutil.mjs';
+import { readEntry } from '../bin/lib/fsutil.ts';
 import { lintVault } from '../bin/lib/lintrules.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
 

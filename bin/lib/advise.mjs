@@ -4,7 +4,7 @@ import { buildManifest, isUnverifiedSource } from './manifest.mjs';
 import { listStale, staleness } from './stale.mjs';
 import { traverse, DEPENDENCY_RELS } from './graph.ts';
 import { loadSchema } from './schema.mjs';
-import { walkEntries, readEntry } from './fsutil.mjs';
+import { walkEntries, readEntry } from './fsutil.ts';
 import { verKey } from './ids.ts';
 import { termsOf } from './terms.ts';
 import { readUsage } from './usagelog.ts';

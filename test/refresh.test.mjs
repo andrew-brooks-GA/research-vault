@@ -10,7 +10,7 @@ import { refreshVault, run } from '../bin/commands/refresh.mjs';
 import { fetchSource } from '../bin/lib/fetchsource.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
-import { writeEntry } from '../bin/lib/fsutil.mjs';
+import { writeEntry } from '../bin/lib/fsutil.ts';
 import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
 
 function freshVault() {
@@ -184,7 +184,7 @@ test('refresh reports storedBody on changed results only, and --json prints the 
   let [r] = await refreshVault(dir, { targets: [row()], fetch: changed });
   assert.deepEqual(r, { id: '2026-01-01-a', result: 'changed', detail: 'run verify', storedBody: false });
   const schema = loadSchema(REPO_ROOT);
-  const { readEntry } = await import('../bin/lib/fsutil.mjs');
+  const { readEntry } = await import('../bin/lib/fsutil.ts');
   const srcPath = join(dir, 'sources', '2026-01-01-a.md');
   const e = readEntry(srcPath);
   writeEntry(srcPath, e.data, '# A\n\nA paragraph of stored prose.\n', fieldOrder(schema, 'source'));

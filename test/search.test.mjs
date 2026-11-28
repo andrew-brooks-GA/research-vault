@@ -15,7 +15,7 @@ import { captureEntry } from '../bin/commands/capture.mjs';
 import { run as searchRun, STALE_WEIGHT } from '../bin/commands/search.mjs';
 import { run as embedRun } from '../bin/commands/embed.mjs';
 import { applyVerification } from '../bin/commands/verify.mjs';
-import { writeEntry } from '../bin/lib/fsutil.mjs';
+import { writeEntry } from '../bin/lib/fsutil.ts';
 import { PROJECT_CONFIG_FILENAME } from '../bin/lib/projectconfig.mjs';
 import { INDEX } from '../bin/lib/embed.mjs';
 import { fieldOrder } from '../bin/lib/schema.mjs';

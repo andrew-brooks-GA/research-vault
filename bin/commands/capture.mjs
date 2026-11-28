@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, existsSync, readdirSync, statSync } from 'node
 import { assertInsideVault } from '../lib/containment.ts';
 import { loadSchema } from '../lib/schema.mjs';
 import { buildManifest, writeManifest } from '../lib/manifest.mjs';
-import { writeEntry } from '../lib/fsutil.mjs';
+import { writeEntry } from '../lib/fsutil.ts';
 import { resolveVault, reportFallback } from '../lib/resolve.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { fetchSource } from '../lib/fetchsource.mjs';

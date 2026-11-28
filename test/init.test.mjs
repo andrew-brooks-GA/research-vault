@@ -249,7 +249,7 @@ import { createHash } from 'node:crypto';
 import { readdirSync } from 'node:fs';
 import { REPO_ROOT, put, testEnv } from './helpers.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
-import { ENTRY_FOLDERS } from '../bin/lib/fsutil.mjs';
+import { ENTRY_FOLDERS } from '../bin/lib/fsutil.ts';
 
 test('refreshDocs and lint --check leave every entry of an existing vault unchanged, unknown field included', () => {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');

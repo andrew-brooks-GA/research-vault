@@ -1,6 +1,6 @@
 import { join, resolve } from 'node:path';
 import { existsSync, mkdirSync, readdirSync, copyFileSync } from 'node:fs';
-import { walkEntries, readEntry, writeEntry, TYPE_FOLDER } from './fsutil.mjs';
+import { walkEntries, readEntry, writeEntry, TYPE_FOLDER } from './fsutil.ts';
 import { loadSchema, fieldOrder } from './schema.mjs';
 import { writeManifest } from './manifest.mjs';
 import { assertInsideVault, mayBeInside } from './containment.ts';

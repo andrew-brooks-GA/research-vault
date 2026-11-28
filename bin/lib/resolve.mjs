@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import nodeFs, { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { configPath, isBindingAcknowledged } from './trust.ts';
-import { walkEntries } from './fsutil.mjs';
+import { walkEntries } from './fsutil.ts';
 import { loadSchema } from './schema.mjs';
 import { loadProjectConfig, PROJECT_CONFIG_FILENAME } from './projectconfig.mjs';
 import { compareContainment, compareVaultLocations, mayBeInside } from './containment.ts';

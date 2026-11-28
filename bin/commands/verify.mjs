@@ -1,7 +1,7 @@
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadSchema, fieldOrder } from '../lib/schema.mjs';
-import { walkEntries, readEntry, writeEntry } from '../lib/fsutil.mjs';
+import { walkEntries, readEntry, writeEntry } from '../lib/fsutil.ts';
 import { buildManifest, writeManifest, CONFIRMING_RESULTS } from '../lib/manifest.mjs';
 import { resolveVault, reportFallback } from '../lib/resolve.mjs';
 import { assertControlledValues } from '../lib/validate.ts';

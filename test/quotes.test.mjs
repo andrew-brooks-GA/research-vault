@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { REPO_ROOT, tmpVault, put } from './helpers.mjs';
 import { checkQuotes } from '../bin/lib/quotes.mjs';
 import { applyVerification, run as verifyRun } from '../bin/commands/verify.mjs';
-import { readEntry } from '../bin/lib/fsutil.mjs';
+import { readEntry } from '../bin/lib/fsutil.ts';
 import { sha256Tagged } from '../bin/lib/hash.ts';
 import { writeBlocklist } from './blocklist.test.mjs';
 

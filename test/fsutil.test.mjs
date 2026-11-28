@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import * as writers from '../bin/lib/fsutil.mjs';
+import * as writers from '../bin/lib/fsutil.ts';
 
 function folder(t) {
   const dir = fs.mkdtempSync(join(tmpdir(), 'rv-atomic-'));

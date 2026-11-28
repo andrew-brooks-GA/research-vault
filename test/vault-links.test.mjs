@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readEntry, walkEntries, writeEntry } from '../bin/lib/fsutil.mjs';
+import { readEntry, walkEntries, writeEntry } from '../bin/lib/fsutil.ts';
 import { fixVault, lintVault } from '../bin/lib/lintrules.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { captureOperation } from '../bin/lib/capture-operation.mjs';

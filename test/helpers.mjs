@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeEntry, TYPE_FOLDER } from '../bin/lib/fsutil.mjs';
+import { writeEntry, TYPE_FOLDER } from '../bin/lib/fsutil.ts';
 import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
 
 export const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');

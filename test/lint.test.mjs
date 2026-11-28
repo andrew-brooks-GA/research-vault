@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { lintVault, fixVault } from '../bin/lib/lintrules.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
-import { writeEntry } from '../bin/lib/fsutil.mjs';
+import { writeEntry } from '../bin/lib/fsutil.ts';
 import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
 import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS } from '../bin/lib/validate.ts';
 import { writeBlocklist } from './blocklist.test.mjs';
@@ -14,7 +14,7 @@ import { BLOCKLIST } from '../bin/lib/blocklist.ts';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { REPO_ROOT, tmpVault, put, testEnv } from './helpers.mjs';
-import { readEntry } from '../bin/lib/fsutil.mjs';
+import { readEntry } from '../bin/lib/fsutil.ts';
 
 const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
 const badId = '2026-01-01-bad';

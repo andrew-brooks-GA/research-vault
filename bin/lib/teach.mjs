@@ -6,7 +6,7 @@ import http from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.ts';
-import { writeEntry } from './fsutil.mjs';
+import { writeEntry } from './fsutil.ts';
 import { loadTeachSchema } from './schema.mjs';
 import { isAllowedValue } from './validate.ts';
 import { slugify } from './ids.ts';

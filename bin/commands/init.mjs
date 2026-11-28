@@ -5,7 +5,7 @@ import { loadSchema } from '../lib/schema.mjs';
 import { generateAgentsMd } from '../lib/agentsmd.ts';
 import { checkProjectVault, resolveVault, configPath, hasVaultContent } from '../lib/resolve.mjs';
 import { writeManifest } from '../lib/manifest.mjs';
-import { ENTRY_FOLDERS } from '../lib/fsutil.mjs';
+import { ENTRY_FOLDERS } from '../lib/fsutil.ts';
 import { compileVault } from '../lib/indexview.mjs';
 import { scaffoldProjectConfig, quotedGlob } from '../lib/projectconfig.mjs';
 import { acknowledgeBinding } from '../lib/trust.ts';

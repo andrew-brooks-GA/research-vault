@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { writeEntry, walkEntries } from '../bin/lib/fsutil.mjs';
+import { writeEntry, walkEntries } from '../bin/lib/fsutil.ts';
 import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
 import { buildExport, toJsonl } from '../bin/lib/exportjsonl.mjs';
@@ -12,7 +12,7 @@ import { buildManifest } from '../bin/lib/manifest.mjs';
 import { applyVerification } from '../bin/commands/verify.mjs';
 import { run } from '../bin/commands/export.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
-import { readEntry } from '../bin/lib/fsutil.mjs';
+import { readEntry } from '../bin/lib/fsutil.ts';
 import { spawnSync } from 'node:child_process';
 import { REPO_ROOT, testEnv } from './helpers.mjs';
 

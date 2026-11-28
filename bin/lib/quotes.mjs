@@ -1,7 +1,7 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
-import { readEntry, writeEntry, TYPE_FOLDER } from './fsutil.mjs';
+import { readEntry, writeEntry, TYPE_FOLDER } from './fsutil.ts';
 import { loadSchema, fieldOrder } from './schema.mjs';
 import { buildManifest, writeManifest } from './manifest.mjs';
 import { loadBlocklist, matchBlock, sourceBlockCheck, SOURCE_BLOCKED } from './blocklist.ts';

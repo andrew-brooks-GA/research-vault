@@ -13,7 +13,7 @@ import { assertInsideWorkspaceFolder, VAULT_PATH_OUTSIDE } from '../bin/lib/cont
 import { loadTeachSchema } from '../bin/lib/schema.mjs';
 import { cancelRun, endRun, ENDING_FILE, readRun, RUN_FILE, startRun } from '../bin/lib/task.mjs';
 import { createServer, fixRecordFrontmatter, fixRecordFrontmatters, previousTaskAttempt, supersedeRecord, writeAttempt, writeRecord } from '../bin/lib/teach.mjs';
-import { readEntry } from '../bin/lib/fsutil.mjs';
+import { readEntry } from '../bin/lib/fsutil.ts';
 import { testEnv } from './helpers.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));

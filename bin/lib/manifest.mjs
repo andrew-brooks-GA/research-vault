@@ -2,7 +2,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { assertInsideVault, compareContainment } from './containment.ts';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { walkEntries, readEntry, TYPE_FOLDER, writeAtomic } from './fsutil.mjs';
+import { walkEntries, readEntry, TYPE_FOLDER, writeAtomic } from './fsutil.ts';
 import { normalizeUrlSafe } from './ids.ts';
 
 // Edge fields are declared once in the schema (see edge_fields) and shared with lint's

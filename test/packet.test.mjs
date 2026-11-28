@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { checkQuotes } from '../bin/lib/quotes.mjs';
 import { buildPacket } from '../bin/lib/packet.mjs';
-import { readEntry } from '../bin/lib/fsutil.mjs';
+import { readEntry } from '../bin/lib/fsutil.ts';
 
 const NOW = { now: '2026-06-12', repoRoot: REPO_ROOT };
 const RUN = 'run-abc123';

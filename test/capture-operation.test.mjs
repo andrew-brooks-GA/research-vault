@@ -6,7 +6,7 @@ import { isAbsolute, join, relative, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { REPO_ROOT, put, testEnv } from './helpers.mjs';
 import { captureOperation } from '../bin/lib/capture-operation.mjs';
-import { walkEntries } from '../bin/lib/fsutil.mjs';
+import { walkEntries } from '../bin/lib/fsutil.ts';
 import { defaultVaultPath } from '../bin/lib/resolve.mjs';
 const CLI = join(REPO_ROOT, 'bin', 'research-vault.mjs');
 const now = '2026-11-13';

@@ -4,7 +4,7 @@ import { listStale } from '../lib/stale.mjs';
 import { fetchSource } from '../lib/fetchsource.mjs';
 import { loadBlocklist, sourceBlockCheck, SOURCE_BLOCKED } from '../lib/blocklist.ts';
 import { join } from 'node:path';
-import { readEntry, TYPE_FOLDER } from '../lib/fsutil.mjs';
+import { readEntry, TYPE_FOLDER } from '../lib/fsutil.ts';
 import { isStubBody } from '../lib/advise.mjs';
 import { screenText } from '../lib/screen.ts';
 

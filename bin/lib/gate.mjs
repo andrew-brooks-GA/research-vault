@@ -7,7 +7,7 @@ import { join, resolve, relative, dirname, extname, basename, isAbsolute, matche
 import { fileURLToPath } from 'node:url';
 import { checkCitations, extractCitations } from './citations.mjs';
 import { buildManifest } from './manifest.mjs';
-import { walkEntries, readEntry } from './fsutil.mjs';
+import { walkEntries, readEntry } from './fsutil.ts';
 import { listStale } from './stale.mjs';
 import { loadSchema } from './schema.mjs';
 import { SKIP_DIRS, expandFiles } from './files.ts';

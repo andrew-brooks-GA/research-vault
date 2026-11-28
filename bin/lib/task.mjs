@@ -2,7 +2,7 @@
 // read against the file, and the lines `teach check` prints. The checker is started here, not by labs.mjs's launch,
 // which needs a pin (R12). D8: a certification run's start, end and cancel.
 import { accessSync, constants, existsSync, lstatSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs';
-import { writeAtomic } from './fsutil.mjs';
+import { writeAtomic } from './fsutil.ts';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { parseFrontmatter } from './frontmatter.ts';

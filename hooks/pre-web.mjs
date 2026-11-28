@@ -2,7 +2,7 @@
 // Optional, non-load-bearing: before WebFetch/WebSearch, search the vault for the query or URL and
 // hand the matches to the model as context. Never blocks the call; silent when no vault; always exits 0.
 import { resolveVault, hasVaultContent } from '../bin/lib/resolve.mjs';
-import { walkEntries, readEntry } from '../bin/lib/fsutil.mjs';
+import { walkEntries, readEntry } from '../bin/lib/fsutil.ts';
 import { listStale } from '../bin/lib/stale.mjs';
 import { termsOf } from '../bin/lib/terms.ts';
 import { appendUsage } from '../bin/lib/usagelog.ts';
