@@ -36,6 +36,14 @@ function generatedMarkdown(t) {
   return [...installationFiles(project(t)).files].filter(([name]) => /^\.agents\/skills\/.*\.md$/.test(name));
 }
 
+function installedSkill(t, name) {
+  const root = project(t);
+  manageCodex(root, 'install');
+  const launcher = join(realpathSync(root), '.research-vault-host/codex/run.mjs').replaceAll("'", "'\\''");
+  const skill = readFileSync(join(root, `.agents/skills/${name}/SKILL.md`), 'utf8');
+  return { skill, cli: `node '${launcher}'` };
+}
+
 const ctx = context();
 
 test('generated Codex skills contain no bare research-vault invocations', t => {
@@ -45,6 +53,13 @@ test('generated Codex skills contain no bare research-vault invocations', t => {
 
 test('generated Codex skills contain no CLAUDE_PLUGIN_ROOT references', t => {
   for (const [name, body] of generatedMarkdown(t)) assert.doesNotMatch(body.toString(), /CLAUDE_PLUGIN_ROOT/, name);
+});
+
+test('generated Codex skill and command files contain no plugin-root placeholder or direct package CLI command', t => {
+  const bypass = /<absolute plugin root>|package[\\/]bin[\\/]research-vault\.mjs/;
+  for (const [name, body] of installationFiles(realpathSync(project(t))).files) {
+    if (name.startsWith('.agents/skills/')) assert.equal(body.toString().match(bypass)?.[0], undefined, name);
+  }
 });
 
 // Guard the installed destinations of plugin-root paths in the source skills and commands.
@@ -107,6 +122,18 @@ test('generated CLI definitions give the absolute launcher without Claude path r
     }
   }
   assert.ok(definitions > 0, 'found generated CLI definitions');
+});
+
+test('the generated Codex teach check wrapper runs the checked launcher', t => {
+  const { skill, cli } = installedSkill(t, 'research-teach');
+  const wrapper = skill.match(/^cd .* teach check "\$@"$/m)?.[0];
+  assert.equal(wrapper, `cd "$(dirname "$0")" && exec ${cli} teach check "$@"`);
+});
+
+test('the generated Codex teach serve start line runs the checked launcher', t => {
+  const { skill, cli } = installedSkill(t, 'research-teach');
+  const start = skill.match(/`([^`\n]* teach serve --terminal <workspace>)`/)?.[1];
+  assert.equal(start, `${cli} teach serve --terminal <workspace>`);
 });
 
 test('Codex install is pinned, repeatable, works from nested directories, and preserves unowned files on uninstall', t => {
@@ -197,6 +224,19 @@ test('generated review commands honor installed model and effort choices', t => 
   assert.match(skill, /host review codex --model gpt-6-astra --effort xhigh --role claims-reviewer/);
   assert.ok(!skill.includes('host review codex --role'));
 });
+
+for (const [role, name, dispatch] of [
+  ['claims-reviewer', 'research-claims-gate', '2. **Dispatch.** ONE subagent: '],
+  ['lesson-reader', 'research-teach', '`teach lint` must be clean first. Then the reader gate: dispatch ONE `research-vault-lesson-reader` agent ('],
+]) {
+  test(`the generated Codex ${role} dispatch uses the checked launcher`, t => {
+    const { skill, cli } = installedSkill(t, name);
+    const line = skill.split('\n').find(line => line.startsWith(dispatch));
+    const command = `host review codex --model gpt-6.1-sol --effort high --role ${role} --draft <path> --out <new-report.json>`;
+    assert.ok(line?.startsWith(`${dispatch}fresh Codex CLI review using \`${command}\``), line);
+    assert.ok(skill.includes(`\n- CLI: \`${cli}\`.`), `CLI for ${role} must be ${cli}`);
+  });
+}
 
 test('the Codex orchestrate skill names a script pinned in the installation manifest', t => {
   const root = project(t);

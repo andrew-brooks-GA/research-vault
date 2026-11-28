@@ -52,11 +52,11 @@ The directory `/research-teach` was run in. One mission per workspace.
 
 Keep `learning-records/` and `attempts/` as real folders at their own places in the workspace. Keep `.teach-serve.json`, `.teach-certify.json` and `.teach-certify.ending.json` as regular files when present. Report a state or attempt-destination refusal (exit 2; HTTP 500 for a refused server attempt); do not retry by following a link. The [security model](../../SECURITY.md#local-writers) describes these checks.
 
-Each time you start work in a workspace, write the wrapper `check` at its root, so the learner runs a checked task's check as `./check N` there. It holds this machine's plugin path, so write it each time, set its executable bit, and keep it out of git. Its two lines, with `<absolute plugin root>` the path section 0 resolved:
+Each time you start work in a workspace, write the wrapper `check` at its root, so the learner runs a checked task's check as `./check N` there. It holds this machine's plugin path, so write it each time, set its executable bit, and keep it out of git. Write these two lines with the CLI path written out as an absolute path, as section 0 gives it, never as a variable: the learner runs the wrapper in a terminal of their own.
 
 ```sh
 #!/usr/bin/env bash
-cd "$(dirname "$0")" && exec node "<absolute plugin root>/bin/research-vault.mjs" teach check "$@"
+cd "$(dirname "$0")" && exec node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" teach check "$@"
 ```
 
 Then run `chmod +x check` and `grep -qxF /check .gitignore 2>/dev/null || echo /check >> .gitignore`. The entry `/check` ignores the wrapper at the root and not a `check` in a folder below it.
@@ -151,7 +151,7 @@ A lesson opened with the terminal is opened this way, and only on a single-user 
 
 The learner can ask for the terminal, or ask to turn it off, at any time. Write the choice in `NOTES.md`. It holds for later lessons and overrides the three signals, until the learner changes it. When they ask for the terminal, open the lesson the terminal way. To turn it off, stop the server and start `teach serve` again without `--terminal`, with `--labs` still for a lesson with a lab section.
 
-When your Bash tool runs commands in a sandbox, do not start the server yourself. Instead give the learner the start line, to run once in a terminal of their own: `node "<absolute plugin root>/bin/research-vault.mjs" teach serve --terminal <workspace>`, with `--labs` too for a lesson with a lab section. Ask them to open the address it prints with `&next=/term/lessons/<id>.html` added. Do not stop a server the learner started. For a later lesson, ask them to open `http://127.0.0.1:<port>/term/lessons/<id>.html` on that server, with the port from its serving line. When a later lesson has a lab section and their server was started without `--labs`, give them the start line again with `--labs` added. The lab cookie `/labs/open` set is accepted while that server runs. It has no expiry date; if the browser drops it, the learner opens the printed address again.
+When your Bash tool runs commands in a sandbox, do not start the server yourself. Instead give the learner the start line, with the CLI path resolved to an absolute path as section 0 says, to run once in a terminal of their own: `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" teach serve --terminal <workspace>`, with `--labs` too for a lesson with a lab section. Ask them to open the address it prints with `&next=/term/lessons/<id>.html` added. Do not stop a server the learner started. For a later lesson, ask them to open `http://127.0.0.1:<port>/term/lessons/<id>.html` on that server, with the port from its serving line. When a later lesson has a lab section and their server was started without `--labs`, give them the start line again with `--labs` added. The lab cookie `/labs/open` set is accepted while that server runs. It has no expiry date; if the browser drops it, the learner opens the printed address again.
 
 Reuse a `teach serve --labs` or `teach serve --terminal` you started only while you hold its address and it was started with every flag the lesson needs. `.teach-serve.json` holds neither the address nor the flags, so otherwise stop that server and start a new one.
 
