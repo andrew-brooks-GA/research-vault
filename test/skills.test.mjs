@@ -12,12 +12,36 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const WORKFLOW = join('skills', 'research-orchestrate', 'workflow');
 const ctx = context();
 const skillMarkdown = ctx.files.filter(f => /^skills\/[^/]+\/.+\.md$/.test(f));
+const skillAndCommandMarkdown = [...skillMarkdown, ...ctx.files.filter(f => /^commands\/[^/]+\.md$/.test(f))];
+const readBody = file => read(file).replace(/^---\n[\s\S]*?\n---\n/, '');
+const isFile = path => statSync(path, { throwIfNoEntry: false })?.isFile() === true;
 
 // Guard copyable CLI commands against reliance on a PATH shim in Claude skill and command Markdown.
 test('source scan: skills and command files contain no bare research-vault invocations', () => {
   const bare = new RegExp(`(?<![\\w./-])research-vault[ \\t]+(?:${ctx.commands.join('|')})\\b`);
-  for (const file of [...skillMarkdown, ...ctx.files.filter(f => /^commands\/[^/]+\.md$/.test(f))]) {
+  for (const file of skillAndCommandMarkdown) {
     assert.doesNotMatch(read(file), bare, file);
+  }
+});
+
+// Guard plugin document pointers in skill and command bodies against resolving in the user's repo.
+// Only a resolving relative link destination is exempt. Link labels and code examples still count.
+test('source scan: skill and command document pointers use the plugin root or resolving relative links', () => {
+  const bare = /(?<![\w-]|\$\{CLAUDE_PLUGIN_ROOT\}\/)docs\/(?:[\w.-]+\/)*[\w.-]+\.md\b/;
+  const markup = /^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[ \t]*$|(`+)[^\n]*?\2|((?<!\\)\[[^\]\n]+\]\()([.\w][\w./-]*)((?:#[^)\s]*)?(?:[ \t]+"[^"\n]*")?\))/gm;
+  for (const file of skillAndCommandMarkdown) {
+    const body = readBody(file).replace(markup, (match, _fence, _code, label, target, suffix) =>
+      target && bare.test(target) && isFile(resolve(ROOT, dirname(file), target)) ? label + suffix : match);
+    assert.equal(bare.exec(body)?.[0], undefined, file);
+  }
+});
+
+test('source scan: plugin-root document pointers name existing repository files', () => {
+  const rooted = /\$\{CLAUDE_PLUGIN_ROOT\}\/(docs\/(?:[\w.-]+\/)*[\w.-]+\.md)\b/g;
+  for (const file of skillAndCommandMarkdown) {
+    for (const [, target] of readBody(file).matchAll(rooted)) {
+      assert.ok(isFile(join(ROOT, target)), `${file} names missing document ${target}`);
+    }
   }
 });
 

@@ -4,7 +4,7 @@ description: Use when retroactively reviewing or auditing an existing document o
 ---
 # Auditing a corpus against the vault
 
-A retroactive audit, not a write of new prose. It answers: *for this document, which of its load-bearing claims and assumptions are backed by a fresh vault entry, and which are floating?* A citation linter sees only what is written as a citation; this skill reaches the **uncited claim** and the **implicit assumption** a linter cannot. It is an orchestration skill — drive it document by document and obey the capture lifecycle in `docs/ORCHESTRATOR-INTEGRATION.md`.
+A retroactive audit, not a write of new prose. It answers: *for this document, which of its load-bearing claims and assumptions are backed by a fresh vault entry, and which are floating?* A citation linter sees only what is written as a citation; this skill reaches the **uncited claim** and the **implicit assumption** a linter cannot. It is an orchestration skill — drive it document by document and obey the capture lifecycle in `${CLAUDE_PLUGIN_ROOT}/docs/ORCHESTRATOR-INTEGRATION.md`.
 
 - CLI: `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs"`. Resolve `${CLAUDE_PLUGIN_ROOT}` to an absolute path now; it is unset in the Bash environment of the controller and of a subagent.
 

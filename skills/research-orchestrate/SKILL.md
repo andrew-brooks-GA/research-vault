@@ -5,7 +5,7 @@ description: Use when entering a fresh research task — a question that needs n
 # Orchestrating research into the vault
 <!-- evidence: 2026-11-17-document-lines-research-orchestrate-skill-names -->
 
-The reference implementation of `docs/ORCHESTRATOR-INTEGRATION.md`. Durable conclusions land as atomic vault entries — sources, notes, questions, snippets, experiments, synthesis — never as a monolithic report. Reports are views; the vault is the system of record.
+The reference implementation of `${CLAUDE_PLUGIN_ROOT}/docs/ORCHESTRATOR-INTEGRATION.md`. Durable conclusions land as atomic vault entries — sources, notes, questions, snippets, experiments, synthesis — never as a monolithic report. Reports are views; the vault is the system of record.
 
 ## Invariants
 
@@ -24,7 +24,7 @@ Keep these after a compaction; the section named holds the detail.
 <!-- evidence: 2026-11-17-cli-lines-behind-research-orchestrate-skill 2026-11-17-document-lines-research-orchestrate-skill-names 2026-11-17-probe-cli-behaviour-research-orchestrate-skill 2026-11-17-third-lines-behind-research-orchestrate-skill -->
 
 - CLI: `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs"`. Resolve `${CLAUDE_PLUGIN_ROOT}` to an absolute path now — do not rely on workers inheriting it.
-- Resolve the selected vault to an absolute canonical path once. Pass both CLI and vault explicitly to every worker; append `--vault <absolute vault>` to every CLI call, including reads. Vault path resolves in order: `--vault` flag → the repo's `.research-vault.json` binding (which outranks the env var) → `$RESEARCH_VAULT_PATH` → the global config pointer → the OS default (see "Where the vault lives" in `docs/REFERENCE.md`). A binding can name a vault outside its folder when acknowledged with `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" trust` (`init --project` acknowledges the binding it writes), or when it matches the user's `RESEARCH_VAULT_PATH`, config pointer or OS default under the [binding rule](../../SECURITY.md#repository-bindings). If discovery refuses the binding (exit 2), report it and stop before dispatching workers; do not copy its raw vault value into `--vault` or set `RESEARCH_VAULT_PATH` to bypass the refusal.
+- Resolve the selected vault to an absolute canonical path once. Pass both CLI and vault explicitly to every worker; append `--vault <absolute vault>` to every CLI call, including reads. Vault path resolves in order: `--vault` flag → the repo's `.research-vault.json` binding (which outranks the env var) → `$RESEARCH_VAULT_PATH` → the global config pointer → the OS default (see "Where the vault lives" in `${CLAUDE_PLUGIN_ROOT}/docs/REFERENCE.md`). A binding can name a vault outside its folder when acknowledged with `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" trust` (`init --project` acknowledges the binding it writes), or when it matches the user's `RESEARCH_VAULT_PATH`, config pointer or OS default under the [binding rule](../../SECURITY.md#repository-bindings). If discovery refuses the binding (exit 2), report it and stop before dispatching workers; do not copy its raw vault value into `--vault` or set `RESEARCH_VAULT_PATH` to bypass the refusal.
 - Make a run key now, new for every run and reused only to resume that run: `run-` and six or more letters or digits, for example `run-apfk3x`. It names the run's plan files and capture operations. It is not shaped like an entry id, and it never appears in an entry's body: the citation check reads a `<date>-<slug>` in prose as an entry id.
 - Today's date for `args.today` is the UTC date, `YYYY-MM-DD`: the CLI dates entries in UTC, and the Write step builds ids from it.
 
@@ -84,7 +84,7 @@ These are the controller's completion checks. Keep four results apart when you r
 3. Only after the gate records `PASS` or `MERIT`, close each question the synthesis actually resolves: `verify --id <question> --answered-by <synthesis id>`. If the gate does not pass, show its verdict and leave the questions open. List the ids created and reused.
 4. Offline or fetch-blocked? Do not fabricate: answer from the vault, record what could not be verified as open `question` entries, and say so.
 
-## Anti-patterns (from ORCHESTRATOR-INTEGRATION.md)
+## Anti-patterns (from `${CLAUDE_PLUGIN_ROOT}/docs/ORCHESTRATOR-INTEGRATION.md`)
 <!-- evidence: 2026-11-17-document-lines-research-orchestrate-skill-names -->
 
 Monolithic report files; source→synthesis with no notes (unless a declared `primary-rollup`); "I don't know" as prose instead of a `question`; reusable fragments inline instead of `snippets/`; stub notes written only to silence the lint.

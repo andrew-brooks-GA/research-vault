@@ -227,8 +227,10 @@ export const COUPLINGS = [
   ['bin/lib/host-install.mjs', 'agents/claims-reviewer.md', 'the shared reviewer body and generated Codex dispatch identity'],
   ['bin/lib/host-install.mjs', 'agents/lesson-reader.md', 'the shared reader body and generated Codex dispatch identity'],
   ['bin/lib/host-install.mjs', 'skills/research-claims-gate/SKILL.md', 'the exact Claude dispatch and plugin-root forms translated for Codex'],
+  ['bin/lib/host-install.mjs', 'skills/research-teach/LESSON-FORMAT.md', 'the lesson format uses the plugin-root placeholder translated for Codex', '${CLAUDE_PLUGIN_ROOT}'],
   ['bin/lib/host-install.mjs', 'skills/research-teach/SKILL.md', 'the exact reader dispatch and plugin-root forms translated for Codex'],
   ['bin/lib/host-install.mjs', 'skills/research-orchestrate/SKILL.md', 'the plugin-root form translated for Codex'],
+  ['bin/lib/host-install.mjs', 'test/skills.test.mjs', 'the document pointer guard uses the plugin-root placeholder translated for Codex', '${CLAUDE_PLUGIN_ROOT}'],
   ...['authoring', 'capture', 'librarian', 'review', 'vault-usage', 'verify'].map(skill =>
     ['bin/lib/host-install.mjs', `skills/research-${skill}/SKILL.md`, 'the CLI definition and Claude path resolution translated for Codex', '- CLI: ']),
   ...['authoring', 'capture', 'claims-gate', 'librarian', 'orchestrate', 'review', 'teach', 'vault-usage', 'verify'].map(skill =>
