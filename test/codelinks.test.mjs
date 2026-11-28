@@ -339,7 +339,7 @@ test('codeFiles is empty without a code block and refuses a bound vault outside 
 // Guard against project-specific names throughout bin and hooks; executions cannot cover every dormant branch.
 test('source scan: bin/ and hooks/ carry no project name or version format', () => {
   const walk = (d) => readdirSync(d).flatMap((n) => { const p = join(d, n); return statSync(p).isDirectory() ? walk(p) : [p]; });
-  for (const f of [...walk(join(ROOT, 'bin')), ...walk(join(ROOT, 'hooks'))].filter((f) => ['.mjs', ''].includes(extname(f)))) {
+  for (const f of [...walk(join(ROOT, 'bin')), ...walk(join(ROOT, 'hooks'))].filter((f) => ['.mjs', '.ts', ''].includes(extname(f)) && !f.endsWith('.d.ts'))) {
     const text = readFileSync(f, 'utf8');
     assert.doesNotMatch(text, /\bwow\b|QuestRouter|\.toc\b|Interface:/i, f);
   }

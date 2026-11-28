@@ -536,7 +536,7 @@ test('source scan: serve-path process imports, call sites and launch options sta
   const serve = ['bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/terminal.mjs', 'bin/lib/git.mjs', 'bin/lib/gate.mjs', 'bin/lib/teach.mjs', 'bin/lib/serve-file.mjs', 'bin/lib/lesson.mjs', 'bin/lib/lesson-format.mjs', 'bin/lib/escape.mjs', 'bin/commands/teach.mjs', 'bin/lib/args.mjs', 'skills/research-teach/assets/quiz.js'];
   const read = (f) => readFileSync(join(ROOT, f), 'utf8');
   const count = (src, name) => [...src.matchAll(new RegExp('\\b' + name + '\\s*\\(', 'g'))].length;
-  const walk = (d) => readdirSync(join(ROOT, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith('.mjs') ? [join(d, e.name)] : []));
+  const walk = (d) => readdirSync(join(ROOT, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith('.mjs') || (e.name.endsWith('.ts') && !e.name.endsWith('.d.ts')) ? [join(d, e.name)] : []));
   assert.deepEqual(walk('bin').filter((f) => read(f).includes('child_process')).sort(), ['bin/lib/codex-review.mjs', 'bin/lib/git.mjs', 'bin/lib/host-install.mjs', 'bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/terminal.mjs']);
   for (const file of serve) {
     const src = read(file);
