@@ -1,17 +1,17 @@
 # Adopting research-vault in a code project
 
-The steps, in order, to make a repo cite its research from code, fail CI when a citation goes stale, and draw the result. Every command below is run from the repo root as `node <plugin>/bin/research-vault.mjs` followed by the command; in Claude Code the plugin is installed per the README and explicit wrappers live under `commands/`; use their documented names and arguments.
+The steps, in order, to make a repo cite its research from code, fail CI when a citation goes stale, and draw the result. Run CLI examples from the repo root. For examples shown without a launcher, prepend `node <plugin>/bin/research-vault.mjs` as described in [Running the CLI](REFERENCE.md#running-the-cli). In Claude Code, install the plugin per the README and use the documented names and arguments of the wrappers in `commands/`.
 
 Installing through npm is not supported: Node does not run TypeScript files under a `node_modules` folder. Install it as a Claude Code plugin or from a git clone.
 
 ## 1. Put a vault inside the repo
 
 ```text
-research-vault init --vault research
-research-vault init --project --vault research --code-links 'src/**/*.ts,src/**/*.js'
+node <plugin>/bin/research-vault.mjs init --vault research
+node <plugin>/bin/research-vault.mjs init --project --vault research --code-links 'src/**/*.ts,src/**/*.js'
 ```
 
-The first command scaffolds `research/` (entry folders, `taxonomy.json`, a generated `AGENTS.md`, a `.gitignore` for the derived caches). The second writes `.research-vault.json` at the repo root, binding the repo to that vault and naming which files are code. Commit both. Code links need the vault inside the repo; a shared vault elsewhere can be cited from prose when its binding is approved with `research-vault trust` (as `init --project` does), without needing the variable, or when it matches your `RESEARCH_VAULT_PATH`, config pointer or OS default under the [binding rule](../SECURITY.md#repository-bindings).
+The first command scaffolds `research/` (entry folders, `taxonomy.json`, a generated `AGENTS.md`, a `.gitignore` for the derived caches). The second writes `.research-vault.json` at the repo root, binding the repo to that vault and naming which files are code. Commit both. Code links need the vault inside the repo; a shared vault elsewhere can be cited from prose when its binding is approved with `node <plugin>/bin/research-vault.mjs trust` (as `init --project` does), without needing the variable, or when it matches your `RESEARCH_VAULT_PATH`, config pointer or OS default under the [binding rule](../SECURITY.md#repository-bindings).
 
 The plugin ships comment and declaration patterns for Lua, the JavaScript and TypeScript family, Python, Go, Rust, Zig, Ruby, shell and C/C++. Another language, or a stricter rule, is two regexes under `code.languages` in that file; see the Reference, "Code links".
 
@@ -41,9 +41,9 @@ Only blank and comment lines may sit between the comment and the declaration. On
 ## 4. Check it
 
 ```text
-research-vault check            # prints every link that is not ok
-research-vault check --check    # exits 1 on stale, uncovered or unattached, or a glob that matches no file
-research-vault check --json     # the rows, for tools
+node <plugin>/bin/research-vault.mjs check            # prints every link that is not ok
+node <plugin>/bin/research-vault.mjs check --check    # exits 1 on stale, uncovered or unattached, or a glob that matches no file
+node <plugin>/bin/research-vault.mjs check --json     # the rows, for tools
 ```
 
 `uncovered` means the id names no entry; `unattached` means the comment reached no declaration. `stale` can indicate a superseded entry, missing version-configuration key, pinned-version mismatch, or failed freshness check. Pinned links use the version rule instead of the time rule, except volatile entries remain stale; unpinned links use freshness checks.
@@ -74,7 +74,7 @@ A linked symbol can be gated like a document: `gate evidence <file> --changed` l
 ## 7. Look at it
 
 ```text
-research-vault obsidian --vault research
+node <plugin>/bin/research-vault.mjs obsidian --vault research
 ```
 
 writes `research/_obsidian/`, a derived, git-ignored view: one note per entry, one per linked code file, wikilinks for every edge, and a seeded graph configuration. Open that folder, not `research/`, as an Obsidian vault and use its graph view.
@@ -91,7 +91,7 @@ dot -Tsvg graph.dot > graph.svg
 `examples/blast-radius.mjs` is the other direction, for the day a source is superseded: given the manifest, the entry's id and the `check --json` of every repo that cites the vault, it walks `sources` and `contributing_ids` inward and lists the entries that rest on it and every symbol or document citing one of them.
 
 ```text
-node /path/to/research-vault/bin/research-vault.mjs check --json > check.json
+node <plugin>/bin/research-vault.mjs check --json > check.json
 node /path/to/research-vault/examples/blast-radius.mjs research/.vault-manifest.json <id> check.json ../other-repo/check.json
 ```
 

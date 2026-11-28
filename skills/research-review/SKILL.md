@@ -6,12 +6,14 @@ description: Use when retroactively reviewing or auditing an existing document o
 
 A retroactive audit, not a write of new prose. It answers: *for this document, which of its load-bearing claims and assumptions are backed by a fresh vault entry, and which are floating?* A citation linter sees only what is written as a citation; this skill reaches the **uncited claim** and the **implicit assumption** a linter cannot. It is an orchestration skill — drive it document by document and obey the capture lifecycle in `docs/ORCHESTRATOR-INTEGRATION.md`.
 
+- CLI: `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs"`. Resolve `${CLAUDE_PLUGIN_ROOT}` to an absolute path now; it is unset in the Bash environment of the controller and of a subagent.
+
 ## 0. Iron law — fetch before you assert
 
 Every external-fact claim you classify or capture — a version, a release date, an API behavior, a "current best" — must be **verified by fetching the authoritative source** (web fetch / cross-reference), with the URL and date recorded as a `refetched-source` or `cross-referenced` verification. **Model recall is not verification**, and for version currency it is actively wrong: training lags reality, so a remembered "latest version" is stale by construction. A claim you cannot fetch is an open `question` or `unverified-offline` — **never** a reported defect and never a "backed" entry. An audit run without web access cannot assess currency at all; say so rather than guessing. Run the audit's subagents *with* web access. A `source` whose only provenance is `captured` is not authoritative and trips `WARN_SOURCE_UNVERIFIED` until a real verification is recorded.
 
 ## 1. Start mechanical
-Run `research-vault check --report "<glob>"` first. That matrix already classifies every citation and version pin as `ok` / `stale` / `uncovered` for free. Do not redo by hand what the report gives you; the semantic pass below is only for what the report cannot see.
+Run `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" check --report "<glob>"` first. That matrix already classifies every citation and version pin as `ok` / `stale` / `uncovered` for free. Do not redo by hand what the report gives you; the semantic pass below is only for what the report cannot see.
 
 ## 2. Sweep each document for claims and assumptions
 Read the document and extract its **load-bearing** statements — the ones a recommendation, build step, or design choice depends on. Two kinds the report misses:

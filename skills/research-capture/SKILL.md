@@ -4,7 +4,9 @@ description: Use when adding a new entry to the research vault by hand. Ensures 
 argument-hint: "[type] [title] [url]"
 ---
 # Capturing an entry
-- Fast path: `research-vault capture --type <t> --title "..." [--url ...] [--subject-name ... --subject-version ... --series ...]`.
+
+- CLI: `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs"`. Resolve `${CLAUDE_PLUGIN_ROOT}` to an absolute path now; it is unset in the Bash environment of the controller and of a subagent.
+- Fast path: `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" capture --type <t> --title "..." [--url ...] [--subject-name ... --subject-version ... --series ...]`.
 - For notes and syntheses, include `--summary "<one-line load-bearing claim>"` — it is indexed in the manifest and scanned by `search --text`; omitting it trips `WARN_MISSING_SUMMARY`. Sources accept `--summary` too (optional, not linted): the claim worth knowing before fetching. Syntheses accept `--confidence`; there is no default, so state it.
 - **Conflict review before a note.** Before writing a note that cites source Z, run `related Z --depth 1 --direction in --rel sources` and read the notes it returns. Compare their claims and `subject.version` with yours; summaries alone do not establish a contradiction, they tell you which claims to read. If the claims conflict, capture a `question` naming both notes and add each to the other's `related`. Pairwise only.
 - By hand: filename `<YYYY-MM-DD>-<slug>.md` IS the id; never store `id`/`last_verified`. Use folder-appropriate `stage`. Add an initial `verifications[]` line. Validate any `related`/`contributing_ids` resolve.

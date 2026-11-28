@@ -10,10 +10,10 @@ repository on the exported file.
 By default the export emits **metadata and answered-question summaries only** — never
 entry bodies and never any `source` body. Entry bodies can contain verbatim
 third-party text (a data-egress and copyright surface), so emitting them is gated behind
-two explicit flags that must BOTH be present:
+two explicit flags that must BOTH be present (`<plugin>` as in [Running the CLI](REFERENCE.md#running-the-cli)):
 
 ```
-research-vault export --include-bodies --ack-data-egress
+node <plugin>/bin/research-vault.mjs export --include-bodies --ack-data-egress
 ```
 
 Without `--ack-data-egress`, `--include-bodies` refuses (exit 1, nothing written).
@@ -66,10 +66,10 @@ types such as questions and notes, pass.
 ## Usage
 
 ```
-research-vault export --format jsonl --vault ./vault                # answered questions only
-research-vault export --scope question,note --out train.jsonl       # write to a file
-research-vault export --scope note --include-bodies --ack-data-egress --out x.jsonl
-research-vault export --scope source,note --chunk 800 --overlap 100 --fresh-only --min-authority secondary --out rag.jsonl
+node <plugin>/bin/research-vault.mjs export --format jsonl --vault ./vault                # answered questions only
+node <plugin>/bin/research-vault.mjs export --scope question,note --out train.jsonl       # write to a file
+node <plugin>/bin/research-vault.mjs export --scope note --include-bodies --ack-data-egress --out x.jsonl
+node <plugin>/bin/research-vault.mjs export --scope source,note --chunk 800 --overlap 100 --fresh-only --min-authority secondary --out rag.jsonl
 ```
 
 `--format` accepts only `jsonl`. `--out` writes to the user-chosen path (outside the

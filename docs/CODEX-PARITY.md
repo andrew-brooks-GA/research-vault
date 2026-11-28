@@ -1,6 +1,6 @@
 # Codex parity matrix
 
-This page maps each part of the research-vault Claude Code plugin to Codex, as the captured issue-67 text requests (2026-11-11-research-vault-issue-67-codex-full). It has one row per skill (9), command (7), agent (2) and hook (4), each with its Codex equivalent or, where there is none, the fallback and what the fallback loses. It ends with the decisions the rest of issue 67 needs.
+This page maps each part of the research-vault Claude Code plugin to Codex, as the captured issue-67 text requests (2026-11-11-research-vault-issue-67-codex-full). The Claude Code column and the counts on this page describe the tree of 2026-11-11; since then every skill that runs the CLI also carries one line naming it as `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs"`, which the Codex copy rewrites to its launcher. It has one row per skill (9), command (7), agent (2) and hook (4), each with its Codex equivalent or, where there is none, the fallback and what the fallback loses. It ends with the decisions the rest of issue 67 needs.
 
 ## Evidence and its limits
 

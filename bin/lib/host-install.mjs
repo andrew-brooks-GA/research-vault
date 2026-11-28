@@ -60,6 +60,8 @@ function generatedWorkflow(text, launcher) {
 
 function generatedSkill(text, project, launcher, model, effort) {
   const root = join(project, PAYLOAD);
+  // The launcher is already absolute, so drop the Claude-only resolution sentence.
+  text = text.replace(/(^- CLI: [^\n]+?\.) Resolve `\$\{CLAUDE_PLUGIN_ROOT\}`[^.\n]*\.(?= |$)/gm, '$1');
   // Resolve quoted paths before replacing prose references. Shell metacharacters in
   // the installation path must never acquire meaning when copied into a command.
   text = text.replace(/"\$\{CLAUDE_PLUGIN_ROOT\}\/bin\/research-vault\.mjs"/g, () => shellQuote(launcher));

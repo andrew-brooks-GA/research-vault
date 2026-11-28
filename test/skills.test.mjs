@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FLOATING } from '../bin/lib/fill.mjs';
 import { slugify } from '../bin/lib/ids.ts';
+import { context, extract } from '../scripts/deps.mjs';
 import { readFileSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +10,26 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const WORKFLOW = join('skills', 'research-orchestrate', 'workflow');
+const ctx = context();
+const skillMarkdown = ctx.files.filter(f => /^skills\/[^/]+\/.+\.md$/.test(f));
+
+// Guard copyable CLI commands against reliance on a PATH shim in Claude skill and command Markdown.
+test('source scan: skills and command files contain no bare research-vault invocations', () => {
+  const bare = new RegExp(`(?<![\\w./-])research-vault[ \\t]+(?:${ctx.commands.join('|')})\\b`);
+  for (const file of [...skillMarkdown, ...ctx.files.filter(f => /^commands\/[^/]+\.md$/.test(f))]) {
+    assert.doesNotMatch(read(file), bare, file);
+  }
+});
+
+test('skills that use the CLI define its plugin-root entry point', () => {
+  const definition = '- CLI: `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs"`.';
+  const usingCLI = new Set(skillMarkdown.filter(f => extract(f, read(f), ctx).some(e => e.kind === 'invokes-cli'))
+    .map(f => f.split('/')[1]));
+  for (const name of usingCLI) {
+    const file = `skills/${name}/SKILL.md`;
+    assert.ok(read(file).split('\n').some(line => line.startsWith(definition)), file);
+  }
+});
 
 test('research-claims-gate skill exists with the expected frontmatter', () => {
   // Regex, not parseFrontmatter: the vault parser rejects the `argument-hint` key.
@@ -124,7 +145,7 @@ test('research-authoring has a Code section whose first sentence states the code
   const section = s.slice(s.indexOf('## Code\n'));
   const first = section.split('\n\n')[1].split('. ')[0];
   assert.match(first, /applies only when the binding has a `code` block and the file you are editing matches its `code\.globs`/);
-  for (const x of ['<id>@<key>=<version>', 'versions:', 'research-vault check', '--superseded-by', 'Never move a pin']) assert.ok(section.includes(x), `Code section lacks ${x}`);
+  for (const x of ['<id>@<key>=<version>', 'versions:', 'node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" check', '--superseded-by', 'Never move a pin']) assert.ok(section.includes(x), `Code section lacks ${x}`);
   assert.match(read('agents/claims-reviewer.md'), /A `sym:<name>` unit is a code symbol/);
   assert.match(read('agents/claims-reviewer.md'), /`unit sym:<name> <file>:<start>-<end> <status>`/);
 });

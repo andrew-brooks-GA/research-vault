@@ -4,7 +4,8 @@ description: Use when you want read-only curation guidance for the research vaul
 ---
 # Advisory librarian
 <!-- evidence: 2026-11-17-advise-librarian-skill-lines-working-tree 2026-11-17-more-lines-behind-research-librarian-skill 2026-11-17-advise-scratch-vault-writes-nothing-sha256 -->
-- `research-vault advise [--json]` aggregates EXISTING signals into thirteen sections:
+- CLI: `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs"`. Resolve `${CLAUDE_PLUGIN_ROOT}` to an absolute path now; it is unset in the Bash environment of the controller and of a subagent.
+- `node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs" advise [--json]` aggregates EXISTING signals into thirteen sections:
   - **stale** — entries past their volatility refresh window (see `verify`).
   - **stale evidence** — notes/syntheses whose dependencies (`sources`/`contributing_ids`, transitively) are past their window or superseded; the dependent's own `last_verified` is not rewritten.
   - **orphans** — entries with no backlinks and no outgoing edges (any reference field).

@@ -2,9 +2,9 @@
 
 To move your existing research entries into a vault managed by this plugin:
 
-1. Run `research-vault init` (or `/research-init`) to scaffold an empty vault at the resolved location.
+1. Run `node <plugin>/bin/research-vault.mjs init` (`<plugin>` as in [Running the CLI](REFERENCE.md#running-the-cli)) or `/research-init` to scaffold an empty vault at the resolved location.
 2. Copy your existing `sources/`, `notes/`, etc. entries into the new vault's matching folders.
-3. Run `research-vault lint --fix` to normalize encoding/formatting and rebuild the manifest, then `research-vault lint` to surface any schema violations to fix by hand.
+3. Run `node <plugin>/bin/research-vault.mjs lint --fix` to normalize encoding/formatting and rebuild the manifest, then `node <plugin>/bin/research-vault.mjs lint` to surface any schema violations to fix by hand.
 4. Personal/machine-specific paths belong only in your private entries — never commit them to this plugin repo.
 
 ## Upgrading an existing vault across plugin versions

@@ -1,18 +1,66 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, symlinkSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, symlinkSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { testEnv } from './helpers.mjs';
 import { manageCodex, installationFiles, shellQuote } from '../bin/lib/host-install.mjs';
+import { context } from '../scripts/deps.mjs';
 
 function project(t) {
   const root = mkdtempSync(join(tmpdir(), "rv codex $' "));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   return root;
 }
+
+test('Running the CLI documents four entry points backed by shipped or generated files', t => {
+  const reference = readFileSync(new URL('../docs/REFERENCE.md', import.meta.url), 'utf8');
+  const section = reference.match(/^## Running the CLI\n\n([\s\S]*?)(?=^## )/m);
+  assert.ok(section, 'the Running the CLI section is present');
+  const launcher = '.research-vault-host/codex/run.mjs';
+  for (const [form, path] of [
+    ['node "${CLAUDE_PLUGIN_ROOT}/bin/research-vault.mjs"', 'bin/research-vault.mjs'],
+    ['node <plugin>/bin/research-vault.mjs', 'bin/research-vault.mjs'],
+    [`node ${launcher}`, launcher],
+    ['research-vault', 'bin/research-vault'],
+  ]) {
+    assert.ok(section[1].includes(`\`${form} <command>\``), form);
+    if (path === launcher) assert.ok(installationFiles(project(t)).files.has(path), path);
+    else assert.ok(statSync(new URL(`../${path}`, import.meta.url)).isFile(), path);
+  }
+});
+
+function generatedMarkdown(t) {
+  return [...installationFiles(project(t)).files].filter(([name]) => /^\.agents\/skills\/.*\.md$/.test(name));
+}
+
+const commands = context().commands;
+
+test('generated Codex skills contain no bare research-vault invocations', t => {
+  const bare = new RegExp(`(?<![\\w./-])research-vault[ \\t]+(?:${commands.join('|')})\\b`);
+  for (const [name, body] of generatedMarkdown(t)) assert.doesNotMatch(body.toString(), bare, name);
+});
+
+test('generated Codex skills contain no CLAUDE_PLUGIN_ROOT references', t => {
+  for (const [name, body] of generatedMarkdown(t)) assert.doesNotMatch(body.toString(), /CLAUDE_PLUGIN_ROOT/, name);
+});
+
+test('generated CLI definitions give the absolute launcher without Claude path resolution', t => {
+  const launcher = /^- CLI: `node '(?:[A-Za-z]:)?[\\/][^\n]*[\\/]\.research-vault-host[\\/]codex[\\/]run\.mjs'`\.(?: |$)/;
+  let definitions = 0;
+  for (const [name, body] of generatedMarkdown(t)) {
+    if (!/^\.agents\/skills\/[^/]+\/SKILL\.md$/.test(name)) continue;
+    for (const line of body.toString().split('\n')) {
+      if (!line.startsWith('- CLI:')) continue;
+      assert.match(line, launcher, name);
+      assert.doesNotMatch(line.replace(launcher, ''), /Resolve `/, name);
+      definitions++;
+    }
+  }
+  assert.ok(definitions > 0, 'found generated CLI definitions');
+});
 
 test('Codex install is pinned, repeatable, works from nested directories, and preserves unowned files on uninstall', t => {
   const root = project(t);

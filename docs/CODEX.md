@@ -21,7 +21,7 @@ node .research-vault-host/codex/run.mjs init --vault research
 node .research-vault-host/codex/run.mjs init --project --vault research
 ```
 
-You can instead bind an existing vault. A binding naming a vault outside its folder must be acknowledged with `research-vault trust` (`init --project` acknowledges the binding it writes), or name a vault matching your `RESEARCH_VAULT_PATH`, config pointer or OS default under the [binding rule](../SECURITY.md#repository-bindings). Installation does not choose or change a vault, edit project AGENTS.md, alter global Codex settings, or change Claude configuration. Read the resolved vault's AGENTS.md before writing entries; `host paths` prints the resolved vault directory.
+You can instead bind an existing vault. A binding naming a vault outside its folder must be acknowledged with `node <plugin>/bin/research-vault.mjs trust` (`init --project` acknowledges the binding it writes, and [Running the CLI](REFERENCE.md#running-the-cli) defines `<plugin>`), or name a vault matching your `RESEARCH_VAULT_PATH`, config pointer or OS default under the [binding rule](../SECURITY.md#repository-bindings). Installation does not choose or change a vault, edit project AGENTS.md, alter global Codex settings, or change Claude configuration. Read the resolved vault's AGENTS.md before writing entries; `host paths` prints the resolved vault directory.
 
 Start Codex in the project, trust the project configuration when appropriate, and review the installed hooks in `/hooks` before trusting them. Restart/discover skills after installation if they are not visible. The recorded live fixture used explicit project trust and hook trust; file installation alone is not evidence of successful host activation.
 
