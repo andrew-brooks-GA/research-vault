@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { REPO_ROOT } from './helpers.mjs';
 import { refreshVault, run } from '../bin/commands/refresh.mjs';
-import { fetchSource } from '../bin/lib/fetchsource.mjs';
+import { fetchSource } from '../bin/lib/fetchsource.ts';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
 import { writeEntry } from '../bin/lib/fsutil.ts';

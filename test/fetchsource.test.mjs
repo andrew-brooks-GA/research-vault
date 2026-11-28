@@ -6,7 +6,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { join } from 'node:path';
 import { setImmediate as nextTurn } from 'node:timers/promises';
-import { fetchSource } from '../bin/lib/fetchsource.mjs';
+import { fetchSource } from '../bin/lib/fetchsource.ts';
 import { BLOCKLIST, sourceBlockCheck } from '../bin/lib/blocklist.ts';
 import { fillSource } from '../bin/lib/fill.mjs';
 import { checkQuotes } from '../bin/lib/quotes.mjs';
@@ -409,7 +409,7 @@ test('the default fetch deadline expires at 60 seconds', { timeout: 1000 }, asyn
 });
 
 test('a successful fetch clears the default deadline before the child exits', { timeout: 5000 }, () => {
-  const source = new URL('../bin/lib/fetchsource.mjs', import.meta.url);
+  const source = new URL('../bin/lib/fetchsource.ts', import.meta.url);
   const script = `
     import { EventEmitter } from 'node:events';
     import { fetchSource } from ${JSON.stringify(source.href)};

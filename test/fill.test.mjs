@@ -7,7 +7,7 @@ import { EventEmitter } from 'node:events';
 import { REPO_ROOT, tmpVault, put } from './helpers.mjs';
 import { fillSource } from '../bin/lib/fill.mjs';
 import { htmlToText, mdToText, extractText } from '../bin/lib/extract.ts';
-import { fetchSource, rawFileUrl } from '../bin/lib/fetchsource.mjs';
+import { fetchSource, rawFileUrl } from '../bin/lib/fetchsource.ts';
 import { readEntry } from '../bin/lib/fsutil.ts';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { evidenceFor } from '../bin/lib/gate.mjs';

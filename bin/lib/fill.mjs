@@ -5,7 +5,7 @@ import { readEntry, writeEntry, TYPE_FOLDER } from './fsutil.ts';
 import { loadSchema, fieldOrder } from './schema.mjs';
 import { buildManifest, writeManifest } from './manifest.mjs';
 import { blockedSourceMessage, loadBlocklist, matchBlock, sourceBlockCheck, SOURCE_BLOCKED } from './blocklist.ts';
-import { fetchSource, rawFileUrl } from './fetchsource.mjs';
+import { fetchSource, rawFileUrl } from './fetchsource.ts';
 import { extractText } from './extract.ts';
 import { bodyText, MIN_BODY_CHARS } from './gate.mjs';
 import { sha256Tagged } from './hash.ts';
