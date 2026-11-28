@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { REPO_ROOT, tmpVault, put, testEnv } from './helpers.mjs';
-import { context } from '../scripts/deps.mjs';
+import { context } from '../scripts/deps.ts';
 
 const CLI = join(REPO_ROOT, 'bin', 'research-vault.mjs');
 

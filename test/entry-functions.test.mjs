@@ -51,7 +51,7 @@ const cases = [
       stdout: jsonLine({ decision: 'block', reason: 'Gated drafts changed without a claims verdict for their current content:\n- draft.md: run the research-claims-gate skill, then research-vault gate record draft.md PASS|MERIT' }),
     };
   }],
-  ['scripts/deps.mjs', () => ({ args: ['npm:test'], stdout: /^npm \.github\/workflows\/ci\.yml$/m })],
+  ['scripts/deps.mjs', () => ({ args: ['npm:test'], stdout: /^npm \.github\/workflows\/ci\.yml$/m }), 'scripts/deps.ts'],
   ['hooks/codex.mjs', (root, cwd) => ({
     args: ['PostToolUse'], event: { cwd },
     stdout: jsonLine({ systemMessage: 'research-vault: no edited paths supplied; run lint/check explicitly.' }),
@@ -82,9 +82,9 @@ function assertOutput(actual, expected) {
   else assert.equal(actual, expected);
 }
 
-for (const [file, setup] of cases) {
+for (const [file, setup, source = file] of cases) {
   const url = new URL(`../${file}`, import.meta.url);
-  const importFile = `await import(${JSON.stringify(url.href)})`;
+  const importFile = `await import(${JSON.stringify(new URL(`../${source}`, import.meta.url).href)})`;
 
   test(`${file} produces the expected output and exit status when started directly`, (t) => {
     const { run, stdout } = fixture(t, setup);
@@ -93,14 +93,14 @@ for (const [file, setup] of cases) {
     assertOutput(result.stdout, stdout);
   });
 
-  test(`${file} exits silently when merely imported`, (t) => {
+  test(`${source} exits silently when merely imported`, (t) => {
     const { run } = fixture(t, setup);
     // The placeholder occupies argv[1], keeping the row's arguments at argv[2] and after.
     const { status, stdout, stderr } = run(['--input-type=module', '-e', importFile, '--', 'import-only.mjs']);
     assert.deepEqual({ status, stdout, stderr }, { status: 0, stdout: '', stderr: '' });
   });
 
-  test(`${file} produces the expected output and exit status when a launcher calls main()`, (t) => {
+  test(`${source} produces the expected output and exit status when a launcher calls main()`, (t) => {
     const { cwd, run, stdout } = fixture(t, setup);
     const launcher = join(cwd, 'entry-launcher.mjs');
     writeFileSync(launcher, `const m = ${importFile}; m.main();\n`);

@@ -3,7 +3,7 @@
 // scripts/deps.mjs, does not scan its own imports.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { build, context, isCodeFile } from '../scripts/deps.mjs';
+import { build, context, isCodeFile } from '../scripts/deps.ts';
 import { javascriptFiles } from './launcher-paths.mjs';
 
 const inGraph = (file) => /^(?:bin|hooks|scripts)\//.test(file) && isCodeFile(file);

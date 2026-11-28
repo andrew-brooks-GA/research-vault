@@ -5,7 +5,7 @@ import { createRequire, isBuiltin } from 'node:module';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import { build, context } from '../scripts/deps.mjs';
+import { build, context } from '../scripts/deps.ts';
 import { REPO_ROOT, testEnv, tmpVault } from './helpers.mjs';
 import { javascriptFiles } from './launcher-paths.mjs';
 

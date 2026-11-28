@@ -5,7 +5,7 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, posix } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { gitInvocation } from '../bin/lib/git.ts';
-import { build, context, COUPLINGS, dependents, extensionOf, extract, EXTRACTED, IGNORED } from '../scripts/deps.mjs';
+import { build, context, COUPLINGS, dependents, extensionOf, extract, EXTRACTED, IGNORED } from '../scripts/deps.ts';
 import { testEnv, tmpVault } from './helpers.mjs';
 
 const ctx = context();
@@ -40,7 +40,7 @@ const SAMPLES = [
   ['bin/commands/x.mjs', "import { listStale } from '../lib/stale.mjs';", 'import', 'bin/lib/stale.mjs'],
   ['bin/research-vault.mjs', "  init: () => import('./commands/init.mjs'),", 'import', 'bin/commands/init.mjs'],
   ['bin/lib/x.mjs', "import taxonomy from '../../schema/taxonomy.json' with { type: 'json' };", 'import', 'schema/taxonomy.json'],
-  ['test/x.test.mjs', "import { build } from '../scripts/deps.mjs';", 'tests', 'scripts/deps.mjs'],
+  ['test/x.test.mjs', "import { build } from '../scripts/deps.ts';", 'tests', 'scripts/deps.ts'],
   ['bin/lib/x.mjs', "JSON.parse(readFileSync(join(repoRoot, 'schema', 'taxonomy.json'), 'utf8'))", 'reads', 'schema/taxonomy.json'],
   ['test/x.test.mjs', "read('skills/research-teach/LESSON-FORMAT.md')", 'reads', 'skills/research-teach/LESSON-FORMAT.md'],
   ['test/x.test.mjs', "readFileSync(join(ROOT, 'hooks', 'hooks.json'), 'utf8')", 'reads', 'hooks/hooks.json'],
@@ -168,7 +168,13 @@ test('the TypeScript dependency scanner contributes no edges for its own quoted 
     ['scripts/deps.ts', source],
     ['scripts/other.ts', source],
   ]);
-  assert.deepEqual(edges.filter(({ from }) => from === 'scripts/deps.ts'), []);
+  assert.deepEqual(edges.filter(({ from }) => from === 'scripts/deps.ts'), [
+    { from: 'scripts/deps.ts', kind: 'couples', to: 'test/tooling.test.mjs', why: 'the tooling import guard uses the import edge kind and paths' },
+    { from: 'scripts/deps.ts', kind: 'couples', to: 'scripts/coverage.mjs', why: 'the order and coverage start from the same code extensions and source directories' },
+    { from: 'scripts/deps.ts', kind: 'couples', to: 'test/deps.test.mjs', why: 'the order command reports tab-separated levels and sorted import cycle groups' },
+    { from: 'scripts/deps.ts', kind: 'couples', to: 'test/launcher.test.mjs', why: 'the launcher guard uses import and tests edges and their from and to paths' },
+    { from: 'scripts/deps.ts', kind: 'couples', to: 'test/layering.test.mjs', why: 'the layering tests use the import edge kind and its from and to paths' },
+  ]);
   assert.deepEqual(broken.filter(({ from }) => from === 'scripts/other.ts'), [
     { from: 'scripts/other.ts', kind: 'reads', to: 'scripts/missing.ts' },
   ]);
@@ -194,11 +200,12 @@ function repoFixture(t, sources) {
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   const invocation = gitInvocation(['init', '-q'], { cwd });
   execFileSync('git', invocation.args, { ...invocation.options, env: testEnv() });
+  cpSync(new URL('../package.json', import.meta.url), join(cwd, 'package.json'));
   for (const [file, source] of Object.entries(sources)) {
     mkdirSync(join(cwd, posix.dirname(file)), { recursive: true });
     writeFileSync(join(cwd, file), source);
   }
-  for (const file of ['bin/lib/git.ts', 'bin/lib/unknowns.ts', 'scripts/deps.mjs']) {
+  for (const file of ['bin/lib/git.ts', 'bin/lib/node-floor.mjs', 'bin/lib/unknowns.ts', 'scripts/deps.mjs', 'scripts/deps.ts']) {
     mkdirSync(join(cwd, posix.dirname(file)), { recursive: true });
     cpSync(new URL(`../${file}`, import.meta.url), join(cwd, file));
   }
@@ -207,7 +214,7 @@ function repoFixture(t, sources) {
 
 function cliFixture(t, sources) {
   const script = repoFixture(t, { 'package.json': '{}', ...sources });
-  return import(pathToFileURL(script));
+  return import(new URL('./deps.ts', pathToFileURL(script)));
 }
 
 test('an agent without a frontmatter name is indexed under the undefined string', { timeout: 30000 }, async (t) => {
@@ -311,8 +318,8 @@ test('--order prints exact import levels and sorts paths within a level', { time
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout, [
     '0\tbin/Y.js', '0\tbin/b.mjs', '0\tbin/c.ts', '0\tbin/d.js', '0\tbin/lib/git.ts',
-    '0\tbin/lib/unknowns.ts',
-    '1\tbin/Z.ts', '1\tscripts/deps.mjs', '2\tbin/a.ts', '',
+    '0\tbin/lib/node-floor.mjs', '0\tbin/lib/unknowns.ts',
+    '1\tbin/Z.ts', '1\tscripts/deps.ts', '2\tbin/a.ts', '2\tscripts/deps.mjs', '',
   ].join('\n'));
 });
 
@@ -342,5 +349,5 @@ test('--order lists the real code files once and puts each importer above its de
       assert.ok(levels.get(from) > levels.get(to), `${from} must follow ${to}`);
     }
   }
-  assert.ok(levels.get('scripts/deps.mjs') > levels.get('bin/lib/git.ts'));
+  assert.ok(levels.get('scripts/deps.ts') > levels.get('bin/lib/git.ts'));
 });

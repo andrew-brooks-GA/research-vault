@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FLOATING } from '../bin/lib/fill.mjs';
 import { slugify } from '../bin/lib/ids.ts';
-import { context, extract } from '../scripts/deps.mjs';
+import { context, extract } from '../scripts/deps.ts';
 import { readFileSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
