@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { dirname, join, sep, relative } from 'node:path';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.ts';
 import { assertInsideVault, isInsideVault, escapePathControls } from './containment.ts';
+import { errorCode } from './unknowns.ts';
 import { assertFieldShapes } from './validate.ts';
 
 export const TYPE_FOLDER = { source:'sources', note:'notes', synthesis:'synthesis', snippet:'snippets', experiment:'experiments', question:'questions' };
@@ -50,12 +51,13 @@ export function readEntry(absPath, { folderChecked = false, vaultPath, validateS
     if (validateShapes) assertFieldShapes(data);
     const parts = absPath.split(sep);
     const folder = parts[parts.length - 2];
-    const id = parts[parts.length - 1].replace(/\.md$/, '');
+    const id = parts.slice(-1).join('').replace(/\.md$/, '');
     return { id, folder, data, body, hasBom, hasCrlf };
   } catch (cause) {
+    if (!(cause instanceof Error)) throw cause;
     const path = escapePathControls(vaultPath ? relative(vaultPath, absPath) : absPath);
     const error = new Error(`${path}: ${escapePathControls(cause.message)}`, { cause });
-    error.code = cause.code ?? phase;
+    error.code = ('code' in cause ? cause.code : undefined) ?? phase;
     error.entryCode = phase;
     throw error;
   }
@@ -65,7 +67,8 @@ export function readEntry(absPath, { folderChecked = false, vaultPath, validateS
 // and the parser's non-enumerable RAW metadata do not. Dates are strings, not Date objects.
 function firstDifference(want, got, field = '') {
   if (want === got) return null;
-  if (!want || !got || typeof want !== 'object' || typeof got !== 'object' ||
+  const isIndexable = (v) => v !== null && typeof v === 'object';
+  if (!isIndexable(want) || !isIndexable(got) ||
       Array.isArray(want) !== Array.isArray(got)) return field;
   for (const key of new Set([...Object.keys(want), ...Object.keys(got)])) {
     const path = Array.isArray(want) ? `${field}[${key}]` : field ? `${field}.${key}` : key;
@@ -118,7 +121,8 @@ export function writeAtomic(path, text, { exclusive = false, vaultPath = dirname
     if (exclusive) {
       try { linkSync(tmp, path); }
       catch (e) {
-        if (!['ENOTSUP', 'EOPNOTSUPP', 'EPERM', 'ENOSYS'].includes(e.code)) throw e;
+        const code = errorCode(e);
+        if (code === undefined || !['ENOTSUP', 'EOPNOTSUPP', 'EPERM', 'ENOSYS'].includes(code)) throw e;
         // Without hard links, content is not published atomically.
         // A failed copy cannot prove destination ownership; leave any destination it leaves.
         copyFileSync(tmp, path, constants.COPYFILE_EXCL);

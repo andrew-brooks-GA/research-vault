@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (spec 56, stage 6):** `bin/lib/fsutil.mjs` is rewritten in five places so that it can be typed, with no change in what it does: the entry id is taken from the last path part without an indexed read, a caught value is narrowed before its message and code are read, the link fallback reads the code through `errorCode`, and the comparison of two values tests that both are objects through one local check.
 - **Changed (spec 56, stage 6):** `bin/lib/projectconfig.mjs` is rewritten in places so that it can be typed, with no change in what it accepts, refuses or returns: its object guards are `isRecord`, optional fields are read into constants and checked, and two default parameter values that no caller relied on are removed.
 - **Changed (spec 56, stage 6):** `bin/lib/brand.mjs` is rewritten in places so that it can be typed, with no change in what it does for any brand file: captures are checked, the luminance weights travel with their channels, `contrast` orders its two values without a sort, the local object check is `isRecord`, and the validation runs in a local function that returns whether there were no problems.
 - **Changed (spec 56, stage 6):** `bin/lib/lesson-format.mjs` is rewritten in places so that it can be typed, with no change in what it does: regular-expression captures are read once and checked, the quiz JSON goes through `parseJson` and `isRecord`, and the items of several quiz blocks are collected in a loop.

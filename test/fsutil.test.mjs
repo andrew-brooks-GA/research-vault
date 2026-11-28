@@ -124,3 +124,24 @@ test('R08 round2 writeEntry preserves existing permissions', t => {
     assert.equal(fs.statSync(path).mode & 0o777, mode);
   }
 });
+
+test('checkFrontmatter refuses an omitted key whose expected value is undefined', t => {
+  const dir = folder(t), path = join(dir, 'entry.md');
+  fs.writeFileSync(path, 'old');
+  assert.throws(() => writers.checkFrontmatter(path, { title: 'Kept', extra: undefined }, '---\ntitle: Kept\n---\n'), e => {
+    assert.equal(e.message.slice(e.message.lastIndexOf(' at ')), ' at "extra": value does not round-trip');
+    return true;
+  });
+  assert.equal(fs.readFileSync(path, 'utf8'), 'old');
+  assert.deepEqual(fs.readdirSync(dir), ['entry.md']);
+});
+
+test('checkFrontmatter refuses a map that round-trips as a boolean', t => {
+  const dir = folder(t), path = join(dir, 'entry.md');
+  fs.writeFileSync(path, 'old');
+  assert.throws(() => writers.checkFrontmatter(path, { subject: {} }, '---\nsubject: false\n---\n'), {
+    message: / at "subject": value does not round-trip$/,
+  });
+  assert.equal(fs.readFileSync(path, 'utf8'), 'old');
+  assert.deepEqual(fs.readdirSync(dir), ['entry.md']);
+});
