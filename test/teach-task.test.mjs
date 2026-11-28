@@ -1352,3 +1352,39 @@ test('R08 run-state update replaces its inode and leaves the old temporary name 
   assert.equal(readFileSync(join(ws, 'initial-state'), 'utf8'), initial);
   assert.equal(readFileSync(file + '.tmp', 'utf8'), 'sentinel');
 });
+
+test('readRequirements: null at the top level is refused as a non-object', (t) => {
+  const ws = copy();
+  t.after(() => rmSync(ws, { recursive: true, force: true }));
+  writeReqs(ws, 'null');
+  assert.deepEqual(readRequirements(ws, '0001'), { timeout: 60, requirements: [], problems: ['requirements.json is not a JSON object'] });
+  assert.equal(readFileSync(join(ws, 'evidence', '0001', 'requirements.json'), 'utf8'), 'null');
+});
+
+test('readRequirements: a null requirement is refused as a non-object', (t) => {
+  const ws = copy();
+  t.after(() => rmSync(ws, { recursive: true, force: true }));
+  const raw = '{"version":1,"requirements":[null]}';
+  writeReqs(ws, raw);
+  assert.deepEqual(readRequirements(ws, '0001'), { timeout: 60, requirements: [], problems: ['requirement 1 is not an object'] });
+  assert.equal(readFileSync(join(ws, 'evidence', '0001', 'requirements.json'), 'utf8'), raw);
+});
+
+test('readRun: a null state is refused as an invalid run', (t) => {
+  const ws = copy();
+  t.after(() => rmSync(ws, { recursive: true, force: true }));
+  const file = join(ws, RUN);
+  writeFileSync(file, 'null');
+  assert.deepEqual(readRun(ws), { problem: '.teach-certify.json is not a certification run; drop it with ./check --cancel' });
+  assert.equal(readFileSync(file, 'utf8'), 'null');
+});
+
+test('readRun: a stored pass percentage over 100 is refused', (t) => {
+  const ws = copy();
+  t.after(() => rmSync(ws, { recursive: true, force: true }));
+  const file = join(ws, RUN);
+  const raw = JSON.stringify({ id: 'c-20260101-100000', started: null, tasks: ['0001'], minutes: null, pass: 101, hints: true });
+  writeFileSync(file, raw);
+  assert.deepEqual(readRun(ws), { problem: '.teach-certify.json is not a certification run; drop it with ./check --cancel' });
+  assert.equal(readFileSync(file, 'utf8'), raw);
+});

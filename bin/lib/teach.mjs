@@ -22,6 +22,7 @@ import { shellTerminal } from './terminal.mjs';
 import { screenText } from './screen.ts';
 import { escapeHtml, show } from './escape.ts';
 import { errorCode } from './unknowns.ts';
+import { isIntegerInRange } from './unknowns.ts';
 
 export { LESSON_ID_RE, RECORD_ID_RE, extractCites };
 export { serveFile, navHtml, footnoteCitations, labStepsHtml } from './serve-file.mjs';
@@ -1107,8 +1108,7 @@ export function createServer(workspaceDir, { schema, now = () => new Date(), tit
         if (!keysAre(body, ['data']) || typeof body.data !== 'string') return send(req, res, 400, 'body must be {"data": "<text>"}\n');
         return term.input(body.data) ? send(req, res, 200, 'ok\n') : send(req, res, 409, 'terminal not running\n');
       }
-      const within = (n, max) => Number.isInteger(n) && n >= 1 && n <= max;
-      if (!keysAre(body, ['rows', 'cols']) || !within(body.rows, 500) || !within(body.cols, 1000)) {
+      if (!keysAre(body, ['rows', 'cols']) || !isIntegerInRange(body.rows, 1, 500) || !isIntegerInRange(body.cols, 1, 1000)) {
         return send(req, res, 400, 'body must be {"rows": <1 to 500>, "cols": <1 to 1000>}\n');
       }
       term.resize(body.rows, body.cols);

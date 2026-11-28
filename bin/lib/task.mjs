@@ -6,16 +6,15 @@ import { writeAtomic } from './fsutil.ts';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { parseFrontmatter } from './frontmatter.ts';
-import { LAB_TEXT_BAD_RE, LAB_OUTPUT_MAX, STOP_GRACE, KILL_WAIT, stopGroup } from './labs.mjs';
+import { LAB_TEXT_BAD_RE, LAB_OUTPUT_MAX, STOP_GRACE, KILL_WAIT, isLabText, stopGroup } from './labs.mjs';
 import { RECORD_ID_RE, LESSON_ID_RE } from './lesson-format.ts';
 import { nextAttemptId, writeAttempt, missionPrefs } from './teach.mjs';
 import { show } from './escape.ts';
 import { assertInsideWorkspaceFolder, isInsideVault, VAULT_PATH_OUTSIDE } from './containment.ts';
+import { isRecord, isIntegerInRange } from './unknowns.ts';
 
 const TASK_ID_RE = /^[a-z][a-z0-9-]{0,39}$/;
 const KEYS = ['id', 'text', 'records', 'read'];
-const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-const text = (v) => typeof v === 'string' && v.length >= 1 && v.length <= 300 && !LAB_TEXT_BAD_RE.test(v);
 const extraKey = (o, keys) => Object.keys(o).find((k) => !keys.includes(k));
 
 // evidence/NNNN/requirements.json: { timeout (seconds), requirements, problems }. With any problem, the timeout is 60
@@ -27,7 +26,7 @@ export function readRequirements(ws, nnnn) {
   if (!existsSync(file)) return fail([`evidence/${nnnn}/requirements.json is missing`]);
   let doc;
   try { doc = JSON.parse(readFileSync(file, 'utf8')); } catch { return fail(['requirements.json is not JSON']); }
-  if (!isObject(doc)) return fail(['requirements.json is not a JSON object']);
+  if (!isRecord(doc)) return fail(['requirements.json is not a JSON object']);
   const problems = [];
   const extra = extraKey(doc, ['version', 'timeout', 'requirements']);
   if (extra !== undefined) problems.push(`requirements.json has the key ${show(extra)}, which is not allowed`);
@@ -38,7 +37,7 @@ export function readRequirements(ws, nnnn) {
   const usable = [];
   (Array.isArray(doc.requirements) ? doc.requirements : []).forEach((r, i) => {
     const at = `requirement ${i + 1}`;
-    if (!isObject(r)) return problems.push(`${at} is not an object`);
+    if (!isRecord(r)) return problems.push(`${at} is not an object`);
     const k = extraKey(r, KEYS);
     if (k !== undefined) return problems.push(`${at} has the key ${show(k)}, which is not allowed`);
     if (KEYS.some((x) => !Object.hasOwn(r, x))) return problems.push(`${at} needs id, text, records and read`);
@@ -47,7 +46,7 @@ export function readRequirements(ws, nnnn) {
     else if (r.id === 'all') problems.push(`${at}: id "all" is reserved for --answered all`);
     else if (seen.has(r.id)) problems.push(`${at}: id ${r.id} is repeated`);
     seen.add(r.id);
-    for (const f of ['text', 'read']) if (!text(r[f])) problems.push(`${at}: ${f} must be 1 to 300 characters with no control, line-separator or bidi character`);
+    for (const f of ['text', 'read']) if (!isLabText(r[f], 300)) problems.push(`${at}: ${f} must be 1 to 300 characters with no control, line-separator or bidi character`);
     if (problems.length === before) usable.push(r);
     if (!Array.isArray(r.records) || !r.records.every((x) => typeof x === 'string')) problems.push(`${at}: records must be a list of learning-record ids`);
     else for (const id of r.records) {
@@ -213,7 +212,6 @@ const RUN_KEYS = ['id', 'started', 'tasks', 'minutes', 'pass', 'hints'];
 const RUN_ID_RE = /^c-\d{8}-\d{6}(?:-[1-9]\d*)?$/;
 const RUN_BAD = `${RUN_FILE} is not a certification run; drop it with ./check --cancel`;
 const OPEN_TAIL = 'end: ./check --certify; drop: ./check --cancel';
-const inRange = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
 function checkRunFile(ws, name) {
   const file = join(ws, name);
   try {
@@ -245,10 +243,10 @@ export function readRun(ws) {
   if (!open) return {};
   let s;
   try { s = JSON.parse(readFileSync(join(ws, RUN_FILE), 'utf8')); } catch (e) { return e.code === 'ENOENT' ? {} : { problem: RUN_BAD }; }
-  const ok = isObject(s) && Object.keys(s).length === RUN_KEYS.length && RUN_KEYS.every((k) => Object.hasOwn(s, k)) && RUN_ID_RE.test(s.id)
+  const ok = isRecord(s) && Object.keys(s).length === RUN_KEYS.length && RUN_KEYS.every((k) => Object.hasOwn(s, k)) && RUN_ID_RE.test(s.id)
     && (s.started === null || (typeof s.started === 'string' && !Number.isNaN(Date.parse(s.started))))
     && Array.isArray(s.tasks) && s.tasks.length > 0 && s.tasks.every((t) => /^\d{4}$/.test(t)) && new Set(s.tasks).size === s.tasks.length
-    && (s.minutes === null || inRange(s.minutes, 1, 1440)) && (s.pass === null || inRange(s.pass, 1, 100)) && typeof s.hints === 'boolean';
+    && (s.minutes === null || isIntegerInRange(s.minutes, 1, 1440)) && (s.pass === null || isIntegerInRange(s.pass, 1, 100)) && typeof s.hints === 'boolean';
   return ok ? { state: s } : { problem: RUN_BAD };
 }
 
@@ -281,7 +279,7 @@ export async function startRun(ws, nums, { minutes, pass, hints }, { now, out, e
   const tasks = nums.map((n) => n.padStart(4, '0'));
   const twice = tasks.find((t, i) => tasks.indexOf(t) !== i);
   if (twice) return refuse(`${twice} is given twice`);
-  const whole = (v, lo, hi) => (v === null ? null : /^\d+$/.test(String(v)) && inRange(Number(v), lo, hi) ? Number(v) : undefined);
+  const whole = (v, lo, hi) => (v === null ? null : /^\d+$/.test(String(v)) && isIntegerInRange(Number(v), lo, hi) ? Number(v) : undefined);
   const M = whole(minutes, 1, 1440), P = whole(pass, 1, 100);
   if (M === undefined) return refuse('--minutes must be a whole number from 1 to 1440');
   if (P === undefined) return refuse('--pass must be a whole number from 1 to 100');

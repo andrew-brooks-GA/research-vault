@@ -9,6 +9,7 @@ import { isInsideVault, isInsideWorkspaceFolder } from './containment.ts';
 import { LESSON_ID_RE, parseBlocks } from './lesson-format.ts';
 import { show } from './escape.ts';
 import { sha256Hex } from './hash.ts';
+import { isRecord } from './unknowns.ts';
 
 export const LAB_ID_RE = /^[a-z][a-z0-9-]{0,39}$/;
 export const LAB_ROOTS = ['labs/', 'evidence/', 'lessons/files/'];
@@ -19,11 +20,10 @@ export const LAB_CHECKS_MAX = 10;
 const PATH_RE = /^[A-Za-z0-9._/-]+$/;
 const ENV_RE = /^[A-Z_][A-Z0-9_]*$/;
 const HEX_RE = /^[0-9a-f]{64}$/;
-const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const keysOk = (o, required, optional = []) => Object.keys(o).every((k) => required.includes(k) || optional.includes(k)) && required.every((k) => Object.hasOwn(o, k));
 // A cost or check message: 1 to max characters, none of them a control, line-separator or bidi character.
 export const LAB_TEXT_BAD_RE = /[\p{Cc}\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/u;
-const text = (v, max) => typeof v === 'string' && v.length >= 1 && v.length <= max && !LAB_TEXT_BAD_RE.test(v);
+export const isLabText = (v, max) => typeof v === 'string' && v.length >= 1 && v.length <= max && !LAB_TEXT_BAD_RE.test(v);
 
 // A script path's problem, or null: the pattern, no empty or dot segment, one of the three roots, the root inside
 // the workspace (a symlinked root leading out is refused), the script inside its root and a regular file (lstat).
@@ -53,23 +53,23 @@ export function readLabs(ws) {
   let raw, doc;
   try { raw = readFileSync(file, 'utf8'); } catch { problems.push(`${LAB_MANIFEST} cannot be read`); fail(); }
   try { doc = JSON.parse(raw); } catch { problems.push(`${LAB_MANIFEST} is not JSON`); fail(); }
-  if (!isObject(doc) || !keysOk(doc, ['version', 'labs'])) problems.push('the top level must have exactly version and labs');
+  if (!isRecord(doc) || !keysOk(doc, ['version', 'labs'])) problems.push('the top level must have exactly version and labs');
   if (doc?.version !== 1) problems.push('version must be 1');
-  if (!isObject(doc?.labs)) { problems.push('labs must be an object'); fail(); }
+  if (!isRecord(doc?.labs)) { problems.push('labs must be an object'); fail(); }
   const labs = {};
   for (const [id, e] of Object.entries(doc.labs)) {
     const at = LAB_ID_RE.test(id) ? `lab ${id}` : `lab ${show(id)}`;
     const add = (p) => problems.push(`${at}: ${p}`);
     if (!LAB_ID_RE.test(id)) { add('the id does not match ^[a-z][a-z0-9-]{0,39}$'); continue; }
-    if (!isObject(e)) { add('must be an object'); continue; }
+    if (!isRecord(e)) { add('must be an object'); continue; }
     if (!keysOk(e, ['cost', 'timeout', 'up', 'down'], ['env', 'checks', 'verify'])) add('must have cost, timeout, up and down, and may have env, checks and verify, and nothing else');
-    if (!text(e.cost, LAB_COST_MAX)) add(`cost must be 1 to ${LAB_COST_MAX} characters, with no control, line-separator or bidi character`);
+    if (!isLabText(e.cost, LAB_COST_MAX)) add(`cost must be 1 to ${LAB_COST_MAX} characters, with no control, line-separator or bidi character`);
     if (!(Number.isInteger(e.timeout) && e.timeout >= 1 && e.timeout <= LAB_TIMEOUT_MAX)) add(`timeout must be whole seconds, 1 to ${LAB_TIMEOUT_MAX}`);
     if (e.env !== undefined && !(Array.isArray(e.env) && e.env.every((n) => typeof n === 'string' && ENV_RE.test(n)) && new Set(e.env).size === e.env.length)) {
       add('env must be distinct names matching ^[A-Z_][A-Z0-9_]*$');
     }
     const command = (c, name, extra = []) => {
-      if (!isObject(c) || !keysOk(c, ['script', 'sha256', ...extra])) return add(`${name} must have exactly script, sha256${extra.map((k) => `, ${k}`).join('')}`);
+      if (!isRecord(c) || !keysOk(c, ['script', 'sha256', ...extra])) return add(`${name} must have exactly script, sha256${extra.map((k) => `, ${k}`).join('')}`);
       const p = scriptProblem(ws, c.script);
       if (p) add(`${name} ${typeof c.script === 'string' && PATH_RE.test(c.script) ? c.script : 'script'} ${p}`);
       if (typeof c.sha256 !== 'string' || !HEX_RE.test(c.sha256)) add(`${name} sha256 must be 64 lowercase hex characters`);
@@ -78,7 +78,7 @@ export function readLabs(ws) {
       if (!Array.isArray(e.checks) || e.checks.length > LAB_CHECKS_MAX) add(`checks must be a list of at most ${LAB_CHECKS_MAX}`);
       else e.checks.forEach((c, i) => {
         command(c, `check ${i + 1}`, ['message']);
-        if (isObject(c) && !text(c.message, LAB_COST_MAX)) add(`check ${i + 1} message must be 1 to ${LAB_COST_MAX} characters, with no control, line-separator or bidi character`);
+        if (isRecord(c) && !isLabText(c.message, LAB_COST_MAX)) add(`check ${i + 1} message must be 1 to ${LAB_COST_MAX} characters, with no control, line-separator or bidi character`);
       });
     }
     for (const k of ['up', 'down', 'verify']) if (k !== 'verify' || e.verify !== undefined) command(e[k], k);

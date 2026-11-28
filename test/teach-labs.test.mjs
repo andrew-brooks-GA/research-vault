@@ -13,7 +13,7 @@ import { once } from 'node:events';
 import { createHash, randomBytes } from 'node:crypto';
 import { createRequire, syncBuiltinESMExports } from 'node:module';
 import { createServer, labStepsHtml, readmeDraft } from '../bin/lib/teach.mjs';
-import { readLabs, labPin, lessonLab, lineRedactor, secretHits } from '../bin/lib/labs.mjs';
+import { readLabs, labPin, lessonLab, lineRedactor, secretHits, isLabText } from '../bin/lib/labs.mjs';
 import { lintWorkspace } from '../bin/lib/lesson.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
@@ -1151,4 +1151,68 @@ test('t and the lab cookie go through timingSafeEqual when the lengths match; an
   assert.deepEqual(await lab(`${name}=${newT()}`), [403, undefined, [[64, 64]]], 'a wrong cookie of the same length');
   assert.deepEqual(await lab(`${cookie}0`), [403, undefined, []], 'a cookie one character longer');
   assert.deepEqual(await lab(cookie), [404, undefined, [[64, 64]]], 'the right cookie passes check 4');
+});
+
+test('isLabText accepts a string of exactly the maximum length', () => {
+  assert.equal(isLabText('abc', 3), true);
+});
+
+test('isLabText rejects a string one character longer than the maximum', () => {
+  assert.equal(isLabText('abcd', 3), false);
+});
+
+test('isLabText rejects an empty string', () => {
+  assert.equal(isLabText('', 3), false);
+});
+
+test('isLabText rejects a boxed string', () => {
+  assert.equal(isLabText(Object('abc'), 3), false);
+});
+
+test('isLabText rejects a bidi control', () => {
+  assert.equal(isLabText('a\u202eb', 3), false);
+});
+
+test('readLabs: null at the top level reports the missing object', () => {
+  const { ws } = labWorkspace();
+  const file = join(ws, 'labs', 'labs.json');
+  writeFileSync(file, 'null');
+  assert.throws(() => readLabs(ws), { problems: ['the top level must have exactly version and labs', 'version must be 1', 'labs must be an object'] });
+  assert.equal(readFileSync(file, 'utf8'), 'null');
+});
+
+test('readLabs: an array of labs is refused', () => {
+  const { ws } = labWorkspace();
+  const file = join(ws, 'labs', 'labs.json');
+  const raw = '{"version":1,"labs":[]}';
+  writeFileSync(file, raw);
+  assert.throws(() => readLabs(ws), { problems: ['labs must be an object'] });
+  assert.equal(readFileSync(file, 'utf8'), raw);
+});
+
+test('readLabs: a null lab entry reports that an object is required', () => {
+  const { ws } = labWorkspace();
+  const file = join(ws, 'labs', 'labs.json');
+  const raw = '{"version":1,"labs":{"demo":null}}';
+  writeFileSync(file, raw);
+  assert.throws(() => readLabs(ws), { problems: ['lab demo: must be an object'] });
+  assert.equal(readFileSync(file, 'utf8'), raw);
+});
+
+test('readLabs: a null up command reports the required keys', () => {
+  const { ws, entry } = labWorkspace();
+  const file = join(ws, 'labs', 'labs.json');
+  const raw = JSON.stringify({ version: 1, labs: { demo: { ...entry, up: null } } });
+  writeFileSync(file, raw);
+  assert.throws(() => readLabs(ws), { problems: ['lab demo: up must have exactly script, sha256'] });
+  assert.equal(readFileSync(file, 'utf8'), raw);
+});
+
+test('readLabs: a null check reports its command problem without inspecting a message', () => {
+  const { ws, entry } = labWorkspace();
+  const file = join(ws, 'labs', 'labs.json');
+  const raw = JSON.stringify({ version: 1, labs: { demo: { ...entry, checks: [null] } } });
+  writeFileSync(file, raw);
+  assert.throws(() => readLabs(ws), { problems: ['lab demo: check 1 must have exactly script, sha256, message'] });
+  assert.equal(readFileSync(file, 'utf8'), raw);
 });

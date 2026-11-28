@@ -6,6 +6,10 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+export function isIntegerInRange(value: unknown, lo: number, hi: number): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= lo && value <= hi;
+}
+
 export function errorCode(error: unknown): string | undefined {
   if (error === null || typeof error !== 'object') return undefined;
   try {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { errorCode, isRecord, parseJson } from '../bin/lib/unknowns.ts';
+import { errorCode, isIntegerInRange, isRecord, parseJson } from '../bin/lib/unknowns.ts';
 
 test('parseJson returns a parsed object', () => {
   assert.deepEqual(parseJson('{"value":7}'), { value: 7 });
@@ -69,6 +69,30 @@ test('isRecord rejects a bigint', () => {
 
 test('isRecord rejects a boolean', () => {
   assert.equal(isRecord(true), false);
+});
+
+test('isIntegerInRange accepts the lower bound', () => {
+  assert.equal(isIntegerInRange(2, 2, 5), true);
+});
+
+test('isIntegerInRange accepts the upper bound', () => {
+  assert.equal(isIntegerInRange(5, 2, 5), true);
+});
+
+test('isIntegerInRange rejects the integer just below the lower bound', () => {
+  assert.equal(isIntegerInRange(1, 2, 5), false);
+});
+
+test('isIntegerInRange rejects the integer just above the upper bound', () => {
+  assert.equal(isIntegerInRange(6, 2, 5), false);
+});
+
+test('isIntegerInRange rejects a non-integer between the bounds', () => {
+  assert.equal(isIntegerInRange(2.5, 2, 5), false);
+});
+
+test('isIntegerInRange rejects a numeric string between the bounds', () => {
+  assert.equal(isIntegerInRange('3', 2, 5), false);
 });
 
 test('errorCode returns ENOENT for a missing file', (t) => {
