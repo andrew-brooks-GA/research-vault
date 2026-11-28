@@ -27,8 +27,8 @@ function stripComment(s) {
       }
       continue;
     }
-    if ((c === '"' || c === "'") && (i === 0 || /[\s,[]/.test(s[i - 1]))) { q = c; continue; }
-    if (c === '#' && (i === 0 || /\s/.test(s[i - 1]))) return s.slice(0, i).trimEnd();
+    if ((c === '"' || c === "'") && (i === 0 || /[\s,[]/.test(s.charAt(i - 1)))) { q = c; continue; }
+    if (c === '#' && (i === 0 || /\s/.test(s.charAt(i - 1)))) return s.slice(0, i).trimEnd();
   }
   return s;
 }
@@ -86,8 +86,8 @@ function parseBlockScalar(lines, i, header) {
   const body = [];
   let j = i + 1;
   let indent = explicit ? Number(explicit) : null;
-  for (; j < lines.length; j++) {
-    const l = lines[j].replace(/\r$/, '');
+  for (let line; (line = lines[j]) !== undefined; j++) {
+    const l = line.replace(/\r$/, '');
     if (l.trim() === '') { body.push(''); continue; }
     const lead = l.length - l.trimStart().length;
     if (indent === null) indent = lead;

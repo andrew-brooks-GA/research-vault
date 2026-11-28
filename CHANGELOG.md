@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (spec 56, stage 6):** three lines of `bin/lib/frontmatter.mjs` are written so that they can be typed, with no change in what the parser does: `stripComment` reads the character before a position with `charAt`, and the loop of `parseBlockScalar` binds each line as it reads it. First of three parts before the file's conversion.
 - **Added (spec 56, stage 6):** a source-scan test, `test/no-declare.test.mjs`, fails when a tracked TypeScript file under `bin/`, `hooks/` or `scripts/` holds the `declare` keyword. An ambient declaration tells the compiler something no code checks, and it is erased when the types are removed, so the type check, the linter and the conversion comparison all accept it. The test finds the keyword with Node's `module.stripTypeScriptTypes`: a `declare` the stripper removes is TypeScript syntax; one in a string, a comment or a regular expression is kept and not reported.
 - **Changed (spec 56, stage 6):** `bin/lib/containment.mjs` is now `bin/lib/containment.ts` (types added, nothing else: the conversion check reports no difference). Its thirty importers under `bin/` and `hooks/`, seven tests and two `COUPLINGS` rows name the new path.
 - **Changed (spec 56, stage 6):** `bin/lib/ids.mjs` is now `bin/lib/ids.ts` (types added, nothing else: the conversion check reports no difference). Its importers, its tests and four `COUPLINGS` rows name the new path.
