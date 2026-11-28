@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (spec 56, stage 6):** `bin/lib/cast.mjs` is now `bin/lib/cast.ts` (types added, nothing else: the conversion check reports no difference). Its two importers, its test, three `COUPLINGS` rows and the three document lines that name the file (`docs/REFERENCE.md`, `skills/research-teach/LESSON-FORMAT.md`) name the new path.
 - **Changed (spec 56, stage 6):** `bin/lib/escape.mjs` is now `bin/lib/escape.ts` (types added, nothing else: the conversion check reports no difference). Its six importers, its test and the serve-path source scan name the new path.
 - **Changed (spec 56, stage 6):** `bin/lib/unknowns.mjs` is now `bin/lib/unknowns.ts` (types added, nothing else: the conversion check reports no difference). `isRecord` is a type predicate. Its two importers and its test name the new path.
 - **Changed (R-58, the hash names):** one hash module, `bin/lib/hash.mjs`, with `sha256Hex` (the bare hex digest) and `sha256Tagged` (`sha256:` and the digest). `sha256` of `bin/lib/ids.mjs` (tagged) and `sha256` of `bin/lib/labs.mjs` (bare) are gone, as are the two local `h8` helpers and the inline digests in `trust.mjs`, `codelinks.mjs` and the slug fallback; `contentHash` of `bin/lib/gate.mjs` keeps its name. No value that is computed, stored, printed or compared changes.

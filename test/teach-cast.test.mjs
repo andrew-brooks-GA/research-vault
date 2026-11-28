@@ -11,7 +11,7 @@ import { once } from 'node:events';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
 import { fixtureVault, testEnv } from './helpers.mjs';
-import { parseCast, scanCast, castTranscript, PLAYER_FILES } from '../bin/lib/cast.mjs';
+import { parseCast, scanCast, castTranscript, PLAYER_FILES } from '../bin/lib/cast.ts';
 import { createServer, exportWorkspace } from '../bin/lib/teach.mjs';
 import { recordVerdict } from '../bin/lib/gate.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';

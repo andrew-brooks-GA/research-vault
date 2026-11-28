@@ -13,7 +13,7 @@ import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX
 import { LESSON_ID_RE, readPath } from '../lib/lesson-format.mjs';
 import { escapeHtml } from '../lib/escape.ts';
 import { readRequirements, reportLines, checkAttempt, answeredAttempt, taskLesson, checkTask, readRun, runLine, openLine, startRun, endRun, cancelRun } from '../lib/task.mjs';
-import { scanCast, castTranscript } from '../lib/cast.mjs';
+import { scanCast, castTranscript } from '../lib/cast.ts';
 import { hasVerdict } from '../lib/gate.mjs';
 import { readLabs, secretHits } from '../lib/labs.mjs';
 import { readBrand } from '../lib/brand.mjs';
