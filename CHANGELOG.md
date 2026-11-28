@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (spec 56, stage 6):** an entry whose `source_url` is not a string (a list, a number, a map) is refused by the shape check with `source_url must be a string`, as an entry with a non-string `source_id` is: every command reports it as malformed (`lint` as `FIELD_SHAPE`), and no command uses the value as an address. Before, a one-item list worked silently in `capture --fill`, `verify --quotes` and `refresh`.
 - **Changed (spec 56, stage 6):** `bin/lib/host-install.mjs` becomes `bin/lib/host-install.ts`: types and import specifiers only. Its importers, its tests and the rows and document lines that name the path follow.
 - **Changed (spec 56, stage 6):** `bin/lib/projectconfig.mjs` becomes `bin/lib/projectconfig.ts`: types and import specifiers only. Its importers, its tests and the rows and document lines that name the path follow.
 - **Changed (spec 56, stage 6):** `bin/lib/brand.mjs` becomes `bin/lib/brand.ts`: types and import specifiers only. Its importers, its tests and the rows and document lines that name the path follow.

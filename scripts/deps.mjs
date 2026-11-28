@@ -85,6 +85,8 @@ export const COUPLINGS = [
   ['bin/commands/init.mjs', 'commands/research-init.md', 'environment hint is printed only when later discovery would not find the initialized vault', 'RESEARCH_VAULT_PATH'],
   ['bin/lib/fsutil.ts', 'vault-template/.gitignore', 'Random atomic-write leftovers use .rv-atomic-*.tmp', '.rv-atomic-'],
   ['bin/lib/validate.ts', 'schema/frontmatter.schema.json', 'collection containers, edge members and verification row maps validated at the entry boundary', 'verifications'],
+  ['bin/lib/validate.ts', 'test/schema.test.mjs', 'the source_url string diagnostic is asserted verbatim', 'source_url'],
+  ['bin/lib/validate.ts', 'test/fill.test.mjs', 'the fill refusal includes the source_url string diagnostic verbatim', 'source_url'],
   ['bin/lib/resolve.mjs', 'README.md', 'acknowledgement permits the bound vault anywhere', /research-vault(?:\.mjs"?)? trust/],
   ['bin/lib/resolve.mjs', 'SECURITY.md', 'acknowledgement permits the bound vault anywhere', 'research-vault trust'],
   ['bin/lib/resolve.mjs', 'docs/REFERENCE.md', 'acknowledgement permits the bound vault anywhere', 'research-vault trust'],

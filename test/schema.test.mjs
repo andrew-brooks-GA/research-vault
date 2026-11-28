@@ -56,6 +56,30 @@ test('scalar edge fields accept absence', () => {
   assert.deepEqual(fieldShapeErrors({}), []);
 });
 
+test('source_url rejects a list', () => {
+  assert.deepEqual(fieldShapeErrors({ source_url: ['https://x.example/a'] }), ['source_url must be a string']);
+});
+
+test('source_url rejects a number', () => {
+  assert.deepEqual(fieldShapeErrors({ source_url: 5 }), ['source_url must be a string']);
+});
+
+test('source_url rejects a map', () => {
+  assert.deepEqual(fieldShapeErrors({ source_url: { a: 'b' } }), ['source_url must be a string']);
+});
+
+test('source_url accepts a string', () => {
+  assert.deepEqual(fieldShapeErrors({ source_url: 'https://x.example/a' }), []);
+});
+
+test('source_url accepts an absent field', () => {
+  assert.deepEqual(fieldShapeErrors({}), []);
+});
+
+test('source_url accepts an empty string', () => {
+  assert.deepEqual(fieldShapeErrors({ source_url: '' }), []);
+});
+
 test('every scalar edge field in the schema rejects a number', () => {
   const { backlink, reference_only } = loadSchema(REPO_ROOT).fields.edge_fields;
   const listFields = ['domain', 'topics', 'related', 'sources', 'contributing_ids', 'contributing', 'attachments', 'verifications'];

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
@@ -112,6 +112,25 @@ test('fill: filled stores the text, the bytes\' hash and one row that does not r
   assert.equal(buildManifest(dir).entries.find(x => x.id === id).last_verified, before);
   assert.equal(evidenceFor(join(dir, 'sources', `${id}.md`), dir, { extra: [id] }).entries.find(x => x.id === id).noBody, false);
   assert.equal(lintVault(dir, REPO_ROOT).violations.length, 0);
+});
+
+test('fill: refuses a list-valued source_url before fetching or changing the entry', async t => {
+  const dir = tmpVault();
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const id = src(dir, '2026-01-01-list-url', { source_url: ['https://example.org/p'] });
+  const path = join(dir, 'sources', `${id}.md`);
+  const before = readFileSync(path);
+  const calls = [];
+  const fetch = async url => {
+    calls.push(url);
+    return { status: 200, hash: sha256Tagged(PAGE), body: PAGE };
+  };
+  const outcome = await fillSource(dir, id, { ...NOW, fetch }).catch(error => ({ code: error.code, message: error.message }));
+  assert.deepEqual({ outcome, calls, unchanged: readFileSync(path).equals(before) }, {
+    outcome: { code: 'FIELD_SHAPE', message: 'sources/2026-01-01-list-url.md: source_url must be a string' },
+    calls: [],
+    unchanged: true,
+  });
 });
 
 test('fill: kept leaves the entry byte-identical, and every refusal and failure leaves it too', async () => {

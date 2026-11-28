@@ -16,6 +16,7 @@ type ShapedFields = Fields & {
   source_id?: string | undefined;
   prompt_id?: string | undefined;
   superseded_by?: string | undefined;
+  source_url?: string | undefined;
   subject?: object | '' | undefined;
 };
 
@@ -65,7 +66,7 @@ export function fieldShapeErrors(data: Fields): string[] {
       } else if (field === 'verifications' && !map(value)) add(at, 'a map');
     }
   }
-  for (const field of ['source_id', 'prompt_id', 'superseded_by']) {
+  for (const field of ['source_id', 'prompt_id', 'superseded_by', 'source_url']) {
     const value = data[field];
     if (value === undefined || value === '') continue;
     if (typeof value !== 'string') add(field, 'a string');
