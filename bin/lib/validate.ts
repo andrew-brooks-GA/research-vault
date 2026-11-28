@@ -4,7 +4,7 @@ type TaxonomySchema = {
 
 type Fields = Record<string, unknown>;
 
-type ShapedFields = Fields & {
+export type ShapedFields = Fields & {
   domain?: readonly unknown[] | '' | undefined;
   topics?: readonly unknown[] | '' | undefined;
   related?: readonly string[] | '' | undefined;

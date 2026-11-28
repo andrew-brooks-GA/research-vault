@@ -6,9 +6,11 @@ import { parseFrontmatter, serializeFrontmatter } from './frontmatter.ts';
 import { assertInsideVault, isInsideVault, escapePathControls } from './containment.ts';
 import { errorCode } from './unknowns.ts';
 import { assertFieldShapes } from './validate.ts';
+import type { ShapedFields } from './validate.ts';
 
-type ReadEntryOptions = { folderChecked?: boolean; vaultPath?: string; validateShapes?: boolean };
+type ReadEntryOptions = { folderChecked?: boolean; vaultPath?: string; validateShapes?: boolean | undefined };
 type Entry = ReturnType<typeof parseFrontmatter> & { id: string; folder: string | undefined; hasBom: boolean; hasCrlf: boolean };
+type ShapedEntry = Entry & { data: ShapedFields };
 type EntryData = Parameters<typeof serializeFrontmatter>[0];
 type WriteAtomicOptions = { exclusive?: boolean; vaultPath?: string; mode?: number };
 
@@ -42,6 +44,8 @@ export function walkEntries(vaultPath: string, { onSkippedLink }: { onSkippedLin
 }
 
 // Pass folderChecked only for paths returned by walkEntries in the same synchronous call.
+export function readEntry(absPath: string, options?: ReadEntryOptions & { validateShapes?: true | undefined }): ShapedEntry;
+export function readEntry(absPath: string, options?: ReadEntryOptions): Entry;
 export function readEntry(absPath: string, { folderChecked = false, vaultPath, validateShapes = true }: ReadEntryOptions = {}): Entry {
   let phase = 'ENTRY_READ';
   try {
