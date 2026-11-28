@@ -11,13 +11,13 @@ import { fetchSource, rawFileUrl } from '../bin/lib/fetchsource.mjs';
 import { readEntry } from '../bin/lib/fsutil.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { evidenceFor } from '../bin/lib/gate.mjs';
-import { sha256 } from '../bin/lib/ids.mjs';
+import { sha256Tagged } from '../bin/lib/hash.mjs';
 import { lintVault } from '../bin/lib/lintrules.mjs';
 
 const NOW = { now: '2026-06-12', ackDataEgress: true };
 const SENT = 'The fixture page says the flag reads <code>one</code> file &mdash; and it&rsquo;s stable. ';
 const PAGE = Buffer.from(`<html><head><title>T</title><script>var x = "<p>no</p>";</script></head><body><p>${SENT.repeat(4)}</p><pre>a\n  b</pre></body></html>`);
-const page = (body = PAGE) => async () => ({ status: 200, hash: sha256(body), body });
+const page = (body = PAGE) => async () => ({ status: 200, hash: sha256Tagged(body), body });
 const src = (dir, id, extra = {}, body) => put(dir, 'source', id, { source_type: 'article', source_url: 'https://example.org/p', ...extra }, body);
 const entry = (dir, id) => readEntry(join(dir, 'sources', `${id}.md`));
 const raw = (dir, id) => readFileSync(join(dir, 'sources', `${id}.md`), 'utf8');
@@ -98,12 +98,12 @@ test('fill: filled stores the text, the bytes\' hash and one row that does not r
   const dir = tmpVault();
   const id = src(dir, '2026-01-01-a', { content_hash: 'sha256:old' });
   const before = buildManifest(dir).entries.find(e => e.id === id).last_verified;
-  const r = await fillSource(dir, id, { ...NOW, fetch: async () => ({ status: 200, hash: sha256(PAGE), body: PAGE, url: 'https://raw.example.org/p' }) });
+  const r = await fillSource(dir, id, { ...NOW, fetch: async () => ({ status: 200, hash: sha256Tagged(PAGE), body: PAGE, url: 'https://raw.example.org/p' }) });
   assert.equal(r.result, 'filled');
   assert.equal(r.fetchedFrom, 'https://raw.example.org/p');
   const e = entry(dir, id);
   assert.ok(e.body.startsWith(`# ${id}\n\n`) && e.body.includes('it’s stable.'));
-  assert.equal(e.data.content_hash, sha256(PAGE));
+  assert.equal(e.data.content_hash, sha256Tagged(PAGE));
   assert.equal(e.data.source_url, 'https://example.org/p');
   assert.equal(e.data.updated, '2026-06-12');
   const row = e.data.verifications.at(-1);
@@ -150,7 +150,7 @@ test('fill: --replace refills what a fill wrote and keeps the first hash; --disc
   assert.equal((await fillSource(dir, id, { ...NOW, fetch: page(second), replace: true })).result, 'filled');
   let e = entry(dir, id);
   assert.ok(e.body.includes('Another page'));
-  assert.equal(e.data.content_hash, sha256(second));
+  assert.equal(e.data.content_hash, sha256Tagged(second));
   assert.match(e.data.verifications.at(-1).notes, /content_hash was sha256:old/);
   assert.equal((await fillSource(dir, id, { now: NOW.now, discard: true })).result, 'discarded');
   e = entry(dir, id);
@@ -180,7 +180,7 @@ test('fill: --content-file stores extracted text, leaves content_hash alone, ref
   assert.equal(e.data.content_hash, 'sha256:old');
   const row = e.data.verifications.at(-1);
   assert.equal(row.method, 'human-spot-check');
-  assert.equal(row.notes, `filled-from-file: saved.html, ${sha256(PAGE)}, ${Buffer.byteLength(extractText(PAGE).trim())} bytes of text`);
+  assert.equal(row.notes, `filled-from-file: saved.html, ${sha256Tagged(PAGE)}, ${Buffer.byteLength(extractText(PAGE).trim())} bytes of text`);
   assert.equal((await fillSource(dir, id, { now: NOW.now, discard: true })).result, 'discarded');
   assert.equal(entry(dir, id).data.content_hash, 'sha256:old');
 });
@@ -188,7 +188,7 @@ test('fill: --content-file stores extracted text, leaves content_hash alone, ref
 test('fill: a fill that names the address it read is undone exactly, through --replace and --discard', async () => {
   const dir = tmpVault();
   const id = src(dir, '2026-01-01-a', { content_hash: 'sha256:old', source_url: 'https://github.com/o/r/blob/main/a content_hash was sha256:evil' });
-  const read = async (url) => ({ status: 200, hash: sha256(PAGE), body: PAGE, url: 'https://raw.example.org/a%20content_hash%20was%20sha256:evil' });
+  const read = async (url) => ({ status: 200, hash: sha256Tagged(PAGE), body: PAGE, url: 'https://raw.example.org/a%20content_hash%20was%20sha256:evil' });
   await fillSource(dir, id, { ...NOW, fetch: read });
   await fillSource(dir, id, { ...NOW, fetch: read, replace: true });
   assert.match(entry(dir, id).data.verifications.at(-1).notes, /content_hash was sha256:old, read from/);

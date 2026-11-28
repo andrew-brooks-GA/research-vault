@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { sha256Hex } from './hash.mjs';
 
 const STOPWORDS = new Set(['a','an','the','of','to','in','on','for','and','or','with','is','are','be']);
 const TRACKING = new Set(['utm_source','utm_medium','utm_campaign','utm_term','utm_content','ref','gclid','fbclid']);
@@ -11,7 +11,7 @@ export function slugify(title, { hashEmpty = true } = {}) {
     .filter(w => !STOPWORDS.has(w));
   const slug = words.slice(0, 6).join('-');
   // R-57: a title with no ASCII word left (Japanese, all stopwords) gets `t-` and a hash of the title, so ids stay distinct.
-  return slug || !hashEmpty ? slug : `t-${createHash('sha256').update(String(title)).digest('hex').slice(0, 8)}`;
+  return slug || !hashEmpty ? slug : `t-${sha256Hex(String(title)).slice(0, 8)}`;
 }
 
 export function makeId(date, title) { return `${date}-${slugify(title)}`; }
@@ -35,5 +35,3 @@ export function normalizeUrlSafe(url) {
 
 // A subject version for comparison: absent and empty are the same, anything else is its string.
 export const verKey = v => (v == null || v === '') ? null : String(v);
-
-export function sha256(text) { return 'sha256:' + createHash('sha256').update(text).digest('hex'); }

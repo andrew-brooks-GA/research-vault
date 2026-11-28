@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { REPO_ROOT } from './helpers.mjs';
 import { runBatch, run, ingest } from '../bin/commands/capture.mjs';
-import { makeId, sha256 } from '../bin/lib/ids.mjs';
+import { makeId } from '../bin/lib/ids.mjs';
+import { sha256Tagged } from '../bin/lib/hash.mjs';
 import { lintVault } from '../bin/lib/lintrules.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { writeBlocklist } from './blocklist.test.mjs';
@@ -206,8 +207,8 @@ test('capture --batch via run(): JSON to stdout, exit 0 clean / 1 on errors', as
 const URLS = ['https://a.example.com/one', '', '# comment', 'https://b.example.com/two', 'https://c.example.com/bad'];
 const BODY_A = Buffer.from('<html><head><title> One \n Page </title></head></html>');
 const fakeFetch = async (url) => {
-  if (url.endsWith('/one')) return { status: 200, hash: sha256(BODY_A), body: BODY_A };
-  if (url.endsWith('/two')) return { status: 200, hash: sha256('plain'), body: Buffer.from('plain') };
+  if (url.endsWith('/one')) return { status: 200, hash: sha256Tagged(BODY_A), body: BODY_A };
+  if (url.endsWith('/two')) return { status: 200, hash: sha256Tagged('plain'), body: Buffer.from('plain') };
   throw new Error('boom');
 };
 function writeUrls() {
@@ -227,7 +228,7 @@ test('ingest: a URL list fetches each line, fails the item on a thrown fetch, wr
   assert.deepEqual(c.created.map(x => x.id), ['2026-06-12-one-page', makeId('2026-06-12', 'https://b.example.com/two')]);
   assert.deepEqual(c.errors, [{ index: 2, error: 'fetch failed: boom' }]);
   const one = readFileSync(join(dir, 'sources', '2026-06-12-one-page.md'), 'utf8');
-  assert.ok(one.includes(`content_hash: "${sha256(BODY_A)}"`));
+  assert.ok(one.includes(`content_hash: "${sha256Tagged(BODY_A)}"`));
   assert.ok(!one.includes('<html'), 'no body stored without --store-body');
   const dir2 = freshVault();
   const s = await ingest(dir2, file, { ...NOW, fetch: fakeFetch, continue: true, storeBody: true, ackDataEgress: true });
@@ -258,7 +259,7 @@ test('ingest: a Markdown directory takes the URL, title and author from frontmat
   assert.deepEqual(c.created.map(x => x.id), ['2026-06-12-alpha-doc', '2026-06-12-beta']);
   assert.equal(c.errors.length, 1);
   const a = readFileSync(join(dir, 'sources', '2026-06-12-alpha-doc.md'), 'utf8');
-  assert.ok(a.includes(`content_hash: "${sha256(readFileSync(join(md, 'a.md')))}"`));
+  assert.ok(a.includes(`content_hash: "${sha256Tagged(readFileSync(join(md, 'a.md')))}"`));
   assert.match(a, /^source_author: Ada$/m);
   assert.equal(lintVault(dir, REPO_ROOT).violations.length, 0);
 });

@@ -3,12 +3,12 @@
 // task's checker for `teach check` (issue 79 D4), and stops its group with stopGroup.
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { isInsideVault, isInsideWorkspaceFolder } from './containment.mjs';
 import { LESSON_ID_RE, parseBlocks } from './lesson-format.mjs';
 import { show } from './escape.mjs';
+import { sha256Hex } from './hash.mjs';
 
 export const LAB_ID_RE = /^[a-z][a-z0-9-]{0,39}$/;
 export const LAB_ROOTS = ['labs/', 'evidence/', 'lessons/files/'];
@@ -24,8 +24,6 @@ const keysOk = (o, required, optional = []) => Object.keys(o).every((k) => requi
 // A cost or check message: 1 to max characters, none of them a control, line-separator or bidi character.
 export const LAB_TEXT_BAD_RE = /[\p{Cc}\u200e\u200f\u2028\u2029\u202a-\u202e\u2066-\u2069]/u;
 const text = (v, max) => typeof v === 'string' && v.length >= 1 && v.length <= max && !LAB_TEXT_BAD_RE.test(v);
-
-export const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
 // A script path's problem, or null: the pattern, no empty or dot segment, one of the three roots, the root inside
 // the workspace (a symlinked root leading out is refused), the script inside its root and a regular file (lstat).
@@ -98,7 +96,7 @@ export function readLabs(ws) {
 }
 
 // D2: the lab's pin, SHA-256 hex of JSON.stringify([id, lab]) with the entry as readLabs returns it.
-export const labPin = (id, lab) => sha256(JSON.stringify([id, lab]));
+export const labPin = (id, lab) => sha256Hex(JSON.stringify([id, lab]));
 
 // The scripts an action hashes before it runs (D2): run, each check then up; reset, down; verify, verify; stop, none.
 export const actionScripts = (lab, action) =>
@@ -158,7 +156,7 @@ export function labRefusal(ws, action, id, env, jobs = []) {
   if (!lessonStoresPin(ws, id, labPin(id, lab))) return [409, "no lesson stores this lab's current pin"];
   for (const c of actionScripts(lab, action)) {
     let actual = null;
-    try { actual = sha256(readFileSync(join(ws, c.script))); } catch { /* unreadable: a mismatch */ }
+    try { actual = sha256Hex(readFileSync(join(ws, c.script))); } catch { /* unreadable: a mismatch */ }
     if (actual !== c.sha256) return [409, `pin mismatch: ${c.script}`];
   }
   for (const name of lab.env ?? []) {
@@ -258,7 +256,7 @@ export async function stopGroup(pgid, L) {
 function launch(ws, cmd, env) {
   let bytes = null;
   try { if (!scriptProblem(ws, cmd.script)) bytes = readFileSync(join(ws, cmd.script)); } catch { /* a mismatch */ }
-  if (bytes === null || sha256(bytes) !== cmd.sha256) return { error: `not started, pin mismatch: ${cmd.script}` };
+  if (bytes === null || sha256Hex(bytes) !== cmd.sha256) return { error: `not started, pin mismatch: ${cmd.script}` };
   if (bytes.subarray(0, 2).toString('latin1') !== '#!') return { error: 'could not start: ENOEXEC' };
   try {
     return { child: spawn(join(ws, cmd.script), [], { cwd: ws, env, shell: false, detached: true, stdio: ['ignore', 'pipe', 'pipe'] }) };

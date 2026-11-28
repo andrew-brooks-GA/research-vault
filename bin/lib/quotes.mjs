@@ -1,7 +1,6 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { readEntry, writeEntry, TYPE_FOLDER } from './fsutil.mjs';
 import { loadSchema, fieldOrder } from './schema.mjs';
 import { buildManifest, writeManifest } from './manifest.mjs';
@@ -11,9 +10,9 @@ import { extractText } from './extract.ts';
 import { bodyText, MIN_BODY_CHARS } from './gate.mjs';
 import { RUN_KEY } from './packet.mjs';
 import { screenText } from './screen.ts';
+import { sha256Hex } from './hash.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const h8 = s => createHash('sha256').update(s).digest('hex').slice(0, 8);
 // The only differences a match ignores: white space, quote marks, dash forms and code marks. A lane
 // that read a raw Markdown file quotes `flag` with its backticks; the text stored for that file has
 // none (spec 52 stores Markdown as a reader sees it), and a rendered page has none either.
@@ -52,7 +51,7 @@ export async function checkQuotes(vaultPath, id, quotes, opts = {}) {
   const stored = bodyText(e.body).length >= MIN_BODY_CHARS;
   const bodyLines = e.body.split('\n');
   const softBody = bodyLines.map(soft);
-  const bodyHash = h8(e.body);
+  const bodyHash = sha256Hex(e.body).slice(0, 8);
   const fetch = opts.fetch || (opts.allowNetwork ? fetchSource : null);
   if (!stored && !fetch) throw new Error('network access is off: this source holds no stored text, so set RESEARCH_VAULT_ALLOW_NETWORK=1 to check quotes against its page');
 
@@ -92,7 +91,7 @@ export async function checkQuotes(vaultPath, id, quotes, opts = {}) {
     }
     if (!hits.length) { out.push({ ...base, found: false, reason }); continue; }
     const lines = hits.map(h => h[0]);
-    const qh = h8(quote);
+    const qh = sha256Hex(quote).slice(0, 8);
     const rowAdded = !have.has(qh);
     if (rowAdded) {
       have.add(qh);

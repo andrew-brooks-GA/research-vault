@@ -1,6 +1,6 @@
 import https from 'node:https';
 import net from 'node:net';
-import { sha256 } from './ids.mjs';
+import { sha256Tagged } from './hash.mjs';
 import { assertSafeUrl, resolveSafe } from './ssrfguard.ts';
 
 const MAX_BODY = 5 * 1024 * 1024;
@@ -81,7 +81,7 @@ function once(url, { request, lookup, signal }) {
           chunks.push(c);
         });
         // `body` is for capture's ingest (spec 31); refresh reads only status and hash.
-        res.on('end', () => { const body = Buffer.concat(chunks); ok({ status, hash: sha256(body), body }); });
+        res.on('end', () => { const body = Buffer.concat(chunks); ok({ status, hash: sha256Tagged(body), body }); });
       });
       req.on('timeout', () => req.destroy(new Error('request timeout')));
       req.on('error', fail);

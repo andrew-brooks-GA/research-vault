@@ -7,7 +7,8 @@ import { prepareEntry } from './capture-entry.mjs';
 import { serializeFrontmatter } from './frontmatter.mjs';
 import { readEntry, walkEntries, writeAtomic, TYPE_FOLDER, ENTRY_FOLDERS } from './fsutil.mjs';
 import { loadSchema } from './schema.mjs';
-import { sha256, normalizeUrl, verKey } from './ids.mjs';
+import { normalizeUrl, verKey } from './ids.mjs';
+import { sha256Tagged } from './hash.mjs';
 import { buildManifest, danglingEdges, writeManifest } from './manifest.mjs';
 import { assertInsideVault, isInsideVault } from './containment.mjs';
 
@@ -18,7 +19,7 @@ function canonical(value) {
   if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])]));
   return value;
 }
-const digest = value => sha256(JSON.stringify(canonical(value)));
+const digest = value => sha256Tagged(JSON.stringify(canonical(value)));
 const retryableIO = e => ['EINTR', 'EBUSY', 'EAGAIN'].includes(e.code);
 function atomicJson(vault, path, value) {
   writeAtomic(path, JSON.stringify(value, null, 2) + '\n', { vaultPath: vault, mode: 0o600 });
@@ -42,7 +43,7 @@ function input(planPath, opts) {
     } catch (e) { e.index = index; failures.push(e); }
   });
   if (failures.length) throw Object.assign(failures[0], { failures });
-  return { inputs, inputDigest: digest({ plan, options: { ackDataEgress: !!opts.ackDataEgress }, files: inputs.map(i => i.bytes ? sha256(i.bytes) : null) }) };
+  return { inputs, inputDigest: digest({ plan, options: { ackDataEgress: !!opts.ackDataEgress }, files: inputs.map(i => i.bytes ? sha256Tagged(i.bytes) : null) }) };
 }
 function render(vault, item, date, opts) {
   const spec = item.spec;
@@ -88,7 +89,7 @@ function prepare(vault, inputs, date, opts) {
       }
       // Issue 72 item 4: the receipt's path uses '/' on every platform, the form validReceipt accepts.
       const rel = relative(vault, chosen.path).split(sep).join('/');
-      results.push({ index, id: chosen.id, path: rel, fingerprint: sha256(chosen.text), state: reused ? 'reused' : 'pending', ...(reused ? { reason: 'existing suitable entry', actualId: chosen.id, ...(results.some(r => r.path === rel) ? { reuseOf: results.find(r => r.path === rel).index } : {}) } : {}) });
+      results.push({ index, id: chosen.id, path: rel, fingerprint: sha256Tagged(chosen.text), state: reused ? 'reused' : 'pending', ...(reused ? { reason: 'existing suitable entry', actualId: chosen.id, ...(results.some(r => r.path === rel) ? { reuseOf: results.find(r => r.path === rel).index } : {}) } : {}) });
       rendered.push(p);
       if (!reused) available.push(p);
     } catch (e) {
@@ -192,7 +193,7 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
     } else {
       rendered = loaded.inputs.map(item => render(vault, item, receipt.created, opts));
       // Frozen defaults/renderer must also produce the prepared bytes.
-      for (const row of receipt.results) if (row.state !== 'reused' && sha256(rendered[row.index].text) !== row.fingerprint) {
+      for (const row of receipt.results) if (row.state !== 'reused' && sha256Tagged(rendered[row.index].text) !== row.fingerprint) {
         errors.push(fault('INPUT_CHANGED', row.index, new Error('prepared content changed; implementation/defaults are incompatible'))); return output();
       }
     }
@@ -228,7 +229,7 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
           // reused it by, and an edit that keeps it suitable, such as a verification, is no conflict. Any other row,
           // a question reused because its bytes were the same among them, keeps its bytes.
           if (row.state === 'reused' && p.data.type === 'source') { if (!sameSource(entry, p) || !suitable(entry, p, loaded.inputs[row.index].spec)) throw new Error('reused source no longer suitable'); }
-          else if (sha256(text) !== row.fingerprint) throw new Error('destination fingerprint changed');
+          else if (sha256Tagged(text) !== row.fingerprint) throw new Error('destination fingerprint changed');
           found = true;
         } catch (e) { if (e.code !== 'ENOENT' || row.state !== 'pending') throw e; }
         if (found && row.state === 'pending') row.state = 'created';

@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (R-58, the hash names):** one hash module, `bin/lib/hash.mjs`, with `sha256Hex` (the bare hex digest) and `sha256Tagged` (`sha256:` and the digest). `sha256` of `bin/lib/ids.mjs` (tagged) and `sha256` of `bin/lib/labs.mjs` (bare) are gone, as are the two local `h8` helpers and the inline digests in `trust.mjs`, `codelinks.mjs` and the slug fallback; `contentHash` of `bin/lib/gate.mjs` keeps its name. No value that is computed, stored, printed or compared changes.
 - **Fixed:** `scanCast` refuses an empty needle (`needle N is empty`). An empty needle used to "match" at the first event of any recording, and crashed on a recording with no input or output events. `teach cast check` already refused an empty `--needle` value with its usage line, so nothing changes for the command.
 - **Fixed (R-33, the part in `bin/lib/cast.mjs`):** an asciicast recording whose event has a time that is not a finite number is refused as `event N is not [time, code, data]`; it used to be accepted. A header that is not an object is refused as before, with the same message. Recordings that recorders write are unaffected.
 - **Changed (R-58, first part):** the two local copies of the HTML escaper in `bin/lib/teach.mjs` and `bin/lib/serve-file.mjs` are gone; both files use `escapeHtml` of `bin/lib/escape.mjs`. Nothing that is written changes: the same four characters are escaped, and an apostrophe is still left as it is.

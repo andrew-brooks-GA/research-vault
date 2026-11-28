@@ -11,7 +11,8 @@ import { extractCites, LESSON_ID_RE, RECORD_ID_RE, FOLLOWUP, CONNECT_LEAD, lesso
 import { imageTarget } from './serve-file.mjs';
 import { validateEntry, ENUM_CODES, missionPrefs } from './teach.mjs';
 import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
-import { readLabs, labPin, lessonLab, sha256, LAB_MANIFEST } from './labs.mjs';
+import { readLabs, labPin, lessonLab, LAB_MANIFEST } from './labs.mjs';
+import { sha256Hex } from './hash.mjs';
 import { scanCast, PLAYER_FILES, PLAYER_VERSION } from './cast.mjs';
 import { readBrand, BRAND_DEFAULTS, contrast } from './brand.mjs';
 import { readRequirements } from './task.mjs';
@@ -412,7 +413,7 @@ function lintLabManifest(ws) {
       try { bytes = readFileSync(join(ws, c.script)); } catch { add('LAB_HASH_MISMATCH', `${c.script} cannot be read`); continue; }
       if (!(statSync(join(ws, c.script)).mode & 0o100)) add('LAB_SCRIPT_NOT_RUNNABLE', `${c.script} has no owner executable bit`);
       if (bytes.subarray(0, 2).toString('latin1') !== '#!') add('LAB_SCRIPT_NOT_RUNNABLE', `${c.script} does not start with #!`);
-      const actual = sha256(bytes);
+      const actual = sha256Hex(bytes);
       if (actual !== c.sha256) add('LAB_HASH_MISMATCH', `${c.script} changed: read the change, then copy sha256 ${actual} into labs.json`);
     }
   }
@@ -917,7 +918,7 @@ export function lintWorkspace(workspaceDir, ctx) {
   // Issue 65 (spec 47 D1): a player file in assets/ must be the pinned release's.
   for (const [name, want] of Object.entries(PLAYER_FILES)) {
     const p = join(workspaceDir, 'assets', name);
-    const got = existsSync(p) ? sha256(readFileSync(p)) : want;
+    const got = existsSync(p) ? sha256Hex(readFileSync(p)) : want;
     if (got !== want) findings.push({ code: 'LESSON_CAST_PLAYER_HASH', file: `assets/${name}`, message: `sha256 ${got} is not the pinned asciinema-player ${PLAYER_VERSION} value ${want}`, warning: false });
   }
   if (c.lab) findings.push(...lintLab(workspaceDir, c.lab));

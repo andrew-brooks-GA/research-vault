@@ -12,7 +12,8 @@ import { testEnv } from './helpers.mjs';
 import { readBrand } from '../bin/lib/brand.mjs';
 import { isInsideVault } from '../bin/lib/containment.mjs';
 import { hasVerdict, ledgerRoot, referencedImages, taskFile } from '../bin/lib/gate.mjs';
-import { labPin, labRefusal, readLabs, sha256 } from '../bin/lib/labs.mjs';
+import { labPin, labRefusal, readLabs } from '../bin/lib/labs.mjs';
+import { sha256Hex } from '../bin/lib/hash.mjs';
 import { imageTarget } from '../bin/lib/lesson.mjs';
 import { resolveVault } from '../bin/lib/resolve.mjs';
 import { loadTeachSchema } from '../bin/lib/schema.mjs';
@@ -475,7 +476,7 @@ test('the lab pin check refuses lessons in a linked lessons directory', (t) => {
   const id = 'demo';
   const script = 'labs/fixture.txt';
   const bytes = 'fixture bytes\n';
-  const command = { script, sha256: sha256(bytes) };
+  const command = { script, sha256: sha256Hex(bytes) };
   const lab = { cost: 'Fixture only', timeout: 1, up: command, down: command };
   mkdirSync(join(ws, 'labs'));
   writeFileSync(join(ws, script), bytes);

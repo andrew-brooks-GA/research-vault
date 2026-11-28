@@ -587,7 +587,7 @@ test('source scan: serve-path process imports, call sites and launch options sta
   for (const token of [/\bHELPER\b/, /\bworkspace\b/, /\.\.\.\s*launcherArgs\b/, /['"]--['"]/, /\.\.\.\s*shell\b/, /\bstdio\s*:\s*\[\s*['"]pipe['"]\s*,\s*['"]pipe['"]\s*,\s*['"]ignore['"]\s*,\s*['"]pipe['"]\s*,?\s*\]/]) assert.match(shell, token);
   const launch = functionBody(read('bin/lib/labs.mjs'), 'launch');
   assert.match(launch, /\bscriptProblem\s*\(\s*ws\s*,\s*cmd\s*\.\s*script\s*,?\s*\)/);
-  assert.match(launch, /\bsha256\s*\(\s*bytes\s*,?\s*\)\s*!==\s*cmd\s*\.\s*sha256/);
+  assert.match(launch, /\bsha256Hex\s*\(\s*bytes\s*,?\s*\)\s*!==\s*cmd\s*\.\s*sha256/);
   assert.match(launch, /\bspawn\s*\(\s*join\s*\(\s*ws\s*,\s*cmd\s*\.\s*script\s*,?\s*\)\s*,\s*\[\s*\]\s*,/);
   assert.doesNotMatch(launch, /\bawait\b/);
 });

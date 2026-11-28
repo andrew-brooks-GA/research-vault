@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { slugify, makeId, normalizeUrl, sha256 } from '../bin/lib/ids.mjs';
+import { slugify, makeId, normalizeUrl } from '../bin/lib/ids.mjs';
+import { sha256Tagged } from '../bin/lib/hash.mjs';
 
 test('slugify lowercases, kebab-cases, drops stopwords, caps 6 words', () => {
   assert.equal(slugify('The Quick Brown Fox Jumps Over A Lazy Dog'), 'quick-brown-fox-jumps-over-lazy');
@@ -20,6 +21,6 @@ test('normalizeUrl strips tracking params, trailing slash, lowercases scheme/hos
     'https://go.dev/doc/effective_go');
 });
 test('sha256 is stable', () => {
-  assert.equal(sha256('abc'), sha256('abc'));
-  assert.notEqual(sha256('abc'), sha256('abd'));
+  assert.equal(sha256Tagged('abc'), sha256Tagged('abc'));
+  assert.notEqual(sha256Tagged('abc'), sha256Tagged('abd'));
 });

@@ -7,7 +7,8 @@ import { REPO_ROOT, testEnv } from './helpers.mjs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { captureEntry, run, runBatch } from '../bin/commands/capture.mjs';
-import { makeId, sha256 } from '../bin/lib/ids.mjs';
+import { makeId } from '../bin/lib/ids.mjs';
+import { sha256Tagged } from '../bin/lib/hash.mjs';
 import { readEntry, writeEntry } from '../bin/lib/fsutil.mjs';
 import { lintVault } from '../bin/lib/lintrules.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
@@ -90,7 +91,7 @@ test('stores content_hash and normalizes topics through aliases', () => {
   const dir = freshVault();
   const r = captureEntry(dir, { type: 'source', title: 'Hashed', url: 'https://h.example.com/x', content: 'hello world', topics: 'tdd,go', now: '2026-05-27', repoRoot: REPO_ROOT });
   const e = readEntry(r.path);
-  assert.equal(e.data.content_hash, sha256('hello world'));
+  assert.equal(e.data.content_hash, sha256Tagged('hello world'));
   assert.ok(e.data.topics.includes('test-driven-development')); // 'tdd' alias-normalized
   assert.ok(e.data.topics.includes('go'));
 });
@@ -102,7 +103,7 @@ test('content-file hashes the local file bytes, matching inline content', async 
   const code = await run({ type: 'source', title: 'CF', url: 'https://cf.example.com/x', 'content-file': tmp, vault: dir });
   assert.equal(code, 0);
   const e = readEntry(join(dir, 'sources', makeId(new Date().toISOString().slice(0, 10), 'CF') + '.md'));
-  assert.equal(e.data.content_hash, sha256('hello world'));
+  assert.equal(e.data.content_hash, sha256Tagged('hello world'));
 });
 
 test('captured_via persists and stays lint-clean', () => {
@@ -280,11 +281,11 @@ test('content-file hashes raw bytes (non-UTF-8) and matches what refresh compute
   const code = await run({ type: 'source', title: 'BIN', url: 'https://bin.example.com/x', 'content-file': tmp, vault: dir });
   assert.equal(code, 0);
   const e = readEntry(join(dir, 'sources', makeId(new Date().toISOString().slice(0, 10), 'BIN') + '.md'));
-  assert.equal(e.data.content_hash, sha256(bytes), 'hash must be over raw bytes');
-  assert.notEqual(e.data.content_hash, sha256(bytes.toString('utf8')), 'must not hash the lossy UTF-8 decode');
+  assert.equal(e.data.content_hash, sha256Tagged(bytes), 'hash must be over raw bytes');
+  assert.notEqual(e.data.content_hash, sha256Tagged(bytes.toString('utf8')), 'must not hash the lossy UTF-8 decode');
   const results = await refreshVault(dir, {
     targets: [{ id: e.id, type: 'source', source_url: e.data.source_url, content_hash: e.data.content_hash }],
-    fetch: async () => ({ status: 200, hash: sha256(bytes) }),
+    fetch: async () => ({ status: 200, hash: sha256Tagged(bytes) }),
   });
   assert.equal(results[0].result, 'confirmed', 'capture and refresh hashing must agree');
 });

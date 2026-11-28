@@ -2,7 +2,6 @@
 // so any edit to the draft invalidates the record. Also derives a draft's evidence list
 // from what it cites, and finds the files the gate covers. A code file the binding's
 // code.globs name is keyed by linked symbol (spec 15); everything else as before.
-import { createHash } from 'node:crypto';
 import { readFileSync, appendFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve, relative, dirname, extname, basename, isAbsolute, matchesGlob, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,6 +18,7 @@ import { findProjectConfig, loadProjectConfig } from './projectconfig.mjs';
 import { assertInsideVault, compareContainment, isInsideVault } from './containment.mjs';
 import { langFor, codeFiles, extractCodeLinks, codeUnits, codeUnitHashes, checkCodeLinks, worstStatus } from './codelinks.mjs';
 import { screenText } from './screen.ts';
+import { sha256Hex } from './hash.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -36,7 +36,7 @@ export function reviewerHash() { return existsSync(REVIEWER_FILE) ? contentHash(
 const counts = (r, file, reviewer) => r.event === 'claims' && r.file === file && SATISFIES.has(r.verdict) && (r.reviewer == null || r.reviewer === reviewer);
 
 // Raw bytes (a Buffer) or a string; a string hashes as its UTF-8 encoding.
-export function contentHash(data) { return createHash('sha256').update(data).digest('hex'); }
+export function contentHash(data) { return sha256Hex(data); }
 
 // The ledger root for a file: the repo bound above it, else the vault when the file is inside it, else null.
 export function ledgerRoot(abs, vaultPath, opts) {

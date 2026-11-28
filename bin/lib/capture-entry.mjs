@@ -3,7 +3,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, existsSync } from 'node:fs';
 import { loadSchema, fieldOrder } from './schema.mjs';
-import { makeId, normalizeUrl, normalizeUrlSafe, sha256, verKey } from './ids.mjs';
+import { makeId, normalizeUrl, normalizeUrlSafe, verKey } from './ids.mjs';
+import { sha256Tagged } from './hash.mjs';
 import { buildManifest } from './manifest.mjs';
 import { TYPE_FOLDER } from './fsutil.mjs';
 import { assertControlledValues } from './validate.mjs';
@@ -46,7 +47,7 @@ export function prepareEntry(vaultPath, opts, ctx = {}) {
   let manifestEntries = ctx.manifestEntries;
   const entries = () => (manifestEntries ??= buildManifest(vaultPath).entries);
   const hashInput = opts.contentBytes ?? (opts.content || null);
-  const newHash = hashInput != null ? sha256(hashInput) : (opts.contentHash || null);
+  const newHash = hashInput != null ? sha256Tagged(hashInput) : (opts.contentHash || null);
   if (!ctx.ignoreExisting && opts.type === 'source' && opts.url) {
     const normUrl = normalizeUrl(opts.url);
     // Issue 72 item 7: the version this capture stores; with no subject name it stores none (line 80).

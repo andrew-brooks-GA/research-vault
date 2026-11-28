@@ -1,11 +1,11 @@
 import { join, resolve } from 'node:path';
 import { existsSync, mkdirSync, readdirSync, copyFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { walkEntries, readEntry, writeEntry, TYPE_FOLDER } from './fsutil.mjs';
 import { loadSchema, fieldOrder } from './schema.mjs';
 import { writeManifest } from './manifest.mjs';
 import { assertInsideVault, mayBeInside } from './containment.mjs';
 import { screenText } from './screen.ts';
+import { sha256Hex } from './hash.mjs';
 
 export const RUN_KEY = /^run-[A-Za-z0-9]{6,}$/;
 // As in the prototype measured in spec 54 (T9): a source of 8,000 bytes or less is copied whole.
@@ -13,7 +13,6 @@ export const PACKET_SMALL_BYTES = 8000;
 const AROUND = 3;
 // A `quote-matched` row for a quote found in a stored body: `<quote hash 8> L<line>@<body hash 8>[ <run key>]: <quote>`.
 const LINE_ROW = /^[0-9a-f]{8} L(\d+)@([0-9a-f]{8})(?: (run-[A-Za-z0-9]+))?: /;
-const h8 = s => createHash('sha256').update(s).digest('hex').slice(0, 8);
 
 // An evidence packet (spec 54 item 5): a copy of the listed entries in which a source's stored text
 // is cut to the lines within three of a quote its run checked. Three rules. It is built only when
@@ -36,7 +35,7 @@ export function buildPacket(vaultPath, entries, dir, runKey, repoRoot) {
     const item = { abs, e, lines: null };
     if (e.data.type === 'source') {
       const rows = (e.data.verifications || []).filter(v => v.method === 'quote-matched').map(v => LINE_ROW.exec(v.notes || '')).filter(Boolean);
-      const bodyHash = h8(e.body);
+      const bodyHash = sha256Hex(e.body).slice(0, 8);
       const other = rows.find(m => m[3] !== runKey || m[2] !== bodyHash);
       if (other) throw new Error(`no packet: ${e.id} has a quote row ${other[3] !== runKey ? `of ${other[3] || 'no run'}, not of ${runKey}` : 'for an earlier text of its body'}`);
       if (rows.length && Buffer.byteLength(e.body) > PACKET_SMALL_BYTES) item.lines = rows.map(m => Number(m[1]));

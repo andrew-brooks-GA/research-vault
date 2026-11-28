@@ -6,7 +6,7 @@ import { REPO_ROOT, tmpVault, put } from './helpers.mjs';
 import { checkQuotes } from '../bin/lib/quotes.mjs';
 import { applyVerification, run as verifyRun } from '../bin/commands/verify.mjs';
 import { readEntry } from '../bin/lib/fsutil.mjs';
-import { sha256 } from '../bin/lib/ids.mjs';
+import { sha256Tagged } from '../bin/lib/hash.mjs';
 import { writeBlocklist } from './blocklist.test.mjs';
 
 const NOW = { now: '2026-06-12', repoRoot: REPO_ROOT };
@@ -16,7 +16,7 @@ const seed = [{ date: '2026-01-01', by_type: 'agent', by_id: '', method: 'captur
 const src = (dir, body) => put(dir, 'source', ID, { source_type: 'article', source_url: 'https://example.org/p', content_hash: 'sha256:old', verifications: seed }, body);
 const entry = dir => readEntry(join(dir, 'sources', `${ID}.md`));
 const matched = dir => entry(dir).data.verifications.filter(v => v.method === 'quote-matched');
-const page = html => async () => { const body = Buffer.from(html); return { status: 200, hash: sha256(body), body }; };
+const page = html => async () => { const body = Buffer.from(html); return { status: 200, hash: sha256Tagged(body), body }; };
 
 test('verify --quotes: a quote on one line of a stored body adds one inconclusive row with its line and body hash, and a second call adds none', async () => {
   const dir = tmpVault(); src(dir, BODY);

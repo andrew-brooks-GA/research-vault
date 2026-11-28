@@ -10,7 +10,6 @@
 // next column-0 declaration's own comment block, so a column-0 statement between two declarations
 // belongs to the unit above it, and a file header contiguous with the citing comment is part of
 // the first unit. Pin values are stripped before hashing, so moving a pin reopens nothing.
-import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ID_RE } from './citations.mjs';
@@ -18,6 +17,7 @@ import { staleness } from './stale.mjs';
 import { expandFiles } from './files.ts';
 import { isInsideVault } from './containment.mjs';
 import { isRelativeInside } from './projectconfig.mjs';
+import { sha256Hex } from './hash.mjs';
 
 // ---- shipped language rows ----
 // Each row is two regexes and nothing else (spec 15 D0): `comment` matches one whole comment line and
@@ -152,7 +152,7 @@ export function codeUnits(text, lang) {
 }
 
 export function codeUnitHashes(text, lang) {
-  return Object.fromEntries(codeUnits(text, lang).map((u) => [u.unit, createHash('sha256').update(unitText(text, lang, u.declLine)).digest('hex')]));
+  return Object.fromEntries(codeUnits(text, lang).map((u) => [u.unit, sha256Hex(unitText(text, lang, u.declLine))]));
 }
 
 // The declared version per key of code.versions: the first capture group of the first match of

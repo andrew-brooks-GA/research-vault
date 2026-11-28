@@ -1,8 +1,9 @@
 import { constants, fstatSync, readFileSync, realpathSync, lstatSync, mkdirSync, writeFileSync, renameSync, rmSync, openSync, closeSync } from 'node:fs';
 import path from 'node:path';
 import { homedir } from 'node:os';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { assertInsideWorkspaceFolder } from './containment.mjs';
+import { sha256Hex } from './hash.mjs';
 
 export function configPath({ platform, home, env }) {
   const p = platform === 'win32' ? path.win32 : path.posix;
@@ -54,7 +55,7 @@ export function bindingSnapshot(binding) {
 
 function bindingRow(binding) {
   const snapshot = bindingSnapshot(binding);
-  return { path: snapshot.path, sha256: createHash('sha256').update(snapshot.bytes).digest('hex'), date: new Date().toISOString() };
+  return { path: snapshot.path, sha256: sha256Hex(snapshot.bytes), date: new Date().toISOString() };
 }
 
 function checkRecordLocation(options) {
@@ -95,7 +96,7 @@ export function acknowledgeBinding(binding, options = {}) {
   const row = bindingRow(binding);
   // Do not acknowledge bytes changed while the command was displaying or confirming them.
   if ((options.identity !== undefined && row.path !== options.identity)
-      || (options.bytes !== undefined && row.sha256 !== createHash('sha256').update(options.bytes).digest('hex'))) {
+      || (options.bytes !== undefined && row.sha256 !== sha256Hex(options.bytes))) {
     throw new Error('binding changed; run research-vault trust again');
   }
   writeRecord([...readRecord(options).filter(old => old.path !== row.path), row], options);

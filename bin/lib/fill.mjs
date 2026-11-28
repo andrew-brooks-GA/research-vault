@@ -8,7 +8,7 @@ import { loadBlocklist, matchBlock } from './blocklist.mjs';
 import { fetchSource, rawFileUrl } from './fetchsource.mjs';
 import { extractText } from './extract.ts';
 import { bodyText, MIN_BODY_CHARS } from './gate.mjs';
-import { sha256 } from './ids.mjs';
+import { sha256Tagged } from './hash.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const FILL_MAX_BYTES = 300000;
@@ -67,7 +67,7 @@ export async function fillSource(vaultPath, id, opts = {}) {
     if (!FILE_TYPES.test(opts.contentFile)) return refused('--content-file takes a .html, .htm, .txt or .md file');
     const bytes = readFileSync(opts.contentFile);
     text = extractText(bytes, opts.contentFile);
-    added = n => row('human-spot-check', `filled-from-file: ${basename(opts.contentFile)}, ${sha256(bytes)}, ${n} bytes of text`);
+    added = n => row('human-spot-check', `filled-from-file: ${basename(opts.contentFile)}, ${sha256Tagged(bytes)}, ${n} bytes of text`);
   } else {
     let u;
     try { u = new URL(e.data.source_url); } catch { return refused('no fetchable source_url'); }
