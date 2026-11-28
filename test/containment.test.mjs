@@ -379,6 +379,11 @@ test('vault location equality passes normalized absolute paths to the filesystem
   }
 });
 
+test('vault location equality is unknown without statSync', () => {
+  const fs = { realpathSync: value => value };
+  assert.equal(compareVaultLocations('/vault', '/vault', posix, fs), null);
+});
+
 test('vault location equality accepts a trailing separator and refuses files and distinct directories', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'rv-same-location-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));

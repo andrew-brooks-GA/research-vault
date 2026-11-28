@@ -113,6 +113,7 @@ export function compareVaultLocations(a, b, p = nodePath, fs = p === nodePath ? 
   if (first.path !== second.path) return false;
   try {
     for (const prefix of new Set([first.prefix, second.prefix])) {
+      if (fs.statSync === undefined) return null;
       if (!fs.statSync(prefix).isDirectory()) return prefix === first.path ? false : null;
     }
     return true;
