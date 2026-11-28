@@ -8,7 +8,7 @@ import { assertControlledValues } from '../lib/validate.mjs';
 import { listStale } from '../lib/stale.mjs';
 import { readFileSync } from 'node:fs';
 import { checkQuotes } from '../lib/quotes.mjs';
-import { screenText } from '../lib/screen.mjs';
+import { screenText } from '../lib/screen.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 

@@ -18,7 +18,7 @@ import { parseBlocks, blockSpans, imgAttr } from './lesson-format.mjs';
 import { findProjectConfig, loadProjectConfig } from './projectconfig.mjs';
 import { assertInsideVault, compareContainment, isInsideVault } from './containment.mjs';
 import { langFor, codeFiles, extractCodeLinks, codeUnits, codeUnitHashes, checkCodeLinks, worstStatus } from './codelinks.mjs';
-import { screenText } from './screen.mjs';
+import { screenText } from './screen.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 

@@ -19,7 +19,7 @@ import { HEADING_RE, TABLE_SEP_RE, WORKSPACE_GATES, hasVerdict } from './gate.mj
 import { readLabs, lessonLab, labRunner, secretHits, labCookie, LAB_ACTIONS, LAB_BODY_MAX, LAB_ID_RE } from './labs.mjs';
 import { readBrand, withBrand, brandUrl } from './brand.mjs';
 import { shellTerminal } from './terminal.mjs';
-import { screenText } from './screen.mjs';
+import { screenText } from './screen.ts';
 import { escapeHtml, show } from './escape.mjs';
 
 export { LESSON_ID_RE, RECORD_ID_RE, extractCites };

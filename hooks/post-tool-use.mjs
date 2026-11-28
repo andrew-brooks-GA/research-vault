@@ -18,7 +18,7 @@ import { loadProjectConfig } from '../bin/lib/projectconfig.mjs';
 import { appendUsage, readUsage } from '../bin/lib/usagelog.mjs';
 import { gatedFiles, ledgerKey } from '../bin/lib/gate.mjs';
 import { langFor, codeFiles, extractCodeLinks, readVersions, checkCodeLinks } from '../bin/lib/codelinks.mjs';
-import { screenText } from '../bin/lib/screen.mjs';
+import { screenText } from '../bin/lib/screen.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 

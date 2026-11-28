@@ -74,7 +74,7 @@ export const COUPLINGS = [
   ['bin/lib/args.mjs', 'test/args.test.mjs', 'the strict-option error lines', 'needs a value'],
   ['bin/lib/args.mjs', 'test/args.test.mjs', 'the strict-option error lines', 'takes no value'],
   ['bin/lib/args.mjs', 'test/gate.test.mjs', 'the strict-option error lines', 'needs a value'],
-  ['bin/lib/screen.mjs', 'test/screen.test.mjs', "screenText's cut mark is quoted in the expected values", '\\u2026'],
+  ['bin/lib/screen.ts', 'test/screen.test.mjs', "screenText's cut mark is quoted in the expected values", '\\u2026'],
   ['bin/lib/gate.mjs', 'skills/research-claims-gate/SKILL.md', 'residual and loaded-script unit names and review scope', 'script:'],
   ['bin/lib/gate.mjs', 'docs/REFERENCE.md', 'residual, repeated-block and loaded-script unit contract', '`rest`'],
   ['bin/lib/lesson.mjs', 'skills/research-teach/LESSON-FORMAT.md', 'repeated block lint code for lessons and reference pages', 'LESSON_BLOCK_REPEATED'],

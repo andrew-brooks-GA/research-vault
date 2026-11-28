@@ -10,7 +10,7 @@ import { fetchSource, rawFileUrl } from './fetchsource.mjs';
 import { extractText } from './extract.mjs';
 import { bodyText, MIN_BODY_CHARS } from './gate.mjs';
 import { RUN_KEY } from './packet.mjs';
-import { screenText } from './screen.mjs';
+import { screenText } from './screen.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const h8 = s => createHash('sha256').update(s).digest('hex').slice(0, 8);

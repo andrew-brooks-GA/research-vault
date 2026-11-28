@@ -9,7 +9,7 @@ import { appendUsage, USAGE_LOG } from '../lib/usagelog.mjs';
 import { VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { cosine, embeddingDestination, embeddingGate, embedTexts, readIndex } from '../lib/embed.mjs';
-import { screenText } from '../lib/screen.mjs';
+import { screenText } from '../lib/screen.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 

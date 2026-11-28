@@ -8,7 +8,7 @@ import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, allowedValues, field
 import { BLOCKLIST, loadBlocklist, matchBlock } from './blocklist.mjs';
 import { isUnverifiedSource, buildManifest, writeManifest } from './manifest.mjs';
 import { assertInsideVault, escapePathControls } from './containment.mjs';
-import { screenText } from './screen.mjs';
+import { screenText } from './screen.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MONOLITHIC_SYNTHESIS_WORDS = 1500;

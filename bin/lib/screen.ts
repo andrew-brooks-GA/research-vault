@@ -9,10 +9,10 @@
 // hyphen, Hangul fillers) are removed.
 const BREAK_RE = /[\t\n\v\f\r\u0085\u2028\u2029]/g;
 const HIDDEN_RE = /[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
-export const SCREEN_MAX = 300;
+export const SCREEN_MAX: 300 = 300;
 
 // One line, at most `max` characters (code points); a cut value ends with `\u2026`.
-export function screenText(value, max = SCREEN_MAX) {
+export function screenText(value: unknown, max: number = SCREEN_MAX): string {
   const s = String(value).replace(BREAK_RE, ' ').replace(HIDDEN_RE, '').replace(/ {2,}/g, ' ').trim();
   const chars = [...s];
   return chars.length > max ? chars.slice(0, max - 1).join('').trimEnd() + '\u2026' : s;

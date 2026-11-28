@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { screenText } from '../bin/lib/screen.mjs';
+import { screenText } from '../bin/lib/screen.ts';
 
 // S-11: each input with the line it must become; expected values are written out, never computed.
 const rows = (list) => { for (const [input, max, want] of list) assert.equal(screenText(input, max), want, JSON.stringify(input)); };

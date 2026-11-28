@@ -19,7 +19,7 @@ import { readLabs, secretHits } from '../lib/labs.mjs';
 import { readBrand } from '../lib/brand.mjs';
 import { ptyAvailable } from '../lib/terminal.mjs';
 import { assertInsideWorkspaceFolder, isInsideVault, isInsideWorkspaceFolder, mayBeInside, VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
-import { screenText } from '../lib/screen.mjs';
+import { screenText } from '../lib/screen.ts';
 import { lintWorkspace, proseMetrics, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');

@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (spec 56, stage 6):** `bin/lib/screen.mjs` is now `bin/lib/screen.ts` (types added, nothing else: the conversion check reports no difference). Its sixteen importers and its test name the new path.
 - **Changed (spec 56, stage 6):** `bin/lib/files.mjs` is now `bin/lib/files.ts` (types added, nothing else: the conversion check of `tooling/d6-compare.mjs` reports no difference). Its five importers and its test name the new path.
 - **Added (spec 56, stage 6; R-33, first part):** `bin/lib/unknowns.mjs`, three small helpers for values whose type is not known, written in JavaScript before the files that need them are converted to TypeScript: `parseJson(text)` (what `JSON.parse` returns and throws, for the caller to validate), `isRecord(value)` (an object that is not `null` and not an array) and `errorCode(error)` (the `code` of a caught value when it is an object with a string `code`, otherwise `undefined`; it never throws). Nothing uses them yet.
 - **Tests (spec 56, stage 6):** two source-scan guards also read `.ts` files, so a code file converted to TypeScript stays inside them: the scan of `bin/` and `hooks/` for project names (`test/codelinks.test.mjs`), which `bin/lib/terms.ts` had been outside since it was converted, and the list of files under `bin/` that import the process module (`test/teach-labs.test.mjs`). Declaration files (`.d.ts`) are left out of both.

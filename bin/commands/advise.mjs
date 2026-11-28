@@ -2,7 +2,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { advise, OPEN_QUESTION_DAYS } from '../lib/advise.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
-import { screenText } from '../lib/screen.mjs';
+import { screenText } from '../lib/screen.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 

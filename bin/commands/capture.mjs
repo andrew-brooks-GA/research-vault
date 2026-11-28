@@ -13,7 +13,7 @@ import { prepareEntry } from '../lib/capture-entry.mjs';
 import { captureOperation } from '../lib/capture-operation.mjs';
 import { extractText } from '../lib/extract.mjs';
 import { fillSource } from '../lib/fill.mjs';
-import { screenText } from '../lib/screen.mjs';
+import { screenText } from '../lib/screen.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 

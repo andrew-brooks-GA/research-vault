@@ -16,7 +16,7 @@ import { loadProjectConfig, quotedGlob } from '../lib/projectconfig.mjs';
 import { checkCitations, extractCitationsDetailed } from '../lib/citations.mjs';
 import { expandFiles } from '../lib/files.ts';
 import { langFor, codeFiles, extractCodeLinks, readVersions, checkCodeLinks } from '../lib/codelinks.mjs';
-import { screenText } from '../lib/screen.mjs';
+import { screenText } from '../lib/screen.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 

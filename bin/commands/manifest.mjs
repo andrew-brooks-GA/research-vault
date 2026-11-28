@@ -1,6 +1,6 @@
 import { buildManifest, writeManifest, danglingEdges } from '../lib/manifest.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
-import { screenText } from '../lib/screen.mjs';
+import { screenText } from '../lib/screen.ts';
 
 export async function run(args) {
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
