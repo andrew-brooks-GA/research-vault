@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (spec 56, stage 6):** `bin/lib/trust.mjs` becomes `bin/lib/trust.ts`: types and import specifiers only. Its importers, its tests and the rows and document lines that name the path follow.
 - **Changed (spec 56, stage 6):** `bin/lib/usagelog.mjs` becomes `bin/lib/usagelog.ts`: types and import specifiers only. Its importers, its tests and the rows and document lines that name the path follow.
 - **Fixed (spec 56, stage 6; R-33, the part in the Codex installer):** `bin/lib/host-install.mjs` reads the installation manifest and `package.json` as unknown values and checks them before use: a manifest that is not an object is refused with `invalid Codex installation manifest` (a `null` one gave an engine error), a file hash that is not a string with `invalid owned installation file`, and a `package.json` that is not an object with `not a research-vault package`. Nothing is written in any of these cases.
 - **Changed (spec 56, stage 6):** `scripts/check-encoding.mjs` becomes `scripts/check-encoding.ts`, types only, and a launcher stays at the `.mjs` path: it runs the Node floor check, refuses a path under `node_modules`, then loads the `.ts` file. It is the first launcher of the tree. The guard against a `.ts` and `.mjs` pair now allows the pairs on the launcher list and no other.

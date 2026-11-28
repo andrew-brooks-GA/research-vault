@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { acknowledgeBinding } from '../bin/lib/trust.mjs';
+import { acknowledgeBinding } from '../bin/lib/trust.ts';
 import { testEnv, put } from './helpers.mjs';
 import { tmpdir } from 'node:os';
 import { dirname, join, posix, sep, win32 } from 'node:path';

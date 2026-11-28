@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { testEnv } from './helpers.mjs';
 import { configPath, resolveVault } from '../bin/lib/resolve.mjs';
-import { trustedBindingsPath, isBindingAcknowledged, acknowledgeBinding, revokeBinding } from '../bin/lib/trust.mjs';
+import { trustedBindingsPath, isBindingAcknowledged, acknowledgeBinding, revokeBinding } from '../bin/lib/trust.ts';
 import { run } from '../bin/commands/trust.mjs';
 
 const DISPLAY_WIDTH = 76;
@@ -565,7 +565,7 @@ test('named pipe binding refuses promptly without writing', { timeout: 10000 }, 
   const fifo = spawnSync('mkfifo', [f.binding], { env: testEnv(f.env), timeout: 2000, encoding: 'utf8' });
   if (fifo.error?.code === 'ENOENT' || (process.platform === 'win32' && fifo.status !== 0)) { t.skip('mkfifo unavailable'); return; }
   assert.equal(fifo.status, 0, fifo.stderr);
-  const query = spawnSync(process.execPath, ['--input-type=module', '-e', `import { isBindingAcknowledged } from ${JSON.stringify(new URL('../bin/lib/trust.mjs', import.meta.url).href)}; console.log(isBindingAcknowledged(process.argv[1]));`, f.binding], { cwd: f.root, env: testEnv(f.env), encoding: 'utf8', timeout: 2000 });
+  const query = spawnSync(process.execPath, ['--input-type=module', '-e', `import { isBindingAcknowledged } from ${JSON.stringify(new URL('../bin/lib/trust.ts', import.meta.url).href)}; console.log(isBindingAcknowledged(process.argv[1]));`, f.binding], { cwd: f.root, env: testEnv(f.env), encoding: 'utf8', timeout: 2000 });
   assert.equal(query.status, 0, query.stderr); assert.equal(query.stdout, 'false\n');
   const shown = spawnSync(process.execPath, [CLI, 'trust', '--show', f.repo], { cwd: f.root, env: testEnv(f.env), encoding: 'utf8', timeout: 2000 }); assert.equal(shown.status, 2); assert.equal(shown.stdout, '');
   assert.deepEqual(readdirSync(f.folder), []); assert.ok(fs.lstatSync(f.binding).isFIFO());

@@ -6,26 +6,31 @@ import { assertInsideWorkspaceFolder } from './containment.ts';
 import { sha256Hex } from './hash.ts';
 import { errorCode, isRecord, parseJson } from './unknowns.ts';
 
-export function configPath({ platform, home, env }) {
+type ConfigLocation = { platform: NodeJS.Platform; home: string; env: NodeJS.ProcessEnv };
+type LocationOptions = { [K in keyof ConfigLocation]?: ConfigLocation[K] | undefined };
+type AcknowledgeOptions = LocationOptions & { now?: unknown; identity?: string | undefined; bytes?: Buffer | undefined };
+type BindingRow = { path: string; sha256: string; date: string };
+
+export function configPath({ platform, home, env }: ConfigLocation): string {
   const p = platform === 'win32' ? path.win32 : path.posix;
   if (platform === 'win32') return p.join(env.APPDATA || p.join(home, 'AppData', 'Roaming'), 'research-vault', 'config.json');
   if (platform === 'darwin') return p.join(home, 'Library', 'Application Support', 'research-vault', 'config.json');
   return p.join(env.XDG_CONFIG_HOME || p.join(home, '.config'), 'research-vault', 'config.json');
 }
 
-export function trustedBindingsPath({ platform = process.platform, home = homedir(), env = process.env } = {}) {
+export function trustedBindingsPath({ platform = process.platform, home = homedir(), env = process.env }: LocationOptions = {}): string {
   const p = platform === 'win32' ? path.win32 : path.posix;
   return p.join(p.dirname(configPath({ platform, home, env })), 'trusted-bindings.json');
 }
 
-function readRecord(options) {
+function readRecord(options: LocationOptions): BindingRow[] {
   try {
     checkRecordLocation(options);
     const record = parseJson(readFileSync(trustedBindingsPath(options), 'utf8'));
     if (!isRecord(record) || record.version !== 1 || !Array.isArray(record.bindings)) return [];
-    const bindings = record.bindings;
-    const seen = new Set();
-    if (!bindings.every(row => {
+    const bindings: unknown[] = record.bindings;
+    const seen = new Set<string>();
+    if (!bindings.every((row: unknown): row is BindingRow => {
       if (!isRecord(row) || typeof row.path !== 'string' || !path.isAbsolute(row.path)
           || typeof row.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(row.sha256)
           || typeof row.date !== 'string' || !Number.isFinite(Date.parse(row.date)) || seen.has(row.path)) return false;
@@ -36,14 +41,14 @@ function readRecord(options) {
   } catch { return []; }
 }
 
-export function bindingIdentity(binding) {
+export function bindingIdentity(binding: string): string {
   if (!lstatSync(binding).isFile()) throw new Error('binding must be a regular file');
   return path.join(realpathSync.native(path.dirname(binding)), path.basename(binding));
 }
 
-export function bindingSnapshot(binding) {
+export function bindingSnapshot(binding: string): { path: string; bytes: Buffer } {
   const identity = bindingIdentity(binding);
-  let fd;
+  let fd: number;
   try {
     fd = openSync(identity, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
   } catch (error) {
@@ -57,25 +62,25 @@ export function bindingSnapshot(binding) {
   } finally { closeSync(fd); }
 }
 
-function bindingFingerprint(binding) {
+function bindingFingerprint(binding: string) {
   const snapshot = bindingSnapshot(binding);
   return { path: snapshot.path, sha256: sha256Hex(snapshot.bytes) };
 }
 
-function checkRecordLocation(options) {
+function checkRecordLocation(options: LocationOptions) {
   const destination = trustedBindingsPath(options);
   const folder = path.dirname(destination);
   assertInsideWorkspaceFolder(path.dirname(folder), folder, destination, { regular: true });
 }
 
-export function isBindingAcknowledged(binding, options = {}) {
+export function isBindingAcknowledged(binding: string, options: LocationOptions = {}): boolean {
   try {
     const current = bindingFingerprint(binding);
-    return readRecord(options).some(row => row.path === current.path && row.sha256 === current.sha256);
+    return readRecord(options).some((row: BindingRow) => row.path === current.path && row.sha256 === current.sha256);
   } catch { return false; }
 }
 
-function writeRecord(bindings, options) {
+function writeRecord(bindings: BindingRow[], options: LocationOptions) {
   const destination = trustedBindingsPath(options);
   const folder = path.dirname(destination);
   const check = () => assertInsideWorkspaceFolder(path.dirname(folder), folder, destination, { regular: true });
@@ -96,7 +101,7 @@ function writeRecord(bindings, options) {
   }
 }
 
-export function acknowledgeBinding(binding, options = {}) {
+export function acknowledgeBinding(binding: string, options: AcknowledgeOptions = {}): void {
   const now = options?.now;
   if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw new Error('acknowledgeBinding: now must be a Date');
   const row = { ...bindingFingerprint(binding), date: now.toISOString() };
@@ -105,14 +110,14 @@ export function acknowledgeBinding(binding, options = {}) {
       || (options.bytes !== undefined && row.sha256 !== sha256Hex(options.bytes))) {
     throw new Error('binding changed; run research-vault trust again');
   }
-  writeRecord([...readRecord(options).filter(old => old.path !== row.path), row], options);
+  writeRecord([...readRecord(options).filter((old: BindingRow) => old.path !== row.path), row], options);
 }
 
-export function revokeBinding(binding, options = {}) {
+export function revokeBinding(binding: string, options: LocationOptions = {}): boolean {
   const resolved = bindingIdentity(binding);
   checkRecordLocation(options);
   const rows = readRecord(options);
-  const remaining = rows.filter(row => row.path !== resolved);
+  const remaining = rows.filter((row: BindingRow) => row.path !== resolved);
   if (remaining.length === rows.length) return false;
   writeRecord(remaining, options);
   return true;

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { defaultVaultPath, configPath } from '../bin/lib/resolve.mjs';
 import { testEnv } from './helpers.mjs';
-import { isBindingAcknowledged } from '../bin/lib/trust.mjs';
+import { isBindingAcknowledged } from '../bin/lib/trust.ts';
 
 const SCHEMA = {
   taxonomy: {

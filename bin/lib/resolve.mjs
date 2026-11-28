@@ -2,7 +2,7 @@ import path from 'node:path';
 import { homedir } from 'node:os';
 import nodeFs, { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { configPath, isBindingAcknowledged } from './trust.mjs';
+import { configPath, isBindingAcknowledged } from './trust.ts';
 import { walkEntries } from './fsutil.mjs';
 import { loadSchema } from './schema.mjs';
 import { loadProjectConfig, PROJECT_CONFIG_FILENAME } from './projectconfig.mjs';
@@ -20,7 +20,7 @@ export function defaultVaultPath({ platform, home, env }) {
   return p.join(env.XDG_DATA_HOME || p.join(home, '.local', 'share'), 'research-vault');
 }
 
-export { configPath } from './trust.mjs';
+export { configPath } from './trust.ts';
 
 function readConfigPath(ctx) {
   const p = configPath(ctx);

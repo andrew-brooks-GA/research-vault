@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { findProjectConfig, parseProjectConfig } from '../lib/projectconfig.mjs';
 import { loadSchema } from '../lib/schema.mjs';
-import { bindingIdentity, bindingSnapshot, acknowledgeBinding, isBindingAcknowledged, revokeBinding } from '../lib/trust.mjs';
+import { bindingIdentity, bindingSnapshot, acknowledgeBinding, isBindingAcknowledged, revokeBinding } from '../lib/trust.ts';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const WIDTH = 76;
