@@ -2,7 +2,7 @@
 // Reads PATH.md after checking that it resolves inside the workspace.
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { isInsideVault } from './containment.mjs';
+import { isInsideVault } from './containment.ts';
 
 export const LESSON_ID_RE = /^\d{4}-[a-z][a-z0-9-]*$/;
 export const RECORD_ID_RE = /^\d{4}-[a-z][a-z0-9-]*$/;

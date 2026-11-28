@@ -5,7 +5,7 @@ import { buildExport } from '../lib/exportjsonl.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { EMBEDDING_REQUEST_FAILED, INDEX, embeddingGate, embedTexts } from '../lib/embed.mjs';
-import { assertInsideVault } from '../lib/containment.mjs';
+import { assertInsideVault } from '../lib/containment.ts';
 
 const BATCH = 64;
 

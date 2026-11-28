@@ -8,7 +8,7 @@ import { dirname, relative, join } from 'node:path';
 import { obsidianView } from '../bin/commands/obsidian.mjs';
 import { compileVault } from '../bin/commands/compile.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
-import { escapePathControls, VAULT_PATH_OUTSIDE } from '../bin/lib/containment.mjs';
+import { escapePathControls, VAULT_PATH_OUTSIDE } from '../bin/lib/containment.ts';
 import { tmpVault, put, codeRepo, testEnv } from './helpers.mjs';
 
 const NOW = new Date('2026-06-01');

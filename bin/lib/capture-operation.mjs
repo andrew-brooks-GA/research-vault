@@ -10,7 +10,7 @@ import { loadSchema } from './schema.mjs';
 import { normalizeUrl, verKey } from './ids.ts';
 import { sha256Tagged } from './hash.ts';
 import { buildManifest, danglingEdges, writeManifest } from './manifest.mjs';
-import { assertInsideVault, isInsideVault } from './containment.mjs';
+import { assertInsideVault, isInsideVault } from './containment.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const operationKey = key => typeof key === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(key);

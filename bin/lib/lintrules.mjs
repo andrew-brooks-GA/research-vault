@@ -7,7 +7,7 @@ import { serializeFrontmatter } from './frontmatter.mjs';
 import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, isAllowedValue, fieldShapeErrors } from './validate.ts';
 import { BLOCKLIST, loadBlocklist, matchBlock } from './blocklist.mjs';
 import { isUnverifiedSource, buildManifest, writeManifest } from './manifest.mjs';
-import { assertInsideVault, escapePathControls } from './containment.mjs';
+import { assertInsideVault, escapePathControls } from './containment.ts';
 import { screenText } from './screen.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { mkdtempSync, mkdirSync, symlinkSync, realpathSync, writeFileSync, existsSync, lstatSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { compareVaultLocations, isInsideVault, mayBeInside } from '../bin/lib/containment.mjs';
+import { compareVaultLocations, isInsideVault, mayBeInside } from '../bin/lib/containment.ts';
 
 test('nested child is inside (win32 + posix)', () => {
   assert.equal(isInsideVault('C:\\Users\\me\\vault', 'C:\\Users\\me\\vault\\sources\\a.md', win32), true);

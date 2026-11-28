@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { testEnv } from './helpers.mjs';
 import { readBrand } from '../bin/lib/brand.mjs';
-import { isInsideVault } from '../bin/lib/containment.mjs';
+import { isInsideVault } from '../bin/lib/containment.ts';
 import { hasVerdict, ledgerRoot, referencedImages, taskFile } from '../bin/lib/gate.mjs';
 import { labPin, labRefusal, readLabs } from '../bin/lib/labs.mjs';
 import { sha256Hex } from '../bin/lib/hash.ts';

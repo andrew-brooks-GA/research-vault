@@ -15,7 +15,7 @@ import { runGit } from './git.ts';
 import { imageTarget, STATIC_DIRS } from './serve-file.mjs';
 import { parseBlocks, blockSpans, imgAttr } from './lesson-format.mjs';
 import { findProjectConfig, loadProjectConfig } from './projectconfig.mjs';
-import { assertInsideVault, compareContainment, isInsideVault } from './containment.mjs';
+import { assertInsideVault, compareContainment, isInsideVault } from './containment.ts';
 import { langFor, codeFiles, extractCodeLinks, codeUnits, codeUnitHashes, checkCodeLinks, worstStatus } from './codelinks.mjs';
 import { screenText } from './screen.ts';
 import { sha256Hex } from './hash.ts';

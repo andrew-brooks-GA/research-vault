@@ -2,11 +2,19 @@ import nodePath from 'node:path';
 import nodeFs from 'node:fs';
 import { errorCode } from './unknowns.ts';
 
+type PathOperations = Pick<typeof nodePath, 'resolve' | 'join' | 'dirname' | 'basename' | 'sep' | 'relative' | 'isAbsolute'>;
+type Realpath = (path: string) => string;
+type FileSystem = {
+  realpathSync: Realpath & { native?: Realpath };
+  readonly lstatSync?: (path: string) => unknown;
+  statSync?: (path: string) => { isDirectory(): boolean };
+};
+
 // Resolve the longest existing prefix of `target`, keeping the missing tail
 // lexical. An existing entry whose resolution fails leaves containment unknown.
-function realResolve(target, p, fs) {
+function realResolve(target: string, p: PathOperations, fs: FileSystem): { path: string; prefix: string } | null {
   const resolved = p.resolve(target);
-  const tail = [];
+  const tail: string[] = [];
   const inspectEntry = typeof fs.lstatSync === 'function';
   let cur = resolved;
   for (;;) {
@@ -33,7 +41,7 @@ function realResolve(target, p, fs) {
 }
 
 // Return null for unknown containment. With no filesystem, use lexical paths.
-export function compareContainment(parent, child, p = nodePath, fs = p === nodePath ? nodeFs : null) {
+export function compareContainment(parent: string | null | undefined, child: string | null | undefined, p: PathOperations = nodePath, fs: FileSystem | null = p === nodePath ? nodeFs : null): boolean | null {
   if (!parent || !child) return null;
   const par = fs ? realResolve(parent, p, fs)?.path : p.resolve(parent);
   const chi = fs ? realResolve(child, p, fs)?.path : p.resolve(child);
@@ -47,12 +55,12 @@ export function compareContainment(parent, child, p = nodePath, fs = p === nodeP
 }
 
 // Use when an operation requires known containment.
-export function isInsideVault(parent, child, p = nodePath, fs = p === nodePath ? nodeFs : null) {
+export function isInsideVault(parent: string | null | undefined, child: string | null | undefined, p: PathOperations = nodePath, fs: FileSystem | null = p === nodePath ? nodeFs : null): boolean {
   return compareContainment(parent, child, p, fs) === true;
 }
 
 // An allowlisted folder must resolve to its own place under the workspace.
-export function isInsideWorkspaceFolder(workspace, folder, target = folder) {
+export function isInsideWorkspaceFolder(workspace: string, folder: string, target: string = folder): boolean {
   const realWorkspace = realResolve(workspace, nodePath, nodeFs)?.path;
   const realFolder = realResolve(folder, nodePath, nodeFs)?.path;
   const name = nodePath.basename(folder);
@@ -66,24 +74,24 @@ export function isInsideWorkspaceFolder(workspace, folder, target = folder) {
   return target === folder || isInsideVault(realFolder, target);
 }
 
-export const VAULT_PATH_OUTSIDE = 'VAULT_PATH_OUTSIDE';
+export const VAULT_PATH_OUTSIDE: 'VAULT_PATH_OUTSIDE' = 'VAULT_PATH_OUTSIDE';
 
-export function escapePathControls(path) {
+export function escapePathControls(path: string): string {
   // Escape supplementary format characters as two JSON-compatible UTF-16 escapes.
-  return path.replace(/[\p{Cc}\p{Cf}\p{Cs}\u2028\u2029]/gu, (ch) =>
-    ch.split('').map((unit) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, '0')}`).join(''));
+  return path.replace(/[\p{Cc}\p{Cf}\p{Cs}\u2028\u2029]/gu, (ch: string) =>
+    ch.split('').map((unit: string) => `\\u${unit.charCodeAt(0).toString(16).padStart(4, '0')}`).join(''));
 }
 
-function missingOr(workspacePath, type) {
+function missingOr(workspacePath: string, type: 'isDirectory' | 'isFile'): boolean {
   try {
     const entry = nodeFs.lstatSync(workspacePath, { throwIfNoEntry: false });
     return !entry || entry[type]();
   } catch { return false; }
 }
 
-export function assertInsideWorkspaceFolder(workspace, folder, target = folder, { regular = false } = {}) {
+export function assertInsideWorkspaceFolder(workspace: string, folder: string, target: string = folder, { regular = false }: { regular?: boolean } = {}): void {
   const name = nodePath.basename(folder) + '/';
-  const refuse = (place) => {
+  const refuse = (place: string): never => {
     throw Object.assign(new Error(`${escapePathControls(place)}: path is outside its workspace folder or cannot be resolved`), { code: VAULT_PATH_OUTSIDE });
   };
   if (!isInsideWorkspaceFolder(workspace, folder) || !missingOr(folder, 'isDirectory')) refuse(name);
@@ -95,7 +103,7 @@ export function assertInsideWorkspaceFolder(workspace, folder, target = folder, 
   }
 }
 
-export function assertInsideVault(vaultPath, path) {
+export function assertInsideVault(vaultPath: string, path: string): void {
   const rel = nodePath.relative(vaultPath, path);
   // Rename and removal also modify the directory holding the name.
   if (!isInsideVault(vaultPath, path) || (rel && !isInsideVault(vaultPath, nodePath.dirname(path)))) {
@@ -105,7 +113,7 @@ export function assertInsideVault(vaultPath, path) {
 
 // Compare canonical locations, including missing paths with a known directory prefix.
 // Return null when resolution could not establish a location.
-export function compareVaultLocations(a, b, p = nodePath, fs = p === nodePath ? nodeFs : null) {
+export function compareVaultLocations(a: unknown, b: unknown, p: PathOperations = nodePath, fs: FileSystem | null = p === nodePath ? nodeFs : null): boolean | null {
   if (typeof a !== 'string' || !a || typeof b !== 'string' || !b || !fs) return false;
   const first = realResolve(a, p, fs);
   const second = realResolve(b, p, fs);
@@ -121,7 +129,7 @@ export function compareVaultLocations(a, b, p = nodePath, fs = p === nodePath ? 
 }
 
 // Use when an operation requires known separation.
-export function mayBeInside(parent, child, p = nodePath, fs = p === nodePath ? nodeFs : null) {
+export function mayBeInside(parent: string | null | undefined, child: string | null | undefined, p: PathOperations = nodePath, fs: FileSystem | null = p === nodePath ? nodeFs : null): boolean {
   return compareContainment(parent, child, p, fs) !== false
     || (fs != null && compareContainment(parent, child, p, null) === true);
 }

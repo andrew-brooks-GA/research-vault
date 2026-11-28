@@ -12,7 +12,7 @@ import { run as embedRun } from '../bin/commands/embed.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
 import { applyVerification } from '../bin/commands/verify.mjs';
 import { REPO_ROOT, testEnv, tmpVault, put } from './helpers.mjs';
-import { VAULT_PATH_OUTSIDE } from '../bin/lib/containment.mjs';
+import { VAULT_PATH_OUTSIDE } from '../bin/lib/containment.ts';
 
 export const LOOPBACK_ENDPOINT = 'http://127.0.0.1:1/v1/embeddings';
 export const HTTPS_ENDPOINT = 'https://embed.example.test/';

@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { isIPv4 } from 'node:net';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { escapePathControls } from './containment.mjs';
+import { escapePathControls } from './containment.ts';
 import { loadProjectConfig } from './projectconfig.mjs';
 import { loadSchema } from './schema.mjs';
 

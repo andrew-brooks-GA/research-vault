@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, copyFileSync } from 'node:fs';
 import { walkEntries, readEntry, writeEntry, TYPE_FOLDER } from './fsutil.mjs';
 import { loadSchema, fieldOrder } from './schema.mjs';
 import { writeManifest } from './manifest.mjs';
-import { assertInsideVault, mayBeInside } from './containment.mjs';
+import { assertInsideVault, mayBeInside } from './containment.ts';
 import { screenText } from './screen.ts';
 import { sha256Hex } from './hash.ts';
 

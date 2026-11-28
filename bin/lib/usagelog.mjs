@@ -3,7 +3,7 @@
 // .gitignore, pruned by SKIP_DIRS and never walked as an entry folder. Readers: the #6 report.
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { assertInsideVault, isInsideVault } from './containment.mjs';
+import { assertInsideVault, isInsideVault } from './containment.ts';
 
 export const USAGE_LOG = join('_index', 'usage.jsonl');
 

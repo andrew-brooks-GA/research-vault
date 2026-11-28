@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { REPO_ROOT, tmpVault, put, fixtureVault, testEnv } from './helpers.mjs';
 import { missingGates } from '../hooks/stop-gate.mjs';
 import { run as gateRun } from '../bin/commands/gate.mjs';
-import { VAULT_PATH_OUTSIDE } from '../bin/lib/containment.mjs';
+import { VAULT_PATH_OUTSIDE } from '../bin/lib/containment.ts';
 import {
   unitHashes, changedUnits, mdUnits,
   LEDGER_FILENAME, contentHash, ledgerKey, recordVerdict, gateStatus, reviewerHash,

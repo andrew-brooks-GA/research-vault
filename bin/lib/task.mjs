@@ -10,7 +10,7 @@ import { LAB_TEXT_BAD_RE, LAB_OUTPUT_MAX, STOP_GRACE, KILL_WAIT, stopGroup } fro
 import { RECORD_ID_RE, LESSON_ID_RE } from './lesson-format.mjs';
 import { nextAttemptId, writeAttempt, missionPrefs } from './teach.mjs';
 import { show } from './escape.ts';
-import { assertInsideWorkspaceFolder, isInsideVault, VAULT_PATH_OUTSIDE } from './containment.mjs';
+import { assertInsideWorkspaceFolder, isInsideVault, VAULT_PATH_OUTSIDE } from './containment.ts';
 
 const TASK_ID_RE = /^[a-z][a-z0-9-]{0,39}$/;
 const KEYS = ['id', 'text', 'records', 'read'];

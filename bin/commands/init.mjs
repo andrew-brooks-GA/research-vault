@@ -10,7 +10,7 @@ import { compileVault } from '../lib/indexview.mjs';
 import { scaffoldProjectConfig, quotedGlob } from '../lib/projectconfig.mjs';
 import { acknowledgeBinding } from '../lib/trust.mjs';
 import { csvList } from '../lib/args.ts';
-import { assertInsideVault, compareVaultLocations, VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
+import { assertInsideVault, compareVaultLocations, VAULT_PATH_OUTSIDE } from '../lib/containment.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 

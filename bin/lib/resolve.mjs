@@ -6,7 +6,7 @@ import { configPath, isBindingAcknowledged } from './trust.mjs';
 import { walkEntries } from './fsutil.mjs';
 import { loadSchema } from './schema.mjs';
 import { loadProjectConfig, PROJECT_CONFIG_FILENAME } from './projectconfig.mjs';
-import { compareContainment, compareVaultLocations, mayBeInside } from './containment.mjs';
+import { compareContainment, compareVaultLocations, mayBeInside } from './containment.ts';
 
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const OUTSIDE_PROJECT_VAULT = 'ERR_OUTSIDE_PROJECT_VAULT';

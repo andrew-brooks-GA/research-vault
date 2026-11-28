@@ -6,7 +6,7 @@ import { entryNote, codeNote, moc, graphSettings } from '../lib/obsidianview.mjs
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { codeFiles, extractCodeLinks, langFor } from '../lib/codelinks.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
-import { assertInsideVault, escapePathControls, isInsideVault, mayBeInside, VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
+import { assertInsideVault, escapePathControls, isInsideVault, mayBeInside, VAULT_PATH_OUTSIDE } from '../lib/containment.ts';
 import { ENTRY_FOLDERS } from '../lib/fsutil.mjs';
 import { loadSchema } from '../lib/schema.mjs';
 

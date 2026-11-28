@@ -5,7 +5,7 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import { parseFrontmatter } from './frontmatter.mjs';
 import { matchRows } from './manifest.mjs';
 import { checkCitations, extractCitations, SPAN_RE } from './citations.mjs';
-import { mayBeInside } from './containment.mjs';
+import { mayBeInside } from './containment.ts';
 import { traverse } from './graph.ts';
 import { extractCites, LESSON_ID_RE, RECORD_ID_RE, FOLLOWUP, CONNECT_LEAD, lessonClass, parseBlocks, blockSpans, parseQuiz, readPath, imgAttr, isProject, README_SECTIONS } from './lesson-format.mjs';
 import { imageTarget } from './serve-file.mjs';

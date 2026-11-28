@@ -4,7 +4,7 @@
 // lives in the file, never here. Validated against the single schema/taxonomy.json.
 import { existsSync as realExists, lstatSync as realLstat, readFileSync as realRead, writeFileSync as realWrite } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { isInsideVault } from './containment.mjs';
+import { isInsideVault } from './containment.ts';
 
 export const PROJECT_CONFIG_FILENAME = '.research-vault.json';
 

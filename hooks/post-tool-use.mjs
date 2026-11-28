@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../bin/lib/resolve.mjs';
-import { isInsideVault } from '../bin/lib/containment.mjs';
+import { isInsideVault } from '../bin/lib/containment.ts';
 import { fixVault, lintAndReport } from '../bin/lib/lintrules.mjs';
 import { expandFiles } from '../bin/lib/files.ts';
 import { checkCitations, extractCitations } from '../bin/lib/citations.mjs';

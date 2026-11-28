@@ -8,7 +8,7 @@ import { readEntry, walkEntries, writeEntry } from '../bin/lib/fsutil.mjs';
 import { fixVault, lintVault } from '../bin/lib/lintrules.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { captureOperation } from '../bin/lib/capture-operation.mjs';
-import { VAULT_PATH_OUTSIDE } from '../bin/lib/containment.mjs';
+import { VAULT_PATH_OUTSIDE } from '../bin/lib/containment.ts';
 import { LEDGER_FILENAME } from '../bin/lib/gate.mjs';
 import { PROJECT_CONFIG_FILENAME } from '../bin/lib/projectconfig.mjs';
 import { USAGE_LOG } from '../bin/lib/usagelog.mjs';

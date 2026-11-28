@@ -1,7 +1,7 @@
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync, readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
-import { assertInsideVault } from '../lib/containment.mjs';
+import { assertInsideVault } from '../lib/containment.ts';
 import { loadSchema } from '../lib/schema.mjs';
 import { buildManifest, writeManifest } from '../lib/manifest.mjs';
 import { writeEntry } from '../lib/fsutil.mjs';

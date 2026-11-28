@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, writeFileSync, lstatSync, renameSync, linkSy
 import { randomUUID } from 'node:crypto';
 import { dirname, join, sep, relative } from 'node:path';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.mjs';
-import { assertInsideVault, isInsideVault, escapePathControls } from './containment.mjs';
+import { assertInsideVault, isInsideVault, escapePathControls } from './containment.ts';
 import { assertFieldShapes } from './validate.ts';
 
 export const TYPE_FOLDER = { source:'sources', note:'notes', synthesis:'synthesis', snippet:'snippets', experiment:'experiments', question:'questions' };

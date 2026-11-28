@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { buildExport, toJsonl } from '../lib/exportjsonl.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
-import { mayBeInside } from '../lib/containment.mjs';
+import { mayBeInside } from '../lib/containment.ts';
 import { csvList } from '../lib/args.ts';
 
 export async function run(args) {

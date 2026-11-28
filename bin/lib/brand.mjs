@@ -1,7 +1,7 @@
 // Spec 50: a workspace's brand package, brand/brand.json and the files it names, put on every served and exported page.
 import { lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { isInsideWorkspaceFolder } from './containment.mjs';
+import { isInsideWorkspaceFolder } from './containment.ts';
 import { escapeHtml } from './escape.ts';
 
 // D2: the tokens a brand may set are the custom properties of lesson.css's first :root block.

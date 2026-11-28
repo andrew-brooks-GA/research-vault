@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { isInsideVault } from '../bin/lib/containment.mjs';
+import { isInsideVault } from '../bin/lib/containment.ts';
 import { resolveVault } from '../bin/lib/resolve.mjs';
 import { findProjectConfig } from '../bin/lib/projectconfig.mjs';
 

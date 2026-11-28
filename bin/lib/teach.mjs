@@ -10,7 +10,7 @@ import { writeEntry } from './fsutil.mjs';
 import { loadTeachSchema } from './schema.mjs';
 import { isAllowedValue } from './validate.ts';
 import { slugify } from './ids.ts';
-import { assertInsideWorkspaceFolder, escapePathControls, isInsideVault, isInsideWorkspaceFolder } from './containment.mjs';
+import { assertInsideWorkspaceFolder, escapePathControls, isInsideVault, isInsideWorkspaceFolder } from './containment.ts';
 import { expandFiles } from './files.ts';
 import { grade } from '../../skills/research-teach/assets/quiz.js';
 import { CONTENT_TYPES, STATIC_DIRS, imageTarget, navHtml, serveFile, withNav } from './serve-file.mjs';

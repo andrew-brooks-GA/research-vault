@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { assertInsideVault, compareContainment } from './containment.mjs';
+import { assertInsideVault, compareContainment } from './containment.ts';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { walkEntries, readEntry, TYPE_FOLDER, writeAtomic } from './fsutil.mjs';

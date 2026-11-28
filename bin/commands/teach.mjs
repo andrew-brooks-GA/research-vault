@@ -18,7 +18,7 @@ import { hasVerdict } from '../lib/gate.mjs';
 import { readLabs, secretHits } from '../lib/labs.mjs';
 import { readBrand } from '../lib/brand.mjs';
 import { ptyAvailable } from '../lib/terminal.mjs';
-import { assertInsideWorkspaceFolder, isInsideVault, isInsideWorkspaceFolder, mayBeInside, VAULT_PATH_OUTSIDE } from '../lib/containment.mjs';
+import { assertInsideWorkspaceFolder, isInsideVault, isInsideWorkspaceFolder, mayBeInside, VAULT_PATH_OUTSIDE } from '../lib/containment.ts';
 import { screenText } from '../lib/screen.ts';
 import { lintWorkspace, proseMetrics, pathFringe, pathCandidates, missionFloor, pathEdges, lessonUses, commandTools, parseLesson, topicSlug } from '../lib/lesson.mjs';
 

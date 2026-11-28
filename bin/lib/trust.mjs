@@ -2,7 +2,7 @@ import { constants, fstatSync, readFileSync, realpathSync, lstatSync, mkdirSync,
 import path from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
-import { assertInsideWorkspaceFolder } from './containment.mjs';
+import { assertInsideWorkspaceFolder } from './containment.ts';
 import { sha256Hex } from './hash.ts';
 
 export function configPath({ platform, home, env }) {

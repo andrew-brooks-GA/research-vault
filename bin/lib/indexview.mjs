@@ -2,7 +2,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { TYPE_FOLDER as FOLDER } from './fsutil.mjs';
 import { buildManifest } from './manifest.mjs';
-import { assertInsideVault } from './containment.mjs';
+import { assertInsideVault } from './containment.ts';
 function row(e) { return `- ${e.id} — ${e.title || '(untitled)'} [${e.status}] (verified ${e.last_verified || 'never'})`; }
 export function rootIndex(manifest) {
   const byType = Object.create(null); // keyed by entry types, `constructor` too (S-13)

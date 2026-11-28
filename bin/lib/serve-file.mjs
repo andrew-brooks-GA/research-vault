@@ -1,7 +1,7 @@
 // Static workspace files and the navigation, citations and lab steps rendered on their pages.
 import { lstatSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, relative, resolve, sep } from 'node:path';
-import { isInsideVault, isInsideWorkspaceFolder } from './containment.mjs';
+import { isInsideVault, isInsideWorkspaceFolder } from './containment.ts';
 import { escapeHtml } from './escape.ts';
 import { extractCites } from './lesson-format.mjs';
 import { lessonLab, readLabs } from './labs.mjs';
