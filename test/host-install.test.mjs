@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, symlin
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { testEnv } from './helpers.mjs';
+import { REPO_ROOT, testEnv } from './helpers.mjs';
 import { manageCodex, installationFiles, shellQuote } from '../bin/lib/host-install.mjs';
 import { context } from '../scripts/deps.mjs';
 
@@ -36,16 +36,63 @@ function generatedMarkdown(t) {
   return [...installationFiles(project(t)).files].filter(([name]) => /^\.agents\/skills\/.*\.md$/.test(name));
 }
 
-const commands = context().commands;
+const ctx = context();
 
 test('generated Codex skills contain no bare research-vault invocations', t => {
-  const bare = new RegExp(`(?<![\\w./-])research-vault[ \\t]+(?:${commands.join('|')})\\b`);
+  const bare = new RegExp(`(?<![\\w./-])research-vault[ \\t]+(?:${ctx.commands.join('|')})\\b`);
   for (const [name, body] of generatedMarkdown(t)) assert.doesNotMatch(body.toString(), bare, name);
 });
 
 test('generated Codex skills contain no CLAUDE_PLUGIN_ROOT references', t => {
   for (const [name, body] of generatedMarkdown(t)) assert.doesNotMatch(body.toString(), /CLAUDE_PLUGIN_ROOT/, name);
 });
+
+// Guard the installed destinations of plugin-root paths in the source skills and commands.
+test('source scan: the Codex copy contains the paths named by skills, commands and the help reader', t => {
+  const root = project(t);
+  const { files } = installationFiles(root);
+  const payload = '.research-vault-host/codex/package';
+  const redirects = new Map([
+    ['bin/research-vault.mjs', '.research-vault-host/codex/run.mjs'],
+    ['skills/research-orchestrate/workflow', '.agents/skills/research-orchestrate/workflow'],
+  ]);
+  assert.ok(files.has(`${payload}/docs/REFERENCE.md`), 'command help needs docs/REFERENCE.md');
+  for (const source of ctx.files.filter(name => /^(skills|commands)\//.test(name))) {
+    const body = readFileSync(join(REPO_ROOT, source), 'utf8');
+    for (const [, target] of body.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([\w.-]+(?:\/[\w.-]+)*)/g)) {
+      const redirect = redirects.get(target);
+      const installed = redirect ?? `${payload}/${target}`;
+      assert.ok(files.has(installed), `${source} names missing installed path ${installed}`);
+      const generatedName = source.startsWith('skills/') ? `.agents/${source}` : `.agents/skills/${source.slice('commands/'.length, -3)}/SKILL.md`;
+      const generated = files.get(generatedName)?.toString().replaceAll("'\\''", "'");
+      const packagePath = `${join(root, payload)}/${target}`;
+      const path = redirect ? join(root, redirect) : packagePath;
+      assert.ok(generated?.includes(path), `${generatedName} must point to ${installed}`);
+      if (redirect) assert.ok(!generated.includes(packagePath), `${generatedName} must not point to ${payload}/${target}`);
+    }
+  }
+});
+
+for (const command of ['init', 'host']) {
+  test(`the installed Codex launcher prints the ${command} command table row for --help`, t => {
+    const root = project(t);
+    const run = (entry, ...args) => spawnSync(process.execPath, [entry, ...args], {
+      env: testEnv(), cwd: root, encoding: 'utf8', timeout: 20000,
+    });
+    const install = run(join(REPO_ROOT, 'bin/research-vault.mjs'), 'host', 'install', 'codex', '--at', root);
+    assert.ifError(install.error);
+    assert.equal(install.status, 0, install.stderr);
+
+    const table = readFileSync(join(REPO_ROOT, 'docs/REFERENCE.md'), 'utf8');
+    const row = table.match(new RegExp(`^\\| \`${command}\` \\| (.*) \\|$`, 'm'));
+    assert.ok(row, `missing command table row for ${command}`);
+    const help = run(join(root, '.research-vault-host/codex/run.mjs'), command, '--help');
+    assert.ifError(help.error);
+    assert.equal(help.status, 0, help.stderr);
+    const expected = row[1].replace(/ *<!--.*?-->/g, '').replaceAll('\\|', '|');
+    assert.equal(help.stdout, `research-vault ${command}: ${expected}\n`);
+  });
+}
 
 test('generated CLI definitions give the absolute launcher without Claude path resolution', t => {
   const launcher = /^- CLI: `node '(?:[A-Za-z]:)?[\\/][^\n]*[\\/]\.research-vault-host[\\/]codex[\\/]run\.mjs'`\.(?: |$)/;

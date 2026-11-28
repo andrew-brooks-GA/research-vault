@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { REPO_ROOT, tmpVault, put, testEnv } from './helpers.mjs';
+import { context } from '../scripts/deps.mjs';
 
 const CLI = join(REPO_ROOT, 'bin', 'research-vault.mjs');
 
@@ -23,6 +24,19 @@ test('CLI does not truncate large piped stdout (process.exit after write)', () =
   assert.doesNotThrow(() => JSON.parse(out.toString()));
 });
 
+function referenceRows() {
+  const reference = readFileSync(join(REPO_ROOT, 'docs', 'REFERENCE.md'), 'utf8');
+  return reference.split(/^## Commands\n/m)[1].split(/^## /m)[0].split('\n');
+}
+
+// Guard the reference table against the CLI dispatch map, including commands missing from usage.
+test('source scan: every CLI command has a reference table row', () => {
+  const rows = referenceRows();
+  for (const cmd of context().commands) {
+    assert.ok(rows.some(row => row.startsWith(`| \`${cmd}\` | `)), `missing command table row for ${cmd}`);
+  }
+});
+
 // Issue 72 item 9: --help or -h after a command prints usage and runs nothing, even with no vault yet.
 test('a command given --help or -h prints its row of the command table and writes nothing', () => {
   const root = mkdtempSync(join(tmpdir(), 'rv-help-'));
@@ -31,13 +45,15 @@ test('a command given --help or -h prints its row of the command table and write
   const usage = run('--help');
   assert.equal(usage.status, 0, usage.stderr);
   const names = usage.stdout.match(/commands: ([\w|-]+)/)[1].split('|');
-  const table = readFileSync(join(REPO_ROOT, 'docs', 'REFERENCE.md'), 'utf8');
+  const rows = referenceRows();
   for (const [cmd, flag] of [...names.map((c) => [c, '--help']), ['init', '-h']]) {
+    const head = `| \`${cmd}\` | `;
+    const row = rows.find(line => line.startsWith(head));
+    assert.ok(row, `missing command table row for ${cmd}`);
+    const expected = row.slice(head.length, -2).replace(/ *<!--.*?-->/g, '').replaceAll('\\|', '|');
     const r = run(cmd, flag);
     assert.equal(r.status, 0, `${cmd} ${flag}: ${r.stderr}`);
-    assert.ok(r.stdout.startsWith(`research-vault ${cmd}: `), `${cmd} ${flag}: ${r.stdout}`);
-    assert.equal(r.stdout.includes('section of docs/REFERENCE.md'), !table.includes(`\n| \`${cmd}\` | `), `${cmd}: its row, or the pointer when it has none`);
-    assert.ok(!r.stdout.includes('<!--') && !r.stdout.includes('\\|'), `${cmd}: no comment and no escaped bar`);
+    assert.equal(r.stdout, `research-vault ${cmd}: ${expected}\n`, `${cmd} ${flag}`);
     assert.deepEqual(readdirSync(root), [], `${cmd} ${flag} wrote nothing`);
   }
   const unknown = run('nosuch', '--help');

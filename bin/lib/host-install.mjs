@@ -85,7 +85,7 @@ export function installationFiles(project, { packageRoot = PACKAGE_ROOT, without
   const pkg = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
   if (pkg.name !== 'research-vault') throw new Error('not a research-vault package');
   const files = new Map();
-  const source = 'bin schema hooks agents skills commands scripts vault-template .claude-plugin package.json'.split(' ').flatMap(n => sourceFiles(packageRoot, n));
+  const source = 'bin schema hooks agents skills commands scripts vault-template .claude-plugin package.json docs/REFERENCE.md docs/ORCHESTRATOR-INTEGRATION.md'.split(' ').flatMap(n => sourceFiles(packageRoot, n));
   for (const name of source) files.set(`${PAYLOAD}/${name}`, readFileSync(join(packageRoot, name)));
   const pinned = Object.fromEntries([...files].map(([name, body]) => [name.slice(PAYLOAD.length + 1), sha(body)]));
   const root = join(project, PAYLOAD);
