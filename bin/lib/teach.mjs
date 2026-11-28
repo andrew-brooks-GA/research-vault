@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.mjs';
 import { writeEntry } from './fsutil.mjs';
 import { loadTeachSchema } from './schema.mjs';
-import { isAllowedValue } from './validate.mjs';
+import { isAllowedValue } from './validate.ts';
 import { slugify } from './ids.mjs';
 import { assertInsideWorkspaceFolder, escapePathControls, isInsideVault, isInsideWorkspaceFolder } from './containment.mjs';
 import { expandFiles } from './files.ts';

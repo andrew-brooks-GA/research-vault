@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (spec 56, stage 6):** `bin/lib/validate.mjs` is now `bin/lib/validate.ts` (types added, nothing else: the conversion check reports no difference). Its five importers, two tests, two `COUPLINGS` rows and three comments in `bin/lib/lintrules.mjs` name the new path.
 - **Changed (R-64, the enum checks):** `bin/lib/validate.mjs` exports `isAllowedValue(schema, key, value)`, and the three places that tested a value against the schema's allowed list with their own copy of the expression (`check` in `validate.mjs`, the enum loop of `bin/lib/lintrules.mjs`, `validateEntry` in `bin/lib/teach.mjs`) call it. Messages, findings, their order and which values count as empty are unchanged. `allowedValues` throws `allowedValues: no taxonomy list named <key>` for a key the taxonomy lacks, a state no vault, binding or command reaches.
 - **Changed (spec 56, stage 6):** `compareVaultLocations` of `bin/lib/containment.mjs` returns `null` (location unknown) by a check of its own when the file system it is given has no `statSync`, where it used to reach the same answer by catching the failed call. Nothing changes for any file system a caller passes; the file can now be converted to TypeScript with types only.
 - **Changed (spec 56, stage 6):** `bin/lib/hash.mjs` is now `bin/lib/hash.ts` (types added, nothing else: the conversion check reports no difference). Its twelve importers, eight tests and one `COUPLINGS` row name the new path.

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { walkEntries, readEntry, FOLDER_TYPE, writeAtomic } from './fsutil.mjs';
 import { loadSchema, stageAllowedInFolder, fieldOrder } from './schema.mjs';
 import { serializeFrontmatter } from './frontmatter.mjs';
-import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, isAllowedValue, fieldShapeErrors } from './validate.mjs';
+import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, isAllowedValue, fieldShapeErrors } from './validate.ts';
 import { BLOCKLIST, loadBlocklist, matchBlock } from './blocklist.mjs';
 import { isUnverifiedSource, buildManifest, writeManifest } from './manifest.mjs';
 import { assertInsideVault, escapePathControls } from './containment.mjs';
@@ -14,9 +14,9 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MONOLITHIC_SYNTHESIS_WORDS = 1500;
 
 // lint's enum coverage is driven from the same CONTROLLED_FIELDS / VERIFICATION_CONTROLLED_FIELDS
-// maps the fail-fast validator (validate.mjs) uses, so the two cannot silently diverge. These
+// maps the fail-fast validator (validate.ts) uses, so the two cannot silently diverge. These
 // tables only supply the emitted violation code + human label per field; the field list itself
-// (hence coverage) comes from validate.mjs.
+// (hence coverage) comes from validate.ts.
 const ENUM_META = {
   domain:          { code: 'ENUM_DOMAIN',          label: 'domain' },
   volatility:      { code: 'ENUM_VOLATILITY',      label: 'volatility' },
@@ -115,7 +115,7 @@ export function lintVault(vaultPath, repoRoot) {
     // subject) passes screenText (S-11): each message is a line of lint's text output.
     if (FOLDER_TYPE[folder] && data.type !== FOLDER_TYPE[folder]) add(abs, 'TYPE_FOLDER', `type ${screenText(data.type)} in folder ${folder}`);
     if (data.stage && !stageAllowedInFolder(schema, folder, data.stage)) add(abs, 'STAGE_FOLDER', `stage ${screenText(data.stage)} not allowed in ${folder}`);
-    // Enum checks driven from CONTROLLED_FIELDS (validate.mjs). Shape-check array-valued
+    // Enum checks driven from CONTROLLED_FIELDS (validate.ts). Shape-check array-valued
     // controlled fields (domain) BEFORE enum iteration, or a bare scalar `domain: security`
     // would be walked character-by-character into garbage per-char violations.
     for (const [field, key] of Object.entries(CONTROLLED_FIELDS)) {
