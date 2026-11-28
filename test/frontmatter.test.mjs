@@ -316,3 +316,10 @@ for (const [position, lines] of [
     assert.equal(parsed, undefined);
   });
 }
+
+test('a new key outside the supplied order is appended after preserved keys', () => {
+  const { data, body } = parseFrontmatter('---\ntitle: t\nstatus: active\n---\nbody\n');
+  data.extra = 'x';
+  assert.equal(serializeFrontmatter(data, body, ['title', 'status']),
+    '---\ntitle: t\nstatus: active\nextra: x\n---\nbody\n');
+});

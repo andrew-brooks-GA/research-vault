@@ -261,7 +261,7 @@ export function serializeFrontmatter(data, body, order = null, { preserve = true
     for (const k of Object.keys(data)) {
       if (Object.hasOwn(raw, k)) continue;
       const at = order ? order.indexOf(k) : -1;
-      const before = at < 0 ? -1 : keys.findIndex(x => order.indexOf(x) > at);
+      const before = !order || at < 0 ? -1 : keys.findIndex(x => order.indexOf(x) > at);
       if (before < 0) keys.push(k); else keys.splice(before, 0, k);
     }
   } else {
@@ -275,10 +275,11 @@ export function serializeFrontmatter(data, body, order = null, { preserve = true
   const out = ['---'];
   for (const key of keys) {
     const v = data[key];
+    const saved = raw && Object.hasOwn(raw, key) ? raw[key] : undefined;
     // CRs inside raw block values are content; final normalization would erase them.
-    if (raw && Object.hasOwn(raw, key) && isDeepStrictEqual(v, raw[key].value) &&
-        !(raw[key].lines.some(l => l.includes('\r')) && hasCarriageReturn(v))) {
-      out.push(...raw[key].lines);
+    if (saved && isDeepStrictEqual(v, saved.value) &&
+        !(saved.lines.some(l => l.includes('\r')) && hasCarriageReturn(v))) {
+      out.push(...saved.lines);
     } else if (Array.isArray(v) && v.some(item => isMap(item) || Array.isArray(item))) {
       out.push(`${key}:`);
       for (const item of v) {
@@ -294,7 +295,7 @@ export function serializeFrontmatter(data, body, order = null, { preserve = true
       }
     } else if (v && typeof v === 'object' && !Array.isArray(v)) {
       out.push(`${key}:`);
-      for (const k of Object.keys(v)) out.push(`  ${k}: ${emitScalar(v[k])}`);
+      for (const [k, value] of Object.entries(v)) out.push(`  ${k}: ${emitScalar(value)}`);
     } else if (typeof v === 'string' && v.includes('\n') && !v.includes('\r') && !v.split('\n').some(l => l !== '' && l.trim() === '')) {
       out.push(...emitBlock(key, v));
     } else {
