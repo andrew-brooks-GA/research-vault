@@ -10,7 +10,7 @@ import { resolveVault } from '../bin/lib/resolve.mjs';
 import { loadProjectConfig } from '../bin/lib/projectconfig.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
 import { gatedFiles, gateStatus, ledgerKey, referencedImages, referencedScripts, taskFile, missingEvidence } from '../bin/lib/gate.mjs';
-import { runGit } from '../bin/lib/git.mjs';
+import { runGit } from '../bin/lib/git.ts';
 import { langFor, codeFiles, extractCodeLinks, readVersions } from '../bin/lib/codelinks.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');

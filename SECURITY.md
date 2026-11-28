@@ -19,7 +19,7 @@ The path checks below compare resolved path names at the time of the check. A ha
 
 ## Git processes
 
-Every Git process started by the hooks, gate and repository scripts goes through `bin/lib/git.mjs` and runs without a shell. The wrapper passes `--no-optional-locks`, disables `core.fsmonitor`, sets `safe.bareRepository=explicit`, sets `core.hooksPath` to the wrapper file so it holds no hooks, disables `hook.post-index-change.enabled` and sets `GIT_NO_LAZY_FETCH=1`. The two hooks' calls time out after 3 seconds. Boolean `core.fsmonitor` needs Git 2.36 or later, implicit bare repository refusal needs 2.38 or later, `GIT_NO_LAZY_FETCH` needs 2.45 or later, and the hook event setting needs 2.55 or later. A repository's Git configuration can name clean, smudge or process filter programs that Git runs. Reading a split index still refreshes the shared index file's timestamp.
+Every Git process started by the hooks, gate and repository scripts goes through `bin/lib/git.ts` and runs without a shell. The wrapper passes `--no-optional-locks`, disables `core.fsmonitor`, sets `safe.bareRepository=explicit`, sets `core.hooksPath` to the wrapper file so it holds no hooks, disables `hook.post-index-change.enabled` and sets `GIT_NO_LAZY_FETCH=1`. The two hooks' calls time out after 3 seconds. Boolean `core.fsmonitor` needs Git 2.36 or later, implicit bare repository refusal needs 2.38 or later, `GIT_NO_LAZY_FETCH` needs 2.45 or later, and the hook event setting needs 2.55 or later. A repository's Git configuration can name clean, smudge or process filter programs that Git runs. Reading a split index still refreshes the shared index file's timestamp.
 
 ## Repository bindings
 

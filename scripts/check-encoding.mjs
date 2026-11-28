@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { runGit } from "../bin/lib/git.mjs";
+import { runGit } from "../bin/lib/git.ts";
 
 const files = runGit(["ls-files", "--eol", "-z"], { timeout: 0, stderr: "inherit" }).split("\0").filter(Boolean).flatMap((record) => {
   const tab = record.indexOf("\t");

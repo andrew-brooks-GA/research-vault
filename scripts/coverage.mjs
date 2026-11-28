@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runGit } from '../bin/lib/git.mjs';
+import { runGit } from '../bin/lib/git.ts';
 
 const excluded = new Map([
   // Vendored browser bundles: exercise through the browser, not Node's test loader.

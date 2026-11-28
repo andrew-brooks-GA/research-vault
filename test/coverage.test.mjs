@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { gitInvocation } from '../bin/lib/git.mjs';
+import { gitInvocation } from '../bin/lib/git.ts';
 import { testEnv, tmpVault } from './helpers.mjs';
 
 const codeDir = 'bin', testDir = 'test';

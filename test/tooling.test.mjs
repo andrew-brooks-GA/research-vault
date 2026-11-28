@@ -5,7 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from 'node:os';
 import { join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runGit } from '../bin/lib/git.mjs';
+import { runGit } from '../bin/lib/git.ts';
 import { installationFiles } from '../bin/lib/host-install.mjs';
 import { build } from '../scripts/deps.mjs';
 import { findSuppressions } from '../tooling/suppressions.mjs';

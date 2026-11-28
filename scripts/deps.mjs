@@ -8,7 +8,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, posix, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runGit } from '../bin/lib/git.mjs';
+import { runGit } from '../bin/lib/git.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CODE_EXT = ['.mjs', '.js', '.ts'];
@@ -254,9 +254,9 @@ export const COUPLINGS = [
   ['schema/taxonomy.json', 'test/helpers.mjs', 'put() hardcodes domain, method, by_type, result and volatility values', 'by_type'],
   ['schema/taxonomy.json', 'bin/lib/capture-entry.mjs', 'the default domain, volatility, source_type, confidence, outcome, state and language values', 'source_type'],
   ['test/helpers.mjs', 'test/isolation.test.mjs', 'the source guard matches the testEnv helper by name', 'testEnv'],
-  ['bin/lib/git.mjs', 'test/git.test.mjs', 'the invocation test checks the fixed Git overrides and their order', /['"]-c['"]\s*,\s*['"]hook\.post-index-change\.enabled=false['"]/],
-  ['bin/lib/git.mjs', 'SECURITY.md', 'the Git overrides, supported versions and limits are restated', 'safe.bareRepository=explicit'],
-  ['bin/lib/git.mjs', 'test/teach-labs.test.mjs', 'the process guard checks the child_process import and sole Git launch', 'execFileSync'],
+  ['bin/lib/git.ts', 'test/git.test.mjs', 'the invocation test checks the fixed Git overrides and their order', /['"]-c['"]\s*,\s*['"]hook\.post-index-change\.enabled=false['"]/],
+  ['bin/lib/git.ts', 'SECURITY.md', 'the Git overrides, supported versions and limits are restated', 'safe.bareRepository=explicit'],
+  ['bin/lib/git.ts', 'test/teach-labs.test.mjs', 'the process guard checks the child_process import and sole Git launch', 'execFileSync'],
   ['schema/teach-taxonomy.json', 'skills/research-teach/LEARNING-RECORD-FORMAT.md', 'kind values, types and the learning-records folder are hand-copied', 'learning-records'],
   ['schema/frontmatter.schema.json', 'bin/lib/graph.mjs', 'DEPENDENCY_RELS must be a subset of edge_fields.backlink'],
   ['schema/frontmatter.schema.json', 'hooks/pre-web.mjs', 'title, topics, summary, source_url, status and type are read by name', 'source_url'],

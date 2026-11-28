@@ -533,16 +533,16 @@ function functionBody(source, name) {
 // Guard the serve-path process boundary and checked launch sites: exercising a finite set of
 // requests cannot establish that no other branch imports or starts a process, or bypasses a check.
 test('source scan: serve-path process imports, call sites and launch options stay confined', () => {
-  const serve = ['bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/terminal.mjs', 'bin/lib/git.mjs', 'bin/lib/gate.mjs', 'bin/lib/teach.mjs', 'bin/lib/serve-file.mjs', 'bin/lib/lesson.mjs', 'bin/lib/lesson-format.mjs', 'bin/lib/escape.mjs', 'bin/commands/teach.mjs', 'bin/lib/args.mjs', 'skills/research-teach/assets/quiz.js'];
+  const serve = ['bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/terminal.mjs', 'bin/lib/git.ts', 'bin/lib/gate.mjs', 'bin/lib/teach.mjs', 'bin/lib/serve-file.mjs', 'bin/lib/lesson.mjs', 'bin/lib/lesson-format.mjs', 'bin/lib/escape.mjs', 'bin/commands/teach.mjs', 'bin/lib/args.mjs', 'skills/research-teach/assets/quiz.js'];
   const read = (f) => readFileSync(join(ROOT, f), 'utf8');
   const count = (src, name) => [...src.matchAll(new RegExp('\\b' + name + '\\s*\\(', 'g'))].length;
   const walk = (d) => readdirSync(join(ROOT, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith('.mjs') || (e.name.endsWith('.ts') && !e.name.endsWith('.d.ts')) ? [join(d, e.name)] : []));
-  assert.deepEqual(walk('bin').filter((f) => read(f).includes('child_process')).sort(), ['bin/lib/codex-review.mjs', 'bin/lib/git.mjs', 'bin/lib/host-install.mjs', 'bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/terminal.mjs']);
+  assert.deepEqual(walk('bin').filter((f) => read(f).includes('child_process')).sort(), ['bin/lib/codex-review.mjs', 'bin/lib/git.ts', 'bin/lib/host-install.mjs', 'bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/terminal.mjs']);
   for (const file of serve) {
     const src = read(file);
     assert.doesNotMatch(src, /from\s*['"][^'"]*(?:codex-review|host-install)\.mjs['"]/, file);
     assert.doesNotMatch(src, /\bshell\s*:\s*true\b|(?<![.\w])(?:exec|execSync|execFile|eval)\s*\(|\bnew\s+Function\b/, file);
-    const expected = file === 'bin/lib/git.mjs' ? [0, 0, 1] : file === 'bin/lib/terminal.mjs' ? [1, 1, 0] : /\/(?:labs|task)\.mjs$/.test(file) ? [1, 0, 0] : [0, 0, 0];
+    const expected = file === 'bin/lib/git.ts' ? [0, 0, 1] : file === 'bin/lib/terminal.mjs' ? [1, 1, 0] : /\/(?:labs|task)\.mjs$/.test(file) ? [1, 0, 0] : [0, 0, 0];
     assert.deepEqual(['spawn', 'spawnSync', 'execFileSync'].map((name) => count(src, name)), expected, file);
     if (expected.some((n) => n !== 0)) {
       const imports = [...src.matchAll(/\bimport\s*(?:([^;'"]*?)\s*from\s*)?(['"])(?:node:)?child_process\2/g)];
@@ -554,9 +554,9 @@ test('source scan: serve-path process imports, call sites and launch options sta
     if (expected.every((n) => n === 0)) assert.doesNotMatch(src, /child_process|\bspawn\b/, file);
   }
   const gate = read('bin/lib/gate.mjs');
-  assert.match(gate, /import\s*\{[^}]*\brunGit\b[^}]*\}\s*from\s*['"]\.\/git\.mjs['"]/);
+  assert.match(gate, /import\s*\{[^}]*\brunGit\b[^}]*\}\s*from\s*['"]\.\/git\.ts['"]/);
   assert.match(gate, /\brunGit\s*\(/);
-  assert.match(read('bin/lib/git.mjs'), /\bexecFileSync\s*\(\s*['"]git['"]\s*,/);
+  assert.match(read('bin/lib/git.ts'), /\bexecFileSync\s*\(\s*['"]git['"]\s*,/);
   for (const [file, name] of [['task', 'runGroup'], ['labs', 'launch'], ['terminal', 'startShell']]) {
     const body = functionBody(read('bin/lib/' + file + '.mjs'), name);
     assert.equal(count(body, 'spawn'), 1, name);

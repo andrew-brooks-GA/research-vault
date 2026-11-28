@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { gitInvocation } from '../bin/lib/git.mjs';
+import { gitInvocation } from '../bin/lib/git.ts';
 import { build, context, COUPLINGS, dependents, extensionOf, extract, EXTRACTED, IGNORED } from '../scripts/deps.mjs';
 import { testEnv, tmpVault } from './helpers.mjs';
 
@@ -179,7 +179,7 @@ function repoFixture(t, sources) {
     mkdirSync(join(cwd, posix.dirname(file)), { recursive: true });
     writeFileSync(join(cwd, file), source);
   }
-  for (const file of ['bin/lib/git.mjs', 'scripts/deps.mjs']) {
+  for (const file of ['bin/lib/git.ts', 'scripts/deps.mjs']) {
     mkdirSync(join(cwd, posix.dirname(file)), { recursive: true });
     cpSync(new URL(`../${file}`, import.meta.url), join(cwd, file));
   }
@@ -263,7 +263,7 @@ test('--order prints exact import levels and sorts paths within a level', { time
   }));
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout, [
-    '0\tbin/Y.js', '0\tbin/b.mjs', '0\tbin/c.ts', '0\tbin/d.js', '0\tbin/lib/git.mjs',
+    '0\tbin/Y.js', '0\tbin/b.mjs', '0\tbin/c.ts', '0\tbin/d.js', '0\tbin/lib/git.ts',
     '1\tbin/Z.ts', '1\tscripts/deps.mjs', '2\tbin/a.ts', '',
   ].join('\n'));
 });
@@ -294,5 +294,5 @@ test('--order lists the real code files once and puts each importer above its de
       assert.ok(levels.get(from) > levels.get(to), `${from} must follow ${to}`);
     }
   }
-  assert.ok(levels.get('scripts/deps.mjs') > levels.get('bin/lib/git.mjs'));
+  assert.ok(levels.get('scripts/deps.mjs') > levels.get('bin/lib/git.ts'));
 });

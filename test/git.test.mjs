@@ -4,11 +4,11 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gitInvocation, GIT_TIMEOUT_MS, runGit } from '../bin/lib/git.mjs';
+import { gitInvocation, GIT_TIMEOUT_MS, runGit } from '../bin/lib/git.ts';
 import { cleanInGit } from '../hooks/stop-gate.mjs';
 import { testEnv, tmpVault } from './helpers.mjs';
 
-const wrapperPath = fileURLToPath(new URL('../bin/lib/git.mjs', import.meta.url));
+const wrapperPath = fileURLToPath(new URL('../bin/lib/git.ts', import.meta.url));
 const gitVersion = execFileSync('git', ['--version'], { env: testEnv(), encoding: 'utf8', timeout: GIT_TIMEOUT_MS })
   .match(/^git version (\d+)\.(\d+)\.(\d+)/).slice(1).map(Number);
 
@@ -69,7 +69,7 @@ test('encoding gate reports a CR byte in any tracked text file without changing 
   mkdirSync(join(cwd, 'scripts'));
   mkdirSync(join(cwd, 'bin/lib'), { recursive: true });
   copyFileSync(new URL('../scripts/check-encoding.mjs', import.meta.url), join(cwd, 'scripts/check-encoding.mjs'));
-  copyFileSync(new URL('../bin/lib/git.mjs', import.meta.url), join(cwd, 'bin/lib/git.mjs'));
+  copyFileSync(new URL('../bin/lib/git.ts', import.meta.url), join(cwd, 'bin/lib/git.ts'));
   const file = join(cwd, 'page.html');
   const markdown = join(cwd, 'lonecr.md');
   const clean = Buffer.from('<p>clean</p>\n');
@@ -102,7 +102,7 @@ test('encoding gate skips tracked binary files containing CR bytes', (t) => {
   mkdirSync(join(cwd, 'scripts'));
   mkdirSync(join(cwd, 'bin/lib'), { recursive: true });
   copyFileSync(new URL('../scripts/check-encoding.mjs', import.meta.url), join(cwd, 'scripts/check-encoding.mjs'));
-  copyFileSync(new URL('../bin/lib/git.mjs', import.meta.url), join(cwd, 'bin/lib/git.mjs'));
+  copyFileSync(new URL('../bin/lib/git.ts', import.meta.url), join(cwd, 'bin/lib/git.ts'));
   writeFileSync(join(cwd, '.gitattributes'), '* text=auto eol=lf\nexplicit.md -text\n');
   writeFileSync(join(cwd, 'explicit.md'), 'a line\rwith a lone CR\n');
   writeFileSync(join(cwd, 'nul.md'), Buffer.from([0x61, 0x00, 0x0d, 0x0a]));
@@ -278,7 +278,7 @@ test('source scan: only the shared wrapper starts Git', () => {
       if (!entry.isFile()) continue;
       const path = join(entry.parentPath, entry.name);
       const file = relative(root, path).replaceAll('\\', '/');
-      if (file === 'bin/lib/git.mjs') continue;
+      if (file === 'bin/lib/git.ts') continue;
       const source = readFileSync(path, 'utf8');
       assert.ok(!jsGit.test(source) && !gitConstant.test(source) && !shellGit.test(source), `${file} must use the shared Git wrapper`);
     }
