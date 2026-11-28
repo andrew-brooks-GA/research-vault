@@ -544,7 +544,7 @@ test('a Markdown draft is cut into its own sections whatever data-block HTML it 
 import { codeRepo, LUA_A } from './helpers.mjs';
 import { codeLang } from '../bin/lib/gate.mjs';
 import { LANGS } from '../bin/lib/codelinks.mjs';
-import { parseProjectConfig } from '../bin/lib/projectconfig.mjs';
+import { parseProjectConfig } from '../bin/lib/projectconfig.ts';
 import { loadSchema } from '../bin/lib/schema.mjs';
 
 function codeCli(cwd, ...args) {

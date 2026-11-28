@@ -12,7 +12,7 @@ import { loadSchema } from '../lib/schema.mjs';
 import { buildManifest, isUnverifiedSource } from '../lib/manifest.mjs';
 import { walkEntries, readEntry } from '../lib/fsutil.ts';
 import { resolveVault } from '../lib/resolve.mjs';
-import { loadProjectConfig, quotedGlob } from '../lib/projectconfig.mjs';
+import { loadProjectConfig, quotedGlob } from '../lib/projectconfig.ts';
 import { checkCitations, extractCitationsDetailed } from '../lib/citations.mjs';
 import { expandFiles } from '../lib/files.ts';
 import { langFor, codeFiles, extractCodeLinks, readVersions, checkCodeLinks } from '../lib/codelinks.mjs';

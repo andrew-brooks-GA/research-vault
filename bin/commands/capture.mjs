@@ -6,7 +6,7 @@ import { loadSchema } from '../lib/schema.mjs';
 import { buildManifest, writeManifest } from '../lib/manifest.mjs';
 import { writeEntry } from '../lib/fsutil.ts';
 import { resolveVault, reportFallback } from '../lib/resolve.mjs';
-import { loadProjectConfig } from '../lib/projectconfig.mjs';
+import { loadProjectConfig } from '../lib/projectconfig.ts';
 import { fetchSource } from '../lib/fetchsource.mjs';
 import { blockedSourceMessage, loadBlocklist, sourceBlockCheck, SOURCE_BLOCKED } from '../lib/blocklist.ts';
 import { parseFrontmatter } from '../lib/frontmatter.ts';

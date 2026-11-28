@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { loadSchema, stageAllowedInFolder, fieldOrder, applyTaxonomyExtensions } from '../bin/lib/schema.mjs';
-import { PROJECT_CONFIG_FILENAME } from '../bin/lib/projectconfig.mjs';
+import { PROJECT_CONFIG_FILENAME } from '../bin/lib/projectconfig.ts';
 import { assertControlledValues, fieldShapeErrors, isAllowedValue } from '../bin/lib/validate.ts';
 import { REPO_ROOT, tmpVault, put } from './helpers.mjs';
 import { rmSync, readFileSync, writeFileSync } from 'node:fs';

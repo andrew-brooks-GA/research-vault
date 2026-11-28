@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { isInsideVault } from '../bin/lib/containment.ts';
 import { resolveVault } from '../bin/lib/resolve.mjs';
-import { findProjectConfig } from '../bin/lib/projectconfig.mjs';
+import { findProjectConfig } from '../bin/lib/projectconfig.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const HANDLERS = { SessionStart: 'session-start.mjs', PreToolUse: 'pre-web.mjs', PostToolUse: 'post-tool-use.mjs', Stop: 'stop-gate.mjs' };

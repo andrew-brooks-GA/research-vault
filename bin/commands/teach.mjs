@@ -7,7 +7,7 @@ import { OUTSIDE_PROJECT_VAULT, resolveVault } from '../lib/resolve.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
 import { TYPE_FOLDER, walkEntries } from '../lib/fsutil.ts';
-import { loadProjectConfig } from '../lib/projectconfig.mjs';
+import { loadProjectConfig } from '../lib/projectconfig.ts';
 import { csvList } from '../lib/args.ts';
 import { writeRecord, supersedeRecord, writeAttempt, importAttempts, RESULTS_MAX, fixRecordFrontmatters, teachIndex, createServer, progress, progressText, readmeDraft, exportWorkspace, writeExport, lessonIndex, missionPrefs, taskSummary, previousTaskAttempt, certificationRuns } from '../lib/teach.mjs';
 import { LESSON_ID_RE, readPath } from '../lib/lesson-format.ts';

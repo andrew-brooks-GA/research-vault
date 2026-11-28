@@ -4,7 +4,7 @@ import { resolve, dirname, join } from 'node:path';
 import { lstatSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../lib/resolve.mjs';
-import { loadProjectConfig, PROJECT_CONFIG_FILENAME } from '../lib/projectconfig.mjs';
+import { loadProjectConfig, PROJECT_CONFIG_FILENAME } from '../lib/projectconfig.ts';
 import { loadSchema } from '../lib/schema.mjs';
 import { csvList } from '../lib/args.ts';
 import { VERDICTS, draftState, recordVerdict, gateStatus, evidenceFor, renderEvidence, changedUnits, codeLang, ledgerKey, ledgerRoot, stagedGates, missingEvidence } from '../lib/gate.mjs';

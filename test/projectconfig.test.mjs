@@ -12,7 +12,7 @@ import {
   scaffoldProjectConfig,
   validateTaxonomyExtensions,
   readTaxonomyExtensions,
-} from '../bin/lib/projectconfig.mjs';
+} from '../bin/lib/projectconfig.ts';
 
 const SCHEMA = {
   taxonomy: {

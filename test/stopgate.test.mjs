@@ -168,7 +168,7 @@ import { readFileSync } from 'node:fs';
 import { codeRepo } from './helpers.mjs';
 import { reasonLine } from '../hooks/stop-gate.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
-import { parseProjectConfig } from '../bin/lib/projectconfig.mjs';
+import { parseProjectConfig } from '../bin/lib/projectconfig.ts';
 
 const parsed = (root) => parseProjectConfig(readFileSync(join(root, '.research-vault.json'), 'utf8'), loadSchema(REPO_ROOT));
 

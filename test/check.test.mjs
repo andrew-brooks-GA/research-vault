@@ -184,7 +184,7 @@ test('CLI reports a URL found only in code as skipped and --check still exits 0'
 
 // ---- code links (spec 15) ----
 import { REPO_ROOT, codeRepo, testEnv } from './helpers.mjs';
-import { parseProjectConfig } from '../bin/lib/projectconfig.mjs';
+import { parseProjectConfig } from '../bin/lib/projectconfig.ts';
 import { loadSchema } from '../bin/lib/schema.mjs';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'research-vault.mjs');

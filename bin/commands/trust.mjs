@@ -2,7 +2,7 @@ import { resolve, dirname } from 'node:path';
 import { lstatSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
-import { findProjectConfig, parseProjectConfig } from '../lib/projectconfig.mjs';
+import { findProjectConfig, parseProjectConfig } from '../lib/projectconfig.ts';
 import { loadSchema } from '../lib/schema.mjs';
 import { bindingIdentity, bindingSnapshot, acknowledgeBinding, isBindingAcknowledged, revokeBinding } from '../lib/trust.ts';
 

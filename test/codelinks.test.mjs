@@ -10,7 +10,7 @@ import { ID_RE } from '../bin/lib/citations.mjs';
 import {
   LANGS, LINK_RE, langFor, codeFiles, extractCodeLinks, unitText, codeUnits, codeUnitHashes, readVersions, checkCodeLinks, worstStatus,
 } from '../bin/lib/codelinks.mjs';
-import { parseProjectConfig, compilePattern } from '../bin/lib/projectconfig.mjs';
+import { parseProjectConfig, compilePattern } from '../bin/lib/projectconfig.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const LUA = LANGS['.lua'];

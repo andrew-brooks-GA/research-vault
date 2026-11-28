@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { configPath, isBindingAcknowledged } from './trust.ts';
 import { walkEntries } from './fsutil.ts';
 import { loadSchema } from './schema.mjs';
-import { loadProjectConfig, PROJECT_CONFIG_FILENAME } from './projectconfig.mjs';
+import { loadProjectConfig, PROJECT_CONFIG_FILENAME } from './projectconfig.ts';
 import { compareContainment, compareVaultLocations, mayBeInside } from './containment.ts';
 
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');

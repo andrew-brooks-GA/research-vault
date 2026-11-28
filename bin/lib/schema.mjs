@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { EXTENSIBLE_TAXONOMY_FIELDS, PROJECT_CONFIG_FILENAME, readTaxonomyExtensions } from './projectconfig.mjs';
+import { EXTENSIBLE_TAXONOMY_FIELDS, PROJECT_CONFIG_FILENAME, readTaxonomyExtensions } from './projectconfig.ts';
 
 // Additively merge a vault's `taxonomy_extensions` onto the bundled taxonomy. Only the
 // extensible list fields are touched, values are appended (deduped, built-ins first), and

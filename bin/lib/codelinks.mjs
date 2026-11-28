@@ -16,7 +16,7 @@ import { ID_RE } from './citations.mjs';
 import { staleness } from './stale.mjs';
 import { expandFiles } from './files.ts';
 import { isInsideVault } from './containment.ts';
-import { isRelativeInside } from './projectconfig.mjs';
+import { isRelativeInside } from './projectconfig.ts';
 import { sha256Hex } from './hash.ts';
 
 // ---- shipped language rows ----

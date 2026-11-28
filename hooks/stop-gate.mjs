@@ -7,7 +7,7 @@ import { statSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../bin/lib/resolve.mjs';
-import { loadProjectConfig } from '../bin/lib/projectconfig.mjs';
+import { loadProjectConfig } from '../bin/lib/projectconfig.ts';
 import { loadSchema } from '../bin/lib/schema.mjs';
 import { gatedFiles, gateStatus, ledgerKey, referencedImages, referencedScripts, taskFile, missingEvidence } from '../bin/lib/gate.mjs';
 import { runGit } from '../bin/lib/git.ts';

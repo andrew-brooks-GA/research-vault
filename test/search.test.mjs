@@ -16,7 +16,7 @@ import { run as searchRun, STALE_WEIGHT } from '../bin/commands/search.mjs';
 import { run as embedRun } from '../bin/commands/embed.mjs';
 import { applyVerification } from '../bin/commands/verify.mjs';
 import { writeEntry } from '../bin/lib/fsutil.ts';
-import { PROJECT_CONFIG_FILENAME } from '../bin/lib/projectconfig.mjs';
+import { PROJECT_CONFIG_FILENAME } from '../bin/lib/projectconfig.ts';
 import { INDEX } from '../bin/lib/embed.mjs';
 import { fieldOrder } from '../bin/lib/schema.mjs';
 import { readUsage } from '../bin/lib/usagelog.ts';

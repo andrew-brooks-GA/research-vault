@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { writeFileSync, mkdirSync, readFileSync, existsSync, lstatSync } from 'node:fs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { entryNote, codeNote, moc, graphSettings } from '../lib/obsidianview.mjs';
-import { loadProjectConfig } from '../lib/projectconfig.mjs';
+import { loadProjectConfig } from '../lib/projectconfig.ts';
 import { codeFiles, extractCodeLinks, langFor } from '../lib/codelinks.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { assertInsideVault, escapePathControls, isInsideVault, mayBeInside, VAULT_PATH_OUTSIDE } from '../lib/containment.ts';

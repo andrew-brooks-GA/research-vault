@@ -7,7 +7,7 @@ import { checkProjectVault, resolveVault, configPath, hasVaultContent } from '..
 import { writeManifest } from '../lib/manifest.mjs';
 import { ENTRY_FOLDERS } from '../lib/fsutil.ts';
 import { compileVault } from '../lib/indexview.mjs';
-import { scaffoldProjectConfig, quotedGlob } from '../lib/projectconfig.mjs';
+import { scaffoldProjectConfig, quotedGlob } from '../lib/projectconfig.ts';
 import { acknowledgeBinding } from '../lib/trust.ts';
 import { csvList } from '../lib/args.ts';
 import { assertInsideVault, compareVaultLocations, VAULT_PATH_OUTSIDE } from '../lib/containment.ts';
