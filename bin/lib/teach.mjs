@@ -14,7 +14,7 @@ import { assertInsideWorkspaceFolder, escapePathControls, isInsideVault, isInsid
 import { expandFiles } from './files.ts';
 import { grade } from '../../skills/research-teach/assets/quiz.js';
 import { CONTENT_TYPES, STATIC_DIRS, imageTarget, navHtml, serveFile, withNav } from './serve-file.mjs';
-import { LESSON_ID_RE, RECORD_ID_RE, extractCites, lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWUP, CONNECT_LEAD } from './lesson-format.mjs';
+import { LESSON_ID_RE, RECORD_ID_RE, extractCites, lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWUP, CONNECT_LEAD, uniq } from './lesson-format.mjs';
 import { HEADING_RE, TABLE_SEP_RE, WORKSPACE_GATES, hasVerdict } from './gate.mjs';
 import { readLabs, lessonLab, labRunner, secretHits, labCookie, LAB_ACTIONS, LAB_BODY_MAX, LAB_ID_RE } from './labs.mjs';
 import { readBrand, withBrand, brandUrl } from './brand.mjs';
@@ -39,7 +39,6 @@ const isoDate = (d) => d.toISOString().slice(0, 10);
 const empty = (v) => v === undefined || v === null || v === '';
 const order = (schema, type) => [...schema.common, ...(schema.by_type[type] || [])];
 const mdFiles = (dir) => (existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.md')).sort() : []);
-const uniq = (xs) => [...new Set(xs)];
 
 function listedPages(ws, dir, nameMatches) {
   if (!isInsideWorkspaceFolder(ws, dir) || !statSync(dir, { throwIfNoEntry: false })?.isDirectory()) return [];

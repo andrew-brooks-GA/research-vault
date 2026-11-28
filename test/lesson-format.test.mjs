@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { blockSpans, imgAttr, lessonItems, readPath } from '../bin/lib/lesson-format.mjs';
+import { LESSON_ID_RE, RECORD_ID_RE, blockSpans, imgAttr, lessonItems, readPath, uniq } from '../bin/lib/lesson-format.mjs';
 
 function pathFixture(t, text) {
   const dir = mkdtempSync(join(tmpdir(), 'rv-lesson-format-'));
@@ -11,6 +11,27 @@ function pathFixture(t, text) {
   writeFileSync(join(dir, 'PATH.md'), text);
   return dir;
 }
+
+test('lesson and record id patterns accept and refuse the same ids', () => {
+  const cases = [
+    ['0001-fx-returns6', true],
+    ['fx-returns6', false],
+    ['0001-6fx', false],
+    ['0001-fx-Returns', false],
+    ['0001-Fx-returns', false],
+    ['0001-fx.returns', false],
+    ['00001-fx', false],
+    ['', false],
+  ];
+  for (const [id, expected] of cases) {
+    assert.equal(LESSON_ID_RE.test(id), expected, `lesson id ${JSON.stringify(id)}`);
+    assert.equal(RECORD_ID_RE.test(id), expected, `record id ${JSON.stringify(id)}`);
+  }
+});
+
+test('uniq keeps the first occurrence order', () => {
+  assert.deepEqual(uniq(['b', 'a', 'b']), ['b', 'a']);
+});
 
 test('blockSpans uses the outer closing tag when the same tag is nested', () => {
   const [block] = blockSpans('<div data-block="fact"><div>inner</div> tail</div>');

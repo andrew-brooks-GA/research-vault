@@ -5,9 +5,10 @@ import { basename, dirname, join } from 'node:path';
 import { isInsideVault } from './containment.ts';
 
 export const LESSON_ID_RE = /^\d{4}-[a-z][a-z0-9-]*$/;
-export const RECORD_ID_RE = /^\d{4}-[a-z][a-z0-9-]*$/;
+// A record id has the form of a lesson id by design.
+export const RECORD_ID_RE = LESSON_ID_RE;
 
-const uniq = (xs) => [...new Set(xs)];
+export const uniq = (xs) => [...new Set(xs)];
 
 // HTML extraction (regex; lessons are static HTML written by the skill).
 export function extractQuizJson(html) {

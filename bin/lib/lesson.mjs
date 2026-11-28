@@ -7,7 +7,7 @@ import { matchRows } from './manifest.mjs';
 import { checkCitations, extractCitations, SPAN_RE } from './citations.mjs';
 import { mayBeInside } from './containment.ts';
 import { traverse } from './graph.ts';
-import { extractCites, LESSON_ID_RE, RECORD_ID_RE, FOLLOWUP, CONNECT_LEAD, lessonClass, parseBlocks, blockSpans, parseQuiz, readPath, imgAttr, isProject, README_SECTIONS } from './lesson-format.mjs';
+import { extractCites, LESSON_ID_RE, RECORD_ID_RE, FOLLOWUP, CONNECT_LEAD, lessonClass, parseBlocks, blockSpans, parseQuiz, readPath, imgAttr, isProject, README_SECTIONS, uniq } from './lesson-format.mjs';
 import { imageTarget } from './serve-file.mjs';
 import { validateEntry, ENUM_CODES, missionPrefs } from './teach.mjs';
 import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
@@ -754,7 +754,6 @@ export function lintPathTerms(lines, newTerms) {
 // Spec 20 D2-D3: `teach path candidates`, pure over readPath's lines, missionFloor's sets, the cited ids,
 // the manifest, the topic list and the taxonomy's topic_aliases; `readBody(id)` returns an entry's body
 // (pool entries only are read). Candidates come from the vault's own filters (matchRows) and traverse.
-const uniq = (xs) => [...new Set(xs)];
 export const topicSlug = (s) => String(s).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
 export function pathCandidates({ lines, floor, cites, manifest, topics, aliases = {}, readBody = () => '' }) {
   const expand = (t) => (Object.hasOwn(aliases, t) ? aliases[t] : t); // S-13: a topic is not an Object.prototype member
