@@ -294,6 +294,15 @@ test('fieldOrder returns deterministic key order for a type', () => {
   assert.ok(order.includes('source_url'));
 });
 
+test('fieldOrder uses the source field order for a one-element source list', () => {
+  assert.deepEqual(fieldOrder(loadSchema(REPO_ROOT), ['source']), [
+    'title', 'type', 'created', 'updated', 'domain', 'stage', 'topics', 'status', 'related',
+    'volatility', 'verifications', 'superseded_by', 'source_type', 'source_url', 'source_author',
+    'source_date', 'captured_via', 'attachments', 'content_hash', 'subject', 'series',
+    'authority_tier', 'authority_basis', 'summary',
+  ]);
+});
+
 test('verification_method includes the capture-time seed method', () => {
   const s = loadSchema(REPO_ROOT);
   assert.ok(s.taxonomy.verification_method.includes('captured'));
@@ -330,6 +339,13 @@ test('loadSchema merges injected extensions into the taxonomy', () => {
   assert.ok(s.taxonomy.verification_result.includes('partial'));
   // built-ins survive
   assert.ok(s.taxonomy.verification_method.includes('cross-referenced'));
+});
+
+test('loadSchema refuses a number in an injected domain extension', t => {
+  const root = schemaFixture(t, 'taxonomy.json', raw => raw);
+  assert.throws(() => loadSchema(root, { extensions: { domain: [7] } }), {
+    name: 'Error', message: '.research-vault.json taxonomy_extensions: domain must be an array of strings',
+  });
 });
 
 test('loadSchema discovers extensions from the bound vault config', () => {

@@ -139,12 +139,14 @@ export function applyTaxonomyExtensions(taxonomy, extensions) {
 // fs for the extension lookup. Discovery is keyed on the vault, not cwd, so a vault's
 // vocabulary is the same wherever a command runs from.
 export function loadSchema(repoRoot, opts = {}) {
-  let taxonomy = readSchema(repoRoot, 'schema/taxonomy.json', isTaxonomy);
+  const taxonomy = readSchema(repoRoot, 'schema/taxonomy.json', isTaxonomy);
   const fields = readSchema(repoRoot, 'schema/frontmatter.schema.json', isFrontmatterFields);
   let extensions = opts.extensions;
   if (!extensions && opts.vaultPath) extensions = readTaxonomyExtensions(opts.vaultPath, opts.hooks ?? {});
-  taxonomy = applyTaxonomyExtensions(taxonomy, extensions);
-  return { taxonomy, fields };
+  const merged = applyTaxonomyExtensions(taxonomy, extensions);
+  if (merged === taxonomy) return { taxonomy, fields };
+  if (isTaxonomy(merged, `${PROJECT_CONFIG_FILENAME} taxonomy_extensions`)) return { taxonomy: merged, fields };
+  throw new Error('loadSchema: expected the check to accept or throw');
 }
 
 export function stageAllowedInFolder(schema, folder, stage) {
@@ -154,7 +156,8 @@ export function stageAllowedInFolder(schema, folder, stage) {
 
 export function fieldOrder(schema, type) {
   // A type is a string from an entry: `constructor` is a type with no field list (S-13).
-  const fields = Object.hasOwn(schema.fields.by_type, type) ? schema.fields.by_type[type] : [];
+  const key = String(type);
+  const fields = Object.hasOwn(schema.fields.by_type, key) ? schema.fields.by_type[key] : [];
   if (fields === undefined) throw new Error('fieldOrder: expected a field list for an own type');
   return [...schema.fields.common, ...fields];
 }
