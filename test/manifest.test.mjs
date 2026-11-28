@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, renameSync, rmSync
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildManifest, lastVerified, writeManifest, danglingEdges } from '../bin/lib/manifest.mjs';
+import { buildManifest, lastVerified, writeManifest, danglingEdges, matchRows } from '../bin/lib/manifest.mjs';
 import { traverse } from '../bin/lib/graph.ts';
 import { captureEntry } from '../bin/commands/capture.mjs';
 import { REPO_ROOT, tmpVault, put, testEnv } from './helpers.mjs';
@@ -40,6 +40,19 @@ test('lastVerified counts only confirming results (confirmed/changed-trivially)'
 test('computes backlinks from related/contributing_ids', () => {
   const m = buildManifest(VAULT);
   assert.deepEqual(m.backlinks['2026-01-01-a'].sort(), ['2026-01-02-b']);
+});
+
+test('buildManifest orders backlink keys by code unit', t => {
+  const dir = tmpVault('rv-backlinks-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  put(dir, 'note', '2026-01-01-a', { sources: ['a'] });
+  put(dir, 'note', '2026-01-02-b', { sources: ['Z'] });
+  assert.deepEqual(Object.keys(buildManifest(dir).backlinks), ['Z', 'a']);
+});
+
+test('matchRows retains only rows in the requested domain', () => {
+  const rows = [{ id: 'kept', domain: ['security'], topics: [] }, { id: 'other', domain: ['meta'], topics: [] }];
+  assert.deepEqual(matchRows(rows, { domain: 'security' }).map(row => row.id), ['kept']);
 });
 
 test('two buildManifest runs are byte-identical except generated', () => {
@@ -188,6 +201,61 @@ test('writeManifest refuses to drop a listed entry whose folder is missing or wh
   writeFileSync(mf, 'not json');
   writeManifest(dir);
   assert.equal(JSON.parse(readFileSync(mf, 'utf8')).entries.length, 1, 'an unparsable previous manifest guards nothing');
+});
+
+for (const previous of ['null', '[]', '{"entries": 7}']) {
+  test(`writeManifest writes over a previous manifest containing ${previous}`, t => {
+    const dir = tmpVault('rv-shrink-');
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const mf = join(dir, '.vault-manifest.json');
+    writeFileSync(mf, previous);
+    writeManifest(dir, { entries: [] });
+    assert.equal(readFileSync(mf, 'utf8'), '{\n  "entries": []\n}');
+  });
+}
+
+test('writeManifest still overwrites a previous manifest containing the number 7', t => {
+  const dir = tmpVault('rv-shrink-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const mf = join(dir, '.vault-manifest.json');
+  writeFileSync(mf, '7');
+  writeManifest(dir, { entries: [] });
+  assert.equal(readFileSync(mf, 'utf8'), '{\n  "entries": []\n}');
+});
+
+test('writeManifest skips a null row and still guards the next listed file', t => {
+  const dir = tmpVault('rv-shrink-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const mf = join(dir, '.vault-manifest.json');
+  mkdirSync(join(dir, 'sources'));
+  writeFileSync(join(dir, 'sources', 'INDEX.md'), '# index\n');
+  writeFileSync(mf, '{"entries": [null, {"id": "INDEX", "type": "source"}]}\n');
+  const before = readFileSync(mf);
+  assert.throws(() => writeManifest(dir), { message: `manifest not written: it would drop 1 listed entry that is not gone (INDEX: sources/INDEX.md still exists); remove ${mf} to accept the shrink` });
+  assert.deepEqual(readFileSync(mf), before);
+});
+
+test('writeManifest skips a numeric id even when the file named by that number exists', t => {
+  const dir = tmpVault('rv-shrink-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const mf = join(dir, '.vault-manifest.json');
+  mkdirSync(join(dir, 'sources'));
+  writeFileSync(join(dir, 'sources', '7.md'), '# seven\n');
+  writeFileSync(mf, '{"entries": [{"id": 7, "type": "source"}]}\n');
+  writeManifest(dir, { entries: [] });
+  assert.equal(readFileSync(mf, 'utf8'), '{\n  "entries": []\n}');
+});
+
+test('writeManifest refuses to drop a listed file that still exists and preserves the old bytes', t => {
+  const dir = tmpVault('rv-shrink-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const mf = join(dir, '.vault-manifest.json');
+  mkdirSync(join(dir, 'sources'));
+  writeFileSync(join(dir, 'sources', 'INDEX.md'), '# index\n');
+  writeFileSync(mf, '{"entries": [{"id": "INDEX", "type": "source"}]}\n');
+  const before = readFileSync(mf);
+  assert.throws(() => writeManifest(dir), { message: `manifest not written: it would drop 1 listed entry that is not gone (INDEX: sources/INDEX.md still exists); remove ${mf} to accept the shrink` });
+  assert.deepEqual(readFileSync(mf), before);
 });
 
 test('danglingEdges lists the edges to no entry, and manifest --rebuild reports them on stderr before writing (spec 18 D2)', () => {

@@ -4,12 +4,25 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { walkEntries, readEntry, TYPE_FOLDER, writeAtomic } from './fsutil.ts';
 import { normalizeUrlSafe } from './ids.ts';
+import { isRecord, parseJson } from './unknowns.ts';
 
 // Edge fields are declared once in the schema (see edge_fields) and shared with lint's
 // dangling-ref check; read the plugin's own schema so buildManifest(vaultPath) keeps its
 // single-argument signature.
 const SCHEMA_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'schema', 'frontmatter.schema.json');
-const { backlink: BACKLINK_FIELDS, reference_only: REFERENCE_ONLY_FIELDS } = JSON.parse(readFileSync(SCHEMA_PATH, 'utf8')).edge_fields;
+const schemaText = readFileSync(SCHEMA_PATH, 'utf8');
+let schema;
+try { schema = parseJson(schemaText); } catch { throw new Error(`${SCHEMA_PATH}: expected valid JSON`); }
+if (!isRecord(schema)) throw new Error(`${SCHEMA_PATH}: expected an object`);
+const edgeFields = schema.edge_fields;
+if (!isRecord(edgeFields)) throw new Error(`${SCHEMA_PATH}: edge_fields must be an object`);
+const requireEdgeField = (name, value) => {
+  if (!Array.isArray(value) || !value.every(item => typeof item === 'string'))
+    throw new Error(`${SCHEMA_PATH}: edge_fields.${name} must be an array of strings`);
+  return value;
+};
+const BACKLINK_FIELDS = requireEdgeField('backlink', edgeFields.backlink);
+const REFERENCE_ONLY_FIELDS = requireEdgeField('reference_only', edgeFields.reference_only);
 const EDGE_FIELDS = [...BACKLINK_FIELDS, ...REFERENCE_ONLY_FIELDS];
 
 // Only these results attest freshness. `captured`-method seeds carry `confirmed`, so
@@ -50,8 +63,9 @@ export function buildManifest(vaultPath) {
       sources: data.sources || [],
     });
     // Scalar fields (source_id, prompt_id) are wrapped so they are not iterated char by char.
-    for (const rel of EDGE_FIELDS) for (const to of [].concat(data[rel] ?? [])) {
+    for (const rel of EDGE_FIELDS) for (const to of [data[rel] ?? []].flat()) {
       if (!to) continue;
+      if (typeof to !== 'string') throw new Error('buildManifest: expected a string edge target');
       const key = `${id}\0${rel}\0${to}`;
       if (edgeKeys.has(key)) continue;
       edgeKeys.add(key);
@@ -62,9 +76,16 @@ export function buildManifest(vaultPath) {
   edges.sort((a, b) => a.from.localeCompare(b.from) || a.rel.localeCompare(b.rel) || a.to.localeCompare(b.to));
   // Keyed by references from entries, so a Map: `constructor` or `__proto__` is an id like any other (S-13).
   const backlinks = new Map();
-  for (const e of edges) if (BACKLINK_FIELDS.includes(e.rel)) (backlinks.get(e.to) ?? backlinks.set(e.to, new Set()).get(e.to)).add(e.from);
+  for (const e of edges) if (BACKLINK_FIELDS.includes(e.rel)) {
+    let from = backlinks.get(e.to);
+    if (!from) {
+      from = new Set();
+      backlinks.set(e.to, from);
+    }
+    from.add(e.from);
+  }
   // fromEntries defines each key as its own property, `__proto__` too; read it with Object.hasOwn.
-  const sortedBacklinks = Object.fromEntries([...backlinks.keys()].sort().map(k => [k, [...backlinks.get(k)].sort()]));
+  const sortedBacklinks = Object.fromEntries([...backlinks].sort(([a], [b]) => a < b ? -1 : Number(a > b)).map(([k, from]) => [k, [...from].sort()]));
   return { generated: new Date().toISOString().slice(0, 10), entries, edges, backlinks: sortedBacklinks };
 }
 
@@ -74,16 +95,22 @@ export function danglingEdges(manifest) {
   return manifest.edges.filter((e) => !ids.has(e.to));
 }
 
+const hasTypeFolder = type => Object.hasOwn(TYPE_FOLDER, type);
+
 // Shrink guard (spec 18 D1). A missing row counts as a shrink when its type folder is missing or its
 // file still exists, except when the folder or file is known to resolve outside the vault.
 // Removing the derived file overrides the guard.
 function refuseShrink(vaultPath, path, manifest) {
   let prev;
-  try { prev = JSON.parse(readFileSync(path, 'utf8')); } catch { return; } // none, or unreadable: nothing to guard
+  try { prev = parseJson(readFileSync(path, 'utf8')); } catch { return; } // none, or unreadable: nothing to guard
+  if (!isRecord(prev)) return;
+  const entries = prev.entries ?? [];
+  if (!Array.isArray(entries)) return;
   const ids = new Set(manifest.entries.map((e) => e.id));
   const kept = [];
-  for (const e of prev.entries ?? []) {
-    const folder = Object.hasOwn(TYPE_FOLDER, e.type) ? TYPE_FOLDER[e.type] : null;
+  for (const e of entries) {
+    if (!isRecord(e) || typeof e.id !== 'string' || typeof e.type !== 'string') continue;
+    const folder = hasTypeFolder(e.type) ? TYPE_FOLDER[e.type] : null;
     if (ids.has(e.id) || !folder) continue;
     const dir = join(vaultPath, folder);
     const entry = join(dir, `${e.id}.md`);
@@ -105,7 +132,10 @@ export function writeManifest(vaultPath, manifest = buildManifest(vaultPath)) {
 // The in-memory filters (type, domain, series, topic through the aliases, text over title, topics and
 // summary) over manifest rows; shared with `teach path candidates`, which runs them over one manifest.
 export function matchRows(rows, q, aliases = {}) {
-  const expand = t => Object.hasOwn(aliases, t) ? aliases[t] : t; // S-13: a topic is not an Object.prototype member
+  const expand = t => {
+    const key = String(t);
+    return Object.hasOwn(aliases, key) ? aliases[key] : t; // S-13: a topic is not an Object.prototype member
+  };
   if (q.type) rows = rows.filter(e => e.type === q.type);
   if (q.domain) rows = rows.filter(e => e.domain.includes(q.domain));
   if (q.series) rows = rows.filter(e => e.series === q.series);
