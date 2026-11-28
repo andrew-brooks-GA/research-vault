@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
-import { loadSchema, stageAllowedInFolder, fieldOrder, applyTaxonomyExtensions } from '../bin/lib/schema.mjs';
+import { loadSchema, loadTeachSchema, stageAllowedInFolder, fieldOrder, applyTaxonomyExtensions } from '../bin/lib/schema.mjs';
 import { PROJECT_CONFIG_FILENAME } from '../bin/lib/projectconfig.ts';
 import { assertControlledValues, fieldShapeErrors, isAllowedValue } from '../bin/lib/validate.ts';
 import { REPO_ROOT, tmpVault, put } from './helpers.mjs';
-import { rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, readdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { lintVault } from '../bin/lib/lintrules.mjs';
 import { searchVault } from '../bin/commands/search.mjs';
 
@@ -119,10 +119,145 @@ test('non-edge members and empty containers remain searchable without shape find
 });
 
 test('loads taxonomy and field definitions', () => {
-  const s = loadSchema(REPO_ROOT);
-  assert.ok(s.taxonomy.domain.includes('software-engineering'));
-  assert.equal(s.taxonomy.volatility.fast.refresh_after_days, 90);
-  assert.ok(s.fields.common.includes('title'));
+  const { taxonomy, fields } = loadSchema(REPO_ROOT);
+  const teach = loadTeachSchema(REPO_ROOT);
+  assert.equal(taxonomy.domain[0], 'software-engineering');
+  assert.equal(taxonomy.volatility.fast.refresh_after_days, 90);
+  assert.equal(fields.common[0], 'title');
+  assert.deepEqual(teach.common, ['title', 'type', 'date']);
+  assert.equal(teach.taxonomy.type_folder.attempt, 'attempts');
+});
+
+function schemaFixture(t, file, edit) {
+  const root = tmpVault('rv-schema-');
+  const schema = join(root, 'schema');
+  cpSync(join(REPO_ROOT, 'schema'), schema, { recursive: true });
+  const path = join(schema, file);
+  writeFileSync(path, edit(readFileSync(path, 'utf8')));
+  const snapshot = () => readdirSync(schema).sort().map(name => [name, readFileSync(join(schema, name))]);
+  const beside = readdirSync(root).sort();
+  const before = snapshot();
+  t.after(() => {
+    try {
+      assert.deepEqual(readdirSync(root).sort(), beside);
+      assert.deepEqual(snapshot(), before);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+  return root;
+}
+
+function editJson(edit) {
+  return raw => {
+    const data = JSON.parse(raw);
+    edit(data);
+    return JSON.stringify(data);
+  };
+}
+
+test('loadSchema refuses a string instead of the notes allowed-stage list', t => {
+  const root = schemaFixture(t, 'taxonomy.json', editJson(data => { data.stage_by_folder.notes.allowed = 'distilled'; }));
+  assert.throws(() => loadSchema(root), {
+    name: 'Error', message: 'schema/taxonomy.json: stage_by_folder.notes.allowed must be an array of strings',
+  });
+});
+
+test('loadSchema refuses a number in the common frontmatter fields', t => {
+  const root = schemaFixture(t, 'frontmatter.schema.json', editJson(data => { data.common[0] = 7; }));
+  assert.throws(() => loadSchema(root), {
+    name: 'Error', message: 'schema/frontmatter.schema.json: common must be an array of strings',
+  });
+});
+
+test('loadTeachSchema refuses an object instead of the derived-field list', t => {
+  const root = schemaFixture(t, 'teach.schema.json', editJson(data => { data.derived_forbidden = { score: true }; }));
+  assert.throws(() => loadTeachSchema(root), {
+    name: 'Error', message: 'schema/teach.schema.json: derived_forbidden must be an array of strings',
+  });
+});
+
+test('loadTeachSchema refuses a missing type_folder map', t => {
+  const root = schemaFixture(t, 'teach-taxonomy.json', editJson(data => { delete data.type_folder; }));
+  assert.throws(() => loadTeachSchema(root), {
+    name: 'Error', message: 'schema/teach-taxonomy.json: type_folder must be an object',
+  });
+});
+
+const schemaRefusals = [
+  ['loadSchema refuses a number in verification_result', loadSchema, 'taxonomy.json',
+    data => { data.verification_result[0] = 7; },
+    'schema/taxonomy.json: verification_result must be an array of strings'],
+  ['loadSchema refuses a number in artifact_purpose', loadSchema, 'taxonomy.json',
+    data => { data.artifact_purpose.notes = 7; },
+    'schema/taxonomy.json: artifact_purpose.notes must be a string'],
+  ['loadSchema refuses a number in topic_aliases', loadSchema, 'taxonomy.json',
+    data => { data.topic_aliases.tdd = 7; },
+    'schema/taxonomy.json: topic_aliases.tdd must be a string'],
+  ['loadSchema refuses an array instead of the volatility map', loadSchema, 'taxonomy.json',
+    data => { data.volatility = []; },
+    'schema/taxonomy.json: volatility must be an object'],
+  ['loadSchema refuses a string instead of the fast volatility row', loadSchema, 'taxonomy.json',
+    data => { data.volatility.fast = 'fast'; },
+    'schema/taxonomy.json: volatility.fast must be an object'],
+  ['loadSchema refuses a string for refresh_after_days', loadSchema, 'taxonomy.json',
+    data => { data.volatility.fast.refresh_after_days = '90'; },
+    'schema/taxonomy.json: volatility.fast.refresh_after_days must be a number'],
+  ['loadSchema refuses a number for the volatility description', loadSchema, 'taxonomy.json',
+    data => { data.volatility.fast.description = 7; },
+    'schema/taxonomy.json: volatility.fast.description must be a string'],
+  ['loadSchema refuses an array instead of stage_by_folder', loadSchema, 'taxonomy.json',
+    data => { data.stage_by_folder = []; },
+    'schema/taxonomy.json: stage_by_folder must be an object'],
+  ['loadSchema refuses a string instead of the notes stage row', loadSchema, 'taxonomy.json',
+    data => { data.stage_by_folder.notes = 'distilled'; },
+    'schema/taxonomy.json: stage_by_folder.notes must be an object'],
+  ['loadSchema refuses a number for the notes default stage', loadSchema, 'taxonomy.json',
+    data => { data.stage_by_folder.notes.default = 7; },
+    'schema/taxonomy.json: stage_by_folder.notes.default must be a string'],
+  ['loadSchema refuses a missing notes stage row', loadSchema, 'taxonomy.json',
+    data => { delete data.stage_by_folder.notes; },
+    'schema/taxonomy.json: stage_by_folder.notes must be an object'],
+  ['loadSchema refuses an array instead of by_type', loadSchema, 'frontmatter.schema.json',
+    data => { data.by_type = []; },
+    'schema/frontmatter.schema.json: by_type must be an object'],
+  ['loadSchema refuses a number in a by_type field list', loadSchema, 'frontmatter.schema.json',
+    data => { data.by_type.source[0] = 7; },
+    'schema/frontmatter.schema.json: by_type.source must be an array of strings'],
+  ['loadSchema refuses a number in a required_by_type field list', loadSchema, 'frontmatter.schema.json',
+    data => { data.required_by_type.source[0] = 7; },
+    'schema/frontmatter.schema.json: required_by_type.source must be an array of strings'],
+  ['loadSchema refuses a number in verification_subfields', loadSchema, 'frontmatter.schema.json',
+    data => { data.verification_subfields[0] = 7; },
+    'schema/frontmatter.schema.json: verification_subfields must be an array of strings'],
+  ['loadSchema refuses an array instead of edge_fields', loadSchema, 'frontmatter.schema.json',
+    data => { data.edge_fields = []; },
+    'schema/frontmatter.schema.json: edge_fields must be an object'],
+  ['loadSchema refuses a number in edge_fields.backlink', loadSchema, 'frontmatter.schema.json',
+    data => { data.edge_fields.backlink[0] = 7; },
+    'schema/frontmatter.schema.json: edge_fields.backlink must be an array of strings'],
+  ['loadSchema refuses a number in edge_fields.reference_only', loadSchema, 'frontmatter.schema.json',
+    data => { data.edge_fields.reference_only[0] = 7; },
+    'schema/frontmatter.schema.json: edge_fields.reference_only must be an array of strings'],
+  ['loadSchema refuses a number in edge_fields.intended_targets', loadSchema, 'frontmatter.schema.json',
+    data => { data.edge_fields.intended_targets.sources = 7; },
+    'schema/frontmatter.schema.json: edge_fields.intended_targets.sources must be a string'],
+  ['loadTeachSchema refuses an array instead of edge_fields', loadTeachSchema, 'teach.schema.json',
+    data => { data.edge_fields = []; },
+    'schema/teach.schema.json: edge_fields must be an object'],
+  ['loadTeachSchema refuses a number in kind', loadTeachSchema, 'teach-taxonomy.json',
+    data => { data.kind[0] = 7; },
+    'schema/teach-taxonomy.json: kind must be an array of strings'],
+];
+
+for (const [name, load, file, edit, message] of schemaRefusals) {
+  test(name, t => {
+    const root = schemaFixture(t, file, editJson(edit));
+    assert.throws(() => load(root), { name: 'Error', message });
+  });
+}
+
+test('loadSchema preserves the native syntax error for incomplete JSON', t => {
+  const root = schemaFixture(t, 'frontmatter.schema.json', () => '{"common":');
+  assert.throws(() => loadSchema(root), { name: 'SyntaxError', message: 'Unexpected end of JSON input' });
 });
 
 test('isAllowedValue accepts a listed taxonomy value', () => {
