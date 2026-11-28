@@ -8,6 +8,24 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from '../bin/lib/args.mjs';
 import { fixtureVault, put, testEnv, tmpVault } from './helpers.mjs';
 
+test('a value-taking command flag skips its value before the command', () => {
+  assert.deepEqual(parseArgs(['--title', 'lint', 'capture']), { _: ['capture'], title: 'lint' });
+});
+
+test('an inherited property name is refused as a command', () => {
+  const argv = ['toString'];
+  assert.throws(() => parseArgs(argv), { message: 'no options table for toString' });
+  assert.deepEqual(argv, ['toString']);
+});
+
+test('a zero-padded sentinel decodes to undefined', () => {
+  assert.deepEqual(parseArgs(['lint', 'word', '\0' + '01'])._, ['lint', 'word', undefined]);
+});
+
+test('repeated needle flags retain their values in order', () => {
+  assert.deepEqual(parseArgs(['teach', '--needle', 'first', '--needle', 'second']).needle, ['first', 'second']);
+});
+
 test('parses flags, --key value, --bool, and positionals', () => {
   const a = parseArgs(['capture', '--type', 'source', '--title', 'X', '--json', 'pos1']);
   assert.equal(a._[0], 'capture');

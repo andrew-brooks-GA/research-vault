@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (spec 56, stage 6):** several lines of `bin/lib/args.mjs` are rewritten, with no change in what `parseArgs`, `commandAt`, `wantsHelp` and `csvList` do for any list of words, so that the file can be converted to TypeScript with types only.
 - **Fixed:** `mdToText` leaves alone a placeholder sequence (NUL, digits, NUL) that is already in its input and that it did not make; it used to replace one whose digits named no escaped character with the text `undefined`. No command reaches this today, since a file holding a NUL byte is refused before its text is extracted.
 - **Fixed:** an HTML entity whose name is an inherited property of every object is no longer expanded when a fetched page is turned into text: `&constructor;` used to become the text `function Object() { [native code] }` and is now left as it was written, like any unknown entity. Known entity names behave as before, in any letter case.
 - **Changed (spec 56, stage 6):** two lines of `traverse` in `bin/lib/graph.mjs` are rewritten, with no change in what they do, so that the file can be converted to TypeScript with types only: an edge's bucket is looked up once and created when missing, and the null-prototype `parents` object is made with `Object.setPrototypeOf`.

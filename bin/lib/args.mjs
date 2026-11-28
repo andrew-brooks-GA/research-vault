@@ -26,23 +26,21 @@ const TABLES = {
   verify: ['answer-summary answered-by by-id id method notes quotes result run superseded-by', 'json stale succession'],
 };
 const words = (s) => s.split(' ').filter(Boolean);
-const options = (cmd) => Object.fromEntries([
-  ...words(`${TABLES[cmd][0]} vault`).map((n) => [n, { type: 'string' }]),
-  ...words(`${TABLES[cmd][1]} help`).map((n) => [n, { type: 'boolean' }]),
+const options = ([strings, booleans]) => Object.fromEntries([
+  ...words(`${strings} vault`).map((n) => [n, { type: 'string' }]),
+  ...words(`${booleans} help`).map((n) => [n, { type: 'boolean' }]),
 ]);
-// A flag given more than once whose values all count: an array, in order.
-const REPEAT = new Set(['needle']);
 // The flags that take a value under some command: before the command, one of them takes the next word as its value.
-const VALUED = new Set(Object.keys(TABLES).flatMap((c) => words(TABLES[c][0])).concat('vault'));
+const VALUED = new Set(Object.values(TABLES).flatMap(([strings]) => words(strings)).concat('vault'));
 export const csvList = s => String(s ?? '').split(',').map(t => t.trim()).filter(Boolean);
 
 // The index of the command in argv (flags may come first), or -1.
 export function commandAt(argv) {
-  for (let i = 0; i < argv.length; i++) {
-    const tok = argv[i];
+  const entries = argv.entries();
+  for (const [i, tok] of entries) {
     if (tok === '--') return i + 1 < argv.length ? i + 1 : -1;
     if (!tok.startsWith('--')) return i;
-    if (!tok.includes('=') && VALUED.has(tok.slice(2))) i++;
+    if (!tok.includes('=') && VALUED.has(tok.slice(2))) entries.next();
   }
   return -1;
 }
@@ -58,10 +56,16 @@ export const wantsHelp = (args) => 'help' in args || args._.slice(1).includes('-
 // and is put back.
 export function parseArgs(argv, at = commandAt(argv)) {
   const cmd = argv[at];
-  if (!Object.hasOwn(TABLES, cmd)) throw new Error(`no options table for ${cmd}`);
-  const table = options(cmd);
+  const flags = cmd === undefined || !Object.hasOwn(TABLES, cmd) ? undefined : TABLES[cmd];
+  if (flags === undefined) throw new Error(`no options table for ${cmd}`);
+  const table = options(flags);
   const rest = argv.toSpliced(at, 1);
-  const back = (v) => (/^\0\d+$/.test(v) ? rest[v.slice(1)] : v);
+  const back = (v) => {
+    if (!/^\0\d+$/.test(v)) return v;
+    const key = v.slice(1);
+    const i = Number(key);
+    return String(i) === key ? rest[i] : undefined;
+  };
   const out = { _: [cmd] };
   let err;
   const args = rest.map((w, i) => (/^-[^-]/.test(w) ? `\0${i}` : w));
@@ -69,13 +73,14 @@ export function parseArgs(argv, at = commandAt(argv)) {
     if (t.kind === 'positional') out._.push(back(t.value));
     else if (t.kind !== 'option') continue; // the option terminator
     else if (!Object.hasOwn(table, t.name)) err ??= `unknown option --${t.name}`;
-    else if (table[t.name].type === 'boolean') {
+    else if (table[t.name]?.type === 'boolean') {
       if (t.value !== undefined) err ??= `option --${t.name} takes no value`;
       else out[t.name] = true;
     } else if (t.value === undefined || (!t.inlineValue && t.value.startsWith('--'))) {
       err ??= `option --${t.name} needs a value`;
       if (t.value === '--help') out.help = true; // the word it took is an option of its own
-    } else out[t.name] = REPEAT.has(t.name) ? [...(out[t.name] ?? []), back(t.value)] : back(t.value);
+    // A flag given more than once whose values all count: an array, in order.
+    } else out[t.name] = t.name === 'needle' ? [...(out.needle ?? []), back(t.value)] : back(t.value);
   }
   if (err && !wantsHelp(out)) throw new Error(err);
   return out;
