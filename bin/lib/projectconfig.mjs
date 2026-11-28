@@ -5,7 +5,7 @@
 import { existsSync as realExists, lstatSync as realLstat, readFileSync as realRead, writeFileSync as realWrite } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { isInsideVault } from './containment.ts';
-import { isRecord, parseJson } from './unknowns.ts';
+import { errorCode, isRecord, parseJson } from './unknowns.ts';
 
 export const PROJECT_CONFIG_FILENAME = '.research-vault.json';
 
@@ -53,13 +53,13 @@ function assertEnum(value, field, allowed) {
 // are arrays of non-empty strings. Returns a clean map (possibly empty); throws on misuse.
 export function validateTaxonomyExtensions(ext) {
   if (ext === undefined) return {};
-  if (ext === null || typeof ext !== 'object' || Array.isArray(ext)) {
+  if (!isRecord(ext)) {
     throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: taxonomy_extensions must be an object`);
   }
   const out = {};
   for (const [field, values] of Object.entries(ext)) {
     if (field === 'topic_aliases') {
-      const ok = values !== null && typeof values === 'object' && !Array.isArray(values)
+      const ok = isRecord(values)
         && Object.entries(values).every(([k, v]) => k.length > 0 && typeof v === 'string' && v.length > 0);
       if (!ok) throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: taxonomy_extensions.topic_aliases must be an object of non-empty strings`);
       out[field] = { ...values };
@@ -73,12 +73,14 @@ export function validateTaxonomyExtensions(ext) {
     if (!Array.isArray(values)) {
       throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: taxonomy_extensions.${field} must be an array of strings`);
     }
+    const strings = [];
     for (const v of values) {
       if (typeof v !== 'string' || v.length === 0) {
         throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: taxonomy_extensions.${field} entries must be non-empty strings`);
       }
+      strings.push(v);
     }
-    out[field] = [...values];
+    out[field] = strings;
   }
   return out;
 }
@@ -89,9 +91,14 @@ export function validateTaxonomyExtensions(ext) {
 export function compilePattern(field, source, { groups = 1, flags = '' } = {}) {
   if (typeof source !== 'string') throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${field} must be a string`);
   let re;
-  try { re = new RegExp(source, flags); } catch (e) { throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${field}: ${e.message}`); }
+  try { re = new RegExp(source, flags); } catch (e) {
+    if (!(e instanceof Error)) throw e;
+    throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${field}: ${e.message}`);
+  }
   // `(?:source)|` matches the empty string with one slot per capture group.
-  if (new RegExp(`(?:${source})|`).exec('').length - 1 < groups) {
+  const match = new RegExp(`(?:${source})|`).exec('');
+  if (!match) throw new Error('compilePattern: expected the empty alternative to match');
+  if (match.length - 1 < groups) {
     throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${field}: pattern has no capture group`);
   }
   return re;
@@ -106,11 +113,12 @@ export const isRelativeInside = (p) => typeof p === 'string' && p.length > 0 && 
 // that show it stands up an environment by hand. All literal strings.
 function validateLab(lab) {
   const bad = (msg) => new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${msg}`);
-  if (lab === null || typeof lab !== 'object' || Array.isArray(lab)) throw bad('lab must be an object');
-  const out = {};
+  if (!isRecord(lab)) throw bad('lab must be an object');
+  const out = { docs: [] };
   for (const f of ['docs', 'uses', 'bypass']) {
-    if (!Array.isArray(lab[f]) || !lab[f].length || !lab[f].every((v) => typeof v === 'string' && v)) throw bad(`lab.${f} must be a non-empty array of non-empty strings`);
-    out[f] = [...lab[f]];
+    const values = lab[f];
+    if (!Array.isArray(values) || !values.length || !values.every((v) => typeof v === 'string' && v.length > 0)) throw bad(`lab.${f} must be a non-empty array of non-empty strings`);
+    out[f] = [...values];
   }
   if (!out.docs.every(isRelativeInside)) throw bad('lab.docs entries must be relative paths with no .. segment');
   return out;
@@ -121,7 +129,7 @@ function validateLab(lab) {
 // compiled; throws on misuse.
 function validateCode(code, vault) {
   const bad = (msg) => new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${msg}`);
-  if (code === null || typeof code !== 'object' || Array.isArray(code)) throw bad('code must be an object');
+  if (!isRecord(code)) throw bad('code must be an object');
   if (typeof vault !== 'string' || !vault || !isRelativeInside(vault)) {
     throw bad(`code links need a project-specific vault inside the repo (a relative vault path); this binding points at ${vault || '(none)'}`);
   }
@@ -129,7 +137,7 @@ function validateCode(code, vault) {
   if (!Array.isArray(globs) || !globs.every((g) => typeof g === 'string')) throw bad('code.globs must be an array of strings');
   const table = (name) => {
     const t = code[name] ?? {};
-    if (t === null || typeof t !== 'object' || Array.isArray(t)) throw bad(`code.${name} must be an object`);
+    if (!isRecord(t)) throw bad(`code.${name} must be an object`);
     return t;
   };
   // A key of the binding is a row name; `__proto__` would set the prototype and drop the row (S-13).
@@ -140,14 +148,14 @@ function validateCode(code, vault) {
   const languages = Object.fromEntries(rows('languages').map(([ext, row]) => {
     if (row === null || typeof row !== 'object') throw bad(`code.languages[${JSON.stringify(ext)}] must be { comment, decl }`);
     return [ext, {
-      comment: compilePattern(`code.languages[${JSON.stringify(ext)}].comment`, row.comment),
-      decl: compilePattern(`code.languages[${JSON.stringify(ext)}].decl`, row.decl),
+      comment: compilePattern(`code.languages[${JSON.stringify(ext)}].comment`, 'comment' in row ? row.comment : undefined),
+      decl: compilePattern(`code.languages[${JSON.stringify(ext)}].decl`, 'decl' in row ? row.decl : undefined),
     }];
   }));
   const versions = Object.fromEntries(rows('versions').map(([key, row]) => {
-    if (row === null || typeof row !== 'object' || typeof row.file !== 'string') throw bad(`code.versions.${key} must be { file, pattern }`);
+    if (row === null || typeof row !== 'object' || !('file' in row) || typeof row.file !== 'string') throw bad(`code.versions.${key} must be { file, pattern }`);
     if (!isRelativeInside(row.file)) throw bad(`code.versions.${key}.file must be a relative path inside the repository with no .. segment`);
-    return [key, { file: row.file, pattern: compilePattern(`code.versions.${key}.pattern`, row.pattern, { flags: 'm' }) }];
+    return [key, { file: row.file, pattern: compilePattern(`code.versions.${key}.pattern`, 'pattern' in row ? row.pattern : undefined, { flags: 'm' }) }];
   }));
   return { globs, languages, versions };
 }
@@ -157,12 +165,17 @@ function validateCode(code, vault) {
 // Spec 34: the embedding endpoint block `{ url, model?, chunk?, overlap? }`.
 function validateEmbedding(e) {
   const bad = (m) => new Error(`invalid ${PROJECT_CONFIG_FILENAME}: embedding.${m}`);
-  if (e === null || typeof e !== 'object' || Array.isArray(e)) throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: embedding must be an object`);
-  let u; try { u = new URL(e.url); } catch { /* reported below */ }
+  if (!isRecord(e)) throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: embedding must be an object`);
+  let u; try { if (typeof e.url === 'string') u = new URL(e.url); } catch { /* reported below */ }
   if (typeof e.url !== 'string' || !u || !['http:', 'https:'].includes(u.protocol)) throw bad('url must be an http or https URL');
   if (e.model !== undefined && typeof e.model !== 'string') throw bad('model must be a string');
-  for (const k of ['chunk', 'overlap']) if (e[k] !== undefined && !Number.isInteger(e[k])) throw bad(`${k} must be an integer`);
-  const chunk = e.chunk ?? 800, overlap = e.overlap ?? 100;
+  const integer = (k, fallback) => {
+    const value = e[k];
+    if (value === undefined) return fallback;
+    if (typeof value !== 'number' || !Number.isInteger(value)) throw bad(`${k} must be an integer`);
+    return value;
+  };
+  const chunk = integer('chunk', 800), overlap = integer('overlap', 100);
   if (chunk < 1 || overlap < 0 || overlap >= chunk) throw bad('chunk must be at least 1 and overlap at least 0 and below chunk');
   return { url: e.url, model: e.model, chunk, overlap };
 }
@@ -247,10 +260,10 @@ export function readTaxonomyExtensions(startDir, hooks = {}) {
 }
 
 // Convenience: find + parse + validate. Returns { path, config } or null.
-export function loadProjectConfig(startDir, opts = {}) {
+export function loadProjectConfig(startDir, opts) {
   const hit = findProjectConfig(startDir, opts);
   if (!hit) return null;
-  return { path: hit.path, config: parseProjectConfig(hit.raw, opts.schema) };
+  return { path: hit.path, config: parseProjectConfig(hit.raw, opts?.schema) };
 }
 
 // A glob that kept its shell quotes (cmd.exe passes '...' through) matches nothing. Returns the
@@ -263,7 +276,7 @@ export function quotedGlob(globs) {
 // Write a starter .research-vault.json binding `dir` to a vault. Refuses to clobber
 // an existing binding (mirrors init's non-clobber discipline). `codeLinks` globs add the `code`
 // block; the body goes through parseProjectConfig first, so its rules live in one place. Returns the file path.
-export function scaffoldProjectConfig(dir, opts = {}, hooks = {}) {
+export function scaffoldProjectConfig(dir, opts, hooks = {}) {
   const lstat = hooks.lstatSync ?? realLstat;
   const write = hooks.writeFileSync ?? realWrite;
   const target = join(dir, PROJECT_CONFIG_FILENAME);
@@ -280,7 +293,7 @@ export function scaffoldProjectConfig(dir, opts = {}, hooks = {}) {
   try {
     write(target, JSON.stringify(body, null, 2) + '\n', { encoding: 'utf8', flag: 'wx' });
   } catch (e) {
-    if (e.code === 'EEXIST') throw new Error(alreadyExists);
+    if (errorCode(e) === 'EEXIST') throw new Error(alreadyExists);
     throw e;
   }
   return target;

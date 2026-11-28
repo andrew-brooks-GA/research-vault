@@ -9,6 +9,7 @@ import {
   findProjectConfig,
   parseProjectConfig,
   loadProjectConfig,
+  scaffoldProjectConfig,
   validateTaxonomyExtensions,
   readTaxonomyExtensions,
 } from '../bin/lib/projectconfig.mjs';
@@ -329,3 +330,54 @@ for (const [name, lab, re] of malformedLab) {
     assert.throws(() => parseLab(lab), (e) => e.message.startsWith('invalid .research-vault.json: ') && re.test(e.message), name);
   });
 }
+
+for (const [name, raw, message] of [
+  ['refuses an array as the code languages table', '{"vault":"v","code":{"languages":[]}}',
+    'invalid .research-vault.json: code.languages must be an object'],
+  ['reports a missing comment pattern for a language array row', '{"vault":"v","code":{"languages":{".js":[]}}}',
+    'invalid .research-vault.json: code.languages[".js"].comment must be a string'],
+  ['reports a missing declaration pattern after a valid comment pattern', '{"vault":"v","code":{"languages":{".js":{"comment":"(x)"}}}}',
+    'invalid .research-vault.json: code.languages[".js"].decl must be a string'],
+  ['reports a missing version pattern after a valid version file', '{"vault":"v","code":{"versions":{"dep":{"file":"deps.txt"}}}}',
+    'invalid .research-vault.json: code.versions.dep.pattern must be a string'],
+  ['refuses an array as the embedding block', '{"embedding":[]}',
+    'invalid .research-vault.json: embedding must be an object'],
+  ['reports the embedding field for a malformed URL', '{"embedding":{"url":"/embed"}}',
+    'invalid .research-vault.json: embedding.url must be an http or https URL'],
+  ['refuses a null embedding chunk in place of the default', '{"embedding":{"url":"https://localhost/embed","chunk":null}}',
+    'invalid .research-vault.json: embedding.chunk must be an integer'],
+  ['refuses a fractional embedding overlap', '{"embedding":{"url":"https://localhost/embed","overlap":0.5}}',
+    'invalid .research-vault.json: embedding.overlap must be an integer'],
+]) {
+  test(`parseProjectConfig ${name}`, () => {
+    let config;
+    assert.throws(() => { config = parseProjectConfig(raw, SCHEMA); }, { name: 'Error', message });
+    assert.equal(config, undefined);
+  });
+}
+
+test('parseProjectConfig keeps different configured embedding sizes', () => {
+  const { embedding } = parseProjectConfig('{"embedding":{"url":"https://localhost/embed","chunk":512,"overlap":64}}', SCHEMA);
+  assert.deepEqual([embedding.chunk, embedding.overlap], [512, 64]);
+});
+
+test('scaffoldProjectConfig preserves a binding created after the existence check', (t) => {
+  const dir = tmpVault('rv-binding-race-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const binding = join(dir, '.research-vault.json');
+  assert.throws(() => scaffoldProjectConfig(dir, { schema: SCHEMA }, {
+    writeFileSync(path, content, options) {
+      writeFileSync(binding, 'concurrent binding\n', { flag: 'wx' });
+      writeFileSync(path, content, options);
+    },
+  }), { message: `.research-vault.json already exists at ${binding}` });
+  assert.deepEqual(readdirSync(dir), ['.research-vault.json']);
+  assert.equal(readFileSync(binding, 'utf8'), 'concurrent binding\n');
+});
+
+test('scaffoldProjectConfig propagates ENOENT when the binding directory is missing', (t) => {
+  const dir = tmpVault('rv-missing-binding-dir-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  assert.throws(() => scaffoldProjectConfig(join(dir, 'missing'), { schema: SCHEMA }), { code: 'ENOENT' });
+  assert.deepEqual(readdirSync(dir), []);
+});
