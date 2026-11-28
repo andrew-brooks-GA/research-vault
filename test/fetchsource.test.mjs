@@ -7,7 +7,7 @@ import http from 'node:http';
 import { join } from 'node:path';
 import { setImmediate as nextTurn } from 'node:timers/promises';
 import { fetchSource } from '../bin/lib/fetchsource.mjs';
-import { BLOCKLIST, sourceBlockCheck } from '../bin/lib/blocklist.mjs';
+import { BLOCKLIST, sourceBlockCheck } from '../bin/lib/blocklist.ts';
 import { fillSource } from '../bin/lib/fill.mjs';
 import { checkQuotes } from '../bin/lib/quotes.mjs';
 import { ingest } from '../bin/commands/capture.mjs';

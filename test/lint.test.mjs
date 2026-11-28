@@ -10,7 +10,7 @@ import { writeEntry } from '../bin/lib/fsutil.mjs';
 import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
 import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS } from '../bin/lib/validate.ts';
 import { writeBlocklist } from './blocklist.test.mjs';
-import { BLOCKLIST } from '../bin/lib/blocklist.mjs';
+import { BLOCKLIST } from '../bin/lib/blocklist.ts';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { REPO_ROOT, tmpVault, put, testEnv } from './helpers.mjs';

@@ -9,7 +9,7 @@ import { buildManifest } from './manifest.mjs';
 import { TYPE_FOLDER } from './fsutil.mjs';
 import { assertControlledValues } from './validate.ts';
 import { csvList } from './args.ts';
-import { loadBlocklist, matchBlock } from './blocklist.mjs';
+import { loadBlocklist, matchBlock } from './blocklist.ts';
 import { screenText } from './screen.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');

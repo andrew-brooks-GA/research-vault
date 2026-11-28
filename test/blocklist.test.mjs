@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpVault } from './helpers.mjs';
-import { BLOCKLIST, loadBlocklist, matchBlock } from '../bin/lib/blocklist.mjs';
+import { BLOCKLIST, loadBlocklist, matchBlock } from '../bin/lib/blocklist.ts';
 
 export const ROWS = [
   { pattern: 'spam.example.com', scope: 'domain', reason: 'content farm', added: '2026-11-02' },
