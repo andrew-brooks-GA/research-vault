@@ -17,7 +17,7 @@ import { staleness } from './stale.mjs';
 import { expandFiles } from './files.ts';
 import { isInsideVault } from './containment.mjs';
 import { isRelativeInside } from './projectconfig.mjs';
-import { sha256Hex } from './hash.mjs';
+import { sha256Hex } from './hash.ts';
 
 // ---- shipped language rows ----
 // Each row is two regexes and nothing else (spec 15 D0): `comment` matches one whole comment line and

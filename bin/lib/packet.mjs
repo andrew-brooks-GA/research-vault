@@ -5,7 +5,7 @@ import { loadSchema, fieldOrder } from './schema.mjs';
 import { writeManifest } from './manifest.mjs';
 import { assertInsideVault, mayBeInside } from './containment.mjs';
 import { screenText } from './screen.ts';
-import { sha256Hex } from './hash.mjs';
+import { sha256Hex } from './hash.ts';
 
 export const RUN_KEY = /^run-[A-Za-z0-9]{6,}$/;
 // As in the prototype measured in spec 54 (T9): a source of 8,000 bytes or less is copied whole.

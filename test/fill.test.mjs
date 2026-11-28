@@ -11,7 +11,7 @@ import { fetchSource, rawFileUrl } from '../bin/lib/fetchsource.mjs';
 import { readEntry } from '../bin/lib/fsutil.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { evidenceFor } from '../bin/lib/gate.mjs';
-import { sha256Tagged } from '../bin/lib/hash.mjs';
+import { sha256Tagged } from '../bin/lib/hash.ts';
 import { lintVault } from '../bin/lib/lintrules.mjs';
 
 const NOW = { now: '2026-06-12', ackDataEgress: true };

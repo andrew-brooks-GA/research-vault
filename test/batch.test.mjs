@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { REPO_ROOT } from './helpers.mjs';
 import { runBatch, run, ingest } from '../bin/commands/capture.mjs';
 import { makeId } from '../bin/lib/ids.mjs';
-import { sha256Tagged } from '../bin/lib/hash.mjs';
+import { sha256Tagged } from '../bin/lib/hash.ts';
 import { lintVault } from '../bin/lib/lintrules.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { writeBlocklist } from './blocklist.test.mjs';

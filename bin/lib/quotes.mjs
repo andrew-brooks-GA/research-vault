@@ -10,7 +10,7 @@ import { extractText } from './extract.ts';
 import { bodyText, MIN_BODY_CHARS } from './gate.mjs';
 import { RUN_KEY } from './packet.mjs';
 import { screenText } from './screen.ts';
-import { sha256Hex } from './hash.mjs';
+import { sha256Hex } from './hash.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 // The only differences a match ignores: white space, quote marks, dash forms and code marks. A lane

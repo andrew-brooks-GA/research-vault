@@ -241,7 +241,7 @@ export const COUPLINGS = [
   ['bin/lib/manifest.mjs', 'schema/taxonomy.json', 'CONFIRMING_RESULTS is a subset of verification_result'],
   ['bin/lib/ids.mjs', 'bin/lib/citations.mjs', 'makeId output must match ID_RE'],
   ['bin/lib/ids.mjs', 'bin/lib/agentsmd.mjs', 'the filename-is-the-id rule is restated in the generated AGENTS.md'],
-  ['bin/lib/hash.mjs', 'bin/lib/gate.mjs', "sha256 formats differ: 'sha256:<hex>' stored, bare hex in the ledger", 'sha256:'],
+  ['bin/lib/hash.ts', 'bin/lib/gate.mjs', "sha256 formats differ: 'sha256:<hex>' stored, bare hex in the ledger", 'sha256:'],
   ['bin/lib/stale.mjs', 'vault-template/meta/freshness-policy.md', 'the last_verified rule and the volatility windows are restated in §2-3', 'last_verified'],
   ['bin/lib/stale.mjs', 'vault-template/meta/prompt-templates/verify-entry.md', 'steps 1-2 restate the last_verified rule and the windows', 'last_verified'],
   ['bin/lib/stale.mjs', 'skills/research-vault-usage/SKILL.md', 'the 90-day window and the last_verified rule are written out', 'last_verified'],

@@ -1,4 +1,4 @@
-import { sha256Hex } from './hash.mjs';
+import { sha256Hex } from './hash.ts';
 
 const STOPWORDS = new Set(['a','an','the','of','to','in','on','for','and','or','with','is','are','be']);
 const TRACKING = new Set(['utm_source','utm_medium','utm_campaign','utm_term','utm_content','ref','gclid','fbclid']);

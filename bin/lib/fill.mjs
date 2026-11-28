@@ -8,7 +8,7 @@ import { loadBlocklist, matchBlock } from './blocklist.mjs';
 import { fetchSource, rawFileUrl } from './fetchsource.mjs';
 import { extractText } from './extract.ts';
 import { bodyText, MIN_BODY_CHARS } from './gate.mjs';
-import { sha256Tagged } from './hash.mjs';
+import { sha256Tagged } from './hash.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const FILL_MAX_BYTES = 300000;

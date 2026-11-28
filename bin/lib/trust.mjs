@@ -3,7 +3,7 @@ import path from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { assertInsideWorkspaceFolder } from './containment.mjs';
-import { sha256Hex } from './hash.mjs';
+import { sha256Hex } from './hash.ts';
 
 export function configPath({ platform, home, env }) {
   const p = platform === 'win32' ? path.win32 : path.posix;

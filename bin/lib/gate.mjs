@@ -18,7 +18,7 @@ import { findProjectConfig, loadProjectConfig } from './projectconfig.mjs';
 import { assertInsideVault, compareContainment, isInsideVault } from './containment.mjs';
 import { langFor, codeFiles, extractCodeLinks, codeUnits, codeUnitHashes, checkCodeLinks, worstStatus } from './codelinks.mjs';
 import { screenText } from './screen.ts';
-import { sha256Hex } from './hash.mjs';
+import { sha256Hex } from './hash.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 

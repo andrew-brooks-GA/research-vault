@@ -6,7 +6,7 @@ import { REPO_ROOT, tmpVault, put } from './helpers.mjs';
 import { checkQuotes } from '../bin/lib/quotes.mjs';
 import { applyVerification, run as verifyRun } from '../bin/commands/verify.mjs';
 import { readEntry } from '../bin/lib/fsutil.mjs';
-import { sha256Tagged } from '../bin/lib/hash.mjs';
+import { sha256Tagged } from '../bin/lib/hash.ts';
 import { writeBlocklist } from './blocklist.test.mjs';
 
 const NOW = { now: '2026-06-12', repoRoot: REPO_ROOT };

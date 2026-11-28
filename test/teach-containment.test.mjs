@@ -13,7 +13,7 @@ import { readBrand } from '../bin/lib/brand.mjs';
 import { isInsideVault } from '../bin/lib/containment.mjs';
 import { hasVerdict, ledgerRoot, referencedImages, taskFile } from '../bin/lib/gate.mjs';
 import { labPin, labRefusal, readLabs } from '../bin/lib/labs.mjs';
-import { sha256Hex } from '../bin/lib/hash.mjs';
+import { sha256Hex } from '../bin/lib/hash.ts';
 import { imageTarget } from '../bin/lib/lesson.mjs';
 import { resolveVault } from '../bin/lib/resolve.mjs';
 import { loadTeachSchema } from '../bin/lib/schema.mjs';

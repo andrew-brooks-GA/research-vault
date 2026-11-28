@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (spec 56, stage 6):** `bin/lib/hash.mjs` is now `bin/lib/hash.ts` (types added, nothing else: the conversion check reports no difference). Its twelve importers, eight tests and one `COUPLINGS` row name the new path.
 - **Changed (spec 56, stage 6):** `bin/lib/cast.mjs` is now `bin/lib/cast.ts` (types added, nothing else: the conversion check reports no difference). Its two importers, its test, three `COUPLINGS` rows and the three document lines that name the file (`docs/REFERENCE.md`, `skills/research-teach/LESSON-FORMAT.md`) name the new path.
 - **Changed (spec 56, stage 6):** `bin/lib/escape.mjs` is now `bin/lib/escape.ts` (types added, nothing else: the conversion check reports no difference). Its six importers, its test and the serve-path source scan name the new path.
 - **Changed (spec 56, stage 6):** `bin/lib/unknowns.mjs` is now `bin/lib/unknowns.ts` (types added, nothing else: the conversion check reports no difference). `isRecord` is a type predicate. Its two importers and its test name the new path.

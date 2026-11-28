@@ -5,7 +5,7 @@ import { EventEmitter, once } from 'node:events';
 import http from 'node:http';
 import { setImmediate as nextTurn } from 'node:timers/promises';
 import { fetchSource } from '../bin/lib/fetchsource.mjs';
-import { sha256Tagged } from '../bin/lib/hash.mjs';
+import { sha256Tagged } from '../bin/lib/hash.ts';
 import { testEnv } from './helpers.mjs';
 
 // A fake `res` that plays a scripted status/headers, then optionally emits data.

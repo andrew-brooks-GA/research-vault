@@ -12,7 +12,7 @@ import { imageTarget } from './serve-file.mjs';
 import { validateEntry, ENUM_CODES, missionPrefs } from './teach.mjs';
 import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
 import { readLabs, labPin, lessonLab, LAB_MANIFEST } from './labs.mjs';
-import { sha256Hex } from './hash.mjs';
+import { sha256Hex } from './hash.ts';
 import { scanCast, PLAYER_FILES, PLAYER_VERSION } from './cast.ts';
 import { readBrand, BRAND_DEFAULTS, contrast } from './brand.mjs';
 import { readRequirements } from './task.mjs';

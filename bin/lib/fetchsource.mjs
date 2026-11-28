@@ -1,6 +1,6 @@
 import https from 'node:https';
 import net from 'node:net';
-import { sha256Tagged } from './hash.mjs';
+import { sha256Tagged } from './hash.ts';
 import { assertSafeUrl, resolveSafe } from './ssrfguard.ts';
 
 const MAX_BODY = 5 * 1024 * 1024;
