@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { buildManifest, isUnverifiedSource } from './manifest.mjs';
 import { listStale, staleness } from './stale.mjs';
-import { traverse, DEPENDENCY_RELS } from './graph.mjs';
+import { traverse, DEPENDENCY_RELS } from './graph.ts';
 import { loadSchema } from './schema.mjs';
 import { walkEntries, readEntry } from './fsutil.mjs';
 import { verKey } from './ids.mjs';

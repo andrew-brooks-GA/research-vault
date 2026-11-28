@@ -258,7 +258,7 @@ export const COUPLINGS = [
   ['bin/lib/git.ts', 'SECURITY.md', 'the Git overrides, supported versions and limits are restated', 'safe.bareRepository=explicit'],
   ['bin/lib/git.ts', 'test/teach-labs.test.mjs', 'the process guard checks the child_process import and sole Git launch', 'execFileSync'],
   ['schema/teach-taxonomy.json', 'skills/research-teach/LEARNING-RECORD-FORMAT.md', 'kind values, types and the learning-records folder are hand-copied', 'learning-records'],
-  ['schema/frontmatter.schema.json', 'bin/lib/graph.mjs', 'DEPENDENCY_RELS must be a subset of edge_fields.backlink'],
+  ['schema/frontmatter.schema.json', 'bin/lib/graph.ts', 'DEPENDENCY_RELS must be a subset of edge_fields.backlink'],
   ['schema/frontmatter.schema.json', 'hooks/pre-web.mjs', 'title, topics, summary, source_url, status and type are read by name', 'source_url'],
   ['bin/commands/init.mjs', 'vault-template/README.md', 'VAULT_MARKERS names this file for non-empty detection'],
   ['bin/commands/init.mjs', 'vault-template/CLAUDE.md', 'VAULT_MARKERS names this file for non-empty detection'],

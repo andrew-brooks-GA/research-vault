@@ -19,7 +19,7 @@ if (!manifestPath || !start || !checks.length) {
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 if (!manifest.entries.some((e) => e.id === start)) process.stderr.write(`${start} is not in the manifest; walking its edges anyway\n`);
 
-const DEPENDENCY_RELS = ['sources', 'contributing_ids']; // bin/lib/graph.mjs DEPENDENCY_RELS
+const DEPENDENCY_RELS = ['sources', 'contributing_ids']; // bin/lib/graph.ts DEPENDENCY_RELS
 const restsOn = new Map(); // id -> the ids whose claims rest on it
 for (const e of manifest.edges) if (DEPENDENCY_RELS.includes(e.rel)) (restsOn.get(e.to) ?? restsOn.set(e.to, []).get(e.to)).push(e.from);
 const distance = new Map([[start, 0]]);
