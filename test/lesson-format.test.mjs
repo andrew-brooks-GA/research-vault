@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LESSON_ID_RE, RECORD_ID_RE, blockSpans, extractCites, imgAttr, lessonItems, parseQuiz, readPath, uniq } from '../bin/lib/lesson-format.mjs';
+import { LESSON_ID_RE, RECORD_ID_RE, blockSpans, extractCites, imgAttr, lessonItems, parseQuiz, readPath, uniq } from '../bin/lib/lesson-format.ts';
 
 function pathFixture(t, text) {
   const dir = mkdtempSync(join(tmpdir(), 'rv-lesson-format-'));

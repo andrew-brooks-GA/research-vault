@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { isInsideVault, isInsideWorkspaceFolder } from './containment.ts';
-import { LESSON_ID_RE, parseBlocks } from './lesson-format.mjs';
+import { LESSON_ID_RE, parseBlocks } from './lesson-format.ts';
 import { show } from './escape.ts';
 import { sha256Hex } from './hash.ts';
 

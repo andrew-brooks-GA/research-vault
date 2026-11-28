@@ -7,7 +7,7 @@ import { matchRows } from './manifest.mjs';
 import { checkCitations, extractCitations, SPAN_RE } from './citations.mjs';
 import { mayBeInside } from './containment.ts';
 import { traverse } from './graph.ts';
-import { extractCites, LESSON_ID_RE, RECORD_ID_RE, FOLLOWUP, CONNECT_LEAD, lessonClass, parseBlocks, blockSpans, parseQuiz, readPath, imgAttr, isProject, README_SECTIONS, uniq } from './lesson-format.mjs';
+import { extractCites, LESSON_ID_RE, RECORD_ID_RE, FOLLOWUP, CONNECT_LEAD, lessonClass, parseBlocks, blockSpans, parseQuiz, readPath, imgAttr, isProject, README_SECTIONS, uniq } from './lesson-format.ts';
 import { imageTarget } from './serve-file.mjs';
 import { validateEntry, ENUM_CODES, missionPrefs } from './teach.mjs';
 import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
