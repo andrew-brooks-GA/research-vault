@@ -36,6 +36,42 @@ test('collection members are validated before consumers use them', async t => {
   });
 });
 
+test('scalar edge source_id rejects a number', () => {
+  assert.deepEqual(fieldShapeErrors({ source_id: 5 }), ['source_id must be a string']);
+});
+
+test('scalar edge prompt_id rejects a number', () => {
+  assert.deepEqual(fieldShapeErrors({ prompt_id: 5 }), ['prompt_id must be a string']);
+});
+
+test('scalar edge superseded_by rejects a number', () => {
+  assert.deepEqual(fieldShapeErrors({ superseded_by: 5 }), ['superseded_by must be a string']);
+});
+
+test('scalar edge fields accept a string', () => {
+  assert.deepEqual(fieldShapeErrors({ source_id: '5', prompt_id: '5', superseded_by: '5' }), []);
+});
+
+test('scalar edge fields accept absence', () => {
+  assert.deepEqual(fieldShapeErrors({}), []);
+});
+
+test('every scalar edge field in the schema rejects a number', () => {
+  const { backlink, reference_only } = loadSchema(REPO_ROOT).fields.edge_fields;
+  const listFields = ['domain', 'topics', 'related', 'sources', 'contributing_ids', 'contributing', 'attachments', 'verifications'];
+  for (const field of [...backlink, ...reference_only].filter(field => !listFields.includes(field))) {
+    assert.deepEqual(fieldShapeErrors({ [field]: 5 }), [`${field} must be a string`], field);
+  }
+});
+
+test('scalar edge source_id rejects a boolean', () => {
+  assert.deepEqual(fieldShapeErrors({ source_id: true }), ['source_id must be a string']);
+});
+
+test('scalar edge source_id rejects a list', () => {
+  assert.deepEqual(fieldShapeErrors({ source_id: ['5'] }), ['source_id must be a string']);
+});
+
 test('non-edge members and empty containers remain searchable without shape findings', async t => {
   const rows = [
     { topics: [2024, 'k8s'] }, { domain: [7] }, { attachments: [true] },

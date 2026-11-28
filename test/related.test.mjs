@@ -4,7 +4,8 @@ import { relatedTo, run } from '../bin/commands/related.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { traverse } from '../bin/lib/graph.mjs';
 import { spawnSync } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { readdirSync, readFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpVault, put, testEnv } from './helpers.mjs';
 
@@ -114,6 +115,24 @@ test('a dangling reference is a node with missing: true', () => {
   put(dir, 'note', N, { sources: ['2026-01-01-gone'], confidence: 'medium' });
   const r = relatedTo(dir, N);
   assert.deepEqual(r.nodes.find(n => n.id === '2026-01-01-gone'), { id: '2026-01-01-gone', distance: 1, missing: true });
+});
+
+test('related reports a numeric source_id as a malformed entry', t => {
+  const dir = tmpVault('rv-related-shape-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  put(dir, 'snippet', '2026-01-01-bad-edge', { language: 'js', tested: false, source_id: 5 });
+  const file = join('snippets', '2026-01-01-bad-edge.md');
+  const names = readdirSync(dir, { recursive: true }).sort();
+  const bytes = readFileSync(join(dir, file));
+  const cli = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
+  const r = spawnSync(process.execPath, [cli, 'related', '2026-01-01-bad-edge', '--vault', dir], {
+    env: testEnv(), encoding: 'utf8', timeout: 20000,
+  });
+  assert.equal(r.status, 2, r.stderr);
+  assert.equal(r.stderr, `error: ${file}: source_id must be a string\n`);
+  assert.equal(r.stdout, '');
+  assert.deepEqual(readdirSync(dir, { recursive: true }).sort(), names);
+  assert.deepEqual(readFileSync(join(dir, file)), bytes);
 });
 
 test('CLI rejects bad --depth/--direction/--rel with exit 2', async () => {

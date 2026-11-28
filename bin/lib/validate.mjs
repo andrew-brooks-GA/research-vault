@@ -39,6 +39,11 @@ export function fieldShapeErrors(data) {
       } else if (field === 'verifications' && !map(value)) add(at, 'a map');
     }
   }
+  for (const field of ['source_id', 'prompt_id', 'superseded_by']) {
+    const value = data[field];
+    if (value === undefined || value === '') continue;
+    if (typeof value !== 'string') add(field, 'a string');
+  }
   if (data.subject !== undefined && data.subject !== '') {
     if (!map(data.subject)) add('subject', 'a map');
   }
