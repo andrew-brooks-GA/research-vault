@@ -133,45 +133,59 @@ export function parseFrontmatter(text) {
   const m = FM.exec(text.replace(/\r\n/g, '\n'));
   if (!m) throw new Error('missing or malformed frontmatter');
   const [, fm, body] = m;
+  if (fm === undefined || body === undefined) throw new Error('parseFrontmatter: expected frontmatter and body captures');
   const lines = fm.split('\n');
   const data = {};
   const raw = {};
-  let lastKey = null;
+  let lastLines = null;
   let i = 0;
-  while (i < lines.length) {
-    const line = lines[i];
+  let line;
+  while ((line = lines[i]) !== undefined) {
     if (line.trim() === '') {
-      if (lastKey) raw[lastKey].lines.push(line);
+      if (lastLines) lastLines.push(line);
       i++; continue;
     }
     const top = /^([A-Za-z_][\w]*):([\s\S]*)$/.exec(line);
     if (!top) throw new Error(`unparseable frontmatter line: ${line}`);
-    const key = keyOf(top[1]);
+    const [, topKey, topValue] = top;
+    if (topKey === undefined || topValue === undefined) throw new Error('parseFrontmatter: expected top-level key and value captures');
+    const key = keyOf(topKey);
     const start = i;
-    const rest = stripComment(top[2].trim());
+    const rest = stripComment(topValue.trim());
     const header = BLOCK_HEADER.exec(rest);
+    let value;
     if (header) {
       const r = parseBlockScalar(lines, i, header);
-      data[key] = r.value;
+      value = r.value;
       i = r.next;
     } else if (rest !== '') {
-      data[key] = parseScalar(rest);
+      value = parseScalar(rest);
       i++;
     } else {
       const next = lines[i + 1] ?? '';
       if (/^\s+-\s/.test(next)) {
         const seq = [];
         i++;
-        while (i < lines.length && /^\s+-\s?/.test(lines[i])) {
-          const itemFirst = lines[i].replace(/^\s+-\s?/, '');
-          if (/^[A-Za-z_][\w]*:/.test(itemFirst)) {
+        let item;
+        while ((item = lines[i]) !== undefined) {
+          const marker = /^\s+-\s?([\s\S]*)$/.exec(item);
+          if (!marker) break;
+          const [, itemFirst] = marker;
+          if (itemFirst === undefined) throw new Error('parseFrontmatter: expected a sequence item capture');
+          const kv = /^([A-Za-z_][\w]*):([\s\S]*)$/.exec(itemFirst);
+          if (kv) {
             const obj = {};
-            const kv = /^([A-Za-z_][\w]*):([\s\S]*)$/.exec(itemFirst);
-            obj[keyOf(kv[1])] = parseNestedScalar(kv[2], lines[i]);
+            const [, itemKey, itemValue] = kv;
+            if (itemKey === undefined || itemValue === undefined) throw new Error('parseFrontmatter: expected sequence key and value captures');
+            obj[keyOf(itemKey)] = parseNestedScalar(itemValue, item);
             i++;
-            while (i < lines.length && /^\s{4,}[A-Za-z_][\w]*:/.test(lines[i])) {
-              const kv2 = /^\s+([A-Za-z_][\w]*):([\s\S]*)$/.exec(lines[i]);
-              obj[keyOf(kv2[1])] = parseNestedScalar(kv2[2], lines[i]);
+            let field;
+            while ((field = lines[i]) !== undefined) {
+              const kv2 = /^\s{4,}([A-Za-z_][\w]*):([\s\S]*)$/.exec(field);
+              if (!kv2) break;
+              const [, fieldKey, fieldValue] = kv2;
+              if (fieldKey === undefined || fieldValue === undefined) throw new Error('parseFrontmatter: expected sequence field key and value captures');
+              obj[keyOf(fieldKey)] = parseNestedScalar(fieldValue, field);
               i++;
             }
             seq.push(obj);
@@ -180,23 +194,25 @@ export function parseFrontmatter(text) {
             i++;
           }
         }
-        data[key] = seq;
-      } else if (/^\s+[A-Za-z_][\w]*:/.test(next)) {
+        value = seq;
+      } else {
         const obj = {};
         i++;
-        while (i < lines.length && /^\s+[A-Za-z_][\w]*:/.test(lines[i])) {
-          const kv = /^\s+([A-Za-z_][\w]*):([\s\S]*)$/.exec(lines[i]);
-          obj[keyOf(kv[1])] = parseNestedScalar(kv[2], lines[i]);
+        let field;
+        while ((field = lines[i]) !== undefined) {
+          const kv = /^\s+([A-Za-z_][\w]*):([\s\S]*)$/.exec(field);
+          if (!kv) break;
+          const [, fieldKey, fieldValue] = kv;
+          if (fieldKey === undefined || fieldValue === undefined) throw new Error('parseFrontmatter: expected nested key and value captures');
+          obj[keyOf(fieldKey)] = parseNestedScalar(fieldValue, field);
           i++;
         }
-        data[key] = obj;
-      } else {
-        data[key] = '';
-        i++;
+        value = i === start + 1 ? '' : obj;
       }
     }
-    raw[key] = { lines: lines.slice(start, i), value: structuredClone(data[key]) };
-    lastKey = key;
+    data[key] = value;
+    lastLines = lines.slice(start, i);
+    raw[key] = { lines: lastLines, value: structuredClone(value) };
   }
   Object.defineProperty(data, RAW, { value: raw, enumerable: false });
   return { data, body };

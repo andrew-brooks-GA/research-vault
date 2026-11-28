@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFrontmatter, serializeFrontmatter } from '../bin/lib/frontmatter.mjs';
+import { parseFrontmatter, RAW, serializeFrontmatter } from '../bin/lib/frontmatter.mjs';
 
 const sample = `---
 title: "Effective Go"
@@ -219,3 +219,58 @@ test('S-13: a frontmatter key named after an Object.prototype member is an ordin
     '---\nverifications:\n  - __proto__: x\n---\n', '---\nverifications:\n  - date: x\n    __proto__: [y]\n---\n'])
     assert.throws(() => parseFrontmatter(text), { message: 'unsupported frontmatter key: __proto__' }, text);
 });
+
+test('blank lines before the first key belong to no RAW entry', () => {
+  const { data } = parseFrontmatter('---\n \ntitle: x\n---\n');
+  assert.deepEqual(data[RAW], { title: { lines: ['title: x'], value: 'x' } });
+});
+
+test('RAW keeps blank lines with the preceding key', () => {
+  const { data } = parseFrontmatter('---\ntitle: x\n  \n\nnext: y\n---\n');
+  assert.deepEqual(data[RAW], {
+    title: { lines: ['title: x', '  ', ''], value: 'x' },
+    next: { lines: ['next: y'], value: 'y' },
+  });
+});
+
+test('a block-sequence item after the first can omit the space after its dash', () => {
+  const { data } = parseFrontmatter('---\nvalues:\n  - one\n  -two\n---\n');
+  assert.deepEqual(data.values, ['one', 'two']);
+});
+
+test('a plain integer in a block sequence is parsed as a number', () => {
+  const { data } = parseFrontmatter('---\nvalues:\n  - 7\n---\n');
+  assert.deepEqual(data.values, [7]);
+});
+
+test('an empty key at the end of frontmatter has an empty string value', () => {
+  const { data } = parseFrontmatter('---\nvalue:\n---\n');
+  assert.equal(data.value, '');
+});
+
+test('a three-space sequence-map field is reported as an unparseable line', () => {
+  let parsed;
+  assert.throws(() => { parsed = parseFrontmatter('---\nrows:\n  - first: x\n   __proto__: |\n---\n'); },
+    { message: 'unparseable frontmatter line:    __proto__: |' });
+  assert.equal(parsed, undefined);
+});
+
+test('a block scalar in the first sequence-map field reports the line with its dash', () => {
+  let parsed;
+  assert.throws(() => { parsed = parseFrontmatter('---\nrows:\n  - first: |\n---\n'); },
+    { message: 'block scalars are not supported in nested fields: - first: |' });
+  assert.equal(parsed, undefined);
+});
+
+for (const [position, lines] of [
+  ['the first sequence-map field', 'rows:\n  - __proto__: |'],
+  ['a sequence-map continuation', 'rows:\n  - first: x\n    __proto__: |'],
+  ['a nested-map field', 'subject:\n  __proto__: |'],
+]) {
+  test(`__proto__ is refused before its block scalar in ${position}`, () => {
+    let parsed;
+    assert.throws(() => { parsed = parseFrontmatter(`---\n${lines}\n---\n`); },
+      { message: 'unsupported frontmatter key: __proto__' });
+    assert.equal(parsed, undefined);
+  });
+}
