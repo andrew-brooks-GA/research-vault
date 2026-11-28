@@ -150,10 +150,29 @@ test('a document code region invoking the TypeScript entry adds an invokes-cli e
   ]);
 });
 
+test('a command string in JSON adds an invokes-cli edge', () => {
+  const edges = extract('fixture.json', '{"command":"node research-vault.mjs init"}', ctx);
+  assert.deepEqual(edges.filter(({ kind }) => kind === 'invokes-cli'), [
+    { from: 'fixture.json', kind: 'invokes-cli', to: 'cli:init' },
+  ]);
+});
+
 function buildFixture(entries) {
   const sources = new Map(entries);
   return build({ ...ctx, files: [...sources.keys()], commands: [], scripts: [] }, (file) => sources.get(file));
 }
+
+test('the TypeScript dependency scanner contributes no edges for its own quoted paths', () => {
+  const source = "const path = 'scripts/missing.ts';";
+  const { edges, broken } = buildFixture([
+    ['scripts/deps.ts', source],
+    ['scripts/other.ts', source],
+  ]);
+  assert.deepEqual(edges.filter(({ from }) => from === 'scripts/deps.ts'), []);
+  assert.deepEqual(broken.filter(({ from }) => from === 'scripts/other.ts'), [
+    { from: 'scripts/other.ts', kind: 'reads', to: 'scripts/missing.ts' },
+  ]);
+});
 
 test('a missing TypeScript import fails the dependency check', () => {
   const { broken } = buildFixture([['bin/source.ts', "import './missing.ts';"]]);
@@ -179,7 +198,7 @@ function repoFixture(t, sources) {
     mkdirSync(join(cwd, posix.dirname(file)), { recursive: true });
     writeFileSync(join(cwd, file), source);
   }
-  for (const file of ['bin/lib/git.ts', 'scripts/deps.mjs']) {
+  for (const file of ['bin/lib/git.ts', 'bin/lib/unknowns.ts', 'scripts/deps.mjs']) {
     mkdirSync(join(cwd, posix.dirname(file)), { recursive: true });
     cpSync(new URL(`../${file}`, import.meta.url), join(cwd, file));
   }
@@ -190,6 +209,22 @@ function cliFixture(t, sources) {
   const script = repoFixture(t, { 'package.json': '{}', ...sources });
   return import(pathToFileURL(script));
 }
+
+test('an agent without a frontmatter name is indexed under the undefined string', { timeout: 30000 }, async (t) => {
+  const { context } = await cliFixture(t, {
+    'bin/research-vault.mjs': '',
+    'agents/fixture.md': '# Agent',
+  });
+  assert.deepEqual(context().names, { undefined: { kind: 'invokes-agent', file: 'agents/fixture.md' } });
+});
+
+test('a skill without a frontmatter name is indexed under the undefined string', { timeout: 30000 }, async (t) => {
+  const { context } = await cliFixture(t, {
+    'bin/research-vault.mjs': '',
+    'skills/fixture/SKILL.md': '# Skill',
+  });
+  assert.deepEqual(context().names, { undefined: { kind: 'invokes-skill', file: 'skills/fixture/SKILL.md' } });
+});
 
 test('a CLI command dispatches to the TypeScript file in the entry map', { timeout: 30000 }, async (t) => {
   const { build } = await cliFixture(t, {
@@ -249,6 +284,18 @@ function order(script = fileURLToPath(new URL('../scripts/deps.mjs', import.meta
   });
 }
 
+test('--hook prints nothing and exits successfully for a non-string file_path', { timeout: 30000 }, () => {
+  const script = fileURLToPath(new URL('../scripts/deps.mjs', import.meta.url));
+  const result = spawnSync(process.execPath, [script, '--hook'], {
+    env: testEnv(), encoding: 'utf8', timeout: 20000,
+    input: JSON.stringify({ tool_input: { file_path: [script] } }),
+  });
+  assert.ifError(result.error);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout, '');
+  assert.equal(result.stderr, '');
+});
+
 test('--order prints exact import levels and sorts paths within a level', { timeout: 30000 }, (t) => {
   const result = order(repoFixture(t, {
     'bin/a.ts': "import './b.mjs';\nimport './Z.ts';",
@@ -264,6 +311,7 @@ test('--order prints exact import levels and sorts paths within a level', { time
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout, [
     '0\tbin/Y.js', '0\tbin/b.mjs', '0\tbin/c.ts', '0\tbin/d.js', '0\tbin/lib/git.ts',
+    '0\tbin/lib/unknowns.ts',
     '1\tbin/Z.ts', '1\tscripts/deps.mjs', '2\tbin/a.ts', '',
   ].join('\n'));
 });

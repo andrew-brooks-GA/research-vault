@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, posix, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runGit } from '../bin/lib/git.ts';
+import { isRecord, parseJson } from '../bin/lib/unknowns.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CODE_EXT = ['.mjs', '.js', '.ts'];
@@ -21,7 +22,7 @@ export const IGNORED = new Set(['.cast', '.css', '.html', '.sh', '.d.ts', '.d.mt
 // Files no extractor reads: release history legitimately names removed files; the graph and its test
 // quote every syntax (COUPLINGS rows are couples edges, the sample table is test input); the npm
 // lockfile describes external packages.
-const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'test/deps.test.mjs', 'tooling/package-lock.json']);
+const UNSCANNED = new Set(['CHANGELOG.md', 'scripts/deps.mjs', 'scripts/deps.ts', 'test/deps.test.mjs', 'tooling/package-lock.json']);
 
 // Pairs that depend on each other through something other than a path: a copied value, a printed
 // string, a name, a format. Add a row with the change that creates one (AGENTS.md); the test fails
@@ -50,7 +51,8 @@ export const COUPLINGS = [
   ['tooling/lint.mjs', 'test/tooling.test.mjs', 'the suppression diagnostic is checked verbatim', 'a comment that switches a check off is not allowed'],
   ['tooling/pretypecheck.mjs', 'test/tooling.test.mjs', 'the missing-compiler install hint is checked verbatim', 'Run npm ci --ignore-scripts in tooling/ to install the TypeScript compiler.'],
   ['package.json', 'tooling/pretypecheck.mjs', 'the npm lifecycle check and the compiler command use the same entry point', 'node_modules/typescript/bin/tsc'],
-  ['tooling/suppressions.mjs', 'test/tooling.test.mjs', 'the launcher tests independently require all five suppression markers', "'eslint-disable', 'oxlint-disable', '@ts-ignore', '@ts-expect-error', '@ts-nocheck'"],
+  ['tooling/suppressions.mjs', 'test/tooling.test.mjs', 'the launcher tests independently require all five suppression markers',
+    ["'eslint" + "-disable'", "'oxlint" + "-disable'", "'@ts" + "-ignore'", "'@ts" + "-expect-error'", "'@ts" + "-nocheck'"].join(', ')],
   ['tsconfig.json', 'tooling/lint.mjs', 'the compiler include globs and the default lint folders cover the same three source folders'],
   ['tooling/.oxlintrc.json', 'test/tooling.test.mjs', 'the config tests pin the rule names, severities, assertion style, categories and override policy'],
   ['tooling/.oxlintrc.json', 'test/tooling.test.mjs', 'the config test requires the linter to ignore ESLint disable directives', 'respectEslintDisableDirectives'],
@@ -132,6 +134,7 @@ export const COUPLINGS = [
   ['scripts/coverage.mjs', 'AGENTS.md', 'new code must be loaded by a test'],
   ['scripts/deps.mjs', 'scripts/coverage.mjs', 'the order and coverage start from the same code extensions and source directories'],
   ['scripts/deps.mjs', 'test/deps.test.mjs', 'the order command reports tab-separated levels and sorted import cycle groups'],
+  ['scripts/deps.mjs', 'test/deps.test.mjs', 'the hook protocol ignores a non-string file_path', '--hook'],
   ['.gitattributes', 'test/coverage.test.mjs', 'the fixture checks the default text and line-ending attributes for TypeScript'],
   ['scripts/check-agentsmd-drift.mjs', 'test/coverage.test.mjs', 'command fixture checks the drift diagnostic and leaves the golden unchanged', 'AGENTS.md drift: generator output differs'],
   ['scripts/check-encoding.ts', 'test/coverage.test.mjs', 'command fixture checks the BOM diagnostic and leaves the file unchanged', 'BOM: '],
@@ -649,9 +652,14 @@ export const isCodeFile = f => CODE_EXT.includes(extensionOf(f));
 const read = f => readFileSync(join(REPO_ROOT, f), 'utf8');
 const lsFiles = (...flags) => runGit(['ls-files', '-z', '--exclude-standard', ...flags], { processCwd: REPO_ROOT, timeout: 0, stderr: 'inherit' }).split('\0').filter(Boolean);
 const fmName = text => text.match(/^---\n[\s\S]*?^name:\s*(\S+)/m)?.[1];
+function required(value, message) {
+  if (value === undefined) throw new Error(message);
+  return value;
+}
 // The `from` alternative covers type-only imports and re-exports, including across lines.
 const IMPORT_RE = /(?:\bfrom\s*|\bimport\s*\(?\s*)['"](\.{1,2}\/[^'"]+)['"]/g;
-const imports = (file, text) => [...text.matchAll(IMPORT_RE)].map(m => posix.normalize(posix.join(posix.dirname(file), m[1])));
+const imports = (file, text) => [...text.matchAll(IMPORT_RE)].map(([, path]) =>
+  posix.normalize(posix.join(posix.dirname(file), required(path, 'imports: expected an import path'))));
 
 // The flags a command accepts: every args.<flag> and args['<flag>'] read in its module and in the
 // bin/lib modules it imports directly.
@@ -662,7 +670,8 @@ function flagsOf(file) {
   const text = read(file);
   const libs = imports(file, text).filter(t => t.startsWith('bin/lib/') && isCodeFile(t) && existsSync(join(REPO_ROOT, t)));
   // A mention of args.mjs or args.ts in a comment is not an option read.
-  return new Set([text, ...libs.map(read)].flatMap(t => [...t.matchAll(/\bargs(?:\.([\w$]+)|\['([^']+)'\])/g)].map(m => m[1] ?? m[2]).filter(f => f !== 'mjs' && f !== 'ts')));
+  return new Set([text, ...libs.map(read)].flatMap(t => [...t.matchAll(/\bargs(?:\.([\w$]+)|\['([^']+)'\])/g)]
+    .map(([, dot, bracket]) => dot ?? required(bracket, 'flagsOf: expected an option name')).filter(f => f !== 'mjs' && f !== 'ts')));
 }
 
 // The universe: tracked and untracked files that are not ignored and still exist (a tracked file
@@ -676,18 +685,23 @@ export function context() {
   const files = repoFiles();
   const entry = files.includes('bin/research-vault.ts') ? 'bin/research-vault.ts' : 'bin/research-vault.mjs';
   const dispatches = read(entry).matchAll(/^\s+(\w+): \(\) => import\(\s*['"](\.{1,2}\/[^'"]+)['"]/gm);
-  const commandFiles = Object.fromEntries([...dispatches].map(([, cmd, path]) => [cmd, posix.join(posix.dirname(entry), path)]));
+  const commandFiles = Object.fromEntries([...dispatches].map(([, cmd, path]) => [
+    required(cmd, 'context: expected a command name'),
+    posix.join(posix.dirname(entry), required(path, 'context: expected a command path')),
+  ]));
   const commands = Object.keys(commandFiles);
-  const scripts = Object.keys(JSON.parse(read('package.json')).scripts ?? {});
+  const pkg = parseJson(read('package.json'));
+  if (pkg === null) throw new Error('context: expected a non-null package.json');
+  const scripts = Object.keys(isRecord(pkg) ? pkg.scripts ?? {} : {});
   const names = {};
   for (const f of files) {
-    if (/^agents\/[^/]+\.md$/.test(f)) names[fmName(read(f))] = { kind: 'invokes-agent', file: f };
-    else if (/^skills\/[^/]+\/SKILL\.md$/.test(f)) names[fmName(read(f))] = { kind: 'invokes-skill', file: f };
+    if (/^agents\/[^/]+\.md$/.test(f)) names[String(fmName(read(f)))] = { kind: 'invokes-agent', file: f };
+    else if (/^skills\/[^/]+\/SKILL\.md$/.test(f)) names[String(fmName(read(f)))] = { kind: 'invokes-skill', file: f };
     else if (/^commands\/[^/]+\.md$/.test(f)) names[posix.basename(f, '.md')] = { kind: 'invokes-command', file: f };
   }
-  const topDirs = [...new Set(files.filter(f => f.includes('/')).map(f => f.split('/')[0]))];
+  const topDirs = [...new Set(files.filter(f => f.includes('/')).map(f => f.slice(0, f.indexOf('/'))))];
   const rootFiles = files.filter(f => !f.includes('/'));
-  const flags = Object.fromEntries(commands.map(c => [c, flagsOf(commandFiles[c])]));
+  const flags = Object.fromEntries(Object.entries(commandFiles).map(([c, file]) => [c, flagsOf(file)]));
   return { files, commands, commandFiles, scripts, names, topDirs, rootFiles, flags };
 }
 
@@ -698,8 +712,11 @@ function reads(text, ctx) {
   // are skipped; a test that reads docs/ would go unseen.
   const dirs = ctx.topDirs.filter(d => d !== 'docs').map(esc).join('|');
   const out = [...text.matchAll(new RegExp(`(?<=[(,]\\s*)'(${dirs})'((?:,\\s*'[^']+')*)`, 'g'))]
-    .map(m => posix.join(m[1], ...[...m[2].matchAll(/'([^']+)'/g)].map(x => x[1])));
-  out.push(...[...text.matchAll(new RegExp(`'((?:${dirs})/[^'\\n*]*\\.(?:${READ_EXT}))'`, 'g'))].map(m => m[1]));
+    .map(([, dir, suffix]) => posix.join(required(dir, 'reads: expected a directory'),
+      ...[...required(suffix, 'reads: expected path arguments').matchAll(/'([^']+)'/g)]
+        .map(([, segment]) => required(segment, 'reads: expected a path segment'))));
+  out.push(...[...text.matchAll(new RegExp(`'((?:${dirs})/[^'\\n*]*\\.(?:${READ_EXT}))'`, 'g'))]
+    .map(([, path]) => required(path, 'reads: expected a path')));
   return out.flatMap(p => { const under = ctx.files.filter(f => f.startsWith(p + '/')); return under.length ? under : [p]; });
 }
 
@@ -709,7 +726,7 @@ function documents(file, text, ctx) {
   const out = [...t.matchAll(new RegExp(`(?<![\\w./-])(?:${dirs})/[\\w./-]*\\.(?:${DOC_EXT})(?![\\w-])`, 'g'))].map(m => m[0]);
   out.push(...[...t.matchAll(new RegExp(`(?<![\\w./-])(?:${ctx.rootFiles.map(esc).join('|')})(?![\\w-])`, 'g'))].map(m => m[0]));
   out.push(...[...t.matchAll(/(?<![\w./-])meta\/[\w./-]*\.(?:md|json|yml)(?![\w-])/g)].map(m => 'vault-template/' + m[0]));
-  out.push(...[...t.matchAll(/\]\(([^)\s#]+)/g)].map(m => m[1]).filter(l => !/^[a-z]+:/.test(l))
+  out.push(...[...t.matchAll(/\]\(([^)\s#]+)/g)].map(([, path]) => required(path, 'documents: expected a link target')).filter(l => !/^[a-z]+:/.test(l))
     .map(l => posix.normalize(posix.join(posix.dirname(file), l))));
   return out;
 }
@@ -719,11 +736,12 @@ function documents(file, text, ctx) {
 function codeRegions(file, text) {
   const e = extensionOf(file);
   // A JSON string is code when it is a command line; titles and descriptions are prose.
-  if (e === '.json') return [...text.matchAll(/"((?:\$|node)\s(?:[^"\\]|\\.)*)"/g)].map(m => m[1]);
+  if (e === '.json') return [...text.matchAll(/"((?:\$|node)\s(?:[^"\\]|\\.)*)"/g)]
+    .map(([, line]) => required(line, 'codeRegions: expected a JSON command'));
   if (e === '.yml') return text.split('\n').map(l => l.replace(/^\s*(?:-\s*)?[\w-]+:\s*/, ''));
   const out = [];
   const prose = text.replace(/^[ \t]*```[^\n]*\n([\s\S]*?)^[ \t]*```/gm, (_, body) => { out.push(...body.split('\n')); return ''; });
-  out.push(...[...prose.matchAll(/`([^`\n]+)`/g)].map(m => m[1]));
+  out.push(...[...prose.matchAll(/`([^`\n]+)`/g)].map(([, span]) => required(span, 'codeRegions: expected inline code')));
   return out;
 }
 
@@ -732,9 +750,14 @@ function codeRegions(file, text) {
 const CLI_RE = /^(?:\$\s+)?(?:node\s+)?(?:"?[^\s"]*\/)?research-vault(?:\.(?:mjs|ts)"?)?\s+(\S+)(.*)$/;
 function invocation(region, ctx) {
   const m = region.trim().match(CLI_RE);
-  if (m) return /^[<[-]/.test(m[1]) ? null : [m[1], m[2]]; // <command>, [options] and --help are not command words
+  if (m) {
+    const [, command, options] = m;
+    const cmd = required(command, 'invocation: expected a command name');
+    return /^[<[-]/.test(cmd) ? null : [cmd, required(options, 'invocation: expected command arguments')]; // <command>, [options] and --help are not command words
+  }
   const [first, ...rest] = region.trim().split(/\s+/);
-  return ctx.commands.includes(first) ? [first, rest.join(' ')] : null;
+  const cmd = required(first, 'invocation: expected the first split element');
+  return ctx.commands.includes(cmd) ? [cmd, rest.join(' ')] : null;
 }
 
 // Every edge one file contributes. Exported so test/deps.test.mjs can feed it one syntax at a time.
@@ -748,15 +771,19 @@ export function extract(file, text, ctx = context()) {
     return edges;
   }
   if (file === 'hooks/hooks.json') {
-    for (const m of text.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"\s]+)/g)) add('registers', m[1]);
+    for (const [, path] of text.matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([^"\s]+)/g)) add('registers', required(path, 'extract: expected a hook path'));
     return edges;
   }
   if (!['.md', '.yml', '.json'].includes(e) && file !== 'bin/research-vault') return edges;
   for (const to of documents(file, text, ctx)) add('documents', to);
   if (e === '.md') {
-    const names = [...text.matchAll(/research-vault:([a-z-]+)/g)].map(m => m[1]);
-    names.push(...[...text.matchAll(/`\/?(research-[a-z-]+)`/g)].map(m => m[1]).filter(n => n !== 'research-vault'));
-    for (const n of names) ctx.names[n] ? add(ctx.names[n].kind, ctx.names[n].file) : add('invokes-unknown', n);
+    const names = [...text.matchAll(/research-vault:([a-z-]+)/g)].map(([, name]) => required(name, 'extract: expected an agent name'));
+    names.push(...[...text.matchAll(/`\/?(research-[a-z-]+)`/g)]
+      .map(([, name]) => required(name, 'extract: expected a skill or command name')).filter(n => n !== 'research-vault'));
+    for (const n of names) {
+      const target = ctx.names[n];
+      target ? add(target.kind, target.file) : add('invokes-unknown', n);
+    }
   }
   if (e === '.md' || e === '.yml') for (const m of text.matchAll(/npm (?:run ([\w:-]+)|(test)\b)/g)) add('npm', `npm:${m[1] ?? m[2]}`);
   for (const region of codeRegions(file, text)) {
@@ -764,7 +791,11 @@ export function extract(file, text, ctx = context()) {
     if (!hit) continue;
     const [cmd, rest] = hit;
     add('invokes-cli', `cli:${cmd}`);
-    if (ctx.flags[cmd]) for (const m of rest.matchAll(/--([a-z][\w-]*)/g)) if (!ctx.flags[cmd].has(m[1])) add('invokes-cli', `cli:${cmd} --${m[1]}`);
+    const flags = ctx.flags[cmd];
+    if (flags) for (const [, option] of rest.matchAll(/--([a-z][\w-]*)/g)) {
+      const flag = required(option, 'extract: expected an option name');
+      if (!flags.has(flag)) add('invokes-cli', `cli:${cmd} --${flag}`);
+    }
   }
   return edges;
 }
@@ -776,7 +807,7 @@ export function build(ctx = context(), readFile = read) {
   for (const f of ctx.files) if (EXTRACTED.has(extensionOf(f))) for (const e of extract(f, readFile(f), ctx)) add(e);
   for (const c of ctx.commands) add({ from: `cli:${c}`, kind: 'dispatches', to: ctx.commandFiles[c] });
   for (const [a, b, why] of COUPLINGS) { add({ from: a, kind: 'couples', to: b, why }); add({ from: b, kind: 'couples', to: a, why }); }
-  const broken = edges.filter(e => !nodes.has(e.to));
+  const broken = edges.filter(e => e.to === undefined || !nodes.has(e.to));
   return { nodes, edges, broken };
 }
 
@@ -799,15 +830,15 @@ function importGroups(outgoing) {
     active.add(file);
     stack.push(file);
     let low = index;
-    for (const to of outgoing.get(file)) {
+    for (const to of required(outgoing.get(file), 'importGroups: expected an adjacency list')) {
       if (!indices.has(to)) low = Math.min(low, visit(to));
-      else if (active.has(to)) low = Math.min(low, indices.get(to));
+      else if (active.has(to)) low = Math.min(low, required(indices.get(to), 'importGroups: expected an active file index'));
     }
     if (low === index) {
       const group = [];
       let member;
       do {
-        member = stack.pop();
+        member = required(stack.pop(), 'importGroups: expected a stack member');
         active.delete(member);
         group.push(member);
       } while (member !== file);
@@ -825,18 +856,25 @@ function printOrder() {
   // Read imports directly so the order includes this script's imports despite UNSCANNED.
   const outgoing = new Map(files.map(f => [f, imports(f, read(f)).filter(to => code.has(to))]));
   const groups = importGroups(outgoing);
-  const cycles = groups.filter(([f, ...rest]) => rest.length || outgoing.get(f).includes(f))
+  const cycles = groups.filter(([f, ...rest]) => {
+    if (rest.length) return true;
+    const file = required(f, 'printOrder: expected a group member');
+    return required(outgoing.get(file), 'printOrder: expected an adjacency list').includes(file);
+  })
     .map(group => group.sort().join(', ')).sort();
   if (cycles.length) {
     console.error(['Cyclic import groups:', ...cycles].join('\n'));
     return 1;
   }
   const levels = new Map();
-  for (const [file] of groups) {
-    levels.set(file, outgoing.get(file).reduce((level, to) => Math.max(level, levels.get(to) + 1), 0));
+  for (const [member] of groups) {
+    const file = required(member, 'printOrder: expected a group member');
+    const imports = required(outgoing.get(file), 'printOrder: expected an adjacency list');
+    levels.set(file, imports.reduce((level, to) => Math.max(level, required(levels.get(to), 'printOrder: expected a dependency level') + 1), 0));
   }
   // The file list is already in code-unit order, which the stable sort preserves within levels.
-  for (const file of files.sort((a, b) => levels.get(a) - levels.get(b))) console.log(`${levels.get(file)}\t${file}`);
+  for (const file of files.sort((a, b) => required(levels.get(a), 'printOrder: expected an import level') -
+    required(levels.get(b), 'printOrder: expected an import level'))) console.log(`${levels.get(file)}\t${file}`);
   return 0;
 }
 
@@ -848,7 +886,10 @@ export function main() {
     process.stdin.on('data', d => input += d);
     process.stdin.on('end', () => {
       try {
-        const edited = JSON.parse(input || '{}').tool_input?.file_path || '';
+        const payload = parseJson(input || '{}');
+        const toolInput = isRecord(payload) ? payload.tool_input : undefined;
+        const filePath = isRecord(toolInput) ? toolInput.file_path : undefined;
+        const edited = typeof filePath === 'string' ? filePath : '';
         const rel = relative(REPO_ROOT, edited).replace(/\\/g, '/');
         const deps = edited && !rel.startsWith('..') ? dependents(rel, build()) : [];
         if (deps.length) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: `Files that depend on ${rel}: ${deps.join('; ')}` } }) + '\n');
@@ -866,4 +907,4 @@ export function main() {
   }
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/').split('/').pop())) main();
+if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[\\/]/s, ''))) main();
