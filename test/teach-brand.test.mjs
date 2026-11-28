@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto';
 import { fixtureVault, put, testEnv } from './helpers.mjs';
 import { recordVerdict } from '../bin/lib/gate.mjs';
 import { createServer, exportWorkspace } from '../bin/lib/teach.mjs';
-import { readBrand, BRAND_TOKENS } from '../bin/lib/brand.mjs';
+import { readBrand, withBrand, BRAND_TOKENS } from '../bin/lib/brand.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
 import { lintWorkspace } from '../bin/lib/lesson.mjs';
@@ -120,6 +120,59 @@ function unbranded(html, path) {
   assert.doesNotMatch(html, /<(?:header|footer)\b[^>]*class=["'][^"']*brand-/, path);
   assert.doesNotMatch(html, /(?:href|src)=["'][^"']*brand\//, path);
 }
+
+test('an empty brand folder reports brand.json as missing', () => {
+  const repo = brandRepo();
+  const dir = join(repo.ws, 'brand');
+  try {
+    mkdirSync(dir);
+    assert.deepEqual(readBrand(repo.ws), {
+      brand: null, problems: [{ code: 'BRAND_INVALID', message: 'brand/brand.json is missing' }],
+    });
+    assert.deepEqual(readdirSync(dir), []);
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('a JSON array is refused as the brand object', () => {
+  const repo = brandRepo('[]');
+  const dir = join(repo.ws, 'brand');
+  try {
+    assert.deepEqual(readBrand(repo.ws), {
+      brand: null, problems: [{ code: 'BRAND_INVALID', message: 'brand.json must be an object' }],
+    });
+    assert.deepEqual(readdirSync(dir), ['brand.json']);
+    assert.equal(readFileSync(join(dir, 'brand.json'), 'utf8'), '[]');
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('a colour reference resolves through an empty dotted-path segment', () => {
+  const repo = brandRepo({ tokens: 'tokens.json', color: { dark: { '--bg': '{palette.}' } } },
+    { 'tokens.json': '{"palette":{"":{"$value":"#369"}}}' });
+  try {
+    assert.deepEqual(readBrand(repo.ws).brand?.color, { dark: { '--bg': '#369' } });
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('a list of family names resolves to a comma-separated code font', () => {
+  const repo = brandRepo({ tokens: 'tokens.json', font: { code: '{mono}' } },
+    { 'tokens.json': '{"mono":{"$value":["Commit Mono","monospace"]}}' });
+  try {
+    assert.deepEqual(readBrand(repo.ws).brand?.font, { code: 'Commit Mono, monospace' });
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('an empty audience selects the classification stored under the empty key', () => {
+  const repo = brandRepo({ footer: { classification: { '': 'General' } }, audience: '' });
+  try {
+    const html = withBrand('<body></body>', readBrand(repo.ws).brand);
+    assert.equal(/<footer.*<\/footer>/.exec(html)?.[0], '<footer class="brand-footer"><span>General</span></footer>');
+  } finally { rmSync(repo.repo, { recursive: true, force: true }); }
+});
+
+test('a logo with no alt renders an empty alt attribute', () => {
+  const html = withBrand('<body></body>', { logo: { light: 'logo.svg' } });
+  assert.equal(/<img[^>]*>/.exec(html)?.[0], '<img class="brand-logo-light" src="/brand/logo.svg" alt="">');
+});
 
 test('with no brand folder exported pages stay unbranded and workspace assets are copied (spec 50 test 1)', () => {
   const repo = brandRepo();
