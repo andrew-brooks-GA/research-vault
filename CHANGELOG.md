@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (R-58, first part):** the two local copies of the HTML escaper in `bin/lib/teach.mjs` and `bin/lib/serve-file.mjs` are gone; both files use `escapeHtml` of `bin/lib/escape.mjs`. Nothing that is written changes: the same four characters are escaped, and an apostrophe is still left as it is.
 - **Changed (spec 56, stage 6):** `bin/lib/graph.mjs` is now `bin/lib/graph.ts` (types added, nothing else: the conversion check reports no difference). Its three importers, its tests and a comment in `examples/blast-radius.mjs` name the new path.
 - **Changed (spec 56, stage 6):** `bin/lib/containment.mjs` reads the code of a caught error through `errorCode` of `bin/lib/unknowns.mjs`, so that the file can be converted to TypeScript with types only. Nothing changes for any error Node's file system throws.
 - **Changed (spec 56, stage 6):** `bin/lib/args.mjs` is now `bin/lib/args.ts` (types added, nothing else: the conversion check reports no difference). Its importers, its test and two comments name the new path.

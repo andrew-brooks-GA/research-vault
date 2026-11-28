@@ -38,7 +38,6 @@ export const CONTENT_TYPES = {
 // the claims-gate hash is unaffected. `titles` maps vault id to title; an unknown id keeps the id as its title.
 // `sourceHref(id)` is the href given a sources-block anchor that has none (`teach export` points it at sources.html).
 export function footnoteCitations(html, titles = {}, sourceHref = (id) => `#src-${id}`) {
-  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const srcRe = /(<[a-z][a-z0-9]*\b[^>]*\bdata-block\s*=\s*(["'])sources\2[^>]*>)([\s\S]*?)(<\/section>|<\/div>)/i;
   const m = srcRe.exec(html);
   const order = m ? extractCites(m[3]) : [];
@@ -50,13 +49,13 @@ export function footnoteCitations(html, titles = {}, sourceHref = (id) => `#src-
   const title = (id) => (Object.hasOwn(titles, id) ? titles[id] ?? id : id); // an id from the page: `constructor` is not a title (S-13)
   const body = before.replace(anchor, (_, pre, q, id, post) => {
     const n = num(id);
-    return `<a${pre}data-cite="${id}"${post} class="cite" href="#src-${esc(id)}" title="${esc(title(id))}">[${n}]</a>`;
+    return `<a${pre}data-cite="${id}"${post} class="cite" href="#src-${escapeHtml(String(id))}" title="${escapeHtml(String(title(id)))}">[${n}]</a>`;
   });
   if (!m) return body;
   const srcBody = sources.replace(anchor, (_, pre, q, id, post) => {
     const n = num(id);
-    const hrefOnly = /\bhref\s*=/.test(pre + post) ? '' : ` href="${esc(sourceHref(id))}"`;
-    return `<a${pre}data-cite="${id}"${post}${hrefOnly} id="src-${esc(id)}">[${n}] ${esc(title(id))}</a>`;
+    const hrefOnly = /\bhref\s*=/.test(pre + post) ? '' : ` href="${escapeHtml(String(sourceHref(id)))}"`;
+    return `<a${pre}data-cite="${id}"${post}${hrefOnly} id="src-${escapeHtml(String(id))}">[${n}] ${escapeHtml(String(title(id)))}</a>`;
   });
   return body + m[1] + srcBody + m[4] + after;
 }

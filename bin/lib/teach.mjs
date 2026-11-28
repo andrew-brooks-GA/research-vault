@@ -529,17 +529,16 @@ export function progressText(p) {
 }
 
 export function progressHtml(p) {
-  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const cell = (l, a) => (a ? `<td><b>${esc(scoreOf(a))}</b> <small>${esc(a.date)}</small></td>` : l.kind === 'task' ? '<td></td>' : '<td>none</td>');
-  const rows = p.lessons.map((l) => `<tr><td><a href="/lessons/${esc(l.id)}.html">${esc(l.title)}</a></td><td>${l.attempts.length}</td>${cell(l, l.first)}${cell(l, l.latest)}${cell(l, l.best)}</tr>`).join('');
+  const cell = (l, a) => (a ? `<td><b>${escapeHtml(String(scoreOf(a)))}</b> <small>${escapeHtml(String(a.date))}</small></td>` : l.kind === 'task' ? '<td></td>' : '<td>none</td>');
+  const rows = p.lessons.map((l) => `<tr><td><a href="/lessons/${escapeHtml(String(l.id))}.html">${escapeHtml(String(l.title))}</a></td><td>${l.attempts.length}</td>${cell(l, l.first)}${cell(l, l.latest)}${cell(l, l.best)}</tr>`).join('');
   const timeline = p.lessons.flatMap((l) => l.attempts.map((a) => ({ ...a, lesson: l.title, lid: l.id })))
     .sort((a, b) => (a.id < b.id ? -1 : 1))
-    .map((a) => `<li><small>${esc(a.date)}</small> <a href="/lessons/${esc(a.lid)}.html">${esc(a.lesson)}</a>: <b>${esc(scoreOf(a))}</b>${a.summary === undefined && a.wrong.length && !a.result ? ` <small>(missed item${a.wrong.length > 1 ? 's' : ''} ${esc(a.wrong.map((i) => i + 1).join(', '))})</small>` : ''}</li>`).join('');
+    .map((a) => `<li><small>${escapeHtml(String(a.date))}</small> <a href="/lessons/${escapeHtml(String(a.lid))}.html">${escapeHtml(String(a.lesson))}</a>: <b>${escapeHtml(String(scoreOf(a)))}</b>${a.summary === undefined && a.wrong.length && !a.result ? ` <small>(missed item${a.wrong.length > 1 ? 's' : ''} ${escapeHtml(String(a.wrong.map((i) => i + 1).join(', ')))})</small>` : ''}</li>`).join('');
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Progress</title><link rel="stylesheet" href="/assets/lesson.css"></head>
 <body>${navHtml()}<h1>Progress</h1>
 <section data-block="progress"><table class="progress"><thead><tr><th>lesson</th><th>attempts</th><th>first</th><th>latest</th><th>best</th></tr></thead><tbody>${rows}</tbody></table>
-<p>${p.attempts} attempt${p.attempts === 1 ? '' : 's'}; ${p.records.active} active learning record${p.records.active === 1 ? '' : 's'}${Object.keys(p.records.byKind).length ? ` (${esc(Object.entries(p.records.byKind).map(([k, n]) => `${k} ${n}`).join(', '))})` : ''}.${p.reviewDue ? ` Review due: ${esc(p.reviewDue.join(', ') || 'none')}.` : ''} Review failed: ${esc(p.reviewFailed.join(', ') || 'none')}.</p></section>
+<p>${p.attempts} attempt${p.attempts === 1 ? '' : 's'}; ${p.records.active} active learning record${p.records.active === 1 ? '' : 's'}${Object.keys(p.records.byKind).length ? ` (${escapeHtml(String(Object.entries(p.records.byKind).map(([k, n]) => `${k} ${n}`).join(', ')))})` : ''}.${p.reviewDue ? ` Review due: ${escapeHtml(String(p.reviewDue.join(', ') || 'none'))}.` : ''} Review failed: ${escapeHtml(String(p.reviewFailed.join(', ') || 'none'))}.</p></section>
 <section data-block="timeline"><ol class="timeline">${timeline || '<li>No attempts yet.</li>'}</ol></section>
 </body></html>
 `;
