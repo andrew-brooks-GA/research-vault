@@ -15,7 +15,7 @@ import { listStale } from '../bin/lib/stale.mjs';
 import { findWorkspaces, reviewerHash, contentHash } from '../bin/lib/gate.mjs';
 import { runGit } from '../bin/lib/git.ts';
 import { checkCitations, extractCitations } from '../bin/lib/citations.mjs';
-import { loadSchema } from '../bin/lib/schema.mjs';
+import { loadSchema } from '../bin/lib/schema.ts';
 import { teachIndex, taskSummary, isTaskAttempt } from '../bin/lib/teach.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');

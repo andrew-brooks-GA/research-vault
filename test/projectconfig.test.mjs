@@ -286,7 +286,7 @@ test('validateTaxonomyExtensions accepts a topic_aliases map and rejects a malfo
 });
 
 test('parseProjectConfig accepts usage.text as a boolean and rejects anything else (spec 29 D1)', async () => {
-  const { loadSchema } = await import('../bin/lib/schema.mjs');
+  const { loadSchema } = await import('../bin/lib/schema.ts');
   const schema = loadSchema(REPO_ROOT);
   assert.deepEqual(parseProjectConfig('{"vault":"v","usage":{"text":true}}', schema).usage, { text: true });
   assert.deepEqual(parseProjectConfig('{"vault":"v"}', schema).usage, {});
@@ -294,7 +294,7 @@ test('parseProjectConfig accepts usage.text as a boolean and rejects anything el
 });
 
 test('parseProjectConfig validates the embedding block: an http(s) url, an optional model, integer chunk and overlap (spec 34 D1)', async () => {
-  const { loadSchema } = await import('../bin/lib/schema.mjs');
+  const { loadSchema } = await import('../bin/lib/schema.ts');
   const schema = loadSchema(REPO_ROOT);
   const ok = parseProjectConfig('{"vault":"v","embedding":{"url":"http://127.0.0.1:11434/v1/embeddings","model":"nomic-embed-text"}}', schema).embedding;
   assert.deepEqual(ok, { url: 'http://127.0.0.1:11434/v1/embeddings', model: 'nomic-embed-text', chunk: 800, overlap: 100 });

@@ -11,7 +11,7 @@ import { fetchSource } from '../bin/lib/fetchsource.ts';
 import { buildManifest } from '../bin/lib/manifest.ts';
 import { lintAndReport } from '../bin/commands/lint.mjs';
 import { writeEntry } from '../bin/lib/fsutil.ts';
-import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
+import { loadSchema, fieldOrder } from '../bin/lib/schema.ts';
 
 function freshVault() {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');

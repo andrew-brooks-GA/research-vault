@@ -5,7 +5,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OUTSIDE_PROJECT_VAULT, resolveVault } from '../lib/resolve.mjs';
 import { buildManifest } from '../lib/manifest.ts';
-import { loadSchema, loadTeachSchema } from '../lib/schema.mjs';
+import { loadSchema, loadTeachSchema } from '../lib/schema.ts';
 import { TYPE_FOLDER, walkEntries } from '../lib/fsutil.ts';
 import { loadProjectConfig } from '../lib/projectconfig.ts';
 import { csvList } from '../lib/args.ts';

@@ -16,7 +16,7 @@ import { createServer, labStepsHtml, readmeDraft } from '../bin/lib/teach.mjs';
 import { readLabs, labPin, lessonLab, lineRedactor, secretHits, isLabText } from '../bin/lib/labs.mjs';
 import { lintWorkspace } from '../bin/lib/lesson.mjs';
 import { buildManifest } from '../bin/lib/manifest.ts';
-import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
+import { loadSchema, loadTeachSchema } from '../bin/lib/schema.ts';
 import { fixtureVault, testEnv } from './helpers.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');

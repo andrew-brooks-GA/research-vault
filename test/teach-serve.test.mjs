@@ -13,7 +13,7 @@ import { fixtureVault, testEnv } from './helpers.mjs';
 import { createServer, ATTEMPT_BODY_MAX } from '../bin/lib/teach.mjs';
 import { resultsFile } from '../skills/research-teach/assets/quiz.js';
 import { footnoteCitations, markdownHtml } from '../bin/lib/teach.mjs';
-import { loadTeachSchema } from '../bin/lib/schema.mjs';
+import { loadTeachSchema } from '../bin/lib/schema.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = join(ROOT, 'bin', 'research-vault.mjs');

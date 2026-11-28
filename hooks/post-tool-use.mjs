@@ -13,7 +13,7 @@ import { fixVault, lintAndReport } from '../bin/lib/lintrules.mjs';
 import { expandFiles } from '../bin/lib/files.ts';
 import { checkCitations, extractCitations } from '../bin/lib/citations.mjs';
 import { buildManifest } from '../bin/lib/manifest.ts';
-import { loadSchema } from '../bin/lib/schema.mjs';
+import { loadSchema } from '../bin/lib/schema.ts';
 import { loadProjectConfig } from '../bin/lib/projectconfig.ts';
 import { appendUsage, readUsage } from '../bin/lib/usagelog.ts';
 import { gatedFiles, ledgerKey } from '../bin/lib/gate.mjs';

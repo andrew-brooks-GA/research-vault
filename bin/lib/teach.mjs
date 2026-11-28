@@ -7,7 +7,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.ts';
 import { writeEntry } from './fsutil.ts';
-import { loadTeachSchema } from './schema.mjs';
+import { loadTeachSchema } from './schema.ts';
 import { isAllowedValue } from './validate.ts';
 import { slugify } from './ids.ts';
 import { assertInsideWorkspaceFolder, escapePathControls, isInsideVault, isInsideWorkspaceFolder } from './containment.ts';

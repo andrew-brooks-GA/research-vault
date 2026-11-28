@@ -5,7 +5,7 @@ import { mkdtempSync, cpSync, existsSync, mkdirSync, readFileSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeEntry, walkEntries } from '../bin/lib/fsutil.ts';
-import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
+import { loadSchema, fieldOrder } from '../bin/lib/schema.ts';
 import { lintAndReport } from '../bin/commands/lint.mjs';
 import { buildExport, toJsonl } from '../bin/lib/exportjsonl.mjs';
 import { buildManifest } from '../bin/lib/manifest.ts';

@@ -16,7 +16,7 @@ import { recordVerdict } from '../bin/lib/gate.mjs';
 import { createServer, exportWorkspace } from '../bin/lib/teach.mjs';
 import { readBrand, withBrand, BRAND_TOKENS } from '../bin/lib/brand.ts';
 import { buildManifest } from '../bin/lib/manifest.ts';
-import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
+import { loadSchema, loadTeachSchema } from '../bin/lib/schema.ts';
 import { lintWorkspace } from '../bin/lib/lesson.mjs';
 import { neighbours, pathPosition } from '../skills/research-teach/assets/quiz.js';
 

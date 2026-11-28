@@ -8,7 +8,7 @@ import { termsOf } from '../bin/lib/terms.ts';
 import { appendUsage } from '../bin/lib/usagelog.ts';
 import { loadBlocklist, matchBlock } from '../bin/lib/blocklist.ts';
 import { loadProjectConfig } from '../bin/lib/projectconfig.ts';
-import { loadSchema } from '../bin/lib/schema.mjs';
+import { loadSchema } from '../bin/lib/schema.ts';
 import { normalizeUrlSafe, verKey } from '../bin/lib/ids.ts';
 import { screenText } from '../bin/lib/screen.ts';
 import { join, dirname } from 'node:path';

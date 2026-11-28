@@ -12,7 +12,7 @@ import { checkCitations, extractCitations } from './citations.mjs';
 import { buildManifest } from './manifest.ts';
 import { readVersions, extractCodeLinks, checkCodeLinks } from './codelinks.mjs';
 import { walkEntries } from './fsutil.ts';
-import { loadSchema } from './schema.mjs';
+import { loadSchema } from './schema.ts';
 
 const hash = b => createHash('sha256').update(b).digest('hex');
 

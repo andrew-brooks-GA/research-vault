@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { REPO_ROOT } from './helpers.mjs';
-import { loadTeachSchema } from '../bin/lib/schema.mjs';
+import { loadTeachSchema } from '../bin/lib/schema.ts';
 import { parseFrontmatter } from '../bin/lib/frontmatter.ts';
 import {
   ATTEMPT_ID_RE, LESSON_ID_RE, RECORD_ID_RE, STORED_DERIVED,

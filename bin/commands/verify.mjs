@@ -1,6 +1,6 @@
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadSchema, fieldOrder } from '../lib/schema.mjs';
+import { loadSchema, fieldOrder } from '../lib/schema.ts';
 import { walkEntries, readEntry, writeEntry } from '../lib/fsutil.ts';
 import { buildManifest, writeManifest, CONFIRMING_RESULTS } from '../lib/manifest.ts';
 import { resolveVault, reportFallback } from '../lib/resolve.mjs';

@@ -89,7 +89,7 @@ test('PostToolUse skips a refused outside vault and fixes a user-selected one', 
 // ---- code links (spec 15 D3) ----
 import { codeRepo } from './helpers.mjs';
 import { readFileSync } from 'node:fs';
-import { loadSchema } from '../bin/lib/schema.mjs';
+import { loadSchema } from '../bin/lib/schema.ts';
 import { parseProjectConfig } from '../bin/lib/projectconfig.ts';
 
 const parsed = (root) => parseProjectConfig(readFileSync(join(root, '.research-vault.json'), 'utf8'), loadSchema(REPO_ROOT));

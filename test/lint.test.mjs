@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { lintVault, fixVault } from '../bin/lib/lintrules.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
 import { writeEntry } from '../bin/lib/fsutil.ts';
-import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
+import { loadSchema, fieldOrder } from '../bin/lib/schema.ts';
 import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS } from '../bin/lib/validate.ts';
 import { writeBlocklist } from './blocklist.test.mjs';
 import { BLOCKLIST } from '../bin/lib/blocklist.ts';

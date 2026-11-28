@@ -13,7 +13,7 @@ import { readRequirements, parseChecker, checkTask, runChecker } from '../bin/li
 import { teachIndex, progress, progressHtml, workspaceKey, attemptOrder } from '../bin/lib/teach.mjs';
 import { parseFrontmatter } from '../bin/lib/frontmatter.ts';
 import { lintWorkspace } from '../bin/lib/lesson.mjs';
-import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
+import { loadSchema, loadTeachSchema } from '../bin/lib/schema.ts';
 import { buildManifest } from '../bin/lib/manifest.ts';
 import { fixtureVault, testEnv } from './helpers.mjs';
 

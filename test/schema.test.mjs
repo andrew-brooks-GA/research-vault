@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
-import { loadSchema, loadTeachSchema, stageAllowedInFolder, fieldOrder, applyTaxonomyExtensions } from '../bin/lib/schema.mjs';
+import { loadSchema, loadTeachSchema, stageAllowedInFolder, fieldOrder, applyTaxonomyExtensions } from '../bin/lib/schema.ts';
 import { PROJECT_CONFIG_FILENAME } from '../bin/lib/projectconfig.ts';
 import { assertControlledValues, fieldShapeErrors, isAllowedValue } from '../bin/lib/validate.ts';
 import { REPO_ROOT, tmpVault, put } from './helpers.mjs';

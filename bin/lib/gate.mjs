@@ -9,7 +9,7 @@ import { checkCitations, extractCitations } from './citations.mjs';
 import { buildManifest } from './manifest.ts';
 import { walkEntries, readEntry } from './fsutil.ts';
 import { listStale } from './stale.mjs';
-import { loadSchema } from './schema.mjs';
+import { loadSchema } from './schema.ts';
 import { SKIP_DIRS, expandFiles } from './files.ts';
 import { runGit } from './git.ts';
 import { imageTarget, STATIC_DIRS } from './serve-file.mjs';

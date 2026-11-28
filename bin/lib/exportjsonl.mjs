@@ -2,7 +2,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { walkEntries, readEntry } from './fsutil.ts';
 import { lastVerified } from './manifest.ts';
-import { loadSchema } from './schema.mjs';
+import { loadSchema } from './schema.ts';
 import { staleness } from './stale.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');

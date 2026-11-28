@@ -185,7 +185,7 @@ test('CLI reports a URL found only in code as skipped and --check still exits 0'
 // ---- code links (spec 15) ----
 import { REPO_ROOT, codeRepo, testEnv } from './helpers.mjs';
 import { parseProjectConfig } from '../bin/lib/projectconfig.ts';
-import { loadSchema } from '../bin/lib/schema.mjs';
+import { loadSchema } from '../bin/lib/schema.ts';
 
 const BIN = join(dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'research-vault.mjs');
 const cli = (cwd, ...args) => spawnSync(process.execPath, [BIN, 'check', ...args, '--now', '2026-06-01'], { cwd, encoding: 'utf8', env: testEnv({ RESEARCH_VAULT_PATH: '/nonexistent-env-vault' }) });

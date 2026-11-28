@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { REPO_ROOT, fixtureVault, tmpVault, put } from './helpers.mjs';
 import { buildManifest } from '../bin/lib/manifest.ts';
-import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
+import { loadSchema, loadTeachSchema } from '../bin/lib/schema.ts';
 import { checkCitations } from '../bin/commands/check.mjs';
 import {
   lessonClass, parseLesson, lintLesson, lintStore, lintWorkspace, proseMetrics, QUIZ_MIN_ITEMS, QUIZ_SPREAD_MAX, MAX_INTRODUCES, readPath, missionFloor, pathFringe, lintPath,

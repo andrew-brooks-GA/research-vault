@@ -2,7 +2,7 @@
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, existsSync } from 'node:fs';
-import { loadSchema, fieldOrder } from './schema.mjs';
+import { loadSchema, fieldOrder } from './schema.ts';
 import { makeId, normalizeUrl, normalizeUrlSafe, verKey } from './ids.ts';
 import { sha256Tagged } from './hash.ts';
 import { buildManifest } from './manifest.ts';

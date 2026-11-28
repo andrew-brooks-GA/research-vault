@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { run as runTeach } from '../bin/commands/teach.mjs';
 import { assertInsideWorkspaceFolder, VAULT_PATH_OUTSIDE } from '../bin/lib/containment.ts';
-import { loadTeachSchema } from '../bin/lib/schema.mjs';
+import { loadTeachSchema } from '../bin/lib/schema.ts';
 import { cancelRun, endRun, ENDING_FILE, readRun, RUN_FILE, startRun } from '../bin/lib/task.mjs';
 import { createServer, fixRecordFrontmatter, fixRecordFrontmatters, previousTaskAttempt, supersedeRecord, writeAttempt, writeRecord } from '../bin/lib/teach.mjs';
 import { readEntry } from '../bin/lib/fsutil.ts';

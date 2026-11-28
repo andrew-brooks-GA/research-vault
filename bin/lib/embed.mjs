@@ -5,7 +5,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { escapePathControls } from './containment.ts';
 import { loadProjectConfig } from './projectconfig.ts';
-import { loadSchema } from './schema.mjs';
+import { loadSchema } from './schema.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 

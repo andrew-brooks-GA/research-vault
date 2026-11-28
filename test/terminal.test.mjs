@@ -14,7 +14,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { createServer } from '../bin/lib/teach.mjs';
 import { HELPER, ptyAvailable } from '../bin/lib/terminal.mjs';
 import { inputQueue, runText } from '../skills/research-teach/terminal/terminal.mjs';
-import { loadTeachSchema } from '../bin/lib/schema.mjs';
+import { loadTeachSchema } from '../bin/lib/schema.ts';
 import { fixtureVault, testEnv } from './helpers.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');

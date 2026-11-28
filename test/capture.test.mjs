@@ -14,7 +14,7 @@ import { lintVault } from '../bin/lib/lintrules.mjs';
 import { lintAndReport } from '../bin/commands/lint.mjs';
 import { refreshVault } from '../bin/commands/refresh.mjs';
 import { writeBlocklist } from './blocklist.test.mjs';
-import { loadSchema, fieldOrder } from '../bin/lib/schema.mjs';
+import { loadSchema, fieldOrder } from '../bin/lib/schema.ts';
 import { buildExport } from '../bin/lib/exportjsonl.mjs';
 
 const CLI = join(REPO_ROOT, 'bin', 'research-vault.mjs');

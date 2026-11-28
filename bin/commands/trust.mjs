@@ -3,7 +3,7 @@ import { lstatSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { findProjectConfig, parseProjectConfig } from '../lib/projectconfig.ts';
-import { loadSchema } from '../lib/schema.mjs';
+import { loadSchema } from '../lib/schema.ts';
 import { bindingIdentity, bindingSnapshot, acknowledgeBinding, isBindingAcknowledged, revokeBinding } from '../lib/trust.ts';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));

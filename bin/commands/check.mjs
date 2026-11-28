@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { join, relative, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadSchema } from '../lib/schema.mjs';
+import { loadSchema } from '../lib/schema.ts';
 import { buildManifest, isUnverifiedSource } from '../lib/manifest.ts';
 import { walkEntries, readEntry } from '../lib/fsutil.ts';
 import { resolveVault } from '../lib/resolve.mjs';

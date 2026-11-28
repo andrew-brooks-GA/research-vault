@@ -8,7 +8,7 @@ import { dirname, join, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../bin/lib/resolve.mjs';
 import { loadProjectConfig } from '../bin/lib/projectconfig.ts';
-import { loadSchema } from '../bin/lib/schema.mjs';
+import { loadSchema } from '../bin/lib/schema.ts';
 import { gatedFiles, gateStatus, ledgerKey, referencedImages, referencedScripts, taskFile, missingEvidence } from '../bin/lib/gate.mjs';
 import { runGit } from '../bin/lib/git.ts';
 import { langFor, codeFiles, extractCodeLinks, readVersions } from '../bin/lib/codelinks.mjs';

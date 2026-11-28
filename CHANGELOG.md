@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (spec 56, stage 6):** `bin/lib/schema.mjs` becomes `bin/lib/schema.ts`: types and import specifiers only. `loadSchema` and `loadTeachSchema` return typed schemas whose every field a check of the file backs. Its importers, its tests, the rows that name the path and the regenerate command the drift check prints follow.
 - **Changed (spec 56, stage 6):** `bin/lib/manifest.mjs` becomes `bin/lib/manifest.ts`: types and import specifiers only. Its importers, its tests, the rows that name the path and the path in one sentence of `docs/RELIABILITY.md` follow.
 - **Changed (spec 56, stage 6):** two more places of `bin/lib/schema.mjs` are rewritten so that it can be typed. `loadSchema` checks the taxonomy again after merging extensions, so extensions that put a non-string into an extensible list are refused (`.research-vault.json taxonomy_extensions: <field> must be an array of strings`) where the broken taxonomy was returned; a binding's extensions were already validated and are read as before. `fieldOrder` reads an entry's type as a property key once, with the same result for every value an entry can hold.
 - **Changed (R-40):** `buildManifest(vaultPath, now)` takes the time for the manifest's `generated` day from a caller that gives it, and uses the clock when none is given; a `now` that is not a valid `Date` is refused before the vault is read. No caller passes it yet.

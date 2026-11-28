@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadSchema } from '../bin/lib/schema.mjs';
+import { loadSchema } from '../bin/lib/schema.ts';
 import { generateAgentsMd } from '../bin/lib/agentsmd.ts';
 
 // Primary gate (works anywhere, no CI vault required): the generator output must match the
@@ -13,7 +13,7 @@ const golden = readFileSync(goldenPath, 'utf8');
 if (gen !== golden) {
   console.error('AGENTS.md drift: generator output differs from schema/AGENTS.golden.md.');
   console.error('If you edited schema/ or bin/lib/agentsmd.ts, regenerate the golden and commit it:');
-  console.error('  node -e "import(\'./bin/lib/schema.mjs\').then(async s=>{const a=await import(\'./bin/lib/agentsmd.ts\');(await import(\'node:fs\')).writeFileSync(\'schema/AGENTS.golden.md\',a.generateAgentsMd(s.loadSchema(process.cwd())),\'utf8\');})"');
+  console.error('  node -e "import(\'./bin/lib/schema.ts\').then(async s=>{const a=await import(\'./bin/lib/agentsmd.ts\');(await import(\'node:fs\')).writeFileSync(\'schema/AGENTS.golden.md\',a.generateAgentsMd(s.loadSchema(process.cwd())),\'utf8\');})"');
   process.exit(1);
 }
 

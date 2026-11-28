@@ -16,7 +16,7 @@ import { labPin, labRefusal, readLabs } from '../bin/lib/labs.mjs';
 import { sha256Hex } from '../bin/lib/hash.ts';
 import { imageTarget } from '../bin/lib/lesson.mjs';
 import { resolveVault } from '../bin/lib/resolve.mjs';
-import { loadTeachSchema } from '../bin/lib/schema.mjs';
+import { loadTeachSchema } from '../bin/lib/schema.ts';
 import * as teach from '../bin/lib/teach.mjs';
 
 const { createServer, serveFile } = teach;

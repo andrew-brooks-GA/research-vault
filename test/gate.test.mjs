@@ -545,7 +545,7 @@ import { codeRepo, LUA_A } from './helpers.mjs';
 import { codeLang } from '../bin/lib/gate.mjs';
 import { LANGS } from '../bin/lib/codelinks.mjs';
 import { parseProjectConfig } from '../bin/lib/projectconfig.ts';
-import { loadSchema } from '../bin/lib/schema.mjs';
+import { loadSchema } from '../bin/lib/schema.ts';
 
 function codeCli(cwd, ...args) {
   const r = spawnSync(process.execPath, [CLI, 'gate', ...args], { cwd, encoding: 'utf8', env: testEnv({ RESEARCH_VAULT_PATH: '/nonexistent-env-vault' }) });

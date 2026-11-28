@@ -2,7 +2,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { walkEntries, readEntry, FOLDER_TYPE, writeAtomic } from './fsutil.ts';
-import { loadSchema, stageAllowedInFolder, fieldOrder } from './schema.mjs';
+import { loadSchema, stageAllowedInFolder, fieldOrder } from './schema.ts';
 import { serializeFrontmatter } from './frontmatter.ts';
 import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, isAllowedValue, fieldShapeErrors } from './validate.ts';
 import { BLOCKLIST, loadBlocklist, matchBlock } from './blocklist.ts';

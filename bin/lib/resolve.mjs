@@ -4,7 +4,7 @@ import nodeFs, { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { configPath, isBindingAcknowledged } from './trust.ts';
 import { walkEntries } from './fsutil.ts';
-import { loadSchema } from './schema.mjs';
+import { loadSchema } from './schema.ts';
 import { loadProjectConfig, PROJECT_CONFIG_FILENAME } from './projectconfig.ts';
 import { compareContainment, compareVaultLocations, mayBeInside } from './containment.ts';
 

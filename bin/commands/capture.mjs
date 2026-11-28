@@ -2,7 +2,7 @@ import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync, readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { assertInsideVault } from '../lib/containment.ts';
-import { loadSchema } from '../lib/schema.mjs';
+import { loadSchema } from '../lib/schema.ts';
 import { buildManifest, writeManifest } from '../lib/manifest.ts';
 import { writeEntry } from '../lib/fsutil.ts';
 import { resolveVault, reportFallback } from '../lib/resolve.mjs';

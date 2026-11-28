@@ -1,7 +1,7 @@
 import { cpSync, mkdirSync, existsSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, dirname, relative, resolve, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadSchema } from '../lib/schema.mjs';
+import { loadSchema } from '../lib/schema.ts';
 import { generateAgentsMd } from '../lib/agentsmd.ts';
 import { checkProjectVault, resolveVault, configPath, hasVaultContent } from '../lib/resolve.mjs';
 import { writeManifest } from '../lib/manifest.ts';

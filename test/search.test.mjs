@@ -8,7 +8,7 @@ import { mkdtempSync, cpSync, appendFileSync, existsSync, writeFileSync, readFil
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { searchVault, matchRows, semanticSearch, sortRows } from '../bin/commands/search.mjs';
-import { loadSchema } from '../bin/lib/schema.mjs';
+import { loadSchema } from '../bin/lib/schema.ts';
 import { buildManifest } from '../bin/lib/manifest.ts';
 import { relatedTo } from '../bin/commands/related.mjs';
 import { captureEntry } from '../bin/commands/capture.mjs';
@@ -18,7 +18,7 @@ import { applyVerification } from '../bin/commands/verify.mjs';
 import { writeEntry } from '../bin/lib/fsutil.ts';
 import { PROJECT_CONFIG_FILENAME } from '../bin/lib/projectconfig.ts';
 import { INDEX } from '../bin/lib/embed.mjs';
-import { fieldOrder } from '../bin/lib/schema.mjs';
+import { fieldOrder } from '../bin/lib/schema.ts';
 import { readUsage } from '../bin/lib/usagelog.ts';
 import { mkdirSync } from 'node:fs';
 import {

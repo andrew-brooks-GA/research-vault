@@ -2,7 +2,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildManifest } from '../lib/manifest.ts';
 import { traverse } from '../lib/graph.ts';
-import { loadSchema } from '../lib/schema.mjs';
+import { loadSchema } from '../lib/schema.ts';
 import { resolveVault } from '../lib/resolve.mjs';
 import { csvList } from '../lib/args.ts';
 import { screenText } from '../lib/screen.ts';

@@ -15,7 +15,7 @@ import { parseCast, scanCast, castTranscript, PLAYER_FILES } from '../bin/lib/ca
 import { createServer, exportWorkspace } from '../bin/lib/teach.mjs';
 import { recordVerdict } from '../bin/lib/gate.mjs';
 import { buildManifest } from '../bin/lib/manifest.ts';
-import { loadTeachSchema } from '../bin/lib/schema.mjs';
+import { loadTeachSchema } from '../bin/lib/schema.ts';
 import { mountReplays } from '../skills/research-teach/assets/quiz.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
