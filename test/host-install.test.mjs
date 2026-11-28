@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, symlinkSync, rmSync, statSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, symlinkSync, rmSync, statSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -174,6 +174,17 @@ test('existing hook settings are not clobbered; hook-free installation is availa
   assert.equal(readFileSync(join(root, '.codex/hooks.json'), 'utf8'), '{"hooks":{}}');
 });
 
+test('generated Codex hooks preserve event names, order, and matchers', t => {
+  const { files } = installationFiles(project(t));
+  const { hooks } = JSON.parse(files.get('.codex/hooks.json'));
+  assert.deepEqual(Object.entries(hooks).map(([event, entries]) => [event, entries.map(({ matcher }) => matcher)]), [
+    ['SessionStart', [undefined]],
+    ['PreToolUse', ['WebFetch|WebSearch']],
+    ['PostToolUse', ['Edit|Write|apply_patch']],
+    ['Stop', [undefined]],
+  ]);
+});
+
 test('edited installation files stop upgrade/uninstall, and pinned launcher rejects package drift', t => {
   const root = project(t); manageCodex(root, 'install');
   const p = join(root, '.research-vault-host/codex/package/package.json');
@@ -183,6 +194,54 @@ test('edited installation files stop upgrade/uninstall, and pinned launcher reje
   assert.throws(() => manageCodex(root, 'uninstall'), /owned files changed/);
   const run = spawnSync(process.execPath, [join(root, '.research-vault-host/codex/run.mjs'), 'host', 'paths'], { env: testEnv(), encoding: 'utf8' });
   assert.equal(run.status, 2); assert.match(run.stderr, /installed package changed/);
+});
+
+function writeManifestFixture(root, manifest) {
+  const path = join(root, '.research-vault-host/codex-install.json');
+  mkdirSync(join(path, '..'), { recursive: true });
+  const bytes = Buffer.from(JSON.stringify(manifest) + '\n');
+  writeFileSync(path, bytes);
+  const listing = readdirSync(root, { recursive: true }).sort();
+  return () => {
+    assert.deepEqual(readdirSync(root, { recursive: true }).sort(), listing);
+    assert.deepEqual(readFileSync(path), bytes);
+  };
+}
+
+// The number, string, and array cases refuse without writes on the old code and with the new check removed.
+// Only the null case previously threw an engine error.
+for (const [kind, manifest] of [['null', null], ['a number', 1], ['a string', 'codex'], ['an array', []]]) {
+  test(`Codex uninstall refuses ${kind} as the installation manifest without project writes`, t => {
+    const root = project(t);
+    const assertUnchanged = writeManifestFixture(root, manifest);
+    assert.throws(() => manageCodex(root, 'uninstall'), { message: 'invalid Codex installation manifest' });
+    assertUnchanged();
+  });
+}
+
+test('Codex uninstall refuses an array as an owned file hash without project writes', t => {
+  const root = project(t);
+  const name = '.codex/hooks.json';
+  const path = join(root, name);
+  mkdirSync(join(path, '..'));
+  const bytes = Buffer.from('{}\n');
+  writeFileSync(path, bytes);
+  const hash = createHash('sha256').update(bytes).digest('hex');
+  const assertUnchanged = writeManifestFixture(root, { format: 1, host: 'codex', files: { [name]: [hash] } });
+  assert.throws(() => manageCodex(root, 'uninstall'), { message: 'invalid owned installation file' });
+  assertUnchanged();
+  assert.deepEqual(readFileSync(path), bytes);
+});
+
+test('Codex payload generation refuses a null package.json without file writes', t => {
+  const root = project(t), packageRoot = project(t);
+  const path = join(packageRoot, 'package.json');
+  const bytes = Buffer.from('null\n');
+  writeFileSync(path, bytes);
+  assert.throws(() => installationFiles(root, { packageRoot }), { message: 'not a research-vault package' });
+  assert.deepEqual(readdirSync(root), []);
+  assert.deepEqual(readdirSync(packageRoot), ['package.json']);
+  assert.deepEqual(readFileSync(path), bytes);
 });
 
 test('installer refuses symlinked destination ancestors before writes', t => {

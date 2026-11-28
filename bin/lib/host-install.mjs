@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync, openSync, closeSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isRecord, parseJson } from './unknowns.ts';
 
 export const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const MANIFEST = '.research-vault-host/codex-install.json';
@@ -42,13 +43,15 @@ function sourceFiles(root, name) {
 function readManifest(root) {
   const path = safePath(root, MANIFEST);
   if (!existsSync(path)) return null;
-  const m = JSON.parse(readFileSync(path, 'utf8'));
-  if (m.format !== 1 || m.host !== 'codex' || !m.files || typeof m.files !== 'object' || Array.isArray(m.files)) throw new Error('invalid Codex installation manifest');
-  for (const [name, hash] of Object.entries(m.files)) {
-    if (!/^([a-f0-9]{64})$/.test(hash) || ![`${PAYLOAD}/`, '.agents/skills/', '.codex/agents/', '.codex/hooks.json', '.research-vault-host/codex/run.mjs'].some(p => name.startsWith(p))) throw new Error('invalid owned installation file');
+  const m = parseJson(readFileSync(path, 'utf8'));
+  if (!isRecord(m) || m.format !== 1 || m.host !== 'codex' || !isRecord(m.files)) throw new Error('invalid Codex installation manifest');
+  const { files } = m;
+  for (const [name, hash] of Object.entries(files)) {
+    if (typeof hash !== 'string' || !/^([a-f0-9]{64})$/.test(hash) || ![`${PAYLOAD}/`, '.agents/skills/', '.codex/agents/', '.codex/hooks.json', '.research-vault-host/codex/run.mjs'].some(p => name.startsWith(p))) throw new Error('invalid owned installation file');
     safePath(root, name);
   }
-  return m;
+  // Keep the stored metadata and any extra fields for status and the lock recheck.
+  return { ...m, files };
 }
 
 function generatedWorkflow(text, launcher) {
@@ -82,8 +85,8 @@ function generatedSkill(text, project, launcher, model, effort) {
 
 export function installationFiles(project, { packageRoot = PACKAGE_ROOT, withoutHooks = false, model = 'gpt-6.1-sol', effort = 'high' } = {}) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(model) || !['low', 'medium', 'high', 'xhigh'].includes(effort)) throw new Error('invalid Codex model or effort');
-  const pkg = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
-  if (pkg.name !== 'research-vault') throw new Error('not a research-vault package');
+  const pkg = parseJson(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
+  if (!isRecord(pkg) || pkg.name !== 'research-vault') throw new Error('not a research-vault package');
   const files = new Map();
   const source = 'bin schema hooks agents skills commands scripts vault-template .claude-plugin package.json docs/REFERENCE.md docs/ORCHESTRATOR-INTEGRATION.md'.split(' ').flatMap(n => sourceFiles(packageRoot, n));
   for (const name of source) files.set(`${PAYLOAD}/${name}`, readFileSync(join(packageRoot, name)));
@@ -113,7 +116,7 @@ export function installationFiles(project, { packageRoot = PACKAGE_ROOT, without
   }
   if (!withoutHooks) {
     const hooks = {};
-    for (const [event, matcher] of [['SessionStart', null], ['PreToolUse', 'WebFetch|WebSearch'], ['PostToolUse', 'Edit|Write|apply_patch'], ['Stop', null]]) {
+    for (const [event, matcher] of new Map([['SessionStart', null], ['PreToolUse', 'WebFetch|WebSearch'], ['PostToolUse', 'Edit|Write|apply_patch'], ['Stop', null]])) {
       hooks[event] = [{ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command: `node ${shellQuote(join(root, 'hooks/codex.mjs'))} ${event}`, timeout: 30 }] }];
     }
     files.set('.codex/hooks.json', Buffer.from(json({ hooks })));
@@ -150,7 +153,7 @@ export function manageCodex(project, action, options = {}) {
     for (const name of names) {
       const p = safePath(root, name);
       const body = existsSync(p) ? readFileSync(p) : null;
-      if (name !== MANIFEST && body !== null && (!Object.hasOwn(previous?.files ?? {}, name) || sha(body) !== previous.files[name])) throw new Error('installation file changed concurrently: ' + name);
+      if (name !== MANIFEST && body !== null && (!previous || !Object.hasOwn(previous.files, name) || sha(body) !== previous.files[name])) throw new Error('installation file changed concurrently: ' + name);
       if (Object.hasOwn(previous?.files ?? {}, name) && body === null) throw new Error('installation file removed concurrently: ' + name);
       originals.set(p, body);
     }
