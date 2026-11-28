@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { stripTypeScriptTypes } from 'node:module';
-import { join } from 'node:path';
+import { join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runGit } from '../bin/lib/git.ts';
 
@@ -26,16 +26,81 @@ function declareLines(text, file = 'test source') {
   return lines;
 }
 
+const root = fileURLToPath(new URL('../', import.meta.url));
+let trackedFiles;
+
+function isTypeScriptFile(file) {
+  return ['.ts', '.mts', '.cts'].some((ext) => file.endsWith(ext));
+}
+
+function trackedTypeScriptFiles() {
+  trackedFiles ??= runGit(['ls-files', '-z', '--', 'bin/', 'hooks/', 'scripts/'], { processCwd: root })
+    .split('\0').filter(isTypeScriptFile);
+  assert.ok(trackedFiles.length > 0, 'No tracked TypeScript files found under bin/, hooks/ or scripts/');
+  return trackedFiles;
+}
+
+function isDeclarationFile(file) {
+  const name = posix.basename(file);
+  return isTypeScriptFile(name) && name.includes('.d.');
+}
+
 // Source-scan guard: tracked TypeScript cannot introduce declarations erased at runtime.
 test('source scan: tracked TypeScript has no declare keyword', { timeout: 10000 }, () => {
-  const root = fileURLToPath(new URL('../', import.meta.url));
-  const files = runGit(['ls-files', '-z', '--', 'bin/', 'hooks/', 'scripts/'], { processCwd: root })
-    .split('\0').filter((file) => ['.ts', '.mts', '.cts'].some((ext) => file.endsWith(ext)));
-  assert.ok(files.length > 0, 'No tracked TypeScript files found under bin/, hooks/ or scripts/');
-
-  const findings = files.flatMap((file) =>
+  const findings = trackedTypeScriptFiles().flatMap((file) =>
     declareLines(readFileSync(join(root, file), 'utf8'), file).map((line) => `${file}:${line}`));
   assert.equal(findings.length, 0, `TypeScript declare keyword found at:\n${findings.join('\n')}`);
+});
+
+// Source-scan guard: no tracked declaration file under bin/, hooks/ or scripts/ can add ambient types.
+test('source scan: tracked TypeScript has no declaration files', { timeout: 10000 }, () => {
+  const findings = trackedTypeScriptFiles().filter(isDeclarationFile);
+  assert.equal(findings.length, 0, `TypeScript declaration files found:\n${findings.join('\n')}`);
+});
+
+// Fixture paths use double quotes so the dependency graph does not count them as file reads.
+test('the declaration file rule reports bin/lib/x.d.ts', () => {
+  assert.equal(isDeclarationFile("bin/lib/x.d.ts"), true);
+});
+
+test('the declaration file rule reports hooks/x.d.mts', () => {
+  assert.equal(isDeclarationFile("hooks/x.d.mts"), true);
+});
+
+test('the declaration file rule reports scripts/x.d.cts', () => {
+  assert.equal(isDeclarationFile("scripts/x.d.cts"), true);
+});
+
+test('the declaration file rule reports bin/lib/x.d.json.ts', () => {
+  assert.equal(isDeclarationFile("bin/lib/x.d.json.ts"), true);
+});
+
+test('the declaration file rule ignores bin/lib/x.ts', () => {
+  assert.equal(isDeclarationFile("bin/lib/x.ts"), false);
+});
+
+test('the declaration file rule ignores bin/lib/d.ts', () => {
+  assert.equal(isDeclarationFile("bin/lib/d.ts"), false);
+});
+
+test('the declaration file rule ignores bin/lib/x.d.txt', () => {
+  assert.equal(isDeclarationFile("bin/lib/x.d.txt"), false);
+});
+
+test('the declaration file rule ignores bin/lib/x.d.ts.txt', () => {
+  assert.equal(isDeclarationFile("bin/lib/x.d.ts.txt"), false);
+});
+
+test('the declaration file rule ignores bin/x.d/y.ts', () => {
+  assert.equal(isDeclarationFile("bin/x.d/y.ts"), false);
+});
+
+test('the declaration file rule ignores bin/x.d.part/y.ts', () => {
+  assert.equal(isDeclarationFile("bin/x.d.part/y.ts"), false);
+});
+
+test('the declaration file rule ignores bin/lib/x.d.mjs', () => {
+  assert.equal(isDeclarationFile("bin/lib/x.d.mjs"), false);
 });
 
 test('the scan reports both declare const statements on their original lines', () => {

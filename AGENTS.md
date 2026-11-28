@@ -6,7 +6,7 @@ This repo is the research-vault plugin: a Node CLI with no runtime dependencies 
 
 - `npm test` (isolated environment; a test or a test file may run 10 minutes and the whole run 20): every test passes.
 - `npm run typecheck`: the TypeScript sources type-check (`tsc` over `tsconfig.json`, which emits nothing). It needs the development tools: run `npm ci --ignore-scripts` in `tooling/` once, and again when `tooling/package-lock.json` changes. Of the tests, only those of the comparison tool (`test/d6-compare.test.mjs`) need them, and they fail without them.
-- `npm run lint`: the linter (Oxlint, configured in `tooling/.oxlintrc.json`) reports nothing for the TypeScript sources: no `any`, no non-null assertion, no type assertion, and no comment that switches a check off. It needs the same development tools as the type check.
+- `npm run lint`: the linter (Oxlint, configured in `tooling/.oxlintrc.json`) reports nothing for the TypeScript sources: no `any`, no non-null assertion, no type assertion, and no comment that switches a check off. It needs the same development tools as the type check. The `declare` keyword is forbidden in them too: `test/no-declare.test.mjs` fails on one.
 - `npm run lint:self`: the vault template lints clean.
 - `node scripts/check-agentsmd-drift.mjs`: the generated vault AGENTS.md matches `schema/AGENTS.golden.md`.
 - `node scripts/check-encoding.mjs`: no BOM, CR byte or double-encoded mojibake sequence in any tracked file that is not binary.
