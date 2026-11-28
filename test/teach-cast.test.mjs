@@ -77,6 +77,32 @@ test('scanCast finds a needle whole, split across two events and coloured, at th
   assert.equal(castTranscript(CLEAN), '$ fxctl run 7\n42\n');
 });
 
+test('scanCast refuses an empty needle on a recording with events', () => {
+  let hits;
+  assert.throws(() => { hits = scanCast(CLEAN, ['']); }, { name: 'Error', message: 'needle 1 is empty' });
+  assert.equal(hits, undefined);
+});
+
+test('scanCast refuses an empty needle on a recording without events', () => {
+  let hits;
+  assert.throws(() => { hits = scanCast(cast(), ['']); }, { name: 'Error', message: 'needle 1 is empty' });
+  assert.equal(hits, undefined);
+});
+
+test('scanCast numbers a refusal for the second needle as needle 2', () => {
+  let hits;
+  assert.throws(() => { hits = scanCast(WHOLE, [TOKEN, '']); }, { name: 'Error', message: 'needle 2 is empty' });
+  assert.equal(hits, undefined);
+});
+
+test('scanCast matches a single space as a literal needle', () => {
+  assert.deepEqual(scanCast(cast([0.1, 'o', 'a b']), [' ']), [{ kind: 'needle 1', at: 0 }]);
+});
+
+test('scanCast returns no hit for a non-empty needle on a recording without events', () => {
+  assert.deepEqual(scanCast(cast(), ['absent']), []);
+});
+
 function tmp(prefix) { return mkdtempSync(join(tmpdir(), prefix)); }
 const cli = (...a) => spawnSync(process.execPath, [BIN, 'teach', ...a], { env: testEnv(), encoding: 'utf8' });
 

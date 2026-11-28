@@ -49,6 +49,8 @@ const strings = (v) => (typeof v === 'string' ? [v] : v && typeof v === 'object'
 // are literal values; a hit on one has kind `needle N` (from 1), so a hit line never repeats the value. The o and i
 // events are joined in order with escape sequences removed, so a token split across events or coloured is found.
 export function scanCast(text, needles = []) {
+  const empty = needles.indexOf('');
+  if (empty !== -1) throw new Error(`needle ${empty + 1} is empty`);
   const { header, events } = parseCast(text);
   let joined = '';
   const starts = [];
@@ -64,7 +66,11 @@ export function scanCast(text, needles = []) {
   for (const [kind, find] of tests) {
     if (heads.some((s) => find(s) !== -1)) hits.push({ kind, at: 'header' });
     const pos = find(joined);
-    if (pos !== -1) hits.push({ kind, at: starts.findLast(([s]) => s <= pos)[1] });
+    if (pos !== -1) {
+      const start = starts.findLast(([s]) => s <= pos);
+      if (!start) throw new Error('scanCast: no event starts at or before a match');
+      hits.push({ kind, at: start[1] });
+    }
   }
   return hits;
 }
