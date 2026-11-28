@@ -4,7 +4,7 @@ import { dirname, join, resolve, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { prepareEntry } from './capture-entry.mjs';
-import { serializeFrontmatter } from './frontmatter.mjs';
+import { serializeFrontmatter } from './frontmatter.ts';
 import { readEntry, walkEntries, writeAtomic, TYPE_FOLDER, ENTRY_FOLDERS } from './fsutil.mjs';
 import { loadSchema } from './schema.mjs';
 import { normalizeUrl, verKey } from './ids.ts';

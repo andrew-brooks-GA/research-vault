@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, writeFileSync, lstatSync, renameSync, linkSync, unlinkSync, openSync, closeSync, copyFileSync, constants } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { dirname, join, sep, relative } from 'node:path';
-import { parseFrontmatter, serializeFrontmatter } from './frontmatter.mjs';
+import { parseFrontmatter, serializeFrontmatter } from './frontmatter.ts';
 import { assertInsideVault, isInsideVault, escapePathControls } from './containment.ts';
 import { assertFieldShapes } from './validate.ts';
 

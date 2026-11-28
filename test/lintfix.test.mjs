@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { REPO_ROOT } from './helpers.mjs';
 import { fixVault } from '../bin/lib/lintrules.mjs';
 import { run } from '../bin/commands/lint.mjs';
-import { parseFrontmatter } from '../bin/lib/frontmatter.mjs';
+import { parseFrontmatter } from '../bin/lib/frontmatter.ts';
 
 test('--fix strips BOM and CRLF and re-serializes canonically', () => {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');

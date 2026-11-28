@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseFrontmatter } from '../bin/lib/frontmatter.mjs';
+import { parseFrontmatter } from '../bin/lib/frontmatter.ts';
 import { spawnSync } from 'node:child_process';
 import { tmpVault, testEnv } from './helpers.mjs';
 import { VERDICTS, renderEvidence } from '../bin/lib/gate.mjs';

@@ -5,7 +5,7 @@ import { mkdtempSync, cpSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { REPO_ROOT } from './helpers.mjs';
-import { parseFrontmatter, serializeFrontmatter } from '../bin/lib/frontmatter.mjs';
+import { parseFrontmatter, serializeFrontmatter } from '../bin/lib/frontmatter.ts';
 import { lintVault, fixVault, unwrapQuoteArtifact } from '../bin/lib/lintrules.mjs';
 import { applyVerification } from '../bin/commands/verify.mjs';
 import { reportFallback } from '../bin/lib/resolve.mjs';

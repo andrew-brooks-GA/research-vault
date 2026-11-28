@@ -8,7 +8,7 @@ import { writeEntry } from '../lib/fsutil.mjs';
 import { resolveVault, reportFallback } from '../lib/resolve.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { fetchSource } from '../lib/fetchsource.mjs';
-import { parseFrontmatter } from '../lib/frontmatter.mjs';
+import { parseFrontmatter } from '../lib/frontmatter.ts';
 import { prepareEntry } from '../lib/capture-entry.mjs';
 import { captureOperation } from '../lib/capture-operation.mjs';
 import { extractText } from '../lib/extract.ts';

@@ -11,11 +11,20 @@ const BLOCK_HEADER = /^([|>])(?:([1-9])([-+])?|([-+])([1-9])?)?$/;
 
 // Raw source lines per top-level key, recorded by the parser so a rewrite can leave keys it
 // did not change byte-identical. Non-enumerable: invisible to Object.keys / deepEqual / JSON.
-export const RAW = Symbol('frontmatterRaw');
+export const RAW: unique symbol = Symbol('frontmatterRaw');
+
+type Scalar = string | number | boolean | Scalar[];
+type ScalarMap = Record<string, Scalar>;
+type ParsedValue = Scalar | ScalarMap | (Scalar | ScalarMap)[];
+type RawFrontmatter<T> = Record<string, { lines: string[]; value: T }>;
+type FrontmatterData<T> = {
+  [key: string]: T;
+  readonly [RAW]?: RawFrontmatter<T>;
+};
 
 // Drop a trailing YAML comment: `#` preceded by whitespace (or at the start), outside quotes.
 // A quote only opens a quoted scalar at a token start, so `it's` stays plain text.
-function stripComment(s) {
+function stripComment(s: string) {
   let q = null;
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
@@ -34,7 +43,7 @@ function stripComment(s) {
 }
 
 // Split a flow-sequence body on top-level commas, ignoring commas inside quotes.
-function splitFlow(s) {
+function splitFlow(s: string) {
   const out = [];
   let q = null, start = 0;
   for (let i = 0; i < s.length; i++) {
@@ -54,14 +63,14 @@ function splitFlow(s) {
   return out;
 }
 
-function parseScalar(raw) {
+function parseScalar(raw: string): Scalar {
   const s = stripComment(raw.trim());
   if (s === '') return '';
   if (s === '[]') return [];
   if (s.startsWith('[') && s.endsWith(']')) {
-    return splitFlow(s.slice(1, -1)).filter(x => stripComment(x.trim()) !== '').map(x => parseScalar(x));
+    return splitFlow(s.slice(1, -1)).filter((x: string) => stripComment(x.trim()) !== '').map((x: string) => parseScalar(x));
   }
-  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1).replace(/\\(["\\nr])/g, (_, c) => c === 'n' ? '\n' : c === 'r' ? '\r' : c);
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1).replace(/\\(["\\nr])/g, (_: string, c: string) => c === 'n' ? '\n' : c === 'r' ? '\r' : c);
   if (s.length >= 2 && s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1).replace(/''/g, "'");
   if (s === 'true') return true;
   if (s === 'false') return false;
@@ -71,7 +80,7 @@ function parseScalar(raw) {
 
 // Nested values (subject, verifications items) are single-line scalars only. A block-scalar
 // header there would otherwise swallow the next indented line as a sibling key.
-function parseNestedScalar(raw, line) {
+function parseNestedScalar(raw: string, line: string) {
   if (BLOCK_HEADER.test(stripComment(raw.trim())))
     throw new Error(`block scalars are not supported in nested fields: ${line.trim()}`);
   return parseScalar(raw);
@@ -79,7 +88,7 @@ function parseNestedScalar(raw, line) {
 
 // Read a block scalar (| literal, > folded) whose header sits on lines[i]. Returns the value
 // and the index of the first line after the block.
-function parseBlockScalar(lines, i, header) {
+function parseBlockScalar(lines: string[], i: number, header: RegExpExecArray) {
   const [, style, ind1, chompA, chompB, ind2] = header;
   const chomp = chompA || chompB || '';
   const explicit = ind1 || ind2;
@@ -124,19 +133,19 @@ function parseBlockScalar(lines, i, header) {
 
 // S-13: assigning a `__proto__` key would set the object's prototype (an object value) or be dropped (a scalar), so
 // the key is refused; any other key, `constructor` or `toString` too, is an ordinary own key.
-function keyOf(key) {
+function keyOf(key: string) {
   if (key === '__proto__') throw new Error('unsupported frontmatter key: __proto__');
   return key;
 }
 
-export function parseFrontmatter(text) {
+export function parseFrontmatter(text: string): { data: FrontmatterData<ParsedValue>; body: string } {
   const m = FM.exec(text.replace(/\r\n/g, '\n'));
   if (!m) throw new Error('missing or malformed frontmatter');
   const [, fm, body] = m;
   if (fm === undefined || body === undefined) throw new Error('parseFrontmatter: expected frontmatter and body captures');
   const lines = fm.split('\n');
-  const data = {};
-  const raw = {};
+  const data: FrontmatterData<ParsedValue> = {};
+  const raw: RawFrontmatter<ParsedValue> = {};
   let lastLines = null;
   let i = 0;
   let line;
@@ -153,7 +162,7 @@ export function parseFrontmatter(text) {
     const start = i;
     const rest = stripComment(topValue.trim());
     const header = BLOCK_HEADER.exec(rest);
-    let value;
+    let value: ParsedValue;
     if (header) {
       const r = parseBlockScalar(lines, i, header);
       value = r.value;
@@ -174,7 +183,7 @@ export function parseFrontmatter(text) {
           if (itemFirst === undefined) throw new Error('parseFrontmatter: expected a sequence item capture');
           const kv = /^([A-Za-z_][\w]*):([\s\S]*)$/.exec(itemFirst);
           if (kv) {
-            const obj = {};
+            const obj: ScalarMap = {};
             const [, itemKey, itemValue] = kv;
             if (itemKey === undefined || itemValue === undefined) throw new Error('parseFrontmatter: expected sequence key and value captures');
             obj[keyOf(itemKey)] = parseNestedScalar(itemValue, item);
@@ -196,7 +205,7 @@ export function parseFrontmatter(text) {
         }
         value = seq;
       } else {
-        const obj = {};
+        const obj: ScalarMap = {};
         i++;
         let field;
         while ((field = lines[i]) !== undefined) {
@@ -218,8 +227,8 @@ export function parseFrontmatter(text) {
   return { data, body };
 }
 
-function emitScalar(v, flow = false) {
-  if (Array.isArray(v)) return `[${v.map(x => emitScalar(x, true)).join(', ')}]`;
+function emitScalar(v: unknown, flow: boolean = false): string {
+  if (Array.isArray(v)) return `[${v.map((x: unknown) => emitScalar(x, true)).join(', ')}]`;
   if (typeof v === 'string') {
     if (v === '' || /[:#"\n\r]|^\s|\s$/.test(v) || (flow && /,|[\s[]'/.test(v)) || /^['[|>]/.test(v) ||
         v === 'true' || v === 'false' || /^-?\d+$/.test(v)) {
@@ -233,17 +242,17 @@ function emitScalar(v, flow = false) {
 // Keep the existing block form for top-level multiline strings unless CRs or whitespace-only
 // lines would be lost. Chomping follows the trailing newlines; an indentation indicator is
 // added when the first content line itself starts with a space.
-function emitBlock(key, v) {
+function emitBlock(key: string, v: string) {
   const chomp = !v.endsWith('\n') ? '-' : (v.endsWith('\n\n') || v === '\n') ? '+' : '';
   const content = chomp === '-' ? v : v.slice(0, -1);
-  const firstText = content.split('\n').find(l => l !== '') ?? '';
+  const firstText = content.split('\n').find((l: string) => l !== '') ?? '';
   const indicator = /^\s/.test(firstText) ? '2' : '';
   const out = [`${key}: |${indicator}${chomp}`];
   for (const l of content.split('\n')) out.push(l === '' ? '' : `  ${l}`);
   return out;
 }
 
-function hasCarriageReturn(v) {
+function hasCarriageReturn(v: unknown): unknown {
   if (typeof v === 'string') return v.includes('\r');
   return v && typeof v === 'object' && Object.values(v).some(hasCarriageReturn);
 }
@@ -251,25 +260,25 @@ function hasCarriageReturn(v) {
 // `preserve` (default on) re-emits the original source lines of any top-level key whose value
 // is unchanged since parse, and keeps the original key order; changed or new keys are
 // normalized. Pass `{ preserve: false }` for a deliberate full normalization (lint --fix).
-export function serializeFrontmatter(data, body, order = null, { preserve = true } = {}) {
+export function serializeFrontmatter(data: FrontmatterData<unknown>, body: string, order: readonly string[] | null = null, { preserve = true }: { preserve?: boolean | undefined } = {}): string {
   const raw = preserve ? data[RAW] : null;
   let keys;
   if (raw) {
     // Original order for keys that were already there; a new key goes in front of the first
     // existing key that follows it in `order`, else at the end.
-    keys = Object.keys(raw).filter(k => Object.hasOwn(data, k));
+    keys = Object.keys(raw).filter((k: string) => Object.hasOwn(data, k));
     for (const k of Object.keys(data)) {
       if (Object.hasOwn(raw, k)) continue;
       const at = order ? order.indexOf(k) : -1;
-      const before = !order || at < 0 ? -1 : keys.findIndex(x => order.indexOf(x) > at);
+      const before = !order || at < 0 ? -1 : keys.findIndex((x: string) => order.indexOf(x) > at);
       if (before < 0) keys.push(k); else keys.splice(before, 0, k);
     }
   } else {
-    const ordered = order ? order.filter(k => Object.hasOwn(data, k)) : Object.keys(data);
-    const extra = order ? Object.keys(data).filter(k => !order.includes(k)) : [];
+    const ordered = order ? order.filter((k: string) => Object.hasOwn(data, k)) : Object.keys(data);
+    const extra = order ? Object.keys(data).filter((k: string) => !order.includes(k)) : [];
     keys = [...ordered, ...extra];
   }
-  function isMap(item) {
+  function isMap(item: unknown): item is Record<string, unknown> {
     return item !== null && typeof item === 'object' && !Array.isArray(item);
   }
   const out = ['---'];
@@ -278,9 +287,9 @@ export function serializeFrontmatter(data, body, order = null, { preserve = true
     const saved = raw && Object.hasOwn(raw, key) ? raw[key] : undefined;
     // CRs inside raw block values are content; final normalization would erase them.
     if (saved && isDeepStrictEqual(v, saved.value) &&
-        !(saved.lines.some(l => l.includes('\r')) && hasCarriageReturn(v))) {
+        !(saved.lines.some((l: string) => l.includes('\r')) && hasCarriageReturn(v))) {
       out.push(...saved.lines);
-    } else if (Array.isArray(v) && v.some(item => isMap(item) || Array.isArray(item))) {
+    } else if (Array.isArray(v) && v.some((item: unknown) => isMap(item) || Array.isArray(item))) {
       out.push(`${key}:`);
       for (const item of v) {
         if (!isMap(item)) {
@@ -296,7 +305,7 @@ export function serializeFrontmatter(data, body, order = null, { preserve = true
     } else if (v && typeof v === 'object' && !Array.isArray(v)) {
       out.push(`${key}:`);
       for (const [k, value] of Object.entries(v)) out.push(`  ${k}: ${emitScalar(value)}`);
-    } else if (typeof v === 'string' && v.includes('\n') && !v.includes('\r') && !v.split('\n').some(l => l !== '' && l.trim() === '')) {
+    } else if (typeof v === 'string' && v.includes('\n') && !v.includes('\r') && !v.split('\n').some((l: string) => l !== '' && l.trim() === '')) {
       out.push(...emitBlock(key, v));
     } else {
       out.push(`${key}: ${emitScalar(v)}`);

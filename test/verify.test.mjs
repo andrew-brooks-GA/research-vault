@@ -228,7 +228,7 @@ test('verify CLI reports a refused serialization once and preserves the entry by
   const names = readdirSync(join(dir, 'sources'));
   const seam = join(mkdtempSync(join(tmpdir(), 'rv-write-refusal-')), 'serializer.mjs');
   t.after(() => rmSync(fileURLToPath(new URL('.', pathToFileURL(seam))), { recursive: true, force: true }));
-  const moduleUrl = new URL('../bin/lib/frontmatter.mjs', import.meta.url).href;
+  const moduleUrl = new URL('../bin/lib/frontmatter.ts', import.meta.url).href;
   // Inject a lossy writer through its module seam, without adding a production test flag.
   writeFileSync(seam, `import { mock } from 'node:test';
 import * as original from ${JSON.stringify(moduleUrl)};

@@ -5,7 +5,7 @@ import { join, resolve, basename, dirname } from 'node:path';
 import http from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { parseFrontmatter, serializeFrontmatter } from './frontmatter.mjs';
+import { parseFrontmatter, serializeFrontmatter } from './frontmatter.ts';
 import { writeEntry } from './fsutil.mjs';
 import { loadTeachSchema } from './schema.mjs';
 import { isAllowedValue } from './validate.ts';

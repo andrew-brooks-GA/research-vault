@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFrontmatter, RAW, serializeFrontmatter } from '../bin/lib/frontmatter.mjs';
+import { parseFrontmatter, RAW, serializeFrontmatter } from '../bin/lib/frontmatter.ts';
 
 const sample = `---
 title: "Effective Go"

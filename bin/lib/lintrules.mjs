@@ -3,7 +3,7 @@ import { basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { walkEntries, readEntry, FOLDER_TYPE, writeAtomic } from './fsutil.mjs';
 import { loadSchema, stageAllowedInFolder, fieldOrder } from './schema.mjs';
-import { serializeFrontmatter } from './frontmatter.mjs';
+import { serializeFrontmatter } from './frontmatter.ts';
 import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, isAllowedValue, fieldShapeErrors } from './validate.ts';
 import { BLOCKLIST, loadBlocklist, matchBlock } from './blocklist.mjs';
 import { isUnverifiedSource, buildManifest, writeManifest } from './manifest.mjs';

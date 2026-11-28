@@ -11,7 +11,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readRequirements, parseChecker, checkTask, runChecker } from '../bin/lib/task.mjs';
 import { teachIndex, progress, progressHtml, workspaceKey, attemptOrder } from '../bin/lib/teach.mjs';
-import { parseFrontmatter } from '../bin/lib/frontmatter.mjs';
+import { parseFrontmatter } from '../bin/lib/frontmatter.ts';
 import { lintWorkspace } from '../bin/lib/lesson.mjs';
 import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';

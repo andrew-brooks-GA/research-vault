@@ -2,7 +2,7 @@
 // workspace store (spec 12 "Lesson lint"). Pure over files; the verb lives in bin/commands/teach.mjs.
 import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
-import { parseFrontmatter } from './frontmatter.mjs';
+import { parseFrontmatter } from './frontmatter.ts';
 import { matchRows } from './manifest.mjs';
 import { checkCitations, extractCitations, SPAN_RE } from './citations.mjs';
 import { mayBeInside } from './containment.ts';
