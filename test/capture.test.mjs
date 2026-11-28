@@ -7,7 +7,7 @@ import { REPO_ROOT, testEnv } from './helpers.mjs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { captureEntry, run, runBatch } from '../bin/commands/capture.mjs';
-import { makeId } from '../bin/lib/ids.mjs';
+import { makeId } from '../bin/lib/ids.ts';
 import { sha256Tagged } from '../bin/lib/hash.ts';
 import { readEntry, writeEntry } from '../bin/lib/fsutil.mjs';
 import { lintVault } from '../bin/lib/lintrules.mjs';

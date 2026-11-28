@@ -9,7 +9,7 @@ import { parseFrontmatter, serializeFrontmatter } from './frontmatter.mjs';
 import { writeEntry } from './fsutil.mjs';
 import { loadTeachSchema } from './schema.mjs';
 import { isAllowedValue } from './validate.ts';
-import { slugify } from './ids.mjs';
+import { slugify } from './ids.ts';
 import { assertInsideWorkspaceFolder, escapePathControls, isInsideVault, isInsideWorkspaceFolder } from './containment.mjs';
 import { expandFiles } from './files.ts';
 import { grade } from '../../skills/research-teach/assets/quiz.js';

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { slugify, makeId, normalizeUrl } from '../bin/lib/ids.mjs';
+import { slugify, makeId, normalizeUrl } from '../bin/lib/ids.ts';
 import { sha256Tagged } from '../bin/lib/hash.ts';
 
 test('slugify lowercases, kebab-cases, drops stopwords, caps 6 words', () => {

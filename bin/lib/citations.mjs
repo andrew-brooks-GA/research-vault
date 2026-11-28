@@ -5,7 +5,7 @@
 // code spans are examples, not citations.
 // Classify citations against the manifest's entries (checkCitations).
 // Stdlib-only, no parsing dependency.
-import { normalizeUrl } from './ids.mjs';
+import { normalizeUrl } from './ids.ts';
 import { staleness } from './stale.mjs';
 
 // URLs stop at whitespace, closing paren/bracket/angle, and quotes — so the URL

@@ -3,7 +3,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, existsSync } from 'node:fs';
 import { loadSchema, fieldOrder } from './schema.mjs';
-import { makeId, normalizeUrl, normalizeUrlSafe, verKey } from './ids.mjs';
+import { makeId, normalizeUrl, normalizeUrlSafe, verKey } from './ids.ts';
 import { sha256Tagged } from './hash.ts';
 import { buildManifest } from './manifest.mjs';
 import { TYPE_FOLDER } from './fsutil.mjs';

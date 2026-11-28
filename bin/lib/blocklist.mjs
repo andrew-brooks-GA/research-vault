@@ -4,7 +4,7 @@
 // pre-web hook; never written by the plugin.
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { normalizeUrlSafe } from './ids.mjs';
+import { normalizeUrlSafe } from './ids.ts';
 
 export const BLOCKLIST = join('meta', 'source-blocklist.json');
 const SCOPES = new Set(['url', 'domain']);

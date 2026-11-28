@@ -3,7 +3,7 @@ import { assertInsideVault, compareContainment } from './containment.mjs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { walkEntries, readEntry, TYPE_FOLDER, writeAtomic } from './fsutil.mjs';
-import { normalizeUrlSafe } from './ids.mjs';
+import { normalizeUrlSafe } from './ids.ts';
 
 // Edge fields are declared once in the schema (see edge_fields) and shared with lint's
 // dangling-ref check; read the plugin's own schema so buildManifest(vaultPath) keeps its

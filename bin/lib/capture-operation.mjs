@@ -7,7 +7,7 @@ import { prepareEntry } from './capture-entry.mjs';
 import { serializeFrontmatter } from './frontmatter.mjs';
 import { readEntry, walkEntries, writeAtomic, TYPE_FOLDER, ENTRY_FOLDERS } from './fsutil.mjs';
 import { loadSchema } from './schema.mjs';
-import { normalizeUrl, verKey } from './ids.mjs';
+import { normalizeUrl, verKey } from './ids.ts';
 import { sha256Tagged } from './hash.ts';
 import { buildManifest, danglingEdges, writeManifest } from './manifest.mjs';
 import { assertInsideVault, isInsideVault } from './containment.mjs';
