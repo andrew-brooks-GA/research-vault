@@ -2,7 +2,7 @@
 import { lstatSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, relative, resolve, sep } from 'node:path';
 import { isInsideVault, isInsideWorkspaceFolder } from './containment.mjs';
-import { escapeHtml } from './escape.mjs';
+import { escapeHtml } from './escape.ts';
 import { extractCites } from './lesson-format.mjs';
 import { lessonLab, readLabs } from './labs.mjs';
 import { neighbours, pathPosition } from '../../skills/research-teach/assets/quiz.js';

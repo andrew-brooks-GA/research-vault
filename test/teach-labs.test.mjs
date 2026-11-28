@@ -533,7 +533,7 @@ function functionBody(source, name) {
 // Guard the serve-path process boundary and checked launch sites: exercising a finite set of
 // requests cannot establish that no other branch imports or starts a process, or bypasses a check.
 test('source scan: serve-path process imports, call sites and launch options stay confined', () => {
-  const serve = ['bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/terminal.mjs', 'bin/lib/git.ts', 'bin/lib/gate.mjs', 'bin/lib/teach.mjs', 'bin/lib/serve-file.mjs', 'bin/lib/lesson.mjs', 'bin/lib/lesson-format.mjs', 'bin/lib/escape.mjs', 'bin/commands/teach.mjs', 'bin/lib/args.ts', 'skills/research-teach/assets/quiz.js'];
+  const serve = ['bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/terminal.mjs', 'bin/lib/git.ts', 'bin/lib/gate.mjs', 'bin/lib/teach.mjs', 'bin/lib/serve-file.mjs', 'bin/lib/lesson.mjs', 'bin/lib/lesson-format.mjs', 'bin/lib/escape.ts', 'bin/commands/teach.mjs', 'bin/lib/args.ts', 'skills/research-teach/assets/quiz.js'];
   const read = (f) => readFileSync(join(ROOT, f), 'utf8');
   const count = (src, name) => [...src.matchAll(new RegExp('\\b' + name + '\\s*\\(', 'g'))].length;
   const walk = (d) => readdirSync(join(ROOT, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith('.mjs') || (e.name.endsWith('.ts') && !e.name.endsWith('.d.ts')) ? [join(d, e.name)] : []));

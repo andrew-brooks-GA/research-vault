@@ -20,7 +20,7 @@ import { readLabs, lessonLab, labRunner, secretHits, labCookie, LAB_ACTIONS, LAB
 import { readBrand, withBrand, brandUrl } from './brand.mjs';
 import { shellTerminal } from './terminal.mjs';
 import { screenText } from './screen.ts';
-import { escapeHtml, show } from './escape.mjs';
+import { escapeHtml, show } from './escape.ts';
 
 export { LESSON_ID_RE, RECORD_ID_RE, extractCites };
 export { serveFile, navHtml, footnoteCitations, labStepsHtml } from './serve-file.mjs';

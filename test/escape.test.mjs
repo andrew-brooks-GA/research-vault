@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { escapeHtml } from '../bin/lib/escape.mjs';
+import { escapeHtml } from '../bin/lib/escape.ts';
 
 test('escapes an ampersand', () => {
   assert.equal(escapeHtml('&'), '&amp;');
