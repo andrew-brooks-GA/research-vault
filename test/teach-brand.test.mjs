@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto';
 import { fixtureVault, put, testEnv } from './helpers.mjs';
 import { recordVerdict } from '../bin/lib/gate.mjs';
 import { createServer, exportWorkspace } from '../bin/lib/teach.mjs';
-import { readBrand, withBrand, BRAND_TOKENS } from '../bin/lib/brand.mjs';
+import { readBrand, withBrand, BRAND_TOKENS } from '../bin/lib/brand.ts';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { loadSchema, loadTeachSchema } from '../bin/lib/schema.mjs';
 import { lintWorkspace } from '../bin/lib/lesson.mjs';

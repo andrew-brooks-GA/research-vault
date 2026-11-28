@@ -16,7 +16,7 @@ import { readRequirements, reportLines, checkAttempt, answeredAttempt, taskLesso
 import { scanCast, castTranscript } from '../lib/cast.ts';
 import { hasVerdict } from '../lib/gate.mjs';
 import { readLabs, secretHits } from '../lib/labs.mjs';
-import { readBrand } from '../lib/brand.mjs';
+import { readBrand } from '../lib/brand.ts';
 import { ptyAvailable } from '../lib/terminal.mjs';
 import { assertInsideWorkspaceFolder, isInsideVault, isInsideWorkspaceFolder, mayBeInside, VAULT_PATH_OUTSIDE } from '../lib/containment.ts';
 import { screenText } from '../lib/screen.ts';

@@ -17,7 +17,7 @@ import { CONTENT_TYPES, STATIC_DIRS, imageTarget, navHtml, serveFile, withNav } 
 import { LESSON_ID_RE, RECORD_ID_RE, extractCites, lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWUP, CONNECT_LEAD, uniq } from './lesson-format.ts';
 import { HEADING_RE, TABLE_SEP_RE, WORKSPACE_GATES, hasVerdict } from './gate.mjs';
 import { readLabs, lessonLab, labRunner, secretHits, labCookie, LAB_ACTIONS, LAB_BODY_MAX, LAB_ID_RE } from './labs.mjs';
-import { readBrand, withBrand, brandUrl } from './brand.mjs';
+import { readBrand, withBrand, brandUrl } from './brand.ts';
 import { shellTerminal } from './terminal.mjs';
 import { screenText } from './screen.ts';
 import { escapeHtml, show } from './escape.ts';

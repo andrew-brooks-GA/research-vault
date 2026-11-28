@@ -5,29 +5,46 @@ import { isInsideWorkspaceFolder } from './containment.ts';
 import { escapeHtml } from './escape.ts';
 import { errorCode, isRecord as isObj, parseJson } from './unknowns.ts';
 
+type Brand = {
+  name?: string;
+  logo?: { light: string; dark?: string; alt?: string };
+  favicon?: string;
+  color?: { light?: Record<string, string>; dark?: Record<string, string> };
+  font?: { body?: string; code?: string };
+  footer?: { classification?: string | Record<string, string>; copyright?: string };
+  audience?: string;
+  tokens?: string;
+  voice?: { avoid: { term: string; use?: string }[] };
+  dividers?: { image: string; alt?: string };
+};
+type BrandProblem = { code: string; message: string };
+type BrandResult = { brand: Brand | null; problems: BrandProblem[] };
+type BrandOptions = { position?: [number, number] | null; year?: number | undefined };
+type TokenResult = { value: unknown; problem?: never } | { problem: string; value?: never };
+
 // D2: the tokens a brand may set are the custom properties of lesson.css's first :root block.
 const CSS = readFileSync(new URL('../../skills/research-teach/assets/lesson.css', import.meta.url), 'utf8');
 const ROOT_BLOCK = CSS.slice(CSS.indexOf(':root {'), CSS.indexOf('}', CSS.indexOf(':root {')));
-export const BRAND_TOKENS = [...ROOT_BLOCK.matchAll(/--[a-z0-9-]+(?=\s*:)/g)].map((m) => m[0]);
+export const BRAND_TOKENS: string[] = [...ROOT_BLOCK.matchAll(/--[a-z0-9-]+(?=\s*:)/g)].map((m: RegExpMatchArray) => m[0]);
 // D7: lesson.css's own value of each token in light (that block) and in dark (its :root[data-theme="dark"] rule).
-const values = (block) => Object.fromEntries([...block.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)].map(([, key, value]) => {
+const values = (block: string): Record<string, string> => Object.fromEntries([...block.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/g)].map(([, key, value]: RegExpMatchArray): [string, string] => {
   if (key === undefined || value === undefined) throw new Error('values: expected a property and value');
   return [key, value.trim()];
 }));
 const DARK_AT = CSS.indexOf(':root[data-theme="dark"] {');
-export const BRAND_DEFAULTS = { light: values(ROOT_BLOCK), dark: values(CSS.slice(DARK_AT, CSS.indexOf('}', DARK_AT))) };
+export const BRAND_DEFAULTS: { light: Record<string, string>; dark: Record<string, string> } = { light: values(ROOT_BLOCK), dark: values(CSS.slice(DARK_AT, CSS.indexOf('}', DARK_AT))) };
 // D7 and WCAG 2.2: the contrast ratio (L1 + 0.05) / (L2 + 0.05) of two #rgb or #rrggbb colours, L the relative luminance.
-const luminance = (hex) => {
-  const h = hex.length === 4 ? hex.replace(/[0-9a-f]/gi, (d) => d + d).slice(1) : hex.slice(1);
-  const channels = [[0, 0.2126], [2, 0.7152], [4, 0.0722]];
-  return channels.reduce((s, [i, weight]) => {
+const luminance = (hex: string) => {
+  const h = hex.length === 4 ? hex.replace(/[0-9a-f]/gi, (d: string) => d + d).slice(1) : hex.slice(1);
+  const channels: [number, number][] = [[0, 0.2126], [2, 0.7152], [4, 0.0722]];
+  return channels.reduce((s: number, [i, weight]: [number, number]) => {
     const c = parseInt(h.slice(i, i + 2), 16) / 255;
     return s + (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4) * weight;
   }, 0);
 };
-export const contrast = (a, b) => {
+export const contrast = (a: string, b: string): number => {
   const x = luminance(a), y = luminance(b);
-  const [l1, l2] = x < y ? [y, x] : [x, y];
+  const [l1, l2]: [number, number] = x < y ? [y, x] : [x, y];
   return (l1 + 0.05) / (l2 + 0.05);
 };
 
@@ -35,19 +52,19 @@ const KEYS = ['name', 'logo', 'favicon', 'color', 'font', 'footer', 'audience', 
 const HEX_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 const REF_RE = /^\{([^{}]+)\}$/;
 const NAME_RE = /^[A-Za-z0-9 -]*[A-Za-z0-9][A-Za-z0-9 -]*$/;
-const isPath = (p) => typeof p === 'string' && p.split('/').every((s) => /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(s));
-const isHex = (c) => typeof c === 'string' && HEX_RE.test(c);
-const isFamily = (f) => typeof f === 'string' && f.split(',').every((n) => NAME_RE.test(n));
-export const brandUrl = (p) => '/brand/' + p.split('/').map(encodeURIComponent).join('/');
+const isPath = (p: unknown): p is string => typeof p === 'string' && p.split('/').every((s: string) => /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(s));
+const isHex = (c: unknown): c is string => typeof c === 'string' && HEX_RE.test(c);
+const isFamily = (f: unknown): f is string => typeof f === 'string' && f.split(',').every((n: string) => NAME_RE.test(n));
+export const brandUrl = (p: string): string => '/brand/' + p.split('/').map(encodeURIComponent).join('/');
 
 // D6: `{a.b.c}` is the `$value` at that dotted path of the tokens file; a `$value` that is itself `{...}` is an alias,
 // followed at most eight times. Returns { value } or { problem }.
-function lookup(tokens, ref) {
-  let v = ref;
+function lookup(tokens: unknown, ref: string): TokenResult {
+  let v: unknown = ref;
   for (let hops = 0; typeof v === 'string' && REF_RE.test(v); hops++) {
     if (hops > 8) return { problem: `${ref}: more than eight aliases` };
     if (!tokens) return { problem: `${ref}: no tokens file` };
-    let node = tokens;
+    let node: unknown = tokens;
     for (const k of v.slice(1, -1).split('.')) node = isObj(node) && Object.hasOwn(node, k) ? node[k] : undefined;
     if (!isObj(node) || !Object.hasOwn(node, '$value')) return { problem: `${v} is not a token of the tokens file` };
     v = node.$value;
@@ -57,16 +74,16 @@ function lookup(tokens, ref) {
 
 // The brand of workspace `ws`: { brand: null, problems: [] } with no brand/ folder; else the brand with every reference
 // resolved, or brand null and one { code, message } per problem of brand/brand.json (D1, D5, D6).
-export function readBrand(ws) {
+export function readBrand(ws: string): BrandResult {
   const dir = join(ws, 'brand');
-  const problems = [];
-  const bad = (message, code = 'BRAND_INVALID') => { problems.push({ code, message }); return false; };
-  const read = (name) => {
+  const problems: BrandProblem[] = [];
+  const bad = (message: string, code: string = 'BRAND_INVALID'): false => { problems.push({ code, message }); return false; };
+  const read = (name: string) => {
     const file = join(dir, name);
     if (!isInsideWorkspaceFolder(ws, dir, file)) throw new Error('brand file is outside brand/ or cannot be resolved');
     return parseJson(readFileSync(file, 'utf8'));
   };
-  let b;
+  let b: unknown;
   try {
     if (!lstatSync(dir, { throwIfNoEntry: false })) return { brand: null, problems: [] };
     b = read('brand.json');
@@ -74,20 +91,20 @@ export function readBrand(ws) {
     bad(`brand/brand.json is ${errorCode(e) === 'ENOENT' ? 'missing' : 'not JSON'}`);
     return { brand: null, problems };
   }
-  const keys = (v, where, allowed) => {
+  const keys = (v: unknown, where: string, allowed: string[]): v is Record<string, unknown> => {
     if (!isObj(v)) return bad(`${where} must be an object`);
     for (const k of Object.keys(v)) if (!allowed.includes(k)) bad(`${where}: unknown key ${k}`);
     return true;
   };
-  const str = (v, where) => typeof v === 'string' || bad(`${where} must be a string`);
-  const path = (v, where) => isPath(v) || bad(`${where} must be a path under brand/ whose segments are [A-Za-z0-9._-], none starting with .`);
+  const str = (v: unknown, where: string) => typeof v === 'string' || bad(`${where} must be a string`);
+  const path = (v: unknown, where: string): v is string => isPath(v) || bad(`${where} must be a path under brand/ whose segments are [A-Za-z0-9._-], none starting with .`);
   if (!keys(b, 'brand.json', KEYS)) return { brand: null, problems };
-  let tokens = null;
+  let tokens: unknown = null;
   if (b.tokens !== undefined && path(b.tokens, 'tokens')) {
     try { tokens = read(b.tokens); } catch { bad(`tokens: brand/${b.tokens} is not a JSON file`); }
   }
   // A value written as a {reference} is looked up, then `fromTokens` turns the token's $value into the form `ok` takes.
-  const value = (v, where, ok, what, fromTokens) => {
+  const value = (v: unknown, where: string, ok: (v: unknown) => v is string, what: string, fromTokens: (x: unknown) => unknown) => {
     if (typeof v === 'string' && REF_RE.test(v)) {
       const r = lookup(tokens, v);
       if (r.problem) return bad(`${where}: ${r.problem}`);
@@ -96,7 +113,7 @@ export function readBrand(ws) {
     return ok(v) ? v : bad(`${where} must be ${what}`);
   };
   const out = { ...b };
-  const validate = (out) => {
+  const validate = (out: Record<string, unknown>): out is Brand => {
     if (b.name !== undefined) str(b.name, 'name');
     if (b.favicon !== undefined) path(b.favicon, 'favicon');
     if (b.logo !== undefined && keys(b.logo, 'logo', ['light', 'dark', 'alt'])) {
@@ -110,28 +127,28 @@ export function readBrand(ws) {
       if (b.dividers.alt !== undefined) str(b.dividers.alt, 'dividers.alt');
     }
     if (b.color !== undefined && keys(b.color, 'color', ['light', 'dark'])) {
-      const color = out.color = {};
+      const color: Record<string, unknown> = out.color = {};
       for (const scheme of ['light', 'dark']) {
         const m = b.color[scheme];
         if (m === undefined || !keys(m, `color.${scheme}`, Object.keys(m ?? {}))) continue;
-        const colors = color[scheme] = {};
+        const colors: Record<string, string | false> = color[scheme] = {};
         for (const [t, v] of Object.entries(m)) {
           if (!BRAND_TOKENS.includes(t)) bad(`color.${scheme}: ${t} is not a token of lesson.css`, 'BRAND_TOKEN_UNKNOWN');
-          colors[t] = value(v, `color.${scheme}.${t}`, isHex, '#rgb, #rrggbb or a {reference}', (x) => (isObj(x) ? x.hex : x));
+          colors[t] = value(v, `color.${scheme}.${t}`, isHex, '#rgb, #rrggbb or a {reference}', (x: unknown) => (isObj(x) ? x.hex : x));
         }
       }
     }
     if (b.font !== undefined && keys(b.font, 'font', ['body', 'code'])) {
-      const font = out.font = {};
+      const font: Record<string, string | false> = out.font = {};
       for (const k of ['body', 'code']) {
         if (b.font[k] === undefined) continue;
         font[k] = value(b.font[k], `font.${k}`, isFamily, 'comma-separated names of letters, digits, spaces and hyphens, or a {reference}',
-          (x) => (Array.isArray(x) && x.every((s) => typeof s === 'string') ? x.join(', ') : x));
+          (x: unknown) => (Array.isArray(x) && x.every((s: unknown) => typeof s === 'string') ? x.join(', ') : x));
       }
     }
     const c = isObj(b.footer) ? b.footer.classification : undefined;
     if (b.footer !== undefined && keys(b.footer, 'footer', ['classification', 'copyright'])) {
-      if (c !== undefined && typeof c !== 'string' && !(isObj(c) && Object.values(c).every((v) => typeof v === 'string'))) {
+      if (c !== undefined && typeof c !== 'string' && !(isObj(c) && Object.values(c).every((v: unknown) => typeof v === 'string'))) {
         bad('footer.classification must be a string or an object of audience to string');
       }
       if (b.footer.copyright !== undefined) str(b.footer.copyright, 'footer.copyright');
@@ -141,8 +158,8 @@ export function readBrand(ws) {
       bad(b.audience === undefined ? 'audience is not set, and footer.classification is by audience' : `audience ${JSON.stringify(b.audience)} is not a key of footer.classification`);
     } else if (!isObj(c) && b.audience !== undefined) bad('audience needs a footer.classification by audience');
     if (b.voice !== undefined && keys(b.voice, 'voice', ['avoid'])) {
-      const ok = Array.isArray(b.voice.avoid) && b.voice.avoid.every((a) => isObj(a) && typeof a.term === 'string' && a.term !== '' &&
-        Object.keys(a).every((k) => k === 'term' || (k === 'use' && typeof a.use === 'string')));
+      const ok = Array.isArray(b.voice.avoid) && b.voice.avoid.every((a: unknown) => isObj(a) && typeof a.term === 'string' && a.term !== '' &&
+        Object.keys(a).every((k: string) => k === 'term' || (k === 'use' && typeof a.use === 'string')));
       if (!ok) bad('voice.avoid must be a list of { "term": string, "use": string (optional) }');
     }
     return problems.length === 0;
@@ -151,9 +168,9 @@ export function readBrand(ws) {
 }
 
 // D2 and D3: the one <style>: the colours in lesson.css's three selector blocks, the fonts, and the slot rules.
-const darkRule = (sel, body) => `@media (prefers-color-scheme: dark) { :root:not([data-theme="light"])${sel} { ${body} } }\n:root[data-theme="dark"]${sel} { ${body} }\n`;
-const decls = (o = {}) => Object.entries(o).map(([k, v]) => `${k}: ${v};`).join(' ');
-export function brandCss(b) {
+const darkRule = (sel: string, body: string) => `@media (prefers-color-scheme: dark) { :root:not([data-theme="light"])${sel} { ${body} } }\n:root[data-theme="dark"]${sel} { ${body} }\n`;
+const decls = (o: Record<string, string> = {}) => Object.entries(o).map(([k, v]: [string, string]) => `${k}: ${v};`).join(' ');
+export function brandCss(b: Brand): string {
   let css = '';
   const light = decls(b.color?.light);
   if (light) css += `:root { ${light} }\n`;
@@ -172,11 +189,11 @@ export function brandCss(b) {
 // footer before the last </body>, its spans apart by a space so the export's phrase check reads each as its own words.
 // `position` is [n, m] on a lesson, else null; `year` replaces {year}. All brand text is escaped. With no brand the html
 // is returned as it is.
-export function withBrand(html, brand, { position = null, year } = {}) {
+export function withBrand(html: string, brand: Brand | null, { position = null, year }: BrandOptions = {}): string {
   if (!brand) return html;
   const b = brand;
   const head = (b.favicon ? `<link rel="icon" href="${escapeHtml(brandUrl(b.favicon))}">` : '') + `<style>\n${brandCss(b)}</style>`;
-  const img = (f, cls) => `<img class="${cls}" src="${escapeHtml(brandUrl(f))}" alt="${escapeHtml(b.logo?.alt ?? '')}">`;
+  const img = (f: string, cls: string) => `<img class="${cls}" src="${escapeHtml(brandUrl(f))}" alt="${escapeHtml(b.logo?.alt ?? '')}">`;
   const logo = b.logo ? `<a href="/">${img(b.logo.light, 'brand-logo-light')}${b.logo.dark ? img(b.logo.dark, 'brand-logo-dark') : ''}</a>` : '';
   const name = b.name !== undefined ? `<span class="brand-name">${escapeHtml(b.name)}</span>` : '';
   const header = logo || name ? `<header class="brand-header">${logo}${name}</header>` : '';
@@ -184,10 +201,10 @@ export function withBrand(html, brand, { position = null, year } = {}) {
   const classification = typeof f.classification === 'string' ? f.classification : f.classification?.[String(b.audience)];
   const spans = [classification, f.copyright?.replaceAll('{year}', String(year)), position && `lesson ${position[0]} of ${position[1]}`];
   const footer = classification !== undefined || f.copyright !== undefined
-    ? `<footer class="brand-footer">${spans.filter((s) => typeof s === 'string').map((s) => `<span>${escapeHtml(s)}</span>`).join(' ')}</footer>` : '';
-  let out = html.replace(/<\/head>/i, (m) => head + m);
+    ? `<footer class="brand-footer">${spans.filter((s: string | null | undefined) => typeof s === 'string').map((s: string) => `<span>${escapeHtml(s)}</span>`).join(' ')}</footer>` : '';
+  let out = html.replace(/<\/head>/i, (m: string) => head + m);
   const nav = /<nav class="lesson-nav">[\s\S]*?<\/nav>/.exec(out);
-  out = nav ? out.slice(0, nav.index + nav[0].length) + header + out.slice(nav.index + nav[0].length) : out.replace(/<body\b[^>]*>/i, (m) => m + header);
+  out = nav ? out.slice(0, nav.index + nav[0].length) + header + out.slice(nav.index + nav[0].length) : out.replace(/<body\b[^>]*>/i, (m: string) => m + header);
   const i = out.toLowerCase().lastIndexOf('</body>');
   return i === -1 ? out : out.slice(0, i) + footer + out.slice(i);
 }

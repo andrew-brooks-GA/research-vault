@@ -14,7 +14,7 @@ import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
 import { readLabs, labPin, lessonLab, LAB_MANIFEST } from './labs.mjs';
 import { sha256Hex } from './hash.ts';
 import { scanCast, PLAYER_FILES, PLAYER_VERSION } from './cast.ts';
-import { readBrand, BRAND_DEFAULTS, contrast } from './brand.mjs';
+import { readBrand, BRAND_DEFAULTS, contrast } from './brand.ts';
 import { readRequirements } from './task.mjs';
 
 export { lessonClass, readPath, CONNECT_LEAD, imageTarget };
