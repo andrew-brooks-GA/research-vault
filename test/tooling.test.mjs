@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runGit } from '../bin/lib/git.ts';
-import { installationFiles } from '../bin/lib/host-install.mjs';
+import { installationFiles } from '../bin/lib/host-install.ts';
 import { build } from '../scripts/deps.mjs';
 import { findSuppressions } from '../tooling/suppressions.mjs';
 import { testEnv } from './helpers.mjs';

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { REPO_ROOT, testEnv } from './helpers.mjs';
-import { manageCodex, installationFiles, shellQuote } from '../bin/lib/host-install.mjs';
+import { manageCodex, installationFiles, shellQuote } from '../bin/lib/host-install.ts';
 import { context } from '../scripts/deps.mjs';
 
 function project(t) {

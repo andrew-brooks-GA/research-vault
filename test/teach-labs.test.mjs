@@ -537,10 +537,10 @@ test('source scan: serve-path process imports, call sites and launch options sta
   const read = (f) => readFileSync(join(ROOT, f), 'utf8');
   const count = (src, name) => [...src.matchAll(new RegExp('\\b' + name + '\\s*\\(', 'g'))].length;
   const walk = (d) => readdirSync(join(ROOT, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : e.name.endsWith('.mjs') || (e.name.endsWith('.ts') && !e.name.endsWith('.d.ts')) ? [join(d, e.name)] : []));
-  assert.deepEqual(walk('bin').filter((f) => read(f).includes('child_process')).sort(), ['bin/lib/codex-review.mjs', 'bin/lib/git.ts', 'bin/lib/host-install.mjs', 'bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/terminal.mjs']);
+  assert.deepEqual(walk('bin').filter((f) => read(f).includes('child_process')).sort(), ['bin/lib/codex-review.mjs', 'bin/lib/git.ts', 'bin/lib/host-install.ts', 'bin/lib/labs.mjs', 'bin/lib/task.mjs', 'bin/lib/terminal.mjs']);
   for (const file of serve) {
     const src = read(file);
-    assert.doesNotMatch(src, /from\s*['"][^'"]*(?:codex-review|host-install)\.mjs['"]/, file);
+    assert.doesNotMatch(src, /from\s*['"][^'"]*(?:codex-review\.mjs|host-install\.ts)['"]/, file);
     assert.doesNotMatch(src, /\bshell\s*:\s*true\b|(?<![.\w])(?:exec|execSync|execFile|eval)\s*\(|\bnew\s+Function\b/, file);
     const expected = file === 'bin/lib/git.ts' ? [0, 0, 1] : file === 'bin/lib/terminal.mjs' ? [1, 1, 0] : /\/(?:labs|task)\.mjs$/.test(file) ? [1, 0, 0] : [0, 0, 0];
     assert.deepEqual(['spawn', 'spawnSync', 'execFileSync'].map((name) => count(src, name)), expected, file);

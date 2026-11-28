@@ -1,4 +1,4 @@
-import { manageCodex, PACKAGE_ROOT } from '../lib/host-install.mjs';
+import { manageCodex, PACKAGE_ROOT } from '../lib/host-install.ts';
 import { resolveVault } from '../lib/resolve.mjs';
 import { join } from 'node:path';
 import { runCodexReview } from '../lib/codex-review.mjs';

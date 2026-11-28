@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { PACKAGE_ROOT } from './host-install.mjs';
+import { PACKAGE_ROOT } from './host-install.ts';
 import { resolveVault } from './resolve.mjs';
 import { ledgerRoot, evidenceFor, renderEvidence, changedUnits, referencedImages, codeLang, ledgerKey } from './gate.mjs';
 import { checkCitations, extractCitations } from './citations.mjs';
