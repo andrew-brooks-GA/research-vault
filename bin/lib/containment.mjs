@@ -1,6 +1,6 @@
 import nodePath from 'node:path';
 import nodeFs from 'node:fs';
-import { errorCode } from './unknowns.mjs';
+import { errorCode } from './unknowns.ts';
 
 // Resolve the longest existing prefix of `target`, keeping the missing tail
 // lexical. An existing entry whose resolution fails leaves containment unknown.

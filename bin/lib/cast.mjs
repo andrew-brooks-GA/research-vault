@@ -1,7 +1,7 @@
 // Issue 65 (spec 47 D2): an asciicast (v3, or v2, whose events have the same shape) read as text: the secret scan
 // and the transcript. Pure; `teach cast` and `teach lint` call it.
 
-import { isRecord, parseJson } from './unknowns.mjs';
+import { isRecord, parseJson } from './unknowns.ts';
 
 // Spec 47 F3 and D1: the one player release a workspace may hold in assets/, by file name and sha256.
 export const PLAYER_VERSION = '3.18.0';

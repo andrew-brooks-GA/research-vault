@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { errorCode, isRecord, parseJson } from '../bin/lib/unknowns.mjs';
+import { errorCode, isRecord, parseJson } from '../bin/lib/unknowns.ts';
 
 test('parseJson returns a parsed object', () => {
   assert.deepEqual(parseJson('{"value":7}'), { value: 7 });
