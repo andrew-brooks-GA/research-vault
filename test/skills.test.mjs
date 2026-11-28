@@ -1,12 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FLOATING } from '../bin/lib/fill.mjs';
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { slugify } from '../bin/lib/ids.ts';
+import { readFileSync, statSync } from 'node:fs';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
+const WORKFLOW = join('skills', 'research-orchestrate', 'workflow');
 
 test('research-claims-gate skill exists with the expected frontmatter', () => {
   // Regex, not parseFrontmatter: the vault parser rejects the `argument-hint` key.
@@ -136,7 +138,7 @@ test('research-vault-usage tells the agent to take search terms from manifest --
 test('the claims-gate skill holds the packet rules and the rule for edits after round two (spec 54 items 5 and 7)', () => {
   const skill = read('skills/research-claims-gate/SKILL.md');
   for (const s of ['--packet', '--run <run key>', 'can fail a draft and cannot pass one', 'After round two change only the sentences a finding names', 'record `MERIT`, never `PASS`']) assert.ok(skill.includes(s), s);
-  assert.ok(read('skills/research-orchestrate/SKILL.md').includes('--run ${args.runKey}'), 'the Write step puts the run key in its quote rows');
+  assert.ok(read(WORKFLOW).includes('--run ${args.runKey}'), 'the Write step puts the run key in its quote rows');
 });
 
 // R-17: a compaction re-attaches only the first part of a skill (about 14,500 bytes of these files), so the
@@ -156,10 +158,55 @@ test('the gate rules of research-teach and research-orchestrate sit in an Invari
   }
 });
 
+function workflowSection() {
+  return read('skills/research-orchestrate/SKILL.md').split('\n## 2. Run the workflow\n')[1].split('\n## ')[0];
+}
+
+test('orchestrate section 2 has no fenced JavaScript block', () => {
+  assert.doesNotMatch(workflowSection(), /^[ \t]*(?:`{3,}|~{3,})[ \t]*javascript\b/im);
+});
+
+test('orchestrate section 2 names a Workflow script file under the plugin root', () => {
+  const reference = workflowSection().match(/`(\$\{CLAUDE_PLUGIN_ROOT\}\/skills\/research-orchestrate\/[^`\s]+)`/);
+  assert.ok(reference, 'section 2 names the script under the plugin root');
+  const path = resolve(reference[1].replace('${CLAUDE_PLUGIN_ROOT}', ROOT));
+  assert.equal(path, join(ROOT, WORKFLOW));
+  assert.ok(statSync(path).isFile(), reference[1]);
+});
+
+// Scan the prompt and STOPWORDS declaration for candidates so an addition on either side is tested through slugify.
+test('source scan: the Workflow Write prompt lists the stopwords slugify drops', () => {
+  const listed = read(WORKFLOW).match(/ the words ([a-z, ]+) dropped, and the first /);
+  assert.ok(listed, 'the Write prompt lists its slug stopwords');
+  const expected = new Set(listed[1].split(', '));
+  const declared = read('bin/lib/ids.ts').match(/const STOPWORDS = new Set\(\[([^\]]*)\]\)/);
+  assert.ok(declared, 'ids.ts lists the stopword probe candidates');
+  const sourceWords = [...declared[1].matchAll(/['"]([a-z0-9]+)['"]/g)].map(m => m[1]);
+  const candidates = new Set([...expected, ...sourceWords]);
+  const control = 'quartz';
+  assert.equal(slugify(control), control, 'the control word is kept');
+  const dropped = new Set([...candidates].filter(word => slugify(`${word} ${control}`) === control));
+  assert.deepEqual(dropped, expected);
+});
+
+test('the Workflow Write prompt states the word limit slugify applies', () => {
+  const stated = read(WORKFLOW).match(/the first ([a-z]+) remaining words joined by hyphens/);
+  assert.ok(stated, 'the Write prompt states a word limit');
+  const counts = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven'];
+  assert.equal(slugify('amber birch cedar dogwood elm fir gum').split('-').length, counts.indexOf(stated[1]));
+});
+
+test('the Workflow Write prompt states the prefix slugify uses when no word remains', () => {
+  const stated = read(WORKFLOW).match(/When no word is left, the slug is ([a-z0-9]+-) and a hash/);
+  assert.ok(stated, 'the Write prompt states a prefix');
+  const slug = slugify('日本語');
+  assert.ok(slug.startsWith(stated[1]), `${slug} should start with ${stated[1]}`);
+});
+
 // Pull request 71 shipped a reference script the Workflow tool cannot take; this is the smallest check that fails on it.
 test('the orchestrate skill\'s reference script is a Workflow script', () => {
   const skill = read('skills/research-orchestrate/SKILL.md');
-  const script = skill.slice(skill.indexOf('## 2. Run the workflow')).match(/```javascript\n([\s\S]*?)\n```/)[1];
+  const script = read(WORKFLOW);
   assert.match(script, /^export const meta = \{/);
   assert.doesNotMatch(script, /\bagent\(\s*\{/, 'agent takes a prompt string');
   assert.doesNotMatch(script, /\bimport\b|\brequire\(|Date\.now\(|Math\.random\(|new Date\(\)/);
@@ -194,7 +241,7 @@ test('the orchestrate skill\'s reference script is a Workflow script', () => {
 // Issues 74, 75 and 76: the script repairs an address before the Write step, and the prompts say the rest.
 test('the orchestrate script hands the Write step https addresses and no version on a floating address', async () => {
   const skill = read('skills/research-orchestrate/SKILL.md');
-  const script = skill.slice(skill.indexOf('## 2. Run the workflow')).match(/```javascript\n([\s\S]*?)\n```/)[1];
+  const script = read(WORKFLOW);
   const page = (url, extra = {}) => ({ url, title: 't', domain: 'd', topics: 'x', authorityTier: 'a', authorityBasis: 'b', summary: 's', claims: [{ claim: 'c', quote: 'q' }], ...extra });
   const v = { subjectName: 'X', subjectVersion: '2.0' };
   const lanePages = [
@@ -239,7 +286,7 @@ test('the orchestrate script hands the Write step https addresses and no version
 // and the Write step tests the mark with the quote check before it captures that page.
 test('the orchestrate script marks a page that may be a second address of an earlier page', async () => {
   const skill = read('skills/research-orchestrate/SKILL.md');
-  const script = skill.slice(skill.indexOf('## 2. Run the workflow')).match(/```javascript\n([\s\S]*?)\n```/)[1];
+  const script = read(WORKFLOW);
   const page = (url, extra = {}) => ({ url, title: 't', domain: 'd', topics: 'x', authorityTier: 'a', authorityBasis: 'b', summary: 's', claims: [{ claim: 'c', quote: 'q' }], ...extra });
   const v = { subjectName: 'X', subjectVersion: '9.0' };
   const lanePages = [

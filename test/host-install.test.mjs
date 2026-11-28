@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, symlinkSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -102,12 +103,22 @@ test('generated review commands honor installed model and effort choices', t => 
   assert.ok(!skill.includes('host review codex --role'));
 });
 
+test('the Codex orchestrate skill names a script pinned in the installation manifest', t => {
+  const root = project(t);
+  manageCodex(root, 'install');
+  const skill = readFileSync(join(root, '.agents/skills/research-orchestrate/SKILL.md'), 'utf8');
+  const name = '.agents/skills/research-orchestrate/workflow';
+  const path = join(root, name);
+  assert.ok(skill.includes(`\`${path}\``), 'the generated skill names the installed Codex script');
+  const { files } = JSON.parse(readFileSync(join(root, '.research-vault-host/codex-install.json'), 'utf8'));
+  assert.equal(files[name], createHash('sha256').update(readFileSync(path)).digest('hex'));
+});
+
 // Issue 72 item 10: the Codex copy of the orchestrate script runs the pinned launcher, whatever args.cli names.
 test('the Codex orchestrate script runs the pinned launcher, not the path args.cli names', async t => {
   const root = project(t);
   const { files } = installationFiles(root);
-  const skill = files.get('.agents/skills/research-orchestrate/SKILL.md').toString();
-  const script = skill.slice(skill.indexOf('## 2. Run the workflow')).match(/```javascript\n([\s\S]*?)\n```/)[1];
+  const script = files.get('.agents/skills/research-orchestrate/workflow').toString();
   const page = { url: 'https://example.com/a', title: 't', domain: 'd', topics: 'x', authorityTier: 'a', authorityBasis: 'b', summary: 's', claims: [{ claim: 'c', quote: 'q' }] };
   let prompt = '', recon = '';
   const agent = async (text, opts) => (opts.phase === 'Recon' ? ((recon = text), 'none') : opts.phase === 'Research' ? { pages: [structuredClone(page)] } : ((prompt = text), { status: 'complete', lint: '' }));
@@ -121,4 +132,5 @@ test('the Codex orchestrate script runs the pinned launcher, not the path args.c
   // A Codex controller runs the steps inline from this text: the constant and the args comment name no other CLI.
   assert.ok(script.includes(`const CLI = ${JSON.stringify(launcher)}`), 'the constant in the text is the launcher');
   assert.ok(!script.includes('${args.cli}') && !script.includes('absolute path to research-vault.mjs'), 'the text sends no reader to args.cli');
+  assert.ok(script.includes('cli = not read in this Codex copy: every command runs the launcher of section 0'), 'the args comment names the launcher');
 });
