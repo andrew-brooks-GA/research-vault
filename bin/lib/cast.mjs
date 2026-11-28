@@ -1,6 +1,8 @@
 // Issue 65 (spec 47 D2): an asciicast (v3, or v2, whose events have the same shape) read as text: the secret scan
 // and the transcript. Pure; `teach cast` and `teach lint` call it.
 
+import { isRecord, parseJson } from './unknowns.mjs';
+
 // Spec 47 F3 and D1: the one player release a workspace may hold in assets/, by file name and sha256.
 export const PLAYER_VERSION = '3.18.0';
 export const PLAYER_FILES = {
@@ -24,11 +26,18 @@ const ESCAPES = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][\s\S]*?(?:\x07|\x1b\\)|\x1b[()*+
 // { header, events }, each event [time, code, data]; throws on a cast that does not parse.
 export function parseCast(text) {
   const lines = text.split('\n').filter((l) => l.trim() && !l.startsWith('#'));
-  const header = JSON.parse(lines[0] ?? '');
-  if (![2, 3].includes(header?.version)) throw new Error(`asciicast version ${header?.version} (expected 2 or 3)`);
+  const parsed = parseJson(lines[0] ?? '');
+  const header = isRecord(parsed) ? parsed : undefined;
+  const version = header?.version;
+  if (!header || (version !== 2 && version !== 3)) throw new Error(`asciicast version ${version} (expected 2 or 3)`);
+  const isEvent = (value) => {
+    const e = Array.isArray(value) ? value : [];
+    const [time, code, data] = e;
+    return typeof time === 'number' && Number.isFinite(time) && typeof code === 'string' && typeof data === 'string';
+  };
   const events = lines.slice(1).map((l, i) => {
-    const e = JSON.parse(l);
-    if (!Array.isArray(e) || typeof e[1] !== 'string' || typeof e[2] !== 'string') throw new Error(`event ${i} is not [time, code, data]`);
+    const e = parseJson(l);
+    if (!isEvent(e)) throw new Error(`event ${i} is not [time, code, data]`);
     return e;
   });
   return { header, events };

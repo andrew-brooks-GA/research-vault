@@ -11,7 +11,7 @@ import { once } from 'node:events';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
 import { fixtureVault, testEnv } from './helpers.mjs';
-import { scanCast, castTranscript, PLAYER_FILES } from '../bin/lib/cast.mjs';
+import { parseCast, scanCast, castTranscript, PLAYER_FILES } from '../bin/lib/cast.mjs';
 import { createServer, exportWorkspace } from '../bin/lib/teach.mjs';
 import { recordVerdict } from '../bin/lib/gate.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
@@ -29,6 +29,42 @@ const WHOLE = cast([0.1, 'o', `token ${TOKEN}\r\n`]);
 const SPLIT = cast([0.1, 'o', 'token rvtest_FAKE01234'], [0.3, 'o', '56789abcdef\r\n']);
 const COLOURED = cast([0.1, 'o', 'token rvtest_\u001b[31mFAKE0123456789abcdef\u001b[0m\r\n']);
 const AWS = cast([0.1, 'o', 'ok\r\n'], [0.1, 'o', 'key AKIAIOSFODNN7EXAMPLE\r\n']); // AWS's documented example key
+
+test('parseCast refuses a null header', () => {
+  assert.throws(() => parseCast('null'), { message: 'asciicast version undefined (expected 2 or 3)' });
+});
+
+test('parseCast refuses a numeric header', () => {
+  assert.throws(() => parseCast('5'), { message: 'asciicast version undefined (expected 2 or 3)' });
+});
+
+test('parseCast refuses an array header', () => {
+  assert.throws(() => parseCast('[]'), { message: 'asciicast version undefined (expected 2 or 3)' });
+});
+
+test('parseCast refuses an event with a string time', () => {
+  assert.throws(() => parseCast('{"version":3}\n["0.1","o","hi"]'), { message: 'event 0 is not [time, code, data]' });
+});
+
+test('parseCast refuses an event with a null time', () => {
+  assert.throws(() => parseCast('{"version":3}\n[null,"o","hi"]'), { message: 'event 0 is not [time, code, data]' });
+});
+
+test('parseCast refuses an event with an infinite time', () => {
+  assert.throws(() => parseCast('{"version":3}\n[1e999,"o","hi"]'), { message: 'event 0 is not [time, code, data]' });
+});
+
+test('parseCast returns the header and events of a valid version 2 cast', () => {
+  assert.deepEqual(parseCast('{"version":2,"width":80,"height":24}\n[0.1,"o","hi"]'), {
+    header: { version: 2, width: 80, height: 24 }, events: [[0.1, 'o', 'hi']],
+  });
+});
+
+test('parseCast returns the header and events of a valid version 3 cast', () => {
+  assert.deepEqual(parseCast('{"version":3,"term":{"cols":80,"rows":24}}\n[0.2,"o","hi"]'), {
+    header: { version: 3, term: { cols: 80, rows: 24 } }, events: [[0.2, 'o', 'hi']],
+  });
+});
 
 test('scanCast finds a needle whole, split across two events and coloured, at the event it starts in; a clean cast has none', () => {
   assert.deepEqual(scanCast(WHOLE, [TOKEN]), [{ kind: 'needle 1', at: 0 }]);

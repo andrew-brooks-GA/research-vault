@@ -73,6 +73,8 @@ export const COUPLINGS = [
   ['bin/lib/args.ts', 'test/args.test.mjs', 'the strict-option error lines', 'unknown option --'],
   ['bin/lib/args.ts', 'test/args.test.mjs', 'the strict-option error lines', 'needs a value'],
   ['bin/lib/args.ts', 'test/args.test.mjs', 'the strict-option error lines', 'takes no value'],
+  ['bin/lib/cast.mjs', 'test/teach-cast.test.mjs', 'the parseCast refusal lines are checked verbatim', '(expected 2 or 3)'],
+  ['bin/lib/cast.mjs', 'test/teach-cast.test.mjs', 'the parseCast refusal lines are checked verbatim', ' is not [time, code, data]'],
   ['bin/lib/args.ts', 'test/gate.test.mjs', 'the strict-option error lines', 'needs a value'],
   ['bin/lib/screen.ts', 'test/screen.test.mjs', "screenText's cut mark is quoted in the expected values", '\\u2026'],
   ['bin/lib/gate.mjs', 'skills/research-claims-gate/SKILL.md', 'residual and loaded-script unit names and review scope', 'script:'],
