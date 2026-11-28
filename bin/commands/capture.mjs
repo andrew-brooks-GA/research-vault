@@ -11,7 +11,7 @@ import { fetchSource } from '../lib/fetchsource.mjs';
 import { parseFrontmatter } from '../lib/frontmatter.mjs';
 import { prepareEntry } from '../lib/capture-entry.mjs';
 import { captureOperation } from '../lib/capture-operation.mjs';
-import { extractText } from '../lib/extract.mjs';
+import { extractText } from '../lib/extract.ts';
 import { fillSource } from '../lib/fill.mjs';
 import { screenText } from '../lib/screen.ts';
 

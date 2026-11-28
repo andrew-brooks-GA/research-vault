@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { REPO_ROOT, tmpVault, put } from './helpers.mjs';
 import { fillSource } from '../bin/lib/fill.mjs';
-import { htmlToText, mdToText, extractText } from '../bin/lib/extract.mjs';
+import { htmlToText, mdToText, extractText } from '../bin/lib/extract.ts';
 import { fetchSource, rawFileUrl } from '../bin/lib/fetchsource.mjs';
 import { readEntry } from '../bin/lib/fsutil.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';

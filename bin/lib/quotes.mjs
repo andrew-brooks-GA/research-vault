@@ -7,7 +7,7 @@ import { loadSchema, fieldOrder } from './schema.mjs';
 import { buildManifest, writeManifest } from './manifest.mjs';
 import { loadBlocklist, matchBlock } from './blocklist.mjs';
 import { fetchSource, rawFileUrl } from './fetchsource.mjs';
-import { extractText } from './extract.mjs';
+import { extractText } from './extract.ts';
 import { bodyText, MIN_BODY_CHARS } from './gate.mjs';
 import { RUN_KEY } from './packet.mjs';
 import { screenText } from './screen.ts';
