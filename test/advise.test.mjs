@@ -12,7 +12,7 @@ import { REPO_ROOT, tmpVault, put, testEnv } from './helpers.mjs';
 import { run as adviseRun } from '../bin/commands/advise.mjs';
 import { listStale } from '../bin/lib/stale.mjs';
 import { applyVerification } from '../bin/commands/verify.mjs';
-import { appendUsage } from '../bin/lib/usagelog.mjs';
+import { appendUsage } from '../bin/lib/usagelog.ts';
 
 const CLI = join(REPO_ROOT, 'bin', 'research-vault.mjs');
 

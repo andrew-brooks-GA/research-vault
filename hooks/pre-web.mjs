@@ -5,7 +5,7 @@ import { resolveVault, hasVaultContent } from '../bin/lib/resolve.mjs';
 import { walkEntries, readEntry } from '../bin/lib/fsutil.mjs';
 import { listStale } from '../bin/lib/stale.mjs';
 import { termsOf } from '../bin/lib/terms.ts';
-import { appendUsage } from '../bin/lib/usagelog.mjs';
+import { appendUsage } from '../bin/lib/usagelog.ts';
 import { loadBlocklist, matchBlock } from '../bin/lib/blocklist.mjs';
 import { loadProjectConfig } from '../bin/lib/projectconfig.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';

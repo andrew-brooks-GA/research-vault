@@ -7,7 +7,7 @@ import { loadSchema } from './schema.mjs';
 import { walkEntries, readEntry } from './fsutil.mjs';
 import { verKey } from './ids.ts';
 import { termsOf } from './terms.ts';
-import { readUsage } from './usagelog.mjs';
+import { readUsage } from './usagelog.ts';
 
 export const isStubBody = body => !(body || '').split('\n').some(l => {
   const t = l.trim();

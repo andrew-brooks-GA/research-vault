@@ -19,7 +19,7 @@ import { writeEntry } from '../bin/lib/fsutil.mjs';
 import { PROJECT_CONFIG_FILENAME } from '../bin/lib/projectconfig.mjs';
 import { INDEX } from '../bin/lib/embed.mjs';
 import { fieldOrder } from '../bin/lib/schema.mjs';
-import { readUsage } from '../bin/lib/usagelog.mjs';
+import { readUsage } from '../bin/lib/usagelog.ts';
 import { mkdirSync } from 'node:fs';
 import {
   assertEmbeddingRefusal, assertEmbeddingReplyRefusal, boundRepo, embeddingEnv, fakeFetch, HTTPS_ENDPOINT,

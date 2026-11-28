@@ -4,7 +4,7 @@ import { writeFileSync, mkdirSync, existsSync, readdirSync, readlinkSync, rmSync
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { readUsage } from '../bin/lib/usagelog.mjs';
+import { readUsage } from '../bin/lib/usagelog.ts';
 import { REPO_ROOT, assertVaultUntouched, outsideVaultRepo, tmpVault, put, testEnv, testHome, noNetworkArgs } from './helpers.mjs';
 import { citationWarnings } from '../hooks/post-tool-use.mjs';
 

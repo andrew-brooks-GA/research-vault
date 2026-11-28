@@ -5,7 +5,7 @@ import { buildManifest, matchRows } from '../lib/manifest.mjs';
 import { walkEntries, readEntry } from '../lib/fsutil.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { staleness } from '../lib/stale.mjs';
-import { appendUsage, USAGE_LOG } from '../lib/usagelog.mjs';
+import { appendUsage, USAGE_LOG } from '../lib/usagelog.ts';
 import { VAULT_PATH_OUTSIDE } from '../lib/containment.ts';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { cosine, embeddingDestination, embeddingGate, embedTexts, readIndex } from '../lib/embed.mjs';

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, appendFileSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpVault } from './helpers.mjs';
-import { appendUsage, readUsage, USAGE_LOG } from '../bin/lib/usagelog.mjs';
+import { appendUsage, readUsage, USAGE_LOG } from '../bin/lib/usagelog.ts';
 
 const NOW = new Date('2026-01-02T03:04:05.006Z');
 

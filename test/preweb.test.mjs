@@ -58,7 +58,7 @@ test('PreToolUse stays silent for a refused outside vault', (t) => {
 });
 
 test('pre-web hook logs one queried event per call: hits, url-hit, no-match; text only when asked (spec 29 D2)', async () => {
-  const { readUsage } = await import('../bin/lib/usagelog.mjs');
+  const { readUsage } = await import('../bin/lib/usagelog.ts');
   const v = tmpVault('rv-preweb-log-');
   put(v, 'source', '2026-01-01-zig-io-writer', { title: 'std.Io.Writer print doc comment', topics: ['zig', 'formatting'], summary: 'format specifiers', source_url: 'https://ziglang.org/doc/writer', source_type: 'official-docs' });
   vaultContext(v, 'WebSearch', { query: 'zig format specifiers print' }, OPTIONS);
@@ -145,7 +145,7 @@ test('pre-web names every active entry for a URL with its version and freshness,
 });
 
 test('pre-web does not take a URL whose path differs only in case for a captured one', async t => {
-  const { readUsage } = await import('../bin/lib/usagelog.mjs');
+  const { readUsage } = await import('../bin/lib/usagelog.ts');
   const v = tmpVault('rv-preweb-case-');
   t.after(() => rmSync(v, { recursive: true, force: true }));
   put(v, 'source', '2026-01-01-page', { source_type: 'official-docs', source_url: 'https://example.org/Page' });
@@ -154,7 +154,7 @@ test('pre-web does not take a URL whose path differs only in case for a captured
 });
 
 test('pre-web does not take a captured URL with a #fragment added for the captured one (capture keys it apart too)', async t => {
-  const { readUsage } = await import('../bin/lib/usagelog.mjs');
+  const { readUsage } = await import('../bin/lib/usagelog.ts');
   const v = tmpVault('rv-preweb-fragment-');
   t.after(() => rmSync(v, { recursive: true, force: true }));
   put(v, 'source', '2026-01-01-page', { source_type: 'official-docs', source_url: 'https://example.org/page' });

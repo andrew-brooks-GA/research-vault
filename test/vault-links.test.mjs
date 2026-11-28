@@ -11,7 +11,7 @@ import { captureOperation } from '../bin/lib/capture-operation.mjs';
 import { VAULT_PATH_OUTSIDE } from '../bin/lib/containment.ts';
 import { LEDGER_FILENAME } from '../bin/lib/gate.mjs';
 import { PROJECT_CONFIG_FILENAME } from '../bin/lib/projectconfig.mjs';
-import { USAGE_LOG } from '../bin/lib/usagelog.mjs';
+import { USAGE_LOG } from '../bin/lib/usagelog.ts';
 import { put, testEnv, tmpVault } from './helpers.mjs';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));

@@ -5,9 +5,9 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { assertInsideVault, isInsideVault } from './containment.ts';
 
-export const USAGE_LOG = join('_index', 'usage.jsonl');
+export const USAGE_LOG: string = join('_index', 'usage.jsonl');
 
-export function appendUsage(vaultPath, event, now) {
+export function appendUsage(vaultPath: string, event: object, now: unknown): void {
   if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw new Error('appendUsage: now must be a Date');
   const path = join(vaultPath, USAGE_LOG);
   const dir = dirname(path);
@@ -18,8 +18,8 @@ export function appendUsage(vaultPath, event, now) {
   appendFileSync(path, line);
 }
 
-export function readUsage(vaultPath) {
+export function readUsage(vaultPath: string): unknown[] {
   const p = join(vaultPath, USAGE_LOG);
   // A line that is not JSON is skipped (spec 30), as the claims ledger's reader skips one.
-  return isInsideVault(vaultPath, p) && existsSync(p) ? readFileSync(p, 'utf8').split('\n').filter(Boolean).flatMap(l => { try { return [JSON.parse(l)]; } catch { return []; } }) : [];
+  return isInsideVault(vaultPath, p) && existsSync(p) ? readFileSync(p, 'utf8').split('\n').filter(Boolean).flatMap((l: string): unknown[] => { try { return [JSON.parse(l)]; } catch { return []; } }) : [];
 }

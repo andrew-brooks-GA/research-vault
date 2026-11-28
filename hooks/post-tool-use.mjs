@@ -15,7 +15,7 @@ import { checkCitations, extractCitations } from '../bin/lib/citations.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
 import { loadProjectConfig } from '../bin/lib/projectconfig.mjs';
-import { appendUsage, readUsage } from '../bin/lib/usagelog.mjs';
+import { appendUsage, readUsage } from '../bin/lib/usagelog.ts';
 import { gatedFiles, ledgerKey } from '../bin/lib/gate.mjs';
 import { langFor, codeFiles, extractCodeLinks, readVersions, checkCodeLinks } from '../bin/lib/codelinks.mjs';
 import { screenText } from '../bin/lib/screen.ts';
