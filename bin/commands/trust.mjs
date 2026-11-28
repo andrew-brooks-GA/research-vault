@@ -11,6 +11,7 @@ const WIDTH = 76;
 const safe = value => String(value).replace(/\\|[^\x20-\x7e]/g, c => c === '\\' ? '\\\\' : `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
 
 export async function run(args, { stdin = process.stdin, stdout = process.stdout, stderr = process.stderr, ask, ...options } = {}) {
+  const now = new Date();
   const line = value => stdout.write(value + '\n');
   const valueLine = (prefix, value, output = stdout) => {
     const escaped = safe(value);
@@ -82,7 +83,7 @@ export async function run(args, { stdin = process.stdin, stdout = process.stdout
       }
       if (!/^(y|yes)$/i.test(answer ?? '')) return 1;
     }
-    acknowledgeBinding(hit.path, { ...options, bytes: snapshot.bytes, identity: snapshot.path });
+    acknowledgeBinding(hit.path, { ...options, bytes: snapshot.bytes, identity: snapshot.path, now });
     line('Binding acknowledged.');
     return 0;
   } catch (error) {

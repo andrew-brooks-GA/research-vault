@@ -16,6 +16,7 @@ import { trustedBindingsPath, isBindingAcknowledged, acknowledgeBinding, revokeB
 import { run } from '../bin/commands/trust.mjs';
 
 const DISPLAY_WIDTH = 76;
+const NOW = new Date('2026-01-02T03:04:05.006Z');
 const CLI = fileURLToPath(new URL('../bin/research-vault.mjs', import.meta.url));
 function fixture(t) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'rv-trust-')));
@@ -24,7 +25,7 @@ function fixture(t) {
   const repo = join(root, 'repo');
   mkdirSync(home); mkdirSync(repo);
   const env = testEnv({ HOME: home, USERPROFILE: home, APPDATA: home, XDG_CONFIG_HOME: home });
-  const options = { platform: process.platform, home, env };
+  const options = { platform: process.platform, home, env, now: NOW };
   const folder = process.platform === 'darwin' ? join(home, 'Library', 'Application Support', 'research-vault') : join(home, 'research-vault');
   mkdirSync(folder, { recursive: true });
   const record = join(folder, 'trusted-bindings.json');
@@ -60,6 +61,39 @@ test('--yes records the resolved path and independently computed byte hash', t =
   assert.equal(record.bindings[0].sha256, createHash('sha256').update(readFileSync(f.binding)).digest('hex'));
   assert.ok(Number.isFinite(Date.parse(record.bindings[0].date)));
   assert.equal(isBindingAcknowledged(f.binding, f.options), true);
+});
+
+test('acknowledgeBinding records the supplied timestamp', t => {
+  const f = fixture(t);
+  acknowledgeBinding(f.binding, f.options);
+  assert.equal(JSON.parse(readFileSync(f.record)).bindings[0].date, '2026-01-02T03:04:05.006Z');
+});
+
+test('acknowledgeBinding refuses a missing time without creating the record', t => {
+  const f = fixture(t);
+  const names = readdirSync(f.folder);
+  assert.throws(() => acknowledgeBinding(f.binding, { home: f.home, env: f.env }), {
+    name: 'Error', message: 'acknowledgeBinding: now must be a Date',
+  });
+  assert.equal(existsSync(f.record), false);
+  assert.deepEqual(readdirSync(f.folder), names);
+});
+
+test('trust records its start time even when confirmation takes time', async t => {
+  const f = fixture(t);
+  t.mock.timers.enable({ apis: ['Date'], now: NOW });
+  const before = Date.now();
+  const status = await run({ _: ['trust', f.repo] }, {
+    ...f.options, stdin: { isTTY: true }, stdout: { write() {} }, ask: async () => {
+      t.mock.timers.tick(1000);
+      return 'yes';
+    },
+  });
+  const after = Date.now();
+  assert.equal(status, 0);
+  const time = Date.parse(JSON.parse(readFileSync(f.record)).bindings[0].date);
+  assert.ok(before <= time && time <= after);
+  assert.equal(time, before);
 });
 
 test('changed bytes lose acknowledgement', t => {
@@ -315,7 +349,7 @@ for (const existing of [false, true]) test(`linked config parent permits acknowl
   if (!link(t, actual, alias, 'dir')) return;
   const folder = join(actual, 'research-vault');
   if (existing) mkdirSync(folder);
-  const options = { platform: 'linux', home: f.home, env: testEnv({ XDG_CONFIG_HOME: alias }) };
+  const options = { platform: 'linux', home: f.home, env: testEnv({ XDG_CONFIG_HOME: alias }), now: NOW };
   acknowledgeBinding(f.binding, options);
   assert.equal(isBindingAcknowledged(f.binding, options), true);
   assert.deepEqual(readdirSync(actual).sort(), ['keep', 'research-vault']);

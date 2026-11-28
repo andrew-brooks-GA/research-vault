@@ -66,6 +66,7 @@ export function profileHint(platform, vaultPath) {
 }
 
 export async function run(args) {
+  const now = new Date();
   // `init --project` binds the CURRENT repo to a vault by writing a .research-vault.json
   // here; it does not scaffold a vault. The vault itself is resolved as usual.
   if (args.project) {
@@ -85,7 +86,7 @@ export async function run(args) {
         writeFileSync(target, content, options);
       } });
       let acknowledged = false;
-      try { acknowledgeBinding(target, { bytes: writtenBytes }); acknowledged = true; } catch {
+      try { acknowledgeBinding(target, { bytes: writtenBytes, now }); acknowledged = true; } catch {
         process.stderr.write('Could not record the acknowledgement; run research-vault trust to record it.\n');
       }
       process.stdout.write(`Bound this repo to ${vaultPath} via ${target}.\n`);

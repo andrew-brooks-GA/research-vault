@@ -7,10 +7,11 @@ import { assertInsideVault, isInsideVault } from './containment.ts';
 
 export const USAGE_LOG = join('_index', 'usage.jsonl');
 
-export function appendUsage(vaultPath, event) {
+export function appendUsage(vaultPath, event, now) {
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw new Error('appendUsage: now must be a Date');
   const path = join(vaultPath, USAGE_LOG);
   const dir = dirname(path);
-  const line = JSON.stringify({ ts: new Date().toISOString(), ...event }) + '\n';
+  const line = JSON.stringify({ ts: now.toISOString(), ...event }) + '\n';
   assertInsideVault(vaultPath, dir);
   mkdirSync(dir, { recursive: true });
   assertInsideVault(vaultPath, path);

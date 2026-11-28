@@ -188,6 +188,23 @@ test('init --project acknowledges the binding it creates', t => {
   assert.equal(isBindingAcknowledged(binding, { platform: process.platform, home, env }), true);
 });
 
+test('init --project records a wall-clock acknowledgement timestamp', t => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-init-trust-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const home = join(root, 'home');
+  const repo = join(root, 'repo');
+  mkdirSync(home);
+  mkdirSync(repo);
+  const overrides = { HOME: home, USERPROFILE: home, APPDATA: home, XDG_CONFIG_HOME: home };
+  const folder = dirname(configPath({ platform: process.platform, home, env: testEnv(overrides) }));
+  const before = Date.now();
+  const r = spawnSync(process.execPath, [CLI, 'init', '--project', '--vault', 'research'], { cwd: repo, env: testEnv(overrides), encoding: 'utf8', timeout: 20000 });
+  const after = Date.now();
+  assert.equal(r.status, 0, r.stderr);
+  const time = Date.parse(JSON.parse(readFileSync(join(folder, 'trusted-bindings.json'))).bindings[0].date);
+  assert.ok(before <= time && time <= after);
+});
+
 test('init --project omits the outside warning for an inside vault when acknowledgement storage is linked outside', t => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'rv-init-trust-')));
   t.after(() => rmSync(root, { recursive: true, force: true }));

@@ -22,7 +22,7 @@ import { screenText } from '../bin/lib/screen.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-export function citationWarnings(editedPath, repoRoot, vaultPath, cfg, now) {
+export function citationWarnings(editedPath, repoRoot, vaultPath, cfg, now, usageNow) {
   const file = resolve(editedPath);
   // ponytail: expands every glob per edit; switch to path.matchesGlob if large repos make this slow.
   const code = codeFiles(cfg, repoRoot);
@@ -55,7 +55,7 @@ export function citationWarnings(editedPath, repoRoot, vaultPath, cfg, now) {
     try {
       const ids = [...new Set(citations.map((c, i) => c.type === 'id' ? c.value : rows[i].id).filter(Boolean))];
       const seen = new Set(readUsage(vaultPath).filter((e) => e.kind === 'cited' && e.file === key).map((e) => e.id));
-      for (const id of ids) if (!seen.has(id)) appendUsage(vaultPath, { kind: 'cited', via: 'post-tool-use', file: key, id });
+      for (const id of ids) if (!seen.has(id)) appendUsage(vaultPath, { kind: 'cited', via: 'post-tool-use', file: key, id }, usageNow);
     } catch { /* never change the hook's answer */ }
   }
   return lines.length ? [...lines, 'capture it (or verify the entry) before the claims gate.'].join('\n') : '';
@@ -63,6 +63,7 @@ export function citationWarnings(editedPath, repoRoot, vaultPath, cfg, now) {
 
 // Entry point for this hook, called by the guard below when started directly and by the launcher after conversion.
 export function main() {
+  const usageNow = new Date();
   let input = '';
   process.stdin.on('data', d => input += d);
   process.stdin.on('end', () => {
@@ -78,7 +79,7 @@ export function main() {
         if (hit) {
           const repoRoot = dirname(hit.path);
           const { path: repoVault } = resolveVault({ cwd: repoRoot });
-          const ctx = citationWarnings(editedPath, repoRoot, repoVault, hit.config, new Date().toISOString().slice(0, 10));
+          const ctx = citationWarnings(editedPath, repoRoot, repoVault, hit.config, new Date().toISOString().slice(0, 10), usageNow);
           if (ctx) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: ctx } }) + '\n');
         }
       }

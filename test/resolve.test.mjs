@@ -329,7 +329,7 @@ test('an explicit flag wins over a refused project vault', (t) => {
 function acknowledgedProject(t) {
   const f = projectVaults(t);
   const env = testEnv({ HOME: f.root, USERPROFILE: f.root, XDG_CONFIG_HOME: join(f.root, 'config'), XDG_DATA_HOME: join(f.root, 'data'), APPDATA: join(f.root, 'config'), LOCALAPPDATA: join(f.root, 'data') });
-  const ctx = { cwd: f.cwd, home: f.root, platform: process.platform, env };
+  const ctx = { cwd: f.cwd, home: f.root, platform: process.platform, env, now: new Date('2026-01-02T03:04:05.006Z') };
   writeFileSync(f.binding, '{"vault":"../OutsideVault"}');
   return { ...f, env, ctx };
 }

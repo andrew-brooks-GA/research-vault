@@ -19,6 +19,7 @@ import { writeEntry } from '../bin/lib/fsutil.mjs';
 import { PROJECT_CONFIG_FILENAME } from '../bin/lib/projectconfig.mjs';
 import { INDEX } from '../bin/lib/embed.mjs';
 import { fieldOrder } from '../bin/lib/schema.mjs';
+import { readUsage } from '../bin/lib/usagelog.mjs';
 import { mkdirSync } from 'node:fs';
 import {
   assertEmbeddingRefusal, assertEmbeddingReplyRefusal, boundRepo, embeddingEnv, fakeFetch, HTTPS_ENDPOINT,
@@ -198,7 +199,6 @@ test('a vault alias pair reaches search: --topic kubernetes finds an entry carry
 });
 
 test('search logs a queried event with its facets and the ids returned, no text by default (spec 29 D2)', async () => {
-  const { readUsage } = await import('../bin/lib/usagelog.mjs');
   const dir = mkdtempSync(join(tmpdir(), 'rv-search-log-'));
   captureEntry(dir, { type: 'source', title: 'A first', url: 'https://example.com/a', now: '2026-01-01' });
   captureEntry(dir, { type: 'source', title: 'Z last', url: 'https://example.com/z', now: '2026-01-04' });
@@ -207,6 +207,17 @@ test('search logs a queried event with its facets and the ids returned, no text 
   try { await run({ _: ['search'], vault: dir, cwd: dir, type: 'source', text: 'first' }); } finally { process.stdout.write = so; }
   const e = readUsage(dir).at(-1);
   assert.deepEqual([e.kind, e.via, e.type, e.outcome, e.ids, 'text' in e], ['queried', 'search', 'source', 'hits', ['2026-01-01-first'], false]);
+});
+
+test('search timestamps usage with wall-clock time even with --now', async t => {
+  const vault = tmpVault('rv-search-log-');
+  t.after(() => rmSync(vault, { recursive: true, force: true }));
+  const before = Date.now();
+  const status = await searchRun({ _: ['search'], vault, cwd: vault, now: '2026-01-02' });
+  const after = Date.now();
+  assert.equal(status, 0);
+  const time = Date.parse(JSON.parse(readFileSync(join(vault, '_index', 'usage.jsonl'), 'utf8')).ts);
+  assert.ok(before <= time && time <= after);
 });
 
 test('search --semantic ranks by cosine over the index, weights stale rows down, drops superseded rows, honours --limit and refuses as the plan says (spec 34 D3)', async (t) => {
@@ -256,6 +267,19 @@ test('search --semantic ranks by cosine over the index, weights stale rows down,
   } finally {
     process.stdout.write = so; process.stderr.write = se;
   }
+
+  await t.test('search --semantic appends one usage row with a wall-clock timestamp', async () => {
+    const count = readUsage(dir).length;
+    const before = Date.now();
+    const status = await searchRun({ _: ['search'], vault: dir, cwd: repo, semantic: 'zig writer', 'ack-data-egress': true, fetch: fakeFetch(), now: '2026-11-02' });
+    const after = Date.now();
+    assert.equal(status, 0);
+    const appended = readUsage(dir).slice(count);
+    assert.equal(appended.length, 1);
+    assert.equal(appended[0].semantic, true);
+    const time = Date.parse(appended[0].ts);
+    assert.ok(before <= time && time <= after, `usage timestamp was ${appended[0].ts}`);
+  });
 });
 
 test('search --semantic refuses an unset, empty, invalid or different approved URL before reading the index', async (t) => {

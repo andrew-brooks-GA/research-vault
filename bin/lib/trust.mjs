@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { assertInsideWorkspaceFolder } from './containment.ts';
 import { sha256Hex } from './hash.ts';
+import { errorCode, isRecord, parseJson } from './unknowns.ts';
 
 export function configPath({ platform, home, env }) {
   const p = platform === 'win32' ? path.win32 : path.posix;
@@ -20,16 +21,18 @@ export function trustedBindingsPath({ platform = process.platform, home = homedi
 function readRecord(options) {
   try {
     checkRecordLocation(options);
-    const record = JSON.parse(readFileSync(trustedBindingsPath(options), 'utf8'));
-    if (record?.version !== 1 || !Array.isArray(record.bindings)) return [];
+    const record = parseJson(readFileSync(trustedBindingsPath(options), 'utf8'));
+    if (!isRecord(record) || record.version !== 1 || !Array.isArray(record.bindings)) return [];
+    const bindings = record.bindings;
     const seen = new Set();
-    for (const row of record.bindings) {
-      if (!row || typeof row.path !== 'string' || !path.isAbsolute(row.path)
+    if (!bindings.every(row => {
+      if (!isRecord(row) || typeof row.path !== 'string' || !path.isAbsolute(row.path)
           || typeof row.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(row.sha256)
-          || typeof row.date !== 'string' || !Number.isFinite(Date.parse(row.date)) || seen.has(row.path)) return [];
+          || typeof row.date !== 'string' || !Number.isFinite(Date.parse(row.date)) || seen.has(row.path)) return false;
       seen.add(row.path);
-    }
-    return record.bindings;
+      return true;
+    })) return [];
+    return bindings;
   } catch { return []; }
 }
 
@@ -44,7 +47,8 @@ export function bindingSnapshot(binding) {
   try {
     fd = openSync(identity, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
   } catch (error) {
-    if (['ELOOP', 'EMLINK'].includes(error.code)) throw new Error('binding must be a regular file');
+    const code = errorCode(error);
+    if (code === 'ELOOP' || code === 'EMLINK') throw new Error('binding must be a regular file');
     throw error;
   }
   try {
@@ -53,9 +57,9 @@ export function bindingSnapshot(binding) {
   } finally { closeSync(fd); }
 }
 
-function bindingRow(binding) {
+function bindingFingerprint(binding) {
   const snapshot = bindingSnapshot(binding);
-  return { path: snapshot.path, sha256: sha256Hex(snapshot.bytes), date: new Date().toISOString() };
+  return { path: snapshot.path, sha256: sha256Hex(snapshot.bytes) };
 }
 
 function checkRecordLocation(options) {
@@ -66,7 +70,7 @@ function checkRecordLocation(options) {
 
 export function isBindingAcknowledged(binding, options = {}) {
   try {
-    const current = bindingRow(binding);
+    const current = bindingFingerprint(binding);
     return readRecord(options).some(row => row.path === current.path && row.sha256 === current.sha256);
   } catch { return false; }
 }
@@ -93,7 +97,9 @@ function writeRecord(bindings, options) {
 }
 
 export function acknowledgeBinding(binding, options = {}) {
-  const row = bindingRow(binding);
+  const now = options?.now;
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw new Error('acknowledgeBinding: now must be a Date');
+  const row = { ...bindingFingerprint(binding), date: now.toISOString() };
   // Do not acknowledge bytes changed while the command was displaying or confirming them.
   if ((options.identity !== undefined && row.path !== options.identity)
       || (options.bytes !== undefined && row.sha256 !== sha256Hex(options.bytes))) {

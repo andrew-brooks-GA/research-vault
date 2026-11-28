@@ -101,6 +101,7 @@ test('orphans weigh every edge rel: source_id and superseded_by links are not or
 
 // Spec 04: stale evidence dependencies. `now` pinned; a `fast` entry verified 2026-01-01 is 200 days old.
 const NOW = '2026-07-20';
+const USAGE_NOW = new Date('2026-07-20T00:00:00Z');
 const src = (dir, id, extra = {}) => put(dir, 'source', id, { source_type: 'article', source_url: `https://e.com/${id}`, ...extra });
 const ver = date => [{ date, by_type: 'human', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' }];
 const STALE = { volatility: 'fast', verifications: ver('2026-01-01') };
@@ -280,12 +281,12 @@ test('advise reports usage from the log: surfaced and cited counts, topic counts
   src('2026-03-01-c', { topics: ['zig'] });
   src('2026-04-01-d', { topics: ['kubernetes'], status: 'superseded', superseded_by: '2026-01-01-a' });
   put(dir, 'note', '2026-05-01-n', { sources: ['2026-01-01-a'], confidence: 'medium' });
-  appendUsage(dir, { kind: 'queried', via: 'search', topic: 'kubernetes', outcome: 'hits', ids: ['2026-01-01-a'] });
-  appendUsage(dir, { kind: 'queried', via: 'search', topic: 'kubernetes', outcome: 'no-match', ids: [] });
-  appendUsage(dir, { kind: 'queried', via: 'pre-web', tool: 'WebSearch', outcome: 'hits', ids: ['2026-01-01-a', '2026-05-01-n', 'ghost'] });
-  appendUsage(dir, { kind: 'cited', via: 'post-tool-use', file: 'docs/x.md', id: '2026-05-01-n' });
-  appendUsage(dir, { kind: 'cited', via: 'post-tool-use', file: 'docs/y.md', id: '2026-05-01-n' });
-  appendUsage(dir, { kind: 'cited', via: 'post-tool-use', file: 'docs/y.md', id: '2026-02-01-b' });
+  appendUsage(dir, { kind: 'queried', via: 'search', topic: 'kubernetes', outcome: 'hits', ids: ['2026-01-01-a'] }, USAGE_NOW);
+  appendUsage(dir, { kind: 'queried', via: 'search', topic: 'kubernetes', outcome: 'no-match', ids: [] }, USAGE_NOW);
+  appendUsage(dir, { kind: 'queried', via: 'pre-web', tool: 'WebSearch', outcome: 'hits', ids: ['2026-01-01-a', '2026-05-01-n', 'ghost'] }, USAGE_NOW);
+  appendUsage(dir, { kind: 'cited', via: 'post-tool-use', file: 'docs/x.md', id: '2026-05-01-n' }, USAGE_NOW);
+  appendUsage(dir, { kind: 'cited', via: 'post-tool-use', file: 'docs/y.md', id: '2026-05-01-n' }, USAGE_NOW);
+  appendUsage(dir, { kind: 'cited', via: 'post-tool-use', file: 'docs/y.md', id: '2026-02-01-b' }, USAGE_NOW);
   assert.deepEqual(advise(dir, REPO_ROOT).usage, {
     entries: [{ id: '2026-01-01-a', surfaced: 2, cited: 0 }, { id: '2026-02-01-b', surfaced: 0, cited: 1 }, { id: '2026-05-01-n', surfaced: 1, cited: 2 }],
     topics: { kubernetes: { queried: 2, noMatch: 1 } },
@@ -345,9 +346,9 @@ test('S-13: advise reports usage, orphans, cold sources and aliasable topics for
     t.after(() => rmSync(dir, { recursive: true, force: true }));
     put(dir, 'source', name, { created: '2026-01-01', verifications: ver, source_type: 'article', source_url: 'https://example.com/s', topics: [name] });
     put(dir, 'source', 'zz-t', { created: '2026-01-01', verifications: ver, source_type: 'article', source_url: 'https://example.com/t', topics: [name] });
-    appendUsage(dir, { kind: 'queried', via: 'search', topic: name, outcome: 'no-match', ids: [] });
-    appendUsage(dir, { kind: 'queried', via: 'search', topic: name, outcome: 'hits', ids: [name] });
-    appendUsage(dir, { kind: 'cited', via: 'post-tool-use', file: 'docs/x.md', id: name });
+    appendUsage(dir, { kind: 'queried', via: 'search', topic: name, outcome: 'no-match', ids: [] }, USAGE_NOW);
+    appendUsage(dir, { kind: 'queried', via: 'search', topic: name, outcome: 'hits', ids: [name] }, USAGE_NOW);
+    appendUsage(dir, { kind: 'cited', via: 'post-tool-use', file: 'docs/x.md', id: name }, USAGE_NOW);
     return JSON.stringify(advise(dir, REPO_ROOT, { now: '2026-01-03' })).replaceAll(name, 'NAME');
   };
   const plain = run('plainname');

@@ -45,7 +45,7 @@ export function vaultContext(vaultPath, toolName, toolInput = {}, opts = {}) {
   // The usage log (spec 29): what was asked, what was surfaced. Free text only behind usage.text.
   urlHits.sort((a, b) => a.id.localeCompare(b.id));
   const ids = urlHits.length ? urlHits.map(e => e.id) : top.map(h => h.e.id);
-  try { appendUsage(vaultPath, { kind: 'queried', via: 'pre-web', tool: toolName, outcome: urlHits.length ? 'url-hit' : ids.length ? 'hits' : 'no-match', ids, text: opts.text ? terms.join(' ') : undefined }); } catch { /* never change the hook's answer */ }
+  try { appendUsage(vaultPath, { kind: 'queried', via: 'pre-web', tool: toolName, outcome: urlHits.length ? 'url-hit' : ids.length ? 'hits' : 'no-match', ids, text: opts.text ? terms.join(' ') : undefined }, opts.now); } catch { /* never change the hook's answer */ }
   const [urlHit] = urlHits;
   if (urlHits.length === 1) return withBlock(`research-vault: this URL is already captured as ${screenText(urlHit.id)}${stale.has(urlHit.id) ? ' (STALE: verify it rather than re-reading from memory)' : ''}. Cite it; do not capture a duplicate.`);
   if (urlHits.length) return withBlock(`research-vault: this URL is captured as more than one entry: ${urlHits.map(e => `${screenText(e.id)} (${screenText(verKey(e.data.subject?.version) ?? 'no version')}, ${stale.has(e.id) ? 'STALE' : 'fresh'})`).join(', ')}; cite the one for the version you need.`);
@@ -55,6 +55,7 @@ export function vaultContext(vaultPath, toolName, toolInput = {}, opts = {}) {
 
 // Entry point for this hook, called by the guard below when started directly and by the launcher after conversion.
 export function main() {
+  const now = new Date();
   let input = '';
   process.stdin.on('data', d => input += d);
   process.stdin.on('end', () => {
@@ -63,7 +64,7 @@ export function main() {
       const { path: vaultPath } = resolveVault({ cwd: evt.cwd });
       if (!hasVaultContent(vaultPath)) process.exit(0);
       const cfg = loadProjectConfig(evt.cwd || process.cwd(), { schema: loadSchema(REPO_ROOT) })?.config;
-      const ctx = vaultContext(vaultPath, evt.tool_name, evt.tool_input || {}, { text: cfg?.usage?.text === true });
+      const ctx = vaultContext(vaultPath, evt.tool_name, evt.tool_input || {}, { text: cfg?.usage?.text === true, now });
       if (ctx) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: ctx } }) + '\n');
     } catch { /* never block the call */ }
     process.exit(0);

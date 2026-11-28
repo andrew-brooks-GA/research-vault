@@ -85,14 +85,15 @@ function warnUsageRefusal(error) {
 }
 
 export async function run(args) {
+  const usageNow = new Date();
   const now = args.now || new Date().toISOString().slice(0, 10);
-  if (args.semantic !== undefined) return runSemantic(args, now);
+  if (args.semantic !== undefined) return runSemantic(args, now, usageNow);
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
   const rows = searchVault(vaultPath, { type: args.type, domain: args.domain, topic: args.topic, series: args.series, text: args.text, body: args.body, includeSuperseded: !!args['include-superseded'], sort: args.sort, now });
   // The usage log (spec 29): the facets and the ids returned; --text only behind usage.text.
   try {
     const cfg = loadProjectConfig(args.cwd ?? process.cwd(), { schema: loadSchema(REPO_ROOT) })?.config;
-    appendUsage(vaultPath, { kind: 'queried', via: 'search', type: args.type, topic: args.topic, outcome: rows.length ? 'hits' : 'no-match', ids: rows.map(e => e.id), text: cfg?.usage?.text === true && args.text ? args.text : undefined });
+    appendUsage(vaultPath, { kind: 'queried', via: 'search', type: args.type, topic: args.topic, outcome: rows.length ? 'hits' : 'no-match', ids: rows.map(e => e.id), text: cfg?.usage?.text === true && args.text ? args.text : undefined }, usageNow);
   } catch (e) { warnUsageRefusal(e); }
   // --json is data (JSON.stringify escapes it); a text line's values from entries pass screenText (S-11).
   if (args.json) process.stdout.write(JSON.stringify(rows, null, 2) + '\n');
@@ -103,7 +104,7 @@ export async function run(args) {
   return 0;
 }
 
-async function runSemantic(args, now) {
+async function runSemantic(args, now, usageNow) {
   for (const f of ['sort', 'text', 'body']) if (args[f] !== undefined) { process.stderr.write(`search refused: --semantic cannot be combined with --${f}\n`); return 1; }
   if (!args.semantic) { process.stderr.write('search refused: --semantic needs a query\n'); return 1; }
   const gate = embeddingGate('search', { cwd: args.cwd, 'ack-data-egress': !!args['ack-data-egress'] });
@@ -115,7 +116,7 @@ async function runSemantic(args, now) {
   } catch (e) { process.stderr.write(`search refused: ${e.message}\n`); return 1; }
   try {
     const usage = loadProjectConfig(args.cwd ?? process.cwd(), { schema: loadSchema(REPO_ROOT) })?.config?.usage;
-    appendUsage(vaultPath, { kind: 'queried', via: 'search', semantic: true, type: args.type, topic: args.topic, outcome: rows.length ? 'hits' : 'no-match', ids: rows.map(e => e.id), text: usage?.text === true ? args.semantic : undefined });
+    appendUsage(vaultPath, { kind: 'queried', via: 'search', semantic: true, type: args.type, topic: args.topic, outcome: rows.length ? 'hits' : 'no-match', ids: rows.map(e => e.id), text: usage?.text === true ? args.semantic : undefined }, usageNow);
   } catch (e) { warnUsageRefusal(e); }
   if (args.json) process.stdout.write(JSON.stringify(rows, null, 2) + '\n');
   else {
