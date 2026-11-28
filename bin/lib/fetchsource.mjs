@@ -1,7 +1,7 @@
 import https from 'node:https';
 import net from 'node:net';
 import { sha256 } from './ids.mjs';
-import { assertSafeUrl, resolveSafe } from './ssrfguard.mjs';
+import { assertSafeUrl, resolveSafe } from './ssrfguard.ts';
 
 const MAX_BODY = 5 * 1024 * 1024;
 const TIMEOUT_MS = 15000;

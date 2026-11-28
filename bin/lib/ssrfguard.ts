@@ -1,5 +1,11 @@
 import net from 'node:net';
 import dns from 'node:dns/promises';
+import type { LookupAddress } from 'node:dns';
+
+type LookupResult = LookupAddress | LookupAddress[];
+type ResolveOptions = {
+  lookup?: ((host: string) => LookupResult | PromiseLike<LookupResult>) | undefined;
+};
 
 // RFC 6890 IPv4 special-purpose ranges (non-global).
 const v4Special = new net.BlockList();
@@ -8,7 +14,7 @@ for (const [network, prefix] of [
   ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.0.0.0', 24], ['192.0.2.0', 24],
   ['192.88.99.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24],
   ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4],
-]) v4Special.addSubnet(network, prefix, 'ipv4');
+] satisfies [string, number][]) v4Special.addSubnet(network, prefix, 'ipv4');
 
 // ALLOWLIST posture: a legitimate public IPv6 target is global unicast 2000::/3.
 // Everything outside is rejected, which closes ALL embedded-IPv4 variants at once
@@ -24,14 +30,14 @@ v6Special.addSubnet('2001:db8::', 32, 'ipv6'); // documentation
 v6Special.addSubnet('2002::', 16, 'ipv6'); // 6to4
 v6Special.addSubnet('3fff::', 20, 'ipv6'); // documentation (RFC 9637)
 
-export function isPublicAddress(ip) {
+export function isPublicAddress(ip: string): boolean {
   const v = net.isIP(ip);
   if (v === 4) return !v4Special.check(ip);
   if (v === 6) return v6Global.check(ip, 'ipv6') && !v6Special.check(ip, 'ipv6');
   return false;
 }
 
-export function assertSafeUrl(url) {
+export function assertSafeUrl(url: ConstructorParameters<typeof URL>[0]): URL {
   const u = new URL(url);
   if (u.protocol !== 'https:') throw new Error(`refused non-https url: ${u.protocol}//`);
   // Reject numeric/alt-encoded hostnames that are not clean canonical IP literals.
@@ -51,13 +57,13 @@ export function assertSafeUrl(url) {
   return u;
 }
 
-export async function resolveSafe(host, opts = {}) {
-  const lookup = opts.lookup || (h => dns.lookup(h, { all: true }));
+export async function resolveSafe(host: string, opts: ResolveOptions = {}): Promise<LookupAddress[]> {
+  const lookup = opts.lookup || ((h: string) => dns.lookup(h, { all: true }));
   const addrs = await lookup(host);
   const list = Array.isArray(addrs) ? addrs : [addrs];
   if (list.length === 0) throw new Error(`no addresses for host: ${host}`);
   for (const a of list) {
     if (!isPublicAddress(a.address)) throw new Error(`refused private/non-public address ${a.address} for host: ${host}`);
   }
-  return list.map(a => ({ address: a.address, family: a.family }));
+  return list.map((a: LookupAddress) => ({ address: a.address, family: a.family }));
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isPublicAddress, assertSafeUrl, resolveSafe } from '../bin/lib/ssrfguard.mjs';
+import { isPublicAddress, assertSafeUrl, resolveSafe } from '../bin/lib/ssrfguard.ts';
 
 const REJECT_V4 = [
   '0.0.0.0', '0.255.255.255',
