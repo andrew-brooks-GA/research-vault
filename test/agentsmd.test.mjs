@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO_ROOT } from './helpers.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';
-import { generateAgentsMd } from '../bin/lib/agentsmd.mjs';
+import { generateAgentsMd } from '../bin/lib/agentsmd.ts';
 
 test('generates AGENTS.md containing schema-derived content, no BOM, single offline rule', () => {
   const md = generateAgentsMd(loadSchema(REPO_ROOT));

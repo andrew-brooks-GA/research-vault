@@ -1,17 +1,37 @@
-export function generateAgentsMd(schema) {
+type Volatility = { description: string; refresh_after_days: number };
+type FolderStage = { allowed: readonly string[]; default: string };
+
+type AgentsMdSchema = {
+  taxonomy: {
+    volatility: Record<string, Volatility>;
+    stage_by_folder: Record<string, FolderStage>;
+    artifact_purpose: Record<string, string>;
+    domain: readonly string[];
+  };
+  fields: {
+    common: readonly string[];
+    by_type: Record<string, readonly string[]>;
+    edge_fields: {
+      intended_targets: Record<string, string>;
+      backlink: readonly string[];
+    };
+  };
+};
+
+export function generateAgentsMd(schema: AgentsMdSchema): string {
   const t = schema.taxonomy;
   const vols = Object.entries(t.volatility)
-    .map(([k, v]) => `| \`${k}\` | ${v.description} | ${v.refresh_after_days === 0 ? 'always re-check' : v.refresh_after_days + ' days'} |`)
+    .map(([k, v]: [string, Volatility]) => `| \`${k}\` | ${v.description} | ${v.refresh_after_days === 0 ? 'always re-check' : v.refresh_after_days + ' days'} |`)
     .join('\n');
   const stages = Object.entries(t.stage_by_folder)
-    .map(([f, e]) => `| \`${f}/\` | ${e.allowed.join(', ')} | ${e.default} |`).join('\n');
+    .map(([f, e]: [string, FolderStage]) => `| \`${f}/\` | ${e.allowed.join(', ')} | ${e.default} |`).join('\n');
   const types = Object.entries(t.artifact_purpose)
-    .map(([f, p]) => `- \`${f}/\` — ${p}`).join('\n');
+    .map(([f, p]: [string, string]) => `- \`${f}/\` — ${p}`).join('\n');
   const ef = schema.fields.edge_fields;
-  const intendedOn = f => schema.fields.common.includes(f) ? 'any'
-    : Object.entries(schema.fields.by_type).filter(([, fs]) => fs.includes(f)).map(([ty]) => ty).join(', ');
+  const intendedOn = (f: string) => schema.fields.common.includes(f) ? 'any'
+    : Object.entries(schema.fields.by_type).filter(([, fs]: [string, readonly string[]]) => fs.includes(f)).map(([ty]: [string, readonly string[]]) => ty).join(', ');
   const refs = Object.entries(ef.intended_targets)
-    .map(([f, target]) => `| \`${f}\` | ${intendedOn(f)} | ${target} | ${ef.backlink.includes(f) ? 'yes' : 'no (reference only)'} |`).join('\n');
+    .map(([f, target]: [string, string]) => `| \`${f}\` | ${intendedOn(f)} | ${target} | ${ef.backlink.includes(f) ? 'yes' : 'no (reference only)'} |`).join('\n');
   return `# Research Vault — Agent Instructions
 
 Canonical instructions for any agent (Claude, Codex, Gemini, …) reading or writing this vault. Generated from the research-vault plugin's \`schema/\`; do not hand-edit.
@@ -54,7 +74,7 @@ A monolithic report markdown file with no atomic entries is **non-conforming**, 
 
 ## 3. Domains
 Broad research areas (controlled). Specific tech (e.g. kubernetes, vcluster, istio) goes in freeform \`topics:\`, never here.
-${t.domain.map(d => `- ${d}`).join('\n')}
+${t.domain.map((d: string) => `- ${d}`).join('\n')}
 
 ## 4. Derived fields (NEVER stored)
 - \`id\` ← filename without \`.md\`
