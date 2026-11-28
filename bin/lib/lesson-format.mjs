@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { isInsideVault } from './containment.ts';
+import { isRecord, parseJson } from './unknowns.ts';
 
 export const LESSON_ID_RE = /^\d{4}-[a-z][a-z0-9-]*$/;
 // A record id has the form of a lesson id by design.
@@ -13,13 +14,19 @@ export const uniq = (xs) => [...new Set(xs)];
 // HTML extraction (regex; lessons are static HTML written by the skill).
 export function extractQuizJson(html) {
   for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
-    if (/\bdata-quiz\b/i.test(m[1]) && /\btype\s*=\s*["']application\/json["']/i.test(m[1])) return m[2];
+    const [, attrs, json] = m;
+    if (attrs === undefined || json === undefined) throw new Error('extractQuizJson: expected script attributes and contents');
+    if (/\bdata-quiz\b/i.test(attrs) && /\btype\s*=\s*["']application\/json["']/i.test(attrs)) return json;
   }
   return null;
 }
 
 export function extractCites(html) {
-  return uniq([...html.matchAll(/\bdata-cite\s*=\s*(["'])(.*?)\1/g)].map((m) => m[2]));
+  return uniq([...html.matchAll(/\bdata-cite\s*=\s*(["'])(.*?)\1/g)].map((m) => {
+    const cite = m[2];
+    if (cite === undefined) throw new Error('extractCites: expected a citation value');
+    return cite;
+  }));
 }
 
 export const FOLLOWUP = 'You can ask follow-up questions in the terminal.';
@@ -52,6 +59,7 @@ export function blockSpans(html) {
   const blocks = [];
   for (const m of html.matchAll(/<([a-z][a-z0-9]*)\b([^>]*\bdata-block\s*=\s*(["'])([^"']+)\3[^>]*)>/gi)) {
     const [open, tag, attrs, , name] = m;
+    if (attrs === undefined || name === undefined) throw new Error('blockSpans: expected block attributes and name');
     const start = m.index + open.length;
     const re = new RegExp(`<(/?)${tag}\\b[^>]*>`, 'gi');
     re.lastIndex = start;
@@ -70,11 +78,15 @@ export function parseQuiz(html) {
   const json = extractQuizJson(html);
   if (json === null) return { error: 'no quiz data block' };
   let quiz;
-  try { quiz = JSON.parse(json); } catch (e) { return { error: `quiz JSON does not parse: ${e.message}` }; }
-  if (!quiz || !Array.isArray(quiz.items)) return { error: 'quiz JSON has no items array' };
-  const bad = quiz.items.findIndex((it) => !it || !Array.isArray(it.options));
+  try { quiz = parseJson(json); } catch (e) {
+    if (!(e instanceof Error)) throw e;
+    return { error: `quiz JSON does not parse: ${e.message}` };
+  }
+  if (!isRecord(quiz) || !Array.isArray(quiz.items)) return { error: 'quiz JSON has no items array' };
+  const items = quiz.items;
+  const bad = items.findIndex((it) => !isRecord(it) || !Array.isArray(it.options));
   if (bad !== -1) return { error: `quiz item ${bad} has no options array` };
-  return { items: quiz.items };
+  return { items };
 }
 
 // The items of the lesson's one attempt (spec 22 D1, D6.5): the predict block's item first, as item 0,
@@ -84,8 +96,12 @@ export function lessonItems(html) {
   const blocks = parseBlocks(html);
   const parts = [blocks.get('predict')?.html, blocks.get('quiz')?.html ?? (blocks.has('predict') ? undefined : html)]
     .filter((h) => h !== undefined).map(parseQuiz);
-  const bad = parts.find((p) => p.error);
-  return bad ?? (parts.length ? { items: parts.flatMap((p) => p.items) } : { error: 'no quiz data block' });
+  const items = [];
+  for (const part of parts) {
+    if (part.error !== undefined) return part;
+    items.push(part.items);
+  }
+  return parts.length ? { items: items.flat() } : { error: 'no quiz data block' };
 }
 
 // PATH.md lines: `N. <title> | terms: a, b | tool: x | after: 1, 2 | lesson: <id>`.
@@ -96,12 +112,16 @@ export function readPath(workspaceDir) {
   for (const raw of readFileSync(p, 'utf8').split(/\r?\n/)) {
     const m = /^\s*(\d+)\.\s+([^|]+?)\s*((?:\|[^|]*)*)$/.exec(raw);
     if (!m) continue;
-    const line = { n: Number(m[1]), title: m[2].trim(), terms: [], tool: null, after: [], lesson: null };
-    for (const part of m[3].split('|').map((x) => x.trim()).filter(Boolean)) {
+    const [, , title, fields] = m;
+    if (title === undefined || fields === undefined) throw new Error('readPath: expected a title and fields');
+    const line = { n: Number(m[1]), title: title.trim(), terms: [], tool: null, after: [], lesson: null };
+    for (const part of fields.split('|').map((x) => x.trim()).filter(Boolean)) {
       const f = /^([a-z]+):\s*(.*)$/i.exec(part);
       if (!f) continue;
-      const key = f[1].toLowerCase();
-      const vals = f[2].split(',').map((x) => x.trim()).filter(Boolean);
+      const [, field, value] = f;
+      if (field === undefined || value === undefined) throw new Error('readPath: expected a field name and value');
+      const key = field.toLowerCase();
+      const vals = value.split(',').map((x) => x.trim()).filter(Boolean);
       if (key === 'terms') line.terms = vals.map((x) => x.toLowerCase());
       else if (key === 'tool') line.tool = (vals[0] ?? '').toLowerCase() || null;
       else if (key === 'after') line.after = vals.map((x) => x.toLowerCase());

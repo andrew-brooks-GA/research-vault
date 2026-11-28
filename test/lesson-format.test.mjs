@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LESSON_ID_RE, RECORD_ID_RE, blockSpans, imgAttr, lessonItems, readPath, uniq } from '../bin/lib/lesson-format.mjs';
+import { LESSON_ID_RE, RECORD_ID_RE, blockSpans, extractCites, imgAttr, lessonItems, parseQuiz, readPath, uniq } from '../bin/lib/lesson-format.mjs';
 
 function pathFixture(t, text) {
   const dir = mkdtempSync(join(tmpdir(), 'rv-lesson-format-'));
@@ -83,4 +83,75 @@ test('readPath treats CRLF as a line ending, including on an untitled draft line
 
 test('imgAttr matches an uppercase attribute name with a lowercase lookup', () => {
   assert.equal(imgAttr(' SRC="x.png"', 'src'), 'x.png');
+});
+
+test('parseQuiz ignores a data-quiz marker in the script body', () => {
+  const html = '<script type="application/json">{"items":[],"label":"data-quiz"}</script>';
+  assert.deepEqual(parseQuiz(html), { error: 'no quiz data block' });
+});
+
+test('parseQuiz includes the JSON parser message for an empty script', () => {
+  const html = '<script type="application/json" data-quiz></script>';
+  assert.match(parseQuiz(html).error, /^quiz JSON does not parse: ./s);
+});
+
+test('extractCites returns attribute values including an empty citation', () => {
+  assert.deepEqual(extractCites('<a data-cite="source"></a><a data-cite=\'\'></a>'), ['source', '']);
+});
+
+test('blockSpans preserves the opening tag attributes', () => {
+  const [block] = blockSpans('<section id="claim" data-block="fact" class="card">text</section>');
+  assert.equal(block.attrs, ' id="claim" data-block="fact" class="card"');
+});
+
+test('parseQuiz reports a missing items array for a null quiz', () => {
+  const html = '<script type="application/json" data-quiz>null</script>';
+  assert.deepEqual(parseQuiz(html), { error: 'quiz JSON has no items array' });
+});
+
+test('parseQuiz reports a missing items array for numeric items', () => {
+  const html = '<script type="application/json" data-quiz>{"items":5}</script>';
+  assert.deepEqual(parseQuiz(html), { error: 'quiz JSON has no items array' });
+});
+
+test('parseQuiz reports the first invalid item index when that item is null', () => {
+  const html = '<script type="application/json" data-quiz>{"items":[{"options":[]},null,{}]}</script>';
+  assert.deepEqual(parseQuiz(html), { error: 'quiz item 1 has no options array' });
+});
+
+test('parseQuiz reports a missing options array for numeric options', () => {
+  const html = '<script type="application/json" data-quiz>{"items":[{"options":5}]}</script>';
+  assert.deepEqual(parseQuiz(html), { error: 'quiz item 0 has no options array' });
+});
+
+test('lessonItems puts predict items before quiz items even when quiz appears first', () => {
+  const html = `<section data-block="quiz">
+  <script type="application/json" data-quiz>{"items":[{"options":["Quiz"]}]}</script>
+</section>
+<section data-block="predict">
+  <script type="application/json" data-quiz>{"items":[{"options":["Prediction"]}]}</script>
+</section>`;
+  assert.deepEqual(lessonItems(html), { items: [{ options: ['Prediction'] }, { options: ['Quiz'] }] });
+});
+
+test('lessonItems returns the predict error when both parts fail to parse', () => {
+  const html = `<section data-block="predict">
+  <script type="application/json" data-quiz>{"items":5}</script>
+</section>
+<section data-block="quiz">
+  <script type="application/json" data-quiz>{"items":[null]}</script>
+</section>`;
+  assert.deepEqual(lessonItems(html), { error: 'quiz JSON has no items array' });
+});
+
+test('readPath fills in defaults for a line without fields', (t) => {
+  const dir = pathFixture(t, '1. Inspect results\n');
+  assert.deepEqual(readPath(dir), [
+    { n: 1, title: 'Inspect results', terms: [], tool: null, after: [], lesson: null },
+  ]);
+});
+
+test('readPath clears an earlier tool field when the next tool value is empty', (t) => {
+  const dir = pathFixture(t, '1. Inspect results | tool: fxctl | tool:\n');
+  assert.equal(readPath(dir)[0].tool, null);
 });
