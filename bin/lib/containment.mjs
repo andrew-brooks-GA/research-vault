@@ -1,5 +1,6 @@
 import nodePath from 'node:path';
 import nodeFs from 'node:fs';
+import { errorCode } from './unknowns.mjs';
 
 // Resolve the longest existing prefix of `target`, keeping the missing tail
 // lexical. An existing entry whose resolution fails leaves containment unknown.
@@ -13,13 +14,13 @@ function realResolve(target, p, fs) {
       const real = fs.realpathSync.native ? fs.realpathSync.native(cur) : fs.realpathSync(cur);
       return { path: tail.length ? p.join(real, ...tail) : real, prefix: real };
     } catch (err) {
-      let code = err?.code;
+      let code = errorCode(err);
       if (inspectEntry) {
         try {
           fs.lstatSync(cur);
           return null;
         } catch (entryErr) {
-          code = entryErr?.code;
+          code = errorCode(entryErr);
         }
       }
       if (code !== 'ENOENT' && code !== 'ENOTDIR' && code !== 'ENAMETOOLONG') return null;
