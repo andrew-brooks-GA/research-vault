@@ -5,6 +5,7 @@
 import { existsSync as realExists, lstatSync as realLstat, readFileSync as realRead, writeFileSync as realWrite } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { isInsideVault } from './containment.ts';
+import { isRecord, parseJson } from './unknowns.ts';
 
 export const PROJECT_CONFIG_FILENAME = '.research-vault.json';
 
@@ -166,39 +167,64 @@ function validateEmbedding(e) {
   return { url: e.url, model: e.model, chunk, overlap };
 }
 
-export function parseProjectConfig(raw, schema) {
+function parseBinding(raw) {
   let data;
   try {
-    data = JSON.parse(raw);
+    data = parseJson(raw);
   } catch (e) {
-    throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${e.message}`);
+    throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${e instanceof Error ? e.message : String(e)}`);
   }
+  if (!isRecord(data)) throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: must be a JSON object`);
+  return data;
+}
+
+function objectSection(value, name) {
+  const section = value ?? {};
+  if (!isRecord(section)) throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${name} must be an object`);
+  return section;
+}
+
+function isStringArray(value) {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function assertDefaultEnum(value, field, allowed) {
+  if (typeof value !== 'string') throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${field} must be a string`);
+  try {
+    assertEnum(value, field, allowed);
+  } catch (e) {
+    throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+export function parseProjectConfig(raw, schema) {
+  const data = parseBinding(raw);
   if (data.vault !== undefined && typeof data.vault !== 'string') {
     throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: vault must be a string`);
   }
-  const defaults = data.defaults ?? {};
+  const defaults = objectSection(data.defaults, 'defaults');
   if (defaults.domain !== undefined) {
-    assertEnum(defaults.domain, 'defaults.domain', schema.taxonomy.domain);
+    assertDefaultEnum(defaults.domain, 'defaults.domain', schema.taxonomy.domain);
   }
   if (defaults.volatility !== undefined) {
-    assertEnum(defaults.volatility, 'defaults.volatility', Object.keys(schema.taxonomy.volatility));
+    assertDefaultEnum(defaults.volatility, 'defaults.volatility', Object.keys(schema.taxonomy.volatility));
   }
-  if (defaults.topics !== undefined && !Array.isArray(defaults.topics)) {
-    throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: defaults.topics must be an array`);
+  if (defaults.topics !== undefined && !isStringArray(defaults.topics)) {
+    throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: defaults.topics must be an array of strings`);
   }
-  const references = data.references ?? {};
-  if (references.globs !== undefined && !Array.isArray(references.globs)) {
-    throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: references.globs must be an array`);
+  const references = objectSection(data.references, 'references');
+  if (references.globs !== undefined && !isStringArray(references.globs)) {
+    throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: references.globs must be an array of strings`);
   }
-  const gates = data.gates ?? {};
-  if (gates.globs !== undefined && !Array.isArray(gates.globs)) {
-    throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: gates.globs must be an array`);
+  const gates = objectSection(data.gates, 'gates');
+  if (gates.globs !== undefined && !isStringArray(gates.globs)) {
+    throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: gates.globs must be an array of strings`);
   }
-  const capture = data.capture ?? {};
+  const capture = objectSection(data.capture, 'capture');
   if (capture.enabled !== undefined && typeof capture.enabled !== 'boolean') {
     throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: capture.enabled must be a boolean`);
   }
-  const usage = data.usage ?? {};
+  const usage = objectSection(data.usage, 'usage');
   if (usage.text !== undefined && typeof usage.text !== 'boolean') {
     throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: usage.text must be a boolean`);
   }
@@ -216,10 +242,7 @@ export function parseProjectConfig(raw, schema) {
 export function readTaxonomyExtensions(startDir, hooks = {}) {
   const hit = findProjectConfig(resolve(startDir), hooks);
   if (!hit) return {};
-  let data;
-  try { data = JSON.parse(hit.raw); } catch (e) {
-    throw new Error(`invalid ${PROJECT_CONFIG_FILENAME}: ${e.message}`);
-  }
+  const data = parseBinding(hit.raw);
   return validateTaxonomyExtensions(data.taxonomy_extensions);
 }
 

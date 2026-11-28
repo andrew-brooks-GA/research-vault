@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
-import { REPO_ROOT } from './helpers.mjs';
+import { REPO_ROOT, testEnv, tmpVault } from './helpers.mjs';
 import {
   PROJECT_CONFIG_FILENAME,
   findProjectConfig,
@@ -60,17 +62,94 @@ test('parseProjectConfig accepts a valid config and normalizes', () => {
   assert.equal(cfg.capture.enabled, true);
 });
 
+test('parseProjectConfig preserves the returned object for a binding with every section', () => {
+  const cfg = parseProjectConfig(JSON.stringify({
+    vault: 'research',
+    defaults: { domain: 'learning', volatility: 'fast', topics: ['cpp'] },
+    references: { globs: ['plan/**/*.md'] },
+    gates: { globs: ['drafts/*.md'] },
+    capture: { enabled: false },
+    usage: { text: true },
+    taxonomy_extensions: { domain: ['local-domain'], topic_aliases: { k8s: 'kubernetes' } },
+    embedding: { url: 'http://localhost/embed' },
+    code: {
+      globs: ['src/*.py'],
+      languages: { '.py': { comment: '^#(.*)$', decl: '^def (\\w+)' } },
+      versions: { dep: { file: 'deps.txt', pattern: '^dep (\\S+)' } },
+    },
+    lab: { docs: ['docs/lab.md'], uses: ['lab/lib.sh'], bypass: ['kind create cluster'] },
+  }), SCHEMA);
+  assert.deepEqual(cfg, {
+    vault: 'research',
+    defaults: { domain: 'learning', volatility: 'fast', topics: ['cpp'] },
+    references: { globs: ['plan/**/*.md'] },
+    gates: { globs: ['drafts/*.md'] },
+    capture: { enabled: false },
+    usage: { text: true },
+    taxonomyExtensions: { domain: ['local-domain'], topic_aliases: { k8s: 'kubernetes' } },
+    embedding: { url: 'http://localhost/embed', model: undefined, chunk: 800, overlap: 100 },
+    code: {
+      globs: ['src/*.py'],
+      languages: { '.py': { comment: /^#(.*)$/, decl: /^def (\w+)/ } },
+      versions: { dep: { file: 'deps.txt', pattern: /^dep (\S+)/m } },
+    },
+    lab: { docs: ['docs/lab.md'], uses: ['lab/lib.sh'], bypass: ['kind create cluster'] },
+  });
+});
+
+test('parseProjectConfig treats null optional sections as absent', () => {
+  assert.deepEqual(parseProjectConfig('{"defaults":null,"references":null,"gates":null,"capture":null,"usage":null}', SCHEMA), {
+    vault: undefined, defaults: {}, references: {}, gates: {}, capture: {}, usage: {}, taxonomyExtensions: {},
+  });
+});
+
+for (const [name, raw, message] of [
+  ['a null binding', 'null', 'invalid .research-vault.json: must be a JSON object'],
+  ['an array binding', '[]', 'invalid .research-vault.json: must be a JSON object'],
+  ['a number binding', '7', 'invalid .research-vault.json: must be a JSON object'],
+  ['a string binding', '"x"', 'invalid .research-vault.json: must be a JSON object'],
+  ['number defaults', '{"defaults":7}', 'invalid .research-vault.json: defaults must be an object'],
+  ['array references', '{"references":[]}', 'invalid .research-vault.json: references must be an object'],
+  ['string gates', '{"gates":"x"}', 'invalid .research-vault.json: gates must be an object'],
+  ['boolean capture', '{"capture":false}', 'invalid .research-vault.json: capture must be an object'],
+  ['number usage', '{"usage":7}', 'invalid .research-vault.json: usage must be an object'],
+  ['a number in references.globs', '{"references":{"globs":[7]}}', 'invalid .research-vault.json: references.globs must be an array of strings'],
+  ['an object in gates.globs', '{"gates":{"globs":[{}]}}', 'invalid .research-vault.json: gates.globs must be an array of strings'],
+  ['an object in defaults.topics', '{"defaults":{"topics":[{"toString":null}]}}', 'invalid .research-vault.json: defaults.topics must be an array of strings'],
+  ['an object instead of defaults.domain', '{"defaults":{"domain":{"toString":null}}}', 'invalid .research-vault.json: defaults.domain must be a string'],
+  ['an object instead of defaults.volatility', '{"defaults":{"volatility":{"toString":null}}}', 'invalid .research-vault.json: defaults.volatility must be a string'],
+]) {
+  test(`parseProjectConfig refuses ${name}`, () => {
+    assert.throws(() => parseProjectConfig(raw, SCHEMA), { name: 'Error', message });
+  });
+}
+
+test('check prints the null binding refusal and leaves the directory intact', { timeout: 10000 }, (t) => {
+  const cwd = tmpVault('rv-invalid-binding-');
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const binding = join(cwd, PROJECT_CONFIG_FILENAME);
+  writeFileSync(binding, 'null');
+  const result = spawnSync(process.execPath, [join(REPO_ROOT, 'bin', 'research-vault.mjs'), 'check'], {
+    cwd, env: testEnv(), encoding: 'utf8', timeout: 5000,
+  });
+  assert.deepEqual(readdirSync(cwd), [PROJECT_CONFIG_FILENAME]);
+  assert.equal(readFileSync(binding, 'utf8'), 'null');
+  assert.ifError(result.error);
+  assert.equal(result.status, 2);
+  assert.equal(result.stderr, 'error: invalid .research-vault.json: must be a JSON object\n');
+});
+
 test('parseProjectConfig rejects an unknown default domain', () => {
   assert.throws(
     () => parseProjectConfig('{"defaults":{"domain":"not-a-domain"}}', SCHEMA),
-    /unknown.*domain/i,
+    { name: 'Error', message: 'invalid .research-vault.json: unknown defaults.domain: not-a-domain (allowed: software-engineering, learning, meta)' },
   );
 });
 
 test('parseProjectConfig rejects an unknown default volatility', () => {
   assert.throws(
     () => parseProjectConfig('{"defaults":{"volatility":"glacial"}}', SCHEMA),
-    /unknown.*volatility/i,
+    { name: 'Error', message: 'invalid .research-vault.json: unknown defaults.volatility: glacial (allowed: stable, slow, fast, volatile)' },
   );
 });
 
@@ -185,10 +264,18 @@ test('readTaxonomyExtensions returns {} when there is no config', () => {
   assert.deepEqual(readTaxonomyExtensions(resolve('/repo'), fakeFs([])), {});
 });
 
+test('readTaxonomyExtensions refuses a null binding', () => {
+  const dir = resolve('/repo');
+  const fs = fakeFs([dir], { [dir]: 'null' });
+  assert.throws(() => readTaxonomyExtensions(dir, fs), {
+    name: 'Error', message: 'invalid .research-vault.json: must be a JSON object',
+  });
+});
+
 test('parseProjectConfig keeps gates.globs', () => {
   const cfg = parseProjectConfig('{"vault":"/v","gates":{"globs":["docs/drafts/*.md"]}}', SCHEMA);
   assert.deepEqual(cfg.gates.globs, ['docs/drafts/*.md']);
-  assert.throws(() => parseProjectConfig('{"gates":{"globs":"x"}}', SCHEMA), /gates\.globs must be an array/);
+  assert.throws(() => parseProjectConfig('{"gates":{"globs":"x"}}', SCHEMA), /gates\.globs must be an array of strings/);
 });
 
 test('validateTaxonomyExtensions accepts a topic_aliases map and rejects a malformed one (spec 24 D1)', () => {
