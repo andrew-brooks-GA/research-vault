@@ -1,7 +1,7 @@
 // `teach serve`: host, origin, content-type, body-size and path limits (spec 12 "Serving and recording").
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, existsSync, writeFileSync, chmodSync, renameSync, symlinkSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, existsSync, writeFileSync, chmodSync, renameSync, symlinkSync, rmSync } from 'node:fs';
 import { tmpdir, networkInterfaces } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -232,6 +232,42 @@ test('POST /attempt rejects foreign Origin, wrong Content-Type, oversized body (
   } finally {
     server.close();
   }
+});
+
+async function rejectedAttempt(t, lesson, answers) {
+  const ws = copyFixture();
+  t.after(() => rmSync(ws, { recursive: true, force: true }));
+  const snapshot = () => readdirSync(join(ws, 'attempts')).sort().map((file) => [file, readFileSync(join(ws, 'attempts', file))]);
+  const before = snapshot();
+  const { server, port } = await start(ws);
+  try {
+    const r = await req(port, {
+      method: 'POST', path: '/attempt', body: JSON.stringify({ lesson, answers }), signal: AbortSignal.timeout(5000),
+      headers: { Origin: `http://127.0.0.1:${port}`, 'Content-Type': 'application/json' },
+    });
+    assert.deepEqual(snapshot(), before);
+    return r;
+  } finally {
+    server.close();
+  }
+}
+
+test('POST /attempt reports an invalid lesson id with 400 and the validation message', { timeout: 10000 }, async (t) => {
+  const r = await rejectedAttempt(t, '../MISSION', [0]);
+  assert.equal(r.status, 400);
+  assert.equal(r.text, 'invalid lesson id: ../MISSION\n');
+});
+
+test('POST /attempt reports a missing lesson with 400 and the validation message', { timeout: 10000 }, async (t) => {
+  const r = await rejectedAttempt(t, '0009-nope', [0]);
+  assert.equal(r.status, 400);
+  assert.equal(r.text, 'no lesson: 0009-nope\n');
+});
+
+test('POST /attempt reports out-of-range answers with 400 and the validation message', { timeout: 10000 }, async (t) => {
+  const r = await rejectedAttempt(t, '0003-review-good', [0, 2, 9]);
+  assert.equal(r.status, 400);
+  assert.equal(r.text, 'answers must be one in-range integer per quiz item (3 items)\n');
 });
 
 // Spec 48 Tests item 2, on a workspace built here: two lessons with quizzes, the directory named learn-ws (its key).

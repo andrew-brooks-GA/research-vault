@@ -448,6 +448,20 @@ test('readLabs: the shape D1 lists, the pin over the entry as returned, and ever
   assert.deepEqual(problems({ script: 'labs/dir.sh' }), ['lab demo: up labs/dir.sh is not a regular file']);
 });
 
+test('readLabs attaches LAB_MANIFEST_INVALID and the individual problems to the joined error', () => {
+  const { ws } = labWorkspace();
+  const path = join(ws, 'labs', 'labs.json');
+  const raw = '{"version":2,"labs":{},"extra":true}';
+  writeFileSync(path, raw);
+  assert.throws(() => readLabs(ws), {
+    code: 'LAB_MANIFEST_INVALID',
+    message: 'the top level must have exactly version and labs\nversion must be 1',
+    problems: ['the top level must have exactly version and labs', 'version must be 1'],
+  });
+  assert.deepEqual(readdirSync(join(ws, 'labs')), ['labs.json']);
+  assert.equal(readFileSync(path, 'utf8'), raw);
+});
+
 test('teach lint: every LAB_* code, and lintLab reads labs/ (spec 49 D3)', () => {
   const { ws, entry, script } = labWorkspace();
   const vault = fixtureVault();
@@ -494,6 +508,17 @@ test('teach lint: every LAB_* code, and lintLab reads labs/ (spec 49 D3)', () =>
   // lintLab (the binding's lab block) reads .sh files under labs/ too.
   script('labs/wrap.sh', '#!/bin/sh\nkind create cluster\n');
   assert.ok(lab({ lab: { docs: ['LAB.txt'], uses: ['lab/lib.sh'], bypass: ['kind create cluster'] } }).includes("WARN_LAB_BYPASSED  labs/wrap.sh: line 2: kind create cluster; the binding's lab is LAB.txt"));
+});
+
+test('teach lint reports each manifest problem as its own LAB_MANIFEST_INVALID finding', () => {
+  const { ws } = labWorkspace();
+  writeFileSync(join(ws, 'labs', 'labs.json'), '{"version":2,"labs":{},"extra":true}');
+  const vault = fixtureVault();
+  const findings = lintWorkspace(ws, { entries: buildManifest(vault).entries, vaultPath: vault, schema: loadSchema(ROOT), teachSchema: SCHEMA, now: '2026-11-11' });
+  assert.deepEqual(findings.filter(({ file }) => file === 'labs/labs.json'), [
+    { code: 'LAB_MANIFEST_INVALID', file: 'labs/labs.json', message: 'the top level must have exactly version and labs', warning: false },
+    { code: 'LAB_MANIFEST_INVALID', file: 'labs/labs.json', message: 'version must be 1', warning: false },
+  ]);
 });
 
 test('teach readme prints one Labs row per manifest lab after the lessons/files/ rows (spec 49 D9)', () => {

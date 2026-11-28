@@ -9,13 +9,14 @@ import { mayBeInside } from './containment.ts';
 import { traverse } from './graph.ts';
 import { extractCites, LESSON_ID_RE, RECORD_ID_RE, FOLLOWUP, CONNECT_LEAD, lessonClass, parseBlocks, blockSpans, parseQuiz, readPath, imgAttr, isProject, README_SECTIONS, uniq } from './lesson-format.ts';
 import { imageTarget } from './serve-file.mjs';
-import { validateEntry, ENUM_CODES, missionPrefs } from './teach.mjs';
+import { validateEntry, missionPrefs } from './teach.mjs';
 import { answerLengthSpread } from '../../skills/research-teach/assets/quiz.js';
 import { readLabs, labPin, lessonLab, LAB_MANIFEST } from './labs.mjs';
 import { sha256Hex } from './hash.ts';
 import { scanCast, PLAYER_FILES, PLAYER_VERSION } from './cast.ts';
 import { readBrand, BRAND_DEFAULTS, contrast } from './brand.ts';
 import { readRequirements } from './task.mjs';
+import { errorCode, isRecord } from './unknowns.ts';
 
 export { lessonClass, readPath, CONNECT_LEAD, imageTarget };
 
@@ -403,7 +404,12 @@ function lintLabManifest(ws) {
   const findings = [];
   const add = (code, message) => findings.push({ code, file: LAB_MANIFEST, message, warning: false });
   let labs;
-  try { ({ labs } = readLabs(ws)); } catch (e) { for (const p of e.problems ?? [e.message]) add('LAB_MANIFEST_INVALID', p); return findings; }
+  try { ({ labs } = readLabs(ws)); } catch (e) {
+    const problems = errorCode(e) === 'LAB_MANIFEST_INVALID' && isRecord(e) && Array.isArray(e.problems)
+      ? e.problems : [e instanceof Error ? e.message : String(e)];
+    for (const problem of problems) if (typeof problem === 'string') add('LAB_MANIFEST_INVALID', problem);
+    return findings;
+  }
   const seen = new Set();
   for (const lab of Object.values(labs)) {
     for (const c of [...(lab.checks ?? []), lab.up, lab.down, ...(lab.verify ? [lab.verify] : [])]) {
@@ -635,10 +641,7 @@ export function lintStore(workspaceDir, ctx) {
       }
       let data;
       try { ({ data } = parseFrontmatter(raw)); } catch (e) { add('PARSE', e.message); continue; }
-      for (const msg of validateEntry(data, teachSchema)) {
-        const enumField = /^unknown (\w+):/.exec(msg)?.[1];
-        add(enumField ? ENUM_CODES[enumField] : msg.startsWith('stored derived') ? 'STORED_DERIVED' : 'MISSING_REQUIRED', msg);
-      }
+      for (const { code, message } of validateEntry(data, teachSchema)) add(code, message);
       const folders = teachSchema.taxonomy.type_folder;
       const want = Object.hasOwn(folders, data.type) ? folders[data.type] : undefined; // own key only (S-13)
       if (data.type && want !== folder) add('TYPE_FOLDER', `type ${data.type} in folder ${folder}`);

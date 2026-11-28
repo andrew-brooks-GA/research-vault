@@ -21,6 +21,7 @@ import { readBrand, withBrand, brandUrl } from './brand.ts';
 import { shellTerminal } from './terminal.mjs';
 import { screenText } from './screen.ts';
 import { escapeHtml, show } from './escape.ts';
+import { errorCode } from './unknowns.ts';
 
 export { LESSON_ID_RE, RECORD_ID_RE, extractCites };
 export { serveFile, navHtml, footnoteCitations, labStepsHtml } from './serve-file.mjs';
@@ -30,7 +31,7 @@ export const ATTEMPT_ID_RE = /^a-\d{8}-\d{6}-\d{4}(?:-\d+)?$/;
 const TEACH_SCHEMA = loadTeachSchema(fileURLToPath(new URL('../..', import.meta.url)));
 export const STORED_DERIVED = TEACH_SCHEMA.derived_forbidden;
 
-// One map for validateEntry and the teach lint, as CONTROLLED_FIELDS is for the vault.
+// The controlled fields and their lint codes, as CONTROLLED_FIELDS is for the vault.
 export const TEACH_CONTROLLED_FIELDS = { status: 'status', kind: 'kind', type: 'type' };
 export const ENUM_CODES = { status: 'ENUM_STATUS', kind: 'ENUM_KIND', type: 'ENUM_TYPE' };
 
@@ -56,21 +57,21 @@ function lessonFile(ws, id) {
 }
 
 export function validateEntry(data, schema) {
-  const msgs = [];
+  const findings = [];
   // A type is a string from the record: `constructor` is a type with no field list (S-13).
   for (const f of (Object.hasOwn(schema.required_by_type, data.type) ? schema.required_by_type[data.type] : ['type'])) {
-    if (empty(data[f])) msgs.push(`missing required field: ${f}`);
+    if (empty(data[f])) findings.push({ code: 'MISSING_REQUIRED', message: `missing required field: ${f}` });
   }
   for (const [field, key] of Object.entries(TEACH_CONTROLLED_FIELDS)) {
-    if (!empty(data[field]) && !isAllowedValue(schema, key, data[field])) msgs.push(`unknown ${field}: ${data[field]}`);
+    if (!empty(data[field]) && !isAllowedValue(schema, key, data[field])) findings.push({ code: ENUM_CODES[field], message: `unknown ${field}: ${data[field]}` });
   }
-  for (const f of schema.derived_forbidden) if (f in data) msgs.push(`stored derived field: ${f}`);
-  return msgs;
+  for (const f of schema.derived_forbidden) if (f in data) findings.push({ code: 'STORED_DERIVED', message: `stored derived field: ${f}` });
+  return findings;
 }
 
 function assertValid(data, schema) {
-  const msgs = validateEntry(data, schema);
-  if (msgs.length) throw new Error(msgs.join('; '));
+  const findings = validateEntry(data, schema);
+  if (findings.length) throw new Error(findings.map(({ message }) => message).join('; '));
 }
 
 const textOf = (s) => s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
@@ -136,7 +137,7 @@ export function supersedeRecord(workspaceDir, id, byId, reason, schema) {
 // The predict item (when the lesson has one) is item 0 of the one attempt, then the quiz items.
 export function readQuiz(workspaceDir, lessonId) {
   const file = lessonFile(workspaceDir, lessonId);
-  if (!file) throw new Error(`no lesson: ${lessonId}`);
+  if (!file) throw Object.assign(new Error(`no lesson: ${lessonId}`), { code: 'LESSON_NOT_FOUND' });
   const { items } = lessonItems(readFileSync(file, 'utf8'));
   if (!items) throw new Error(`quiz JSON invalid in ${lessonId}`);
   return { items };
@@ -173,7 +174,7 @@ function gradeAttempt(workspaceDir, lesson, answers, result) {
   }
   const { items } = readQuiz(workspaceDir, lesson);
   if (!fits(items, answers)) {
-    throw new Error(`answers must be one in-range integer per quiz item (${items.length} items)`);
+    throw Object.assign(new Error(`answers must be one in-range integer per quiz item (${items.length} items)`), { code: 'INVALID_ANSWERS' });
   }
   const { total, wrong } = grade(items, answers);
   return { total, wrong, records: uniq(wrong.map((i) => items[i].record).filter(Boolean)) };
@@ -181,9 +182,9 @@ function gradeAttempt(workspaceDir, lesson, answers, result) {
 
 // Issue 79 D5: `task` holds a task attempt's fields ready-made (task.mjs's checkAttempt or answeredAttempt).
 export function writeAttempt(workspaceDir, { lesson, answers, result, task, now }, schema) {
-  if (!LESSON_ID_RE.test(String(lesson))) throw new Error(`invalid lesson id: ${lesson}`);
+  if (!LESSON_ID_RE.test(String(lesson))) throw Object.assign(new Error(`invalid lesson id: ${lesson}`), { code: 'INVALID_LESSON_ID' });
   const file = lessonFile(workspaceDir, lesson);
-  if (!file || !existsSync(file)) throw new Error(`no lesson: ${lesson}`);
+  if (!file || !existsSync(file)) throw Object.assign(new Error(`no lesson: ${lesson}`), { code: 'LESSON_NOT_FOUND' });
   const data = { type: 'attempt', date: isoDate(now), lesson, ...(task ?? gradeAttempt(workspaceDir, lesson, answers, result)) };
   const { total, wrong } = data;
   assertValid(data, schema);
@@ -542,8 +543,6 @@ export function progressHtml(p) {
 </body></html>
 `;
 }
-
-const CLIENT_ERROR = /^(invalid lesson id|no lesson|answers must be)/;
 
 function send(req, res, status, body = '', type = 'text/plain; charset=utf-8', close = false) {
   const headers = { 'Content-Type': type, 'X-Content-Type-Options': 'nosniff' };
@@ -981,7 +980,9 @@ function postAttempt(req, res, workspaceDir, workspaceRoot, origin, schema, now)
       send(req, res, 200, JSON.stringify({ id, score, total, wrong }), 'application/json');
     } catch (e) {
       // A malformed quiz or a failed write is the server's problem; nothing was written on a 400.
-      send(req, res, CLIENT_ERROR.test(e.message) ? 400 : 500, `${e.message}\n`);
+      const code = errorCode(e);
+      const clientError = code === 'INVALID_LESSON_ID' || code === 'LESSON_NOT_FOUND' || code === 'INVALID_ANSWERS';
+      send(req, res, clientError ? 400 : 500, `${e.message}\n`);
     }
   });
 }

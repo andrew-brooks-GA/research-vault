@@ -35,6 +35,14 @@ test('invalid fields/references/collision leave all artifact bytes unchanged', (
   const c = captureOperation(f.vault, f.path, 'new_key', { now }); assert.equal(c.errors[0].code, 'DESTINATION_CONFLICT'); assert.deepEqual(bytes(f.vault), before);
   assert.ok(r.created.length);
 });
+test('capture operation reports a destination with different bytes as DESTINATION_CONFLICT', () => {
+  const f = fixture([{ type: 'question', title: 'First', body: 'replacement' }]);
+  put(f.vault, 'question', '2026-11-13-first');
+  const before = bytes(f.vault);
+  const { errors } = f.run();
+  assert.deepEqual(errors, [{ code: 'DESTINATION_CONFLICT', index: 0, retryable: false, error: 'destination conflict: 2026-11-13-first' }]);
+  assert.deepEqual(bytes(f.vault), before);
+});
 test('first/middle failures: pending stays pending, deterministic permission failures never retry', () => {
   for (const index of [0, 1]) for (const code of ['EACCES', 'ENOSPC', 'EAGAIN']) {
     const f = fixture(); const r = f.run({ event: (event, row) => { if (event === 'artifact' && row.index === index) fail(code); } });
@@ -78,6 +86,25 @@ test('source dedup resolves actual ID and alias references reject whole plan', (
   const bad = captureOperation(f.vault, f.path, 'alias', { now }); assert.ok(bad.errors.length); assert.equal(bad.results[0].id, `${now}-original`); assert.deepEqual(bytes(f.vault), before);
   const plan = JSON.parse(fs.readFileSync(f.path)); plan[1].sources = [`${now}-original`]; fs.writeFileSync(f.path, JSON.stringify(plan));
   const good = captureOperation(f.vault, f.path, 'actual', { now }); assert.equal(good.skipped[0].id, `${now}-original`); assert.equal(good.created.length, 1);
+});
+test('capture operation reports two sources at one URL and version as DESTINATION_CONFLICT', () => {
+  const url = 'https://example.test/a';
+  const f = fixture([{ type: 'source', title: 'Planned', url }]);
+  put(f.vault, 'source', '2026-11-12-one', { source_type: 'article', source_url: url });
+  put(f.vault, 'source', '2026-11-12-two', { source_type: 'article', source_url: url });
+  const before = bytes(f.vault);
+  const { errors } = f.run();
+  assert.deepEqual(errors, [{ code: 'DESTINATION_CONFLICT', index: 0, retryable: false, error: 'ambiguous source URL/version' }]);
+  assert.deepEqual(bytes(f.vault), before);
+});
+test('capture operation reports an unsuitable source at the same URL and version as DESTINATION_CONFLICT', () => {
+  const url = 'https://example.test/a';
+  const f = fixture([{ type: 'source', title: 'Planned', url }]);
+  put(f.vault, 'source', '2026-11-12-old', { source_type: 'article', source_url: url, status: 'superseded' });
+  const before = bytes(f.vault);
+  const { errors } = f.run();
+  assert.deepEqual(errors, [{ code: 'DESTINATION_CONFLICT', index: 0, retryable: false, error: 'unsuitable existing source: 2026-11-12-old' }]);
+  assert.deepEqual(bytes(f.vault), before);
 });
 test('process interruption after publication retains lock; explicit recovery reconciles prepared fingerprint', () => {
   const f = fixture(); const module = new URL('../bin/lib/capture-operation.mjs', import.meta.url).href;
@@ -194,6 +221,21 @@ test('every failing entry is reported, an unresolved reference is INPUT_INVALID,
   assert.equal(r.recoveryStateCreated, false); assert.deepEqual(bytes(f.vault), []); assert.equal(r.results.length, 1);
   const g = fixture([{ type: 'question', title: 'Bad', state: 'nonsense' }, { type: 'question', title: 'Same' }, { type: 'question', title: 'Same' }]);
   assert.deepEqual(g.run().results.map(x => [x.index, x.reuseOf]), [[1, undefined], [2, 1]]);
+});
+test('capture operation reports a reference matching two entries as DESTINATION_CONFLICT', () => {
+  const f = fixture([{ type: 'note', title: 'Dependent', sources: ['2026-11-12-shared'] }]);
+  put(f.vault, 'source', '2026-11-12-shared', { source_type: 'article', source_url: 'https://example.test/a' });
+  put(f.vault, 'question', '2026-11-12-shared');
+  const before = bytes(f.vault);
+  const { errors } = f.run();
+  assert.deepEqual(errors, [{ code: 'DESTINATION_CONFLICT', index: 0, retryable: false, error: 'ambiguous reference: 2026-11-12-shared; use actual reused IDs when replanning' }]);
+  assert.deepEqual(bytes(f.vault), before);
+});
+test('capture operation reports an invalid type named conflict as INPUT_INVALID', () => {
+  const f = fixture([{ type: 'conflict', title: 'Bad' }]);
+  const { errors } = f.run();
+  assert.deepEqual(errors, [{ code: 'INPUT_INVALID', index: 0, retryable: false, error: 'invalid type: conflict' }]);
+  assert.deepEqual(bytes(f.vault), []);
 });
 test('a lock whose owner file could not be written is removed, not left to block later writers', { skip: process.platform === 'win32' || process.getuid?.() === 0 }, () => {
   const f = fixture(); fs.mkdirSync(join(f.vault, '.capture-operations'));

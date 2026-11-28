@@ -54,15 +54,32 @@ test('loadTeachSchema returns field lists and taxonomy', () => {
 test('validateEntry reports missing required, bad enum and stored derived fields', () => {
   const good = { title: 't', type: 'learning-record', date: '2026-10-01', status: 'active', kind: 'understanding' };
   assert.deepEqual(validateEntry(good, schema), []);
-  const msgs = validateEntry({ type: 'learning-record', date: '2026-10-01', status: 'done', kind: 'guess', score: 3, evidence: [] }, schema);
+  const msgs = validateEntry({ type: 'learning-record', date: '2026-10-01', status: 'done', kind: 'guess', score: 3, evidence: [] }, schema).map(({ message }) => message);
   assert.ok(msgs.includes('missing required field: title'), msgs.join('|'));
   assert.ok(msgs.includes('unknown status: done'), msgs.join('|'));
   assert.ok(msgs.includes('unknown kind: guess'), msgs.join('|'));
   assert.ok(msgs.includes('stored derived field: score'), msgs.join('|'));
   assert.ok(msgs.includes('stored derived field: evidence'), msgs.join('|'));
-  assert.ok(validateEntry({ type: 'note' }, schema).includes('unknown type: note'));
+  assert.ok(validateEntry({ type: 'note' }, schema).some(({ message }) => message === 'unknown type: note'));
   // An attempt has no title: none required.
   assert.deepEqual(validateEntry({ type: 'attempt', date: '2026-10-01', lesson: '0001-x', total: 3, wrong: [], records: [] }, schema), []);
+});
+
+test('validateEntry attaches MISSING_REQUIRED to the missing field message', () => {
+  assert.deepEqual(validateEntry({}, schema), [{ code: 'MISSING_REQUIRED', message: 'missing required field: type' }]);
+});
+
+test('validateEntry attaches the field-specific enum codes to the unknown value messages', () => {
+  assert.deepEqual(validateEntry({ type: 'note', status: 'done', kind: 'guess' }, schema), [
+    { code: 'ENUM_STATUS', message: 'unknown status: done' },
+    { code: 'ENUM_KIND', message: 'unknown kind: guess' },
+    { code: 'ENUM_TYPE', message: 'unknown type: note' },
+  ]);
+});
+
+test('validateEntry attaches STORED_DERIVED to the stored field message', () => {
+  const data = { type: 'attempt', date: '2026-10-01', lesson: '0001-x', total: 1, wrong: [], records: [], score: 1 };
+  assert.deepEqual(validateEntry(data, schema), [{ code: 'STORED_DERIVED', message: 'stored derived field: score' }]);
 });
 
 test('writeRecord numbers sequentially and writes valid frontmatter', () => {

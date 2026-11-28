@@ -44,7 +44,7 @@ function scriptProblem(ws, path) {
 export function readLabs(ws) {
   const file = join(ws, LAB_MANIFEST);
   const problems = [];
-  const fail = () => { const e = new Error(problems.join('\n')); e.problems = problems; throw e; };
+  const fail = () => { throw Object.assign(new Error(problems.join('\n')), { code: 'LAB_MANIFEST_INVALID', problems }); };
   const outside = () => { problems.push(`${LAB_MANIFEST} is not a regular file inside the workspace`); fail(); };
   if (!isInsideVault(ws, dirname(file))) outside();
   const st = lstatSync(file, { throwIfNoEntry: false });

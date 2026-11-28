@@ -11,6 +11,7 @@ import { normalizeUrl, verKey } from './ids.ts';
 import { sha256Tagged } from './hash.ts';
 import { buildManifest, danglingEdges, writeManifest } from './manifest.mjs';
 import { assertInsideVault, isInsideVault } from './containment.ts';
+import { errorCode } from './unknowns.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const operationKey = key => typeof key === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(key);
@@ -73,19 +74,22 @@ function prepare(vault, inputs, date, opts) {
     try {
       const p = render(vault, item, date, opts);
       const matches = p.data.type === 'source' ? available.filter(e => sameSource(e, p)) : [];
-      if (matches.length > 1) throw new Error('ambiguous source URL/version');
+      if (matches.length > 1) throw Object.assign(new Error('ambiguous source URL/version'), { code: 'DESTINATION_CONFLICT' });
       let reused = matches[0];
-      if (reused && !suitable(reused, p, item.spec)) throw new Error(`unsuitable existing source: ${reused.id}`);
+      if (reused && !suitable(reused, p, item.spec)) throw Object.assign(new Error(`unsuitable existing source: ${reused.id}`), { code: 'DESTINATION_CONFLICT' });
       const collision = available.filter(e => e.id === p.id);
       if (!reused && collision.length) {
-        if (collision.length !== 1 || collision[0].text !== p.text || collision[0].data.type !== p.data.type) throw new Error(`destination conflict: ${p.id}`);
+        if (collision.length !== 1 || collision[0].text !== p.text || collision[0].data.type !== p.data.type) {
+          throw Object.assign(new Error(`destination conflict: ${p.id}`), { code: 'DESTINATION_CONFLICT' });
+        }
         reused = collision[0];
       }
       const chosen = reused || p;
       const refs = [...(p.data.sources || []), ...(p.data.contributing_ids || []), ...(p.data.related || [])];
       for (const ref of refs) {
         const found = available.filter(e => e.id === ref).length;
-        if (found !== 1) throw new Error(`${found ? 'ambiguous' : 'unresolved'} reference: ${ref}; use actual reused IDs when replanning`);
+        if (found === 0) throw new Error(`unresolved reference: ${ref}; use actual reused IDs when replanning`);
+        if (found > 1) throw Object.assign(new Error(`ambiguous reference: ${ref}; use actual reused IDs when replanning`), { code: 'DESTINATION_CONFLICT' });
       }
       // Issue 72 item 4: the receipt's path uses '/' on every platform, the form validReceipt accepts.
       const rel = relative(vault, chosen.path).split(sep).join('/');
@@ -184,7 +188,7 @@ export function captureOperation(vaultPath, planPath, key, opts = {}) {
       let prepared;
       try { prepared = prepare(vault, loaded.inputs, date, opts); }
       catch (e) {
-        for (const f of e.failures || [e]) errors.push(fault(/conflict|ambiguous|unsuitable/.test(f.message) ? 'DESTINATION_CONFLICT' : 'INPUT_INVALID', f.index ?? -1, f));
+        for (const f of e.failures || [e]) errors.push(fault(errorCode(f) === 'DESTINATION_CONFLICT' ? 'DESTINATION_CONFLICT' : 'INPUT_INVALID', f.index ?? -1, f));
         return output({ results: e.results || [] });
       }
       rendered = prepared.rendered;
