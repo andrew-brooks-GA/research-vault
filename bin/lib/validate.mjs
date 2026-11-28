@@ -21,7 +21,12 @@ export const VERIFICATION_CONTROLLED_FIELDS = {
 
 export function allowedValues(schema, key) {
   const t = schema.taxonomy[key];
+  if (t === undefined || t === null) throw new Error(`allowedValues: no taxonomy list named ${key}`);
   return Array.isArray(t) ? t : Object.keys(t);
+}
+
+export function isAllowedValue(schema, key, value) {
+  return allowedValues(schema, key).includes(value);
 }
 
 // Entry readers and lint share this boundary; consumers never iterate malformed fields.
@@ -56,8 +61,10 @@ export function assertFieldShapes(data) {
 }
 
 function check(schema, field, key, value) {
-  const allow = allowedValues(schema, key);
-  if (!allow.includes(value)) throw new Error(`unknown ${field}: ${value} (allowed: ${allow.join(', ')})`);
+  if (!isAllowedValue(schema, key, value)) {
+    const allow = allowedValues(schema, key);
+    throw new Error(`unknown ${field}: ${value} (allowed: ${allow.join(', ')})`);
+  }
 }
 
 export function assertControlledValues(data, schema) {

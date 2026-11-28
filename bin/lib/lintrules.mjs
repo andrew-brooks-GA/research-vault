@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { walkEntries, readEntry, FOLDER_TYPE, writeAtomic } from './fsutil.mjs';
 import { loadSchema, stageAllowedInFolder, fieldOrder } from './schema.mjs';
 import { serializeFrontmatter } from './frontmatter.mjs';
-import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, allowedValues, fieldShapeErrors } from './validate.mjs';
+import { CONTROLLED_FIELDS, VERIFICATION_CONTROLLED_FIELDS, isAllowedValue, fieldShapeErrors } from './validate.mjs';
 import { BLOCKLIST, loadBlocklist, matchBlock } from './blocklist.mjs';
 import { isUnverifiedSource, buildManifest, writeManifest } from './manifest.mjs';
 import { assertInsideVault, escapePathControls } from './containment.mjs';
@@ -122,8 +122,8 @@ export function lintVault(vaultPath, repoRoot) {
       const val = data[field]; if (!val) continue;
       const meta = ENUM_META[field];
       if (field === 'domain') {
-        for (const d of val) if (!allowedValues(schema, key).includes(d)) add(abs, meta.code, `unknown ${meta.label}: ${screenText(d)}`);
-      } else if (!allowedValues(schema, key).includes(val)) {
+        for (const d of val) if (!isAllowedValue(schema, key, d)) add(abs, meta.code, `unknown ${meta.label}: ${screenText(d)}`);
+      } else if (!isAllowedValue(schema, key, val)) {
         add(abs, meta.code, `unknown ${meta.label}: ${screenText(val)}`);
       }
     }
@@ -132,7 +132,7 @@ export function lintVault(vaultPath, repoRoot) {
         const meta = VERIFICATION_ENUM_META[field];
         const val = v[field];
         if (!meta.required && (val === undefined || val === null || val === '')) continue;
-        if (!allowedValues(schema, key).includes(val)) add(abs, meta.code, `unknown ${meta.label}: ${screenText(val)}`);
+        if (!isAllowedValue(schema, key, val)) add(abs, meta.code, `unknown ${meta.label}: ${screenText(val)}`);
       }
     }
     if (data.type === 'source' && data.source_url && !isParsableUrl(data.source_url))

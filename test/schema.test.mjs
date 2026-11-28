@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join, resolve } from 'node:path';
 import { loadSchema, stageAllowedInFolder, fieldOrder, applyTaxonomyExtensions } from '../bin/lib/schema.mjs';
 import { PROJECT_CONFIG_FILENAME } from '../bin/lib/projectconfig.mjs';
-import { assertControlledValues, fieldShapeErrors } from '../bin/lib/validate.mjs';
+import { assertControlledValues, fieldShapeErrors, isAllowedValue } from '../bin/lib/validate.mjs';
 import { REPO_ROOT, tmpVault, put } from './helpers.mjs';
 import { rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { lintVault } from '../bin/lib/lintrules.mjs';
@@ -99,6 +99,26 @@ test('loads taxonomy and field definitions', () => {
   assert.ok(s.taxonomy.domain.includes('software-engineering'));
   assert.equal(s.taxonomy.volatility.fast.refresh_after_days, 90);
   assert.ok(s.fields.common.includes('title'));
+});
+
+test('isAllowedValue accepts a listed taxonomy value', () => {
+  assert.equal(isAllowedValue(loadSchema(REPO_ROOT), 'domain', 'software-engineering'), true);
+});
+
+test('isAllowedValue rejects an unlisted taxonomy value', () => {
+  assert.equal(isAllowedValue(loadSchema(REPO_ROOT), 'domain', 'not-a-domain'), false);
+});
+
+test('isAllowedValue rejects undefined as an enum value', () => {
+  assert.equal(isAllowedValue(loadSchema(REPO_ROOT), 'domain', undefined), false);
+});
+
+test('isAllowedValue rejects null as an enum value', () => {
+  assert.equal(isAllowedValue(loadSchema(REPO_ROOT), 'domain', null), false);
+});
+
+test('isAllowedValue rejects a one-element list holding a listed value', () => {
+  assert.equal(isAllowedValue(loadSchema(REPO_ROOT), 'status', ['active']), false);
 });
 
 test('stage/folder matrix enforced', () => {

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { parseFrontmatter, serializeFrontmatter } from './frontmatter.mjs';
 import { writeEntry } from './fsutil.mjs';
 import { loadTeachSchema } from './schema.mjs';
-import { allowedValues } from './validate.mjs';
+import { isAllowedValue } from './validate.mjs';
 import { slugify } from './ids.mjs';
 import { assertInsideWorkspaceFolder, escapePathControls, isInsideVault, isInsideWorkspaceFolder } from './containment.mjs';
 import { expandFiles } from './files.ts';
@@ -63,7 +63,7 @@ export function validateEntry(data, schema) {
     if (empty(data[f])) msgs.push(`missing required field: ${f}`);
   }
   for (const [field, key] of Object.entries(TEACH_CONTROLLED_FIELDS)) {
-    if (!empty(data[field]) && !allowedValues(schema, key).includes(data[field])) msgs.push(`unknown ${field}: ${data[field]}`);
+    if (!empty(data[field]) && !isAllowedValue(schema, key, data[field])) msgs.push(`unknown ${field}: ${data[field]}`);
   }
   for (const f of schema.derived_forbidden) if (f in data) msgs.push(`stored derived field: ${f}`);
   return msgs;
