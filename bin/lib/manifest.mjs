@@ -7,8 +7,7 @@ import { normalizeUrlSafe } from './ids.ts';
 import { isRecord, parseJson } from './unknowns.ts';
 
 // Edge fields are declared once in the schema (see edge_fields) and shared with lint's
-// dangling-ref check; read the plugin's own schema so buildManifest(vaultPath) keeps its
-// single-argument signature.
+// dangling-ref check; read the plugin's own schema so callers can pass just the vault path.
 const SCHEMA_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'schema', 'frontmatter.schema.json');
 const schemaText = readFileSync(SCHEMA_PATH, 'utf8');
 let schema;
@@ -39,7 +38,8 @@ export function lastVerified(verifications) {
     .map(v => v.date).sort().pop() || null;
 }
 
-export function buildManifest(vaultPath) {
+export function buildManifest(vaultPath, now = new Date()) {
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) throw new Error('buildManifest: now must be a Date');
   const entries = [];
   const edgeKeys = new Set();
   const edges = [];
@@ -86,7 +86,7 @@ export function buildManifest(vaultPath) {
   }
   // fromEntries defines each key as its own property, `__proto__` too; read it with Object.hasOwn.
   const sortedBacklinks = Object.fromEntries([...backlinks].sort(([a], [b]) => a < b ? -1 : Number(a > b)).map(([k, from]) => [k, [...from].sort()]));
-  return { generated: new Date().toISOString().slice(0, 10), entries, edges, backlinks: sortedBacklinks };
+  return { generated: now.toISOString().slice(0, 10), entries, edges, backlinks: sortedBacklinks };
 }
 
 // Edges whose `to` names no entry: what lint reports as DANGLING_REF, for the command that writes.

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,6 +18,46 @@ test('builds one row per entry with last_verified derived', () => {
   assert.equal(a.type, 'source');
   assert.equal(a.last_verified, '2026-01-01');
   assert.equal(a.source_url, 'https://example.com/a');
+});
+
+test('buildManifest uses the supplied UTC day for generated', t => {
+  const dir = tmpVault('rv-manifest-now-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  assert.equal(buildManifest(dir, new Date('2026-01-02T23:59:59.999Z')).generated, '2026-01-02');
+});
+
+test('buildManifest uses the new UTC day for generated at its first instant', t => {
+  const dir = tmpVault('rv-manifest-now-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  assert.equal(buildManifest(dir, new Date('2026-01-03T00:00:00.000Z')).generated, '2026-01-03');
+});
+
+for (const [kind, now] of [['a string', '2026-01-02'], ['an invalid Date', new Date(NaN)]]) {
+  test(`buildManifest refuses ${kind} before reading vault entries`, t => {
+    const dir = tmpVault('rv-manifest-now-');
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const sources = join(dir, 'sources');
+    const entry = join(sources, '2026-01-01-bad.md');
+    // A scan that reaches this entry would fail on malformed frontmatter.
+    const body = '# Missing frontmatter\n';
+    mkdirSync(sources);
+    writeFileSync(entry, body);
+
+    assert.throws(() => buildManifest(dir, now), { name: 'Error', message: 'buildManifest: now must be a Date' });
+    assert.deepEqual(readdirSync(dir), ['sources']);
+    assert.deepEqual(readdirSync(sources), ['2026-01-01-bad.md']);
+    assert.equal(readFileSync(entry, 'utf8'), body);
+  });
+}
+
+test('buildManifest with one argument uses the current UTC day for generated', t => {
+  const dir = tmpVault('rv-manifest-now-');
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const before = new Date().toISOString().slice(0, 10);
+  const { generated } = buildManifest(dir);
+  const after = new Date().toISOString().slice(0, 10);
+  assert.match(generated, /^\d{4}-\d{2}-\d{2}$/);
+  assert.ok(before <= generated && generated <= after, `${generated} is outside ${before} through ${after}`);
 });
 
 test('lastVerified counts only confirming results (confirmed/changed-trivially)', () => {
