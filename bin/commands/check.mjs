@@ -14,7 +14,7 @@ import { walkEntries, readEntry } from '../lib/fsutil.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { loadProjectConfig, quotedGlob } from '../lib/projectconfig.mjs';
 import { checkCitations, extractCitationsDetailed } from '../lib/citations.mjs';
-import { expandFiles } from '../lib/files.mjs';
+import { expandFiles } from '../lib/files.ts';
 import { langFor, codeFiles, extractCodeLinks, readVersions, checkCodeLinks } from '../lib/codelinks.mjs';
 import { screenText } from '../lib/screen.mjs';
 

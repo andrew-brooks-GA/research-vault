@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../bin/lib/resolve.mjs';
 import { isInsideVault } from '../bin/lib/containment.mjs';
 import { fixVault, lintAndReport } from '../bin/lib/lintrules.mjs';
-import { expandFiles } from '../bin/lib/files.mjs';
+import { expandFiles } from '../bin/lib/files.ts';
 import { checkCitations, extractCitations } from '../bin/lib/citations.mjs';
 import { buildManifest } from '../bin/lib/manifest.mjs';
 import { loadSchema } from '../bin/lib/schema.mjs';

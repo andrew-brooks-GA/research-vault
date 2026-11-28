@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { normalizeUrl } from '../bin/lib/ids.mjs';
 import { checkCitations, renderReport, run } from '../bin/commands/check.mjs';
-import { expandFiles } from '../bin/lib/files.mjs';
+import { expandFiles } from '../bin/lib/files.ts';
 import { runInit } from '../bin/commands/init.mjs';
 
 const SCHEMA = {

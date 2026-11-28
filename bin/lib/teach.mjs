@@ -11,7 +11,7 @@ import { loadTeachSchema } from './schema.mjs';
 import { allowedValues } from './validate.mjs';
 import { slugify } from './ids.mjs';
 import { assertInsideWorkspaceFolder, escapePathControls, isInsideVault, isInsideWorkspaceFolder } from './containment.mjs';
-import { expandFiles } from './files.mjs';
+import { expandFiles } from './files.ts';
 import { grade } from '../../skills/research-teach/assets/quiz.js';
 import { CONTENT_TYPES, STATIC_DIRS, imageTarget, navHtml, serveFile, withNav } from './serve-file.mjs';
 import { LESSON_ID_RE, RECORD_ID_RE, extractCites, lessonItems, readPath, isProject, lessonClass, README_SECTIONS, FOLLOWUP, CONNECT_LEAD } from './lesson-format.mjs';

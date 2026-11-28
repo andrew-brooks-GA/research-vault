@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ID_RE } from './citations.mjs';
 import { staleness } from './stale.mjs';
-import { expandFiles } from './files.mjs';
+import { expandFiles } from './files.ts';
 import { isInsideVault } from './containment.mjs';
 import { isRelativeInside } from './projectconfig.mjs';
 

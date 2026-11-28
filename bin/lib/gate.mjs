@@ -11,7 +11,7 @@ import { buildManifest } from './manifest.mjs';
 import { walkEntries, readEntry } from './fsutil.mjs';
 import { listStale } from './stale.mjs';
 import { loadSchema } from './schema.mjs';
-import { SKIP_DIRS, expandFiles } from './files.mjs';
+import { SKIP_DIRS, expandFiles } from './files.ts';
 import { runGit } from './git.mjs';
 import { imageTarget, STATIC_DIRS } from './serve-file.mjs';
 import { parseBlocks, blockSpans, imgAttr } from './lesson-format.mjs';
