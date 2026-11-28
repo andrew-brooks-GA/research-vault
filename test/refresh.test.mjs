@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, readFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, cpSync, readFileSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
@@ -64,6 +64,24 @@ test('thrown fetch -> unreachable', async () => {
   assert.equal(r.result, 'unreachable');
 });
 
+test('refreshVault rejects a malformed blocklist before fetching a target', async (t) => {
+  const dir = freshVault();
+  const e = sourceTarget(dir);
+  mkdirSync(join(dir, 'meta'), { recursive: true });
+  writeFileSync(join(dir, 'meta', 'source-blocklist.json'), '[');
+  const path = join(dir, 'sources', `${e.id}.md`);
+  const files = readdirSync(dir, { recursive: true }).sort();
+  const bytes = readFileSync(path);
+  const fetch = t.mock.fn(async () => ({ status: 200, hash: e.content_hash }));
+
+  await assert.rejects(refreshVault(dir, { targets: [e], fetch }), {
+    message: 'invalid meta/source-blocklist.json: Unexpected end of JSON input',
+  });
+  assert.equal(fetch.mock.callCount(), 0);
+  assert.deepEqual(readdirSync(dir, { recursive: true }).sort(), files);
+  assert.deepEqual(readFileSync(path), bytes);
+});
+
 test('redirect to a private IP is rejected by fetchSource', async () => {
   // First response: 302 to a host that resolves to a private IP.
   // lookup returns public for the first host, private for the redirect target.
@@ -84,7 +102,7 @@ test('redirect to a private IP is rejected by fetchSource', async () => {
     return req;
   };
   await assert.rejects(
-    () => fetchSource('https://start.example/a', { request, lookup }),
+    () => fetchSource('https://start.example/a', { checkUrl: null, request, lookup }),
     /private|non-public|address/i,
   );
   assert.equal(call, 1, 'must not issue the request to the private redirect target');

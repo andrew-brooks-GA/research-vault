@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpVault } from './helpers.mjs';
 import { BLOCKLIST, loadBlocklist, matchBlock } from '../bin/lib/blocklist.mjs';
@@ -29,4 +29,61 @@ test('blocklist: absent is empty; a domain row covers subdomains; a url row is a
   assert.throws(() => loadBlocklist(v), /invalid meta\/source-blocklist.json/);
   writeBlocklist(v, [{ pattern: 'x', scope: 'host', reason: 'r' }]);
   assert.throws(() => loadBlocklist(v), /invalid meta\/source-blocklist.json: row 0/);
+});
+
+test('blocklist identifies malformed JSON in the file diagnostic', () => {
+  const v = tmpVault('rv-block-');
+  writeBlocklist(v);
+  const path = join(v, BLOCKLIST);
+  writeFileSync(path, '[');
+  assert.throws(() => loadBlocklist(v), /^Error: invalid meta\/source-blocklist\.json: .+/);
+  assert.equal(readFileSync(path, 'utf8'), '[');
+});
+
+test('blocklist refuses a row with an empty reason', () => {
+  const v = tmpVault('rv-block-');
+  writeBlocklist(v, [{ ...ROWS[0], reason: '' }]);
+  const path = join(v, BLOCKLIST);
+  const bytes = readFileSync(path);
+  assert.throws(() => loadBlocklist(v), {
+    name: 'Error',
+    message: 'invalid meta/source-blocklist.json: row 0 needs a pattern, a scope of url or domain and a reason',
+  });
+  assert.deepEqual(readFileSync(path), bytes);
+});
+
+test('blocklist refuses a row with an empty pattern at index 1', () => {
+  const v = tmpVault('rv-block-');
+  writeBlocklist(v, [ROWS[0], { ...ROWS[1], pattern: '' }]);
+  const path = join(v, BLOCKLIST);
+  const bytes = readFileSync(path);
+  assert.throws(() => loadBlocklist(v), {
+    name: 'Error',
+    message: 'invalid meta/source-blocklist.json: row 1 needs a pattern, a scope of url or domain and a reason',
+  });
+  assert.deepEqual(readFileSync(path), bytes);
+});
+
+test('blocklist refuses a null row with the row diagnostic', () => {
+  const v = tmpVault('rv-block-');
+  writeBlocklist(v, [null]);
+  const path = join(v, BLOCKLIST);
+  const bytes = readFileSync(path);
+  assert.throws(() => loadBlocklist(v), {
+    name: 'Error',
+    message: 'invalid meta/source-blocklist.json: row 0 needs a pattern, a scope of url or domain and a reason',
+  });
+  assert.deepEqual(readFileSync(path), bytes);
+});
+
+test('a url row does not match an empty address', () => {
+  assert.equal(matchBlock([ROWS[1]], ''), null);
+});
+
+test('a url row does not match an undefined address', () => {
+  assert.equal(matchBlock([ROWS[1]], undefined), null);
+});
+
+test('a domain row does not match an empty address', () => {
+  assert.equal(matchBlock([ROWS[0]], ''), null);
 });

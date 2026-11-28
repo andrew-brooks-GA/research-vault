@@ -88,7 +88,7 @@ test('fetchSource: a file view on a code host is read as the raw file, and the r
     process.nextTick(() => { cb(res); res.emit('data', Buffer.from('x')); res.emit('end'); });
     return req;
   };
-  const r = await fetchSource('https://github.com/o/r/blob/main/A.md', { request, lookup: async () => [{ address: '93.184.216.34', family: 4 }] });
+  const r = await fetchSource('https://github.com/o/r/blob/main/A.md', { checkUrl: null, request, lookup: async () => [{ address: '93.184.216.34', family: 4 }] });
   assert.equal(asked.hostname, 'raw.githubusercontent.com');
   assert.equal(asked.path, '/o/r/main/A.md');
   assert.equal(r.url, 'https://raw.githubusercontent.com/o/r/main/A.md');
@@ -139,6 +139,17 @@ test('fill: kept leaves the entry byte-identical, and every refusal and failure 
   await same(src(dir, '2026-01-01-blocked', { source_url: 'https://github.com/o/r/blob/main/A.md' }), {}, 'refused');
   await assert.rejects(fillSource(dir, src(dir, '2026-01-01-noack'), { now: NOW.now, fetch: page() }), /ack-data-egress/);
   await assert.rejects(fillSource(dir, '2026-01-01-noack', NOW), /RESEARCH_VAULT_ALLOW_NETWORK/);
+});
+
+test('capture --fill refuses an empty source_url with a url blocklist row and leaves the entry unchanged', async () => {
+  const dir = tmpVault();
+  const id = src(dir, '2026-01-01-no-url', { source_url: '' });
+  mkdirSync(join(dir, 'meta'));
+  writeFileSync(join(dir, 'meta', 'source-blocklist.json'), JSON.stringify([{ pattern: 'https://example.org/p', scope: 'url', reason: 'test' }]));
+  const path = join(dir, 'sources', `${id}.md`);
+  const before = readFileSync(path);
+  assert.deepEqual(await fillSource(dir, id, NOW), { id, result: 'refused', reason: 'no fetchable source_url' });
+  assert.deepEqual(readFileSync(path), before);
 });
 
 test('fill: --replace refills what a fill wrote and keeps the first hash; --discard restores it, writes its row and refuses twice', async () => {

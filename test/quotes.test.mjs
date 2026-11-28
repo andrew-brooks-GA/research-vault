@@ -77,6 +77,20 @@ test('verify --quotes: with no stored body the page is fetched and the row is co
   assert.match(down[0].reason, /page unreachable: http 503/);
 });
 
+test('verify --quotes reports no fetchable page for an empty source_url with a url blocklist row', async () => {
+  const dir = tmpVault();
+  put(dir, 'source', ID, { source_type: 'article', source_url: '' });
+  writeBlocklist(dir, [{ pattern: 'https://example.org/p', scope: 'url', reason: 'test' }]);
+  const path = join(dir, 'sources', `${ID}.md`);
+  const before = readFileSync(path);
+  let calls = 0;
+  const fetch = async () => { calls++; return { status: 200 }; };
+  const out = await checkQuotes(dir, ID, ['The page says this whole sentence.'], { ...NOW, fetch });
+  assert.deepEqual(out, [{ found: false, reason: 'no fetchable source_url' }]);
+  assert.equal(calls, 0);
+  assert.deepEqual(readFileSync(path), before);
+});
+
 test('verify --quotes: the method cannot be given by hand, a non-source is refused, and the command prints one JSON array', async () => {
   const dir = tmpVault(); src(dir, BODY);
   put(dir, 'note', '2026-01-01-n', { sources: [ID] });

@@ -8,6 +8,7 @@ import { writeEntry } from '../lib/fsutil.mjs';
 import { resolveVault, reportFallback } from '../lib/resolve.mjs';
 import { loadProjectConfig } from '../lib/projectconfig.mjs';
 import { fetchSource } from '../lib/fetchsource.mjs';
+import { blockedSourceMessage, loadBlocklist, sourceBlockCheck, SOURCE_BLOCKED } from '../lib/blocklist.mjs';
 import { parseFrontmatter } from '../lib/frontmatter.ts';
 import { prepareEntry } from '../lib/capture-entry.mjs';
 import { captureOperation } from '../lib/capture-operation.mjs';
@@ -78,14 +79,22 @@ export async function ingest(vaultPath, path, cliOpts = {}) {
     const fetch = cliOpts.fetch || (cliOpts.allowNetwork ? fetchSource : null);
     if (!fetch) return { errors: [{ index: -1, error: NETWORK_OFF }], created: [], skipped: [] };
     const urls = readFileSync(path, 'utf8').split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+    let checkUrl;
+    try { checkUrl = sourceBlockCheck(loadBlocklist(vaultPath)); }
+    catch (e) { return { errors: urls.map((_, index) => ({ index, error: e.message })), created: [], skipped: [] }; }
     for (const [index, url] of urls.entries()) {
       try {
-        const { status, body, url: read } = await fetch(url, {});
+        const { status, body, url: read } = await fetch(url, { checkUrl });
         if (status >= 400) throw new Error(`http ${status}`);
         // The body stored is the page's text, by the extractor `capture --fill` uses (spec 52); the hash is the bytes'.
         const content = cliOpts.storeBody ? extractText(body, new URL(read || url).pathname) ?? '' : '';
         specs[index] = { type: 'source', title: titleOf(body.toString('utf8'), url), url, contentBytes: body, content, storeBody: cliOpts.storeBody };
-      } catch (e) { errors.push({ index, error: `fetch failed: ${e.message}` }); }
+      } catch (e) {
+        const error = e.code === SOURCE_BLOCKED
+          ? `${blockedSourceMessage(e.block, screenText)}; --force captures anyway`
+          : `fetch failed: ${e.message}`;
+        errors.push({ index, error });
+      }
     }
   }
   return runSpecs(vaultPath, specs, cliOpts, errors);

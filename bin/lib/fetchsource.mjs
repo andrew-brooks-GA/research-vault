@@ -10,6 +10,7 @@ const TOTAL_TIMEOUT_MS = 60000;
 function pinnedLookup(address, family) {
   return (hostname, options, cb) => {
     const callback = typeof options === 'function' ? options : cb;
+    if (!callback) throw new Error('pinnedLookup: expected a callback');
     if (options && options.all) callback(null, [{ address, family }]);
     else callback(null, address, family);
   };
@@ -28,9 +29,12 @@ function literalAddress(hostname) {
   return family ? { address: inner, family } : null;
 }
 
-function once(url, { request, lookup, signal }) {
+function once(url, { request, lookup, signal, checkUrl }) {
   return new Promise((resolve, reject) => {
     signal.throwIfAborted();
+    // Redirect Locations are already resolved against the previous URL. The supplied
+    // check applies the same matching rules here as it does to the declared URL.
+    checkUrl?.(url);
     const u = assertSafeUrl(url);
     let req;
     let settled = false;
@@ -48,8 +52,10 @@ function once(url, { request, lookup, signal }) {
     const resolved = literal ? Promise.resolve([literal]) : resolveSafe(u.hostname, { lookup });
     resolved.then(addrs => {
       if (settled) return; // DNS may finish after the deadline.
-      const { address, family } = addrs[0];
-      req = request({
+      const [addr] = addrs;
+      if (!addr) throw new Error('once: expected a resolved address');
+      const { address, family } = addr;
+      const hop = req = request({
         protocol: 'https:',
         hostname: u.hostname,
         port: u.port || 443,
@@ -63,27 +69,27 @@ function once(url, { request, lookup, signal }) {
       }, res => {
         res.on('error', fail);
         const status = res.statusCode;
-        if (status >= 300 && status < 400 && res.headers.location) {
+        if (status !== undefined && status >= 300 && status < 400 && res.headers.location) {
           try {
             ok({ redirect: new URL(res.headers.location, url).toString(), fromHttps: true });
           } catch {
             fail(new Error('malformed redirect Location'));
           }
           // There is no connection to reuse. Close this hop before following the redirect.
-          req.destroy();
+          hop.destroy();
           return;
         }
         const chunks = [];
         let len = 0;
         res.on('data', c => {
           len += c.length;
-          if (len > MAX_BODY) { req.destroy(new Error('body exceeds max size')); return; }
+          if (len > MAX_BODY) { hop.destroy(new Error('body exceeds max size')); return; }
           chunks.push(c);
         });
         // `body` is for capture's ingest (spec 31); refresh reads only status and hash.
         res.on('end', () => { const body = Buffer.concat(chunks); ok({ status, hash: sha256Tagged(body), body }); });
       });
-      req.on('timeout', () => req.destroy(new Error('request timeout')));
+      req.on('timeout', () => hop.destroy(new Error('request timeout')));
       req.on('error', fail);
       req.end();
     }).catch(fail);
@@ -93,6 +99,7 @@ function once(url, { request, lookup, signal }) {
 // A file view on a code host is read as the raw file (spec 52 S15): the page as addressed is the
 // site's frame, not the file. One host; add a row when a run meets another.
 export function rawFileUrl(url) {
+  if (!url) return url;
   let u;
   try { u = new URL(url); } catch { return url; }
   // The parsed path has its `..` segments resolved, so the file read is in the repo the address names.
@@ -101,7 +108,9 @@ export function rawFileUrl(url) {
 }
 
 // The result's `url` is the address read: the last redirect's, or the raw file's for a file view.
-export async function fetchSource(url, opts = {}) {
+export async function fetchSource(url, opts) {
+  const checkUrl = opts?.checkUrl;
+  if (checkUrl !== null && typeof checkUrl !== 'function') throw new Error('fetchSource: expected checkUrl (a function or null)');
   const request = opts.request || https.request;
   const lookup = opts.lookup;
   let maxRedirects = opts.maxRedirects ?? 3;
@@ -110,9 +119,10 @@ export async function fetchSource(url, opts = {}) {
   const timer = setTimeout(() => controller.abort(new Error(`fetch deadline exceeded (${totalTimeoutMs} ms)`)), totalTimeoutMs);
   try {
     let current = rawFileUrl(url);
+    if (current !== url) checkUrl?.(url);
     for (;;) {
-      const r = await once(current, { request, lookup, signal: controller.signal });
-      if (!r.redirect) return { ...r, url: current };
+      const r = await once(current, { request, lookup, signal: controller.signal, checkUrl });
+      if (r.redirect === undefined) return { ...r, url: current };
       if (maxRedirects-- <= 0) throw new Error('too many redirects');
       const next = new URL(r.redirect);
       if (next.protocol !== 'https:') throw new Error(`refused redirect scheme downgrade: ${next.protocol}`);

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, existsSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, cpSync, existsSync, writeFileSync, readFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { REPO_ROOT } from './helpers.mjs';
@@ -242,6 +242,24 @@ test('ingest: a URL list fetches each line, fails the item on a thrown fetch, wr
   assert.equal(off.errors[0].index, -1);
   assert.match(off.errors[0].error, /RESEARCH_VAULT_ALLOW_NETWORK/);
   assert.equal(lintVault(dir, REPO_ROOT).violations.length, 0);
+});
+
+test('ingest reports a malformed blocklist for every URL without fetching or writing entries', async (t) => {
+  const dir = freshVault();
+  mkdirSync(join(dir, 'meta'), { recursive: true });
+  writeFileSync(join(dir, 'meta', 'source-blocklist.json'), '[');
+  const sources = join(dir, 'sources');
+  const before = readdirSync(sources).sort();
+  const fetch = t.mock.fn(async () => ({ status: 200, body: BODY_A }));
+  const error = 'invalid meta/source-blocklist.json: Unexpected end of JSON input';
+
+  const out = await ingest(dir, writeUrls(), { ...NOW, fetch });
+  assert.equal(fetch.mock.callCount(), 0);
+  assert.deepEqual(readdirSync(sources).sort(), before);
+  assert.deepEqual(out, {
+    errors: [{ index: 0, error }, { index: 1, error }, { index: 2, error }],
+    created: [], skipped: [],
+  });
 });
 
 test('ingest: a Markdown directory takes the URL, title and author from frontmatter, else the first link and heading; a file with no URL fails (spec 31 D1)', async () => {

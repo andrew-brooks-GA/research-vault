@@ -2,9 +2,11 @@ import { resolveVault } from '../lib/resolve.mjs';
 import { buildManifest } from '../lib/manifest.mjs';
 import { listStale } from '../lib/stale.mjs';
 import { fetchSource } from '../lib/fetchsource.mjs';
+import { loadBlocklist, sourceBlockCheck, SOURCE_BLOCKED } from '../lib/blocklist.mjs';
 import { join } from 'node:path';
 import { readEntry, TYPE_FOLDER } from '../lib/fsutil.mjs';
 import { isStubBody } from '../lib/advise.mjs';
+import { screenText } from '../lib/screen.ts';
 
 // Only http(s) source_urls are fetchable. Probe sources (authority_basis: tool-output,
 // e.g. source_url: cli://...) are re-derived locally via the tool-probe verification
@@ -34,17 +36,25 @@ function gather(vaultPath, opts) {
 export async function refreshVault(vaultPath, opts = {}) {
   const fetch = opts.fetch || fetchSource;
   const targets = opts.targets || gather(vaultPath, opts);
+  const checkUrl = sourceBlockCheck(loadBlocklist(vaultPath));
   const results = [];
   for (const e of targets) {
+    const path = join(vaultPath, TYPE_FOLDER.source, `${e.id}.md`);
     let outcome;
     try {
-      const { status, hash } = await fetch(e.source_url, {});
+      if (!opts.targets) {
+        // The manifest has already normalized this URL for indexing.
+        const declared = readEntry(path, { vaultPath }).data.source_url;
+        if (declared !== e.source_url) checkUrl(declared);
+      }
+      const { status, hash } = await fetch(e.source_url, { checkUrl });
       if (status >= 400) outcome = { id: e.id, result: 'unreachable', detail: `http ${status}` };
       else if (hash === e.content_hash) outcome = { id: e.id, result: 'confirmed' };
       // storedBody: whether the entry holds text to diff against (spec 27); read for changed results only.
-      else outcome = { id: e.id, result: 'changed', detail: 'run verify', storedBody: !isStubBody(readEntry(join(vaultPath, TYPE_FOLDER.source, `${e.id}.md`)).body) };
+      else outcome = { id: e.id, result: 'changed', detail: 'run verify', storedBody: !isStubBody(readEntry(path).body) };
     } catch (err) {
-      outcome = { id: e.id, result: 'unreachable', detail: err.message };
+      const detail = err.code === SOURCE_BLOCKED ? screenText(err.message) : err.message;
+      outcome = { id: e.id, result: 'unreachable', detail };
     }
     results.push(outcome);
   }
@@ -58,13 +68,13 @@ export async function run(args) {
     return 1;
   }
   const { path: vaultPath } = resolveVault({ flag: args.vault ?? null });
-  const targets = gather(vaultPath, { id: args.id });
   if (args['dry-run']) {
+    const targets = gather(vaultPath, { id: args.id });
     if (targets.length === 0) process.stdout.write('refresh: no targets\n');
     for (const e of targets) process.stdout.write(`would-fetch  ${e.id}  ${e.source_url}\n`);
     return 0;
   }
-  const results = await refreshVault(vaultPath, { targets, fetch: typeof args.fetch === 'function' ? args.fetch : undefined });
+  const results = await refreshVault(vaultPath, { id: args.id, fetch: typeof args.fetch === 'function' ? args.fetch : undefined });
   if (args.json) { process.stdout.write(JSON.stringify(results, null, 2) + '\n'); return 0; }
   for (const r of results) process.stdout.write(`${r.result}  ${r.id}${r.detail ? '  (' + r.detail + ')' : ''}\n`);
   return 0;

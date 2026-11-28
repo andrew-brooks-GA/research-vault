@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import { readEntry, writeEntry, TYPE_FOLDER } from './fsutil.mjs';
 import { loadSchema, fieldOrder } from './schema.mjs';
 import { buildManifest, writeManifest } from './manifest.mjs';
-import { loadBlocklist, matchBlock } from './blocklist.mjs';
+import { loadBlocklist, matchBlock, sourceBlockCheck, SOURCE_BLOCKED } from './blocklist.mjs';
 import { fetchSource, rawFileUrl } from './fetchsource.mjs';
 import { extractText } from './extract.ts';
 import { bodyText, MIN_BODY_CHARS } from './gate.mjs';
@@ -56,16 +56,21 @@ export async function checkQuotes(vaultPath, id, quotes, opts = {}) {
   if (!stored && !fetch) throw new Error('network access is off: this source holds no stored text, so set RESEARCH_VAULT_ALLOW_NETWORK=1 to check quotes against its page');
 
   let page; // fetched at most once: { lines, soft } or { error }
+  const blocked = hit => ({ error: `blocked source: ${screenText(hit.pattern)}` });
   const readPage = async () => {
     if (page) return page;
     const blocklist = loadBlocklist(vaultPath);
     const hit = matchBlock(blocklist, e.data.source_url) || matchBlock(blocklist, rawFileUrl(e.data.source_url));
     let u;
     try { u = new URL(e.data.source_url); } catch { return (page = { error: 'no fetchable source_url' }); }
-    if (hit) return (page = { error: `blocked source: ${screenText(hit.pattern)}` });
+    if (hit) return (page = blocked(hit));
     if (u.protocol !== 'https:') return (page = { error: 'source_url is not https' });
     let r;
-    try { r = await fetch(e.data.source_url, {}); } catch (err) { return (page = { error: `page unreachable: ${screenText(err.message)}` }); }
+    try { r = await fetch(e.data.source_url, { checkUrl: sourceBlockCheck(blocklist) }); }
+    catch (err) {
+      if (err.code === SOURCE_BLOCKED) return (page = blocked(err.block));
+      return (page = { error: `page unreachable: ${screenText(err.message)}` });
+    }
     if (r.status >= 400) return (page = { error: `page unreachable: http ${r.status}` });
     const text = extractText(r.body, new URL(r.url || e.data.source_url).pathname);
     if (text == null) return (page = { error: 'the page gave no text' });

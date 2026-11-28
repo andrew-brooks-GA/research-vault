@@ -146,6 +146,8 @@ Known limits:
 
 `refresh`, `capture --batch` over a URL list, `capture --fill`, `verify --quotes` and the embedding endpoint (`embed`, `search --semantic`) are the only features in which the plugin itself opens an outbound network connection (the outbound requests listed at the top), and all are off by default.
 
+`refresh`, `capture --batch` over a URL list, `capture --fill` and `verify --quotes` check the vault's source blocklist against the given URL, its rewritten form and every redirect target before any request to that address.
+
 - **Double-gated.** It refuses — non-zero exit, including under `--dry-run` — unless you both invoke the `refresh` subcommand *and* set `RESEARCH_VAULT_ALLOW_NETWORK=1`. Either alone does nothing.
 - **Hash-only.** It fetches the source URL and buffers the response solely to hash it: it computes the SHA-256 of the raw bytes and compares that to the entry's stored `content_hash`. It never parses, stores, or writes back the fetched bytes, and does no HTML-to-text conversion.
 - **Never mutates.** It reports `confirmed`, `changed`, or `unreachable` and defers every edit to `verify`. Entries and the manifest are left byte-identical.

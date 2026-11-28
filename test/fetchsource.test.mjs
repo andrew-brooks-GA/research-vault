@@ -2,11 +2,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
+import { join } from 'node:path';
 import { setImmediate as nextTurn } from 'node:timers/promises';
 import { fetchSource } from '../bin/lib/fetchsource.mjs';
+import { BLOCKLIST, sourceBlockCheck } from '../bin/lib/blocklist.mjs';
+import { fillSource } from '../bin/lib/fill.mjs';
+import { checkQuotes } from '../bin/lib/quotes.mjs';
+import { ingest } from '../bin/commands/capture.mjs';
+import { refreshVault } from '../bin/commands/refresh.mjs';
 import { sha256Tagged } from '../bin/lib/hash.ts';
-import { testEnv } from './helpers.mjs';
+import { put, testEnv, tmpVault } from './helpers.mjs';
 
 // A fake `res` that plays a scripted status/headers, then optionally emits data.
 function fakeRes({ status, headers = {}, data = [] }) {
@@ -20,6 +27,181 @@ function fakeRes({ status, headers = {}, data = [] }) {
   };
   return res;
 }
+
+function scriptedFetch(redirects = {}) {
+  const lookups = [], requests = [];
+  const lookup = async host => {
+    lookups.push(host);
+    return [{ address: '93.184.216.34', family: 4 }];
+  };
+  const request = (opts, cb) => {
+    const url = `https://${opts.hostname}${opts.path}`;
+    requests.push(url);
+    const req = new EventEmitter();
+    req.end = () => {};
+    req.destroy = () => {};
+    const location = redirects[url];
+    const res = location
+      ? fakeRes({ status: 302, headers: { location } })
+      : fakeRes({ status: 200, data: [Buffer.from('<p>The test page contains this whole sentence.</p>'.repeat(6))] });
+    process.nextTick(() => { cb(res); res._play(); });
+    return req;
+  };
+  const fetch = (url, options) => fetchSource(url, { checkUrl: null, ...options, request, lookup });
+  return { request, lookup, fetch, lookups, requests };
+}
+
+const START = 'https://start.example/a';
+const MIDDLE = 'https://middle.example/b';
+const BLOCKED = 'https://blocked.example/x';
+const ROW = { pattern: 'blocked.example', scope: 'domain', reason: 'test policy' };
+
+async function fetchOutcome(fetch) {
+  try { return await fetch(); } catch (error) { return error; }
+}
+
+test('fetchSource refuses a listed redirect target', async () => {
+  const { fetch, lookups, requests } = scriptedFetch({ [START]: BLOCKED });
+  const err = await fetchOutcome(() => fetch(START, { checkUrl: sourceBlockCheck([ROW]) }));
+  assert.deepEqual({ lookups, requests }, { lookups: ['start.example'], requests: [START] });
+  assert.equal(err.code, 'SOURCE_BLOCKED');
+  assert.equal(err.message, 'blocked source: blocked.example (domain): test policy');
+});
+
+test('fetchSource refuses a listed loopback redirect with the address guard diagnostic', async () => {
+  const { fetch, lookups, requests } = scriptedFetch({ [START]: 'https://127.0.0.1/x' });
+  const row = { ...ROW, pattern: '127.0.0.1' };
+  const err = await fetchOutcome(() => fetch(START, { checkUrl: sourceBlockCheck([row]) }));
+  assert.deepEqual({ lookups, requests }, { lookups: ['start.example'], requests: [START] });
+  assert.equal(err.message, 'refused non-public host: 127.0.0.1');
+});
+
+test('fetchSource refuses a listed target after two allowed hops', async () => {
+  const { fetch, lookups, requests } = scriptedFetch({ [START]: MIDDLE, [MIDDLE]: BLOCKED });
+  const err = await fetchOutcome(() => fetch(START, { checkUrl: sourceBlockCheck([ROW]) }));
+  assert.deepEqual({ lookups, requests }, { lookups: ['start.example', 'middle.example'], requests: [START, MIDDLE] });
+  assert.equal(err.code, 'SOURCE_BLOCKED');
+});
+
+test('fetchSource refuses a listed declared URL', async () => {
+  const { fetch, lookups, requests } = scriptedFetch();
+  const err = await fetchOutcome(() => fetch(BLOCKED, { checkUrl: sourceBlockCheck([ROW]) }));
+  assert.deepEqual({ lookups, requests }, { lookups: [], requests: [] });
+  assert.equal(err.code, 'SOURCE_BLOCKED');
+});
+
+test('fetchSource refuses a listed subdomain on a redirect', async () => {
+  const { fetch, lookups, requests } = scriptedFetch({ [START]: 'https://news.blocked.example/story' });
+  const err = await fetchOutcome(() => fetch(START, { checkUrl: sourceBlockCheck([ROW]) }));
+  assert.deepEqual({ lookups, requests }, { lookups: ['start.example'], requests: [START] });
+  assert.equal(err.code, 'SOURCE_BLOCKED');
+});
+
+test('fetchSource applies a URL prefix to a normalized redirect target', async () => {
+  const sibling = 'https://start.example/public/article';
+  const { fetch, lookups, requests } = scriptedFetch({
+    [START]: '/public/article',
+    [sibling]: 'https://START.example:443/old/../private/article?utm_source=fixture&edition=1&mode=preview',
+  });
+  const row = { pattern: 'https://start.example/private/article?edition=1', scope: 'url', reason: 'test policy' };
+  const err = await fetchOutcome(() => fetch(START, { checkUrl: sourceBlockCheck([row]) }));
+  assert.deepEqual({ lookups, requests }, { lookups: ['start.example', 'start.example'], requests: [START, sibling] });
+  assert.equal(err.code, 'SOURCE_BLOCKED');
+});
+
+test('fetchSource requires an explicit address check', async () => {
+  const { request, lookup, lookups, requests } = scriptedFetch();
+  const err = await fetchOutcome(() => fetchSource(START, { request, lookup }));
+  assert.deepEqual({ lookups, requests }, { lookups: [], requests: [] });
+  assert.equal(err.constructor, Error);
+  assert.equal(err.message, 'fetchSource: expected checkUrl (a function or null)');
+});
+
+test('fetchSource refuses a listed raw file URL', async () => {
+  const { fetch, lookups, requests } = scriptedFetch();
+  const row = { ...ROW, pattern: 'raw.githubusercontent.com' };
+  const err = await fetchOutcome(() => fetch('https://github.com/o/r/blob/main/a.md', { checkUrl: sourceBlockCheck([row]) }));
+  assert.deepEqual({ lookups, requests }, { lookups: [], requests: [] });
+  assert.equal(err.code, 'SOURCE_BLOCKED');
+});
+
+test('fetchSource refuses a listed file view before using its raw URL', async () => {
+  const { fetch, lookups, requests } = scriptedFetch();
+  const row = { ...ROW, pattern: 'github.com' };
+  const err = await fetchOutcome(() => fetch('https://github.com/o/r/blob/main/a.md', { checkUrl: sourceBlockCheck([row]) }));
+  assert.deepEqual({ lookups, requests }, { lookups: [], requests: [] });
+  assert.equal(err.code, 'SOURCE_BLOCKED');
+});
+
+function redirectVault() {
+  const dir = tmpVault();
+  const id = put(dir, 'source', '2026-01-01-article', { source_type: 'article', source_url: START });
+  mkdirSync(join(dir, 'meta'));
+  writeFileSync(join(dir, BLOCKLIST), JSON.stringify([ROW]));
+  const snapshot = () => ({
+    files: readdirSync(dir, { recursive: true }).sort(),
+    bytes: readFileSync(join(dir, 'sources', `${id}.md`)),
+  });
+  return { dir, id, snapshot, ...scriptedFetch({ [START]: BLOCKED }) };
+}
+
+test('fill reports a refused redirect and leaves the vault unchanged', async () => {
+  const { dir, id, snapshot, fetch, lookups, requests } = redirectVault();
+  const before = snapshot();
+  const out = await fillSource(dir, id, { ackDataEgress: true, fetch });
+  assert.deepEqual({ lookups, requests }, { lookups: ['start.example'], requests: [START] });
+  assert.deepEqual(snapshot(), before);
+  assert.deepEqual(out, { id, result: 'refused', reason: 'blocked source: blocked.example (domain): test policy' });
+});
+
+test('verify --quotes reports a refused redirect and leaves the vault unchanged', async () => {
+  const { dir, id, snapshot, fetch, lookups, requests } = redirectVault();
+  const before = snapshot();
+  const out = await checkQuotes(dir, id, ['The test page contains this whole sentence.'], { fetch });
+  assert.deepEqual({ lookups, requests }, { lookups: ['start.example'], requests: [START] });
+  assert.deepEqual(snapshot(), before);
+  assert.deepEqual(out, [{ found: false, reason: 'blocked source: blocked.example' }]);
+});
+
+test('capture --batch reports a refused URL-list redirect and leaves the vault unchanged', async () => {
+  const { dir, snapshot, fetch, lookups, requests } = redirectVault();
+  const list = join(dir, 'urls.txt');
+  writeFileSync(list, START + '\n');
+  const before = snapshot();
+  const out = await ingest(dir, list, { fetch });
+  assert.deepEqual({ lookups, requests }, { lookups: ['start.example'], requests: [START] });
+  assert.deepEqual(snapshot(), before);
+  assert.deepEqual(out, {
+    created: [], skipped: [],
+    errors: [{ index: 0, error: 'blocked source: blocked.example (domain): test policy; --force captures anyway' }],
+  });
+});
+
+test('refresh reports a refused redirect as unreachable and leaves the vault unchanged', async () => {
+  const { dir, id, snapshot, fetch, lookups, requests } = redirectVault();
+  const before = snapshot();
+  const out = await refreshVault(dir, { id, fetch });
+  assert.deepEqual({ lookups, requests }, { lookups: ['start.example'], requests: [START] });
+  assert.deepEqual(snapshot(), before);
+  assert.deepEqual(out, [{ id, result: 'unreachable', detail: 'blocked source: blocked.example (domain): test policy' }]);
+});
+
+test('refresh checks the stored URL before using the manifest URL', async () => {
+  const dir = tmpVault();
+  const declared = 'https://start.example/document//';
+  const id = put(dir, 'source', '2026-01-01-article', { source_type: 'article', source_url: declared });
+  mkdirSync(join(dir, 'meta'));
+  writeFileSync(join(dir, BLOCKLIST), JSON.stringify([{ pattern: declared, scope: 'url', reason: 'test policy' }]));
+  const path = join(dir, 'sources', `${id}.md`);
+  const bytes = readFileSync(path);
+  const files = readdirSync(dir, { recursive: true }).sort();
+  const { fetch, lookups, requests } = scriptedFetch();
+  const out = await refreshVault(dir, { id, fetch });
+  assert.deepEqual({ lookups, requests }, { lookups: [], requests: [] });
+  assert.deepEqual(readFileSync(path), bytes);
+  assert.deepEqual(readdirSync(dir, { recursive: true }).sort(), files);
+  assert.deepEqual(out, [{ id, result: 'unreachable', detail: 'blocked source: https://start.example/document// (url): test policy' }]);
+});
 
 test('the request is given a lookup pinned to the pre-validated address', async () => {
   let resolverCalls = 0;
@@ -35,7 +217,7 @@ test('the request is given a lookup pinned to the pre-validated address', async 
     return req;
   };
 
-  const r = await fetchSource('https://example.com/a', { request, lookup });
+  const r = await fetchSource('https://example.com/a', { checkUrl: null, request, lookup });
   assert.deepEqual(r.body, Buffer.from('x'), 'the body is returned for ingest (spec 31)');
   assert.equal(r.hash, sha256Tagged(Buffer.from('x')));
 
@@ -70,7 +252,7 @@ test('the resolver is consulted once per hop across a redirect', async () => {
     return req;
   };
 
-  await fetchSource('https://first.example/a', { request, lookup });
+  await fetchSource('https://first.example/a', { checkUrl: null, request, lookup });
   assert.equal(seen.length, 2, 'one resolution per hop (two hops)');
   assert.deepEqual(seen, ['first.example', 'second.example']);
 });
@@ -88,7 +270,7 @@ test('exceeding the redirect cap throws', async () => {
     return req;
   };
   await assert.rejects(
-    () => fetchSource('https://start.example/a', { request, lookup }),
+    () => fetchSource('https://start.example/a', { checkUrl: null, request, lookup }),
     /too many redirects/,
   );
   assert.equal(n, 4, 'the 4th redirect (default cap 3) trips the limit');
@@ -105,7 +287,7 @@ test('an https->http redirect downgrade is refused', async () => {
     return req;
   };
   await assert.rejects(
-    () => fetchSource('https://start.example/a', { request, lookup }),
+    () => fetchSource('https://start.example/a', { checkUrl: null, request, lookup }),
     /scheme downgrade/,
   );
 });
@@ -122,7 +304,7 @@ test('a body exceeding MAX_BODY destroys the request', async () => {
     return req;
   };
   await assert.rejects(
-    () => fetchSource('https://big.example/a', { request, lookup }),
+    () => fetchSource('https://big.example/a', { checkUrl: null, request, lookup }),
     /body exceeds max size/,
   );
   assert.ok(destroyErr && /body exceeds max size/.test(destroyErr.message));
@@ -139,7 +321,7 @@ test('a request timeout destroys the request', async () => {
     return req;
   };
   await assert.rejects(
-    () => fetchSource('https://slow.example/a', { request, lookup }),
+    () => fetchSource('https://slow.example/a', { checkUrl: null, request, lookup }),
     /request timeout/,
   );
   assert.ok(destroyErr && /request timeout/.test(destroyErr.message));
@@ -168,7 +350,7 @@ test('the fetch deadline is shared across redirect hops', { timeout: 1000 }, asy
     req.destroy = () => clearTimeout(timer);
     return req;
   };
-  const fetch = fetchSource('https://8.8.8.8/start', { request, totalTimeoutMs: 100 });
+  const fetch = fetchSource('https://8.8.8.8/start', { checkUrl: null, request, totalTimeoutMs: 100 });
   // Each hop takes 60 ms, so the deadline falls during the second hop.
   await nextTurn();
   t.mock.timers.tick(60);
@@ -187,7 +369,7 @@ test('the fetch deadline ends a lookup that never answers without starting a req
   const lookup = t.mock.fn(() => new Promise(() => {}));
   let requests = 0;
   const request = () => { requests++; throw new Error('unexpected request'); };
-  const fetch = fetchSource('https://slow.example/a', { request, lookup, totalTimeoutMs: 25 });
+  const fetch = fetchSource('https://slow.example/a', { checkUrl: null, request, lookup, totalTimeoutMs: 25 });
   await nextTurn();
   assert.equal(lookup.mock.callCount(), 1);
   t.mock.timers.tick(25);
@@ -202,7 +384,7 @@ test('a lookup that answers after the fetch deadline starts no request', { timeo
   const lookup = t.mock.fn(() => promise);
   let requests = 0;
   const request = () => { requests++; throw new Error('unexpected request'); };
-  const fetch = fetchSource('https://slow.example/a', { request, lookup, totalTimeoutMs: 25 });
+  const fetch = fetchSource('https://slow.example/a', { checkUrl: null, request, lookup, totalTimeoutMs: 25 });
   await nextTurn();
   assert.equal(lookup.mock.callCount(), 1);
   t.mock.timers.tick(25);
@@ -216,7 +398,7 @@ test('the default fetch deadline expires at 60 seconds', { timeout: 1000 }, asyn
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const lookup = t.mock.fn(() => new Promise(() => {}));
   const request = t.mock.fn(() => { throw new Error('unexpected request'); });
-  const fetch = fetchSource('https://slow.example/a', { request, lookup });
+  const fetch = fetchSource('https://slow.example/a', { checkUrl: null, request, lookup });
   const pending = Symbol('pending');
   t.mock.timers.tick(59999);
   assert.equal(await Promise.race([fetch, nextTurn(pending)]), pending);
@@ -242,7 +424,7 @@ test('a successful fetch clears the default deadline before the child exits', { 
       req.destroy = () => {};
       return req;
     };
-    await fetchSource('https://8.8.8.8/a', { request });
+    await fetchSource('https://8.8.8.8/a', { checkUrl: null, request });
   `;
   const limit = 2000;
   const start = performance.now();
@@ -275,7 +457,7 @@ test('S-22: a body trickled without end is refused at the total deadline and the
   const totalTimeoutMs = 500;
   const start = performance.now();
   await assert.rejects(
-    fetchSource('https://slow.example/a', { request, lookup, totalTimeoutMs }),
+    fetchSource('https://slow.example/a', { checkUrl: null, request, lookup, totalTimeoutMs }),
     /fetch deadline exceeded/,
   );
   assert.ok(performance.now() - start < totalTimeoutMs + 500, 'the short deadline ends the fetch promptly');
@@ -300,7 +482,7 @@ test('a malformed redirect Location rejects without an uncaught exception', { ti
     req.destroy = () => { destroyed = true; };
     return req;
   };
-  await assert.rejects(fetchSource('https://start.example/a', { request, lookup }), /malformed redirect Location/);
+  await assert.rejects(fetchSource('https://start.example/a', { checkUrl: null, request, lookup }), /malformed redirect Location/);
   assert.deepEqual(uncaught, []);
   assert.equal(calls, 1, 'no request is sent to the redirect target');
   assert.ok(destroyed, 'the redirect response socket is closed');
@@ -311,7 +493,7 @@ test('fetchSource refuses an IPv6 literal in 3fff::/20 before lookup or request'
   let requests = 0;
   const lookup = async () => { resolverCalls++; throw new Error('unexpected lookup'); };
   const request = () => { requests++; throw new Error('unexpected request'); };
-  await assert.rejects(() => fetchSource('https://[3fff:0abc::1]/', { request, lookup }), {
+  await assert.rejects(() => fetchSource('https://[3fff:0abc::1]/', { checkUrl: null, request, lookup }), {
     message: 'refused non-public host: [3fff:abc::1]',
   });
   assert.equal(resolverCalls, 0);
@@ -332,7 +514,7 @@ test('a validated IPv6-literal URL skips DNS and pins the bracket-stripped addre
     return req;
   };
 
-  await fetchSource('https://[2606:4700:4700::1111]/a', { request, lookup });
+  await fetchSource('https://[2606:4700:4700::1111]/a', { checkUrl: null, request, lookup });
 
   assert.equal(resolverCalls, 0, 'an IP literal must not hit DNS');
   let got;
@@ -360,7 +542,7 @@ test('every hop is requested with agent: false and no cookie or authorization he
   const saved = names.map((n) => process.env[n]);
   for (const n of names) process.env[n] = 'fixture-secret';
   try {
-    await fetchSource('https://user:fixture-password@first.example/a', { request, lookup });
+    await fetchSource('https://user:fixture-password@first.example/a', { checkUrl: null, request, lookup });
   } finally {
     names.forEach((n, i) => { if (saved[i] === undefined) delete process.env[n]; else process.env[n] = saved[i]; });
   }

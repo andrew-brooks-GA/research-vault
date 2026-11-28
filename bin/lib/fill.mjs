@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { readEntry, writeEntry, TYPE_FOLDER } from './fsutil.mjs';
 import { loadSchema, fieldOrder } from './schema.mjs';
 import { buildManifest, writeManifest } from './manifest.mjs';
-import { loadBlocklist, matchBlock } from './blocklist.mjs';
+import { blockedSourceMessage, loadBlocklist, matchBlock, sourceBlockCheck, SOURCE_BLOCKED } from './blocklist.mjs';
 import { fetchSource, rawFileUrl } from './fetchsource.mjs';
 import { extractText } from './extract.ts';
 import { bodyText, MIN_BODY_CHARS } from './gate.mjs';
@@ -58,7 +58,7 @@ export async function fillSource(vaultPath, id, opts = {}) {
   if (!opts.ackDataEgress) throw new Error('--fill requires --ack-data-egress (storing source text is a data-egress / copyright surface)');
 
   const blocklist = loadBlocklist(vaultPath);
-  const blocked = url => { const hit = matchBlock(blocklist, url); return hit && refused(`blocked source: ${hit.pattern} (${hit.scope}): ${hit.reason}`); };
+  const blocked = url => { const hit = matchBlock(blocklist, url); return hit && refused(blockedSourceMessage(hit)); };
   const block = blocked(e.data.source_url) || blocked(rawFileUrl(e.data.source_url));
   if (block) return block;
 
@@ -77,10 +77,18 @@ export async function fillSource(vaultPath, id, opts = {}) {
     const fetch = opts.fetch || (opts.allowNetwork ? fetchSource : null);
     if (!fetch) throw new Error('network access is off: set RESEARCH_VAULT_ALLOW_NETWORK=1 to fill a source');
     let r;
-    try { r = await fetch(e.data.source_url, {}); } catch (err) { return { id, result: 'unreachable', reason: err.message }; }
+    try { r = await fetch(e.data.source_url, { checkUrl: sourceBlockCheck(blocklist) }); }
+    catch (err) {
+      if (err.code === SOURCE_BLOCKED) return refused(err.message);
+      return { id, result: 'unreachable', reason: err.message };
+    }
     if (r.status >= 400) return { id, result: 'unreachable', reason: `http ${r.status}` };
     const read = r.url || e.data.source_url;
-    if (read !== e.data.source_url) { fetchedFrom = read; if (blocked(read)) return blocked(read); }
+    if (read !== e.data.source_url) {
+      fetchedFrom = read;
+      const finalBlock = blocked(read);
+      if (finalBlock) return finalBlock;
+    }
     text = extractText(r.body, new URL(read).pathname);
     const was = e.data.content_hash || 'none';
     added = n => { e.data.content_hash = r.hash; return row('refetched-source', `filled: ${now}, ${n} bytes of text, content_hash was ${was}${fetchedFrom ? `, read from ${fetchedFrom}` : ''}`); };
