@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, cpSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, cpSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { REPO_ROOT } from './helpers.mjs';
 import { fixVault } from '../bin/lib/lintrules.mjs';
 import { run } from '../bin/commands/lint.mjs';
+import { parseFrontmatter } from '../bin/lib/frontmatter.mjs';
 
 test('--fix strips BOM and CRLF and re-serializes canonically', () => {
   const dir = join(mkdtempSync(join(tmpdir(), 'rv-')), 'v');
@@ -30,6 +31,20 @@ test('lint --fix via run() strips BOM/CRLF on a temp vault', async () => {
   assert.notEqual(after.charCodeAt(0), 0xFEFF);
   assert.ok(!/\r/.test(after));
   assert.equal(code, 0, 'normalized vault lints clean');
+});
+
+test('lint --fix preserves the parsed values in a mixed verifications list', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'rv-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const dir = join(root, 'v');
+  cpSync(fileURLToPath(new URL('./fixtures/vault', import.meta.url)), dir, { recursive: true });
+  const f = join(dir, 'sources', '2026-01-01-a.md');
+  writeFileSync(f, readFileSync(f, 'utf8').replace(/^source_type:/m, '  - x\nsource_type:'));
+  await run({ fix: true, vault: dir });
+  assert.deepEqual(parseFrontmatter(readFileSync(f, 'utf8')).data.verifications, [
+    { date: '2026-01-01', by_type: 'human', by_id: '', method: 'human-spot-check', result: 'confirmed', notes: '' },
+    'x',
+  ]);
 });
 
 // A vault under a directory holding a .research-vault.json with the k8s pair, and one entry carrying an alias.

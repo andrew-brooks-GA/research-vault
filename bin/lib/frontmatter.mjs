@@ -269,6 +269,9 @@ export function serializeFrontmatter(data, body, order = null, { preserve = true
     const extra = order ? Object.keys(data).filter(k => !order.includes(k)) : [];
     keys = [...ordered, ...extra];
   }
+  function isMap(item) {
+    return item !== null && typeof item === 'object' && !Array.isArray(item);
+  }
   const out = ['---'];
   for (const key of keys) {
     const v = data[key];
@@ -276,12 +279,18 @@ export function serializeFrontmatter(data, body, order = null, { preserve = true
     if (raw && Object.hasOwn(raw, key) && isDeepStrictEqual(v, raw[key].value) &&
         !(raw[key].lines.some(l => l.includes('\r')) && hasCarriageReturn(v))) {
       out.push(...raw[key].lines);
-    } else if (Array.isArray(v) && v.length && typeof v[0] === 'object') {
+    } else if (Array.isArray(v) && v.some(item => isMap(item) || Array.isArray(item))) {
       out.push(`${key}:`);
       for (const item of v) {
-        const ks = Object.keys(item);
-        out.push(`  - ${ks[0]}: ${emitScalar(item[ks[0]])}`);
-        for (const k of ks.slice(1)) out.push(`    ${k}: ${emitScalar(item[k])}`);
+        if (!isMap(item)) {
+          out.push(`  - ${emitScalar(item)}`);
+          continue;
+        }
+        const [first, ...rest] = Object.entries(item);
+        if (first === undefined) throw new Error('serializeFrontmatter: a row with no key');
+        const [firstKey, firstValue] = first;
+        out.push(`  - ${firstKey}: ${emitScalar(firstValue)}`);
+        for (const [k, value] of rest) out.push(`    ${k}: ${emitScalar(value)}`);
       }
     } else if (v && typeof v === 'object' && !Array.isArray(v)) {
       out.push(`${key}:`);

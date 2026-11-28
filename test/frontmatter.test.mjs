@@ -130,6 +130,48 @@ test('empty flow-list items survive alongside an empty scalar', () => {
   assert.deepEqual(parseFrontmatter(serializeFrontmatter({ title: '', topics: ['', 'c'] }, '')).data, { title: '', topics: ['', 'c'] });
 });
 
+test('a block list containing a two-item list round-trips with preservation off', () => {
+  const { data, body } = parseFrontmatter('---\nkey:\n  - [a, b]\n  - c\n---\n');
+  const expected = { key: [['a', 'b'], 'c'] };
+  assert.deepEqual(data, expected);
+  const text = serializeFrontmatter(data, body, null, { preserve: false });
+  assert.equal(text, '---\nkey:\n  - [a, b]\n  - c\n---\n');
+  assert.deepEqual(parseFrontmatter(text).data, expected);
+});
+
+test('a string after a map row is written as a plain block item', () => {
+  const text = serializeFrontmatter({ verifications: [{ a: 1 }, 'x'] }, '');
+  assert.equal(text, '---\nverifications:\n  - a: 1\n  - x\n---\n');
+});
+
+test('a number after a map row is written as a plain block item', () => {
+  const text = serializeFrontmatter({ verifications: [{ a: 1 }, 7] }, '');
+  assert.equal(text, '---\nverifications:\n  - a: 1\n  - 7\n---\n');
+});
+
+test('a map row after a string is written as a block row', () => {
+  const text = serializeFrontmatter({ verifications: ['x', { a: 1 }] }, '');
+  assert.equal(text, '---\nverifications:\n  - x\n  - a: 1\n---\n');
+});
+
+test('a map-like string in a mixed block list round-trips as a string', () => {
+  const text = serializeFrontmatter({ verifications: ['key: value', { a: 1 }] }, '');
+  assert.deepEqual(parseFrontmatter(text).data.verifications, ['key: value', { a: 1 }]);
+});
+
+test('a parsed mixed block list round-trips with preservation off', () => {
+  const { data, body } = parseFrontmatter(
+    '---\nvalues:\n  - a: 1\n    b: note\n  - - x\n  - ""\n  - "true"\n  - "42"\n  - "a # b"\n  - false\n  - [a, b]\n---\n',
+  );
+  const text = serializeFrontmatter(data, body, null, { preserve: false });
+  assert.deepEqual(parseFrontmatter(text).data, { values: [{ a: 1, b: 'note' }, '- x', '', 'true', '42', 'a # b', false, ['a', 'b']] });
+});
+
+test('a map-only list keeps its block rows and continuation indentation', () => {
+  const text = serializeFrontmatter({ verifications: [{ a: 1, b: 'note' }, { a: 2 }] }, '');
+  assert.equal(text, '---\nverifications:\n  - a: 1\n    b: note\n  - a: 2\n---\n');
+});
+
 for (const notes of ['first\nsecond', 'first\r\nsecond']) {
   test(`verification notes keep ${JSON.stringify(notes)} on one serialized line`, () => {
     const text = serializeFrontmatter({ verifications: [{ notes }] }, '');
