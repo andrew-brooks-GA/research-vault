@@ -14,9 +14,13 @@ export function traverse(manifest, startId, { depth = 1, direction = 'both', rel
   const rows = new Set(manifest.entries.map(e => e.id));
   const edges = rels ? manifest.edges.filter(e => rels.includes(e.rel)) : manifest.edges;
   const incident = new Map();
-  for (const e of edges) for (const id of new Set([e.from, e.to])) (incident.get(id) ?? incident.set(id, []).get(id)).push(e);
+  for (const e of edges) for (const id of new Set([e.from, e.to])) {
+    let bucket = incident.get(id);
+    if (bucket === undefined) incident.set(id, bucket = []);
+    bucket.push(e);
+  }
   const distance = new Map([[startId, 0]]);
-  const parents = Object.create(null); // keyed by ids from entries (S-13)
+  const parents = {}; Object.setPrototypeOf(parents, null); // keyed by ids from entries (S-13)
   let frontier = [startId];
   for (let d = 1; d <= depth && frontier.length; d++) {
     const next = [];

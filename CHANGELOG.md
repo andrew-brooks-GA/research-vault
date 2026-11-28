@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (spec 56, stage 6):** two lines of `traverse` in `bin/lib/graph.mjs` are rewritten, with no change in what they do, so that the file can be converted to TypeScript with types only: an edge's bucket is looked up once and created when missing, and the null-prototype `parents` object is made with `Object.setPrototypeOf`.
 - **Changed (spec 56, stage 6):** `bin/lib/git.mjs` is now `bin/lib/git.ts` (types added, nothing else: the conversion check reports no difference). Its importers, the tests that name it and the sentence of `SECURITY.md` that names the wrapper follow the new path.
 - **Changed (spec 56, stage 6):** `bin/lib/screen.mjs` is now `bin/lib/screen.ts` (types added, nothing else: the conversion check reports no difference). Its sixteen importers and its test name the new path.
 - **Changed (spec 56, stage 6):** `bin/lib/files.mjs` is now `bin/lib/files.ts` (types added, nothing else: the conversion check of `tooling/d6-compare.mjs` reports no difference). Its five importers and its test name the new path.
