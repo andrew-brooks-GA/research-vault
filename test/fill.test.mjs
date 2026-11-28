@@ -33,6 +33,26 @@ test('extract: a sentence over a code element is one line, pre is kept, entities
   assert.equal(htmlToText('<p>a &#x41; &#0; &bogus;</p>'), 'a A &#0; &bogus;\n');
 });
 
+test('extract: the constructor entity is left as text', () => {
+  assert.equal(htmlToText('&constructor;'), '&constructor;\n');
+});
+
+test('extract: amp decodes in lower, upper and mixed case', () => {
+  assert.equal(htmlToText('&amp; &AMP; &Amp;'), '& & &\n');
+});
+
+test('extract: a decimal character reference decodes', () => {
+  assert.equal(htmlToText('&#38;'), '&\n');
+});
+
+test('extract: a hexadecimal character reference with uppercase X decodes', () => {
+  assert.equal(htmlToText('&#X26;'), '&\n');
+});
+
+test('extract: an out-of-range character reference is left as text', () => {
+  assert.equal(htmlToText('&#x110000;'), '&#x110000;\n');
+});
+
 test('extract: Markdown is stored as a reader sees it, and only for a .md path', () => {
   const line = '* \\[[`f69ed4bc3f`](https://github.com/n/n/commit/f69)] - **crypto**: rename _one_ `content_hash` (A B) [#61875](https://github.com/n/n/pull/61875)';
   assert.equal(mdToText(line), '* [f69ed4bc3f] - crypto: rename one content_hash (A B) #61875');

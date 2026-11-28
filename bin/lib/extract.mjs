@@ -2,15 +2,15 @@ import { gunzipSync } from 'node:zlib';
 
 // Page text for a source's body (spec 52): one extractor for `capture --fill` and a URL-list ingest.
 const BLOCK = 'p|div|section|article|header|footer|main|aside|nav|h[1-6]|li|ul|ol|dl|dt|dd|tr|table|thead|tbody|pre|blockquote|br|hr|figure|figcaption|details|summary|title';
-const ENT = {
+const ENT = new Map(Object.entries({
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“',
   mdash: '—', ndash: '–', hellip: '…', middot: '·', bull: '•', copy: '©', reg: '®', trade: '™', laquo: '«', raquo: '»',
   times: '×', rarr: '→', larr: '←', deg: '°',
-};
+}));
 
 const entities = s => s.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, e) => {
-  if (e[0] !== '#') return ENT[e.toLowerCase()] ?? m;
-  const cp = e[1].toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+  if (!e.startsWith('#')) return ENT.get(e.toLowerCase()) ?? m;
+  const cp = e.charAt(1).toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
   return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : m;
 });
 const BLOCK_TAG = new RegExp(`<\\/?(?:${BLOCK})\\b[^<>]*>`, 'gi');
