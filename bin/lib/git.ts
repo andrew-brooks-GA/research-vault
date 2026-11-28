@@ -46,6 +46,9 @@ export function gitInvocation(args: readonly string[], { cwd, processCwd, timeou
   };
 }
 
+export function runGit(args: readonly string[], options?: GitOptions & { encoding?: BufferEncoding | undefined }): string;
+export function runGit(args: readonly string[], options: GitOptions & { encoding: 'buffer' | null }): Buffer;
+export function runGit(args: readonly string[], options?: GitOptions): string | Buffer;
 export function runGit(args: readonly string[], options?: GitOptions): string | Buffer {
   const invocation = gitInvocation(args, options);
   return execFileSync('git', invocation.args, invocation.options);
