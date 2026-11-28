@@ -2,6 +2,8 @@
 
 The steps, in order, to make a repo cite its research from code, fail CI when a citation goes stale, and draw the result. Every command below is run from the repo root as `node <plugin>/bin/research-vault.mjs` followed by the command; in Claude Code the plugin is installed per the README and explicit wrappers live under `commands/`; use their documented names and arguments.
 
+Installing through npm is not supported: Node does not run TypeScript files under a `node_modules` folder. Install it as a Claude Code plugin or from a git clone.
+
 ## 1. Put a vault inside the repo
 
 ```text

@@ -587,6 +587,10 @@ export const COUPLINGS = [
   ['bin/lib/teach.mjs', 'skills/research-teach/terminal/terminal.mjs', 'the script opens the terminal in the .term-screen element and finds the frame of the page termPage builds', 'term-screen'],
   ['bin/lib/terminal.mjs', 'docs/REFERENCE.md', "the teach serve section states the shell's environment, KEPT_MAX, UNSENT_MAX and the SIGHUP and SIGKILL to the helper's group", 'xterm-256color'],
   ['bin/lib/node-floor.mjs', 'test/smoke.test.mjs', 'the old-Node refusal line', 'or newer is required'],
+  ['bin/lib/node-floor.mjs', 'test/launcher.test.mjs', 'the npm-install refusal line and the launcher tests for the compile cache', 'research-vault: install as a plugin or git clone, not through npm (node_modules).'],
+  ['test/helpers.mjs', 'test/launcher.test.mjs', 'the launcher tests exercise the default compile-cache opt-out and its removal', 'NODE_DISABLE_COMPILE_CACHE'],
+  ['tooling/package.json', 'test/launcher.test.mjs', 'the floor guard uses the pinned parser', 'acorn'],
+  ['scripts/deps.mjs', 'test/launcher.test.mjs', 'the launcher guard uses import and tests edges and their from and to paths', "'tests'"],
   ['scripts/deps.mjs', 'test/layering.test.mjs', 'the layering tests use the import edge kind and its from and to paths', /(?:'tests' :|kind ===) 'import'/],
 ];
 

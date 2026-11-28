@@ -17,7 +17,7 @@ process.once('exit', () => {
 
 const gitConfig = join(testHome, 'gitconfig');
 writeFileSync(gitConfig, '');
-const isolatedEnv = { GIT_CONFIG_GLOBAL: gitConfig, GIT_CONFIG_NOSYSTEM: '1' };
+const isolatedEnv = { GIT_CONFIG_GLOBAL: gitConfig, GIT_CONFIG_NOSYSTEM: '1', NODE_DISABLE_COMPILE_CACHE: '1' };
 for (const key of ['HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME']) {
   const dir = join(testHome, key);
   mkdirSync(dir);

@@ -58,6 +58,8 @@ versions: sdk=0.21.0
 
 ## Install
 
+Installing through npm is not supported: Node does not run TypeScript files under a `node_modules` folder. Install it as a Claude Code plugin or from a git clone.
+
 You need:
 
 - Node 24.12.0 or newer, and git.

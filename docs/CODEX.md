@@ -6,6 +6,8 @@ The Codex integration installs project-local skills, reviewer definitions, a pin
 ## Install in a project
 <!-- evidence: 2026-11-13-codex-adapter-implementation 2026-11-13-codex-adapter-validation -->
 
+Installing through npm is not supported: Node does not run TypeScript files under a `node_modules` folder. Install it as a Claude Code plugin or from a git clone.
+
 From a research-vault checkout, run:
 
 ```sh

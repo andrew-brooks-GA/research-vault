@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { build, context, isCodeFile } from '../scripts/deps.mjs';
+import { javascriptFiles } from './launcher-paths.mjs';
 
 const inGraph = (file) => /^(?:bin|hooks|scripts)\//.test(file) && isCodeFile(file);
 const { nodes, edges } = build(context());
@@ -78,11 +79,15 @@ function cyclicImportGroups() {
 }
 
 function forbiddenImports(source, allowed, list = imports) {
-  return list.filter(({ from, to }) => source(from) && !allowed(to))
+  return list.filter(({ from, to }) => source(from) && !allowed(to, from))
     .map(({ from, to }) => `${from} -> ${to}`).sort();
 }
 
 const libraryViolations = (list) => forbiddenImports(isLib, (to) => isLib(to) || to === 'skills/research-teach/assets/quiz.js', list);
+const launcherImport = (to, from) => javascriptFiles.get(from) === to;
+const hookViolations = (list) => forbiddenImports(isHook, (to, from) => isLib(to) || launcherImport(to, from), list);
+const otherBinViolations = (list) => forbiddenImports(isOtherBinFile, (to, from) => isLib(to) || isCommand(to) || launcherImport(to, from), list);
+const scriptViolations = (list) => forbiddenImports(isScript, (to, from) => isLib(to) || to === 'test/helpers.mjs' || launcherImport(to, from), list);
 
 test('imports among code files in bin, hooks and scripts are acyclic', () => {
   const groups = cyclicImportGroups();
@@ -110,18 +115,48 @@ test('commands import only library code', () => {
 });
 
 test('hooks import only library code', () => {
-  const violations = forbiddenImports(isHook, isLib);
+  const violations = hookViolations(imports);
   assert.equal(violations.length, 0, ['Forbidden hook imports:', ...violations].join('\n'));
 });
 
+test('the hook layering rule allows a launcher to import its own TypeScript source', () => {
+  const imports = graphImports([{ kind: 'import', from: 'hooks/pre-web.mjs', to: "hooks/pre-web.ts" }]);
+  assert.deepEqual(hookViolations(imports), []);
+});
+
+test('the hook layering rule rejects a launcher importing a different hook TypeScript source', () => {
+  const imports = graphImports([{ kind: 'import', from: 'hooks/pre-web.mjs', to: "hooks/stop-gate.ts" }]);
+  assert.deepEqual(hookViolations(imports), ["hooks/pre-web.mjs -> hooks/stop-gate.ts"]);
+});
+
 test('bin code outside bin/lib and bin/commands imports only library code and commands', () => {
-  const violations = forbiddenImports(isOtherBinFile, (to) => isLib(to) || isCommand(to));
+  const violations = otherBinViolations(imports);
   assert.equal(violations.length, 0, ['Forbidden imports from outside bin/lib and bin/commands:', ...violations].join('\n'));
 });
 
+test('the bin entry layering rule allows a launcher to import its own TypeScript source', () => {
+  const imports = graphImports([{ kind: 'import', from: 'bin/research-vault.mjs', to: "bin/research-vault.ts" }]);
+  assert.deepEqual(otherBinViolations(imports), []);
+});
+
+test('the bin entry layering rule rejects a launcher importing a hook TypeScript source', () => {
+  const imports = graphImports([{ kind: 'import', from: 'bin/research-vault.mjs', to: "hooks/pre-web.ts" }]);
+  assert.deepEqual(otherBinViolations(imports), ["bin/research-vault.mjs -> hooks/pre-web.ts"]);
+});
+
 test('scripts import only library code and the test helpers', () => {
-  const violations = forbiddenImports(isScript, (to) => isLib(to) || to === 'test/helpers.mjs');
+  const violations = scriptViolations(imports);
   assert.equal(violations.length, 0, ['Forbidden script imports:', ...violations].join('\n'));
+});
+
+test('the script layering rule allows a launcher to import its own TypeScript source', () => {
+  const imports = graphImports([{ kind: 'import', from: 'scripts/deps.mjs', to: "scripts/deps.ts" }]);
+  assert.deepEqual(scriptViolations(imports), []);
+});
+
+test('the script layering rule rejects a launcher importing a different script TypeScript source', () => {
+  const imports = graphImports([{ kind: 'import', from: 'scripts/deps.mjs', to: "scripts/check-encoding.ts" }]);
+  assert.deepEqual(scriptViolations(imports), ["scripts/deps.mjs -> scripts/check-encoding.ts"]);
 });
 
 test('the graph has import edges from library code, commands, hooks and scripts', () => {
