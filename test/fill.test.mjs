@@ -61,6 +61,22 @@ test('extract: Markdown is stored as a reader sees it, and only for a .md path',
   assert.equal(extractText(Buffer.from(line), '/x/notes.txt'), line);
 });
 
+test('mdToText: preserves an out-of-range placeholder when there are no escapes', () => {
+  assert.equal(mdToText('\u00009\u0000'), '\u00009\u0000');
+});
+
+test('mdToText: preserves a leading-zero placeholder alongside a restored escape', () => {
+  assert.equal(mdToText('\\* \u000000\u0000'), '* \u000000\u0000');
+});
+
+test('mdToText: restores eleven escapes in order', () => {
+  assert.equal(mdToText('\\! \\? \\. \\, \\: \\; \\( \\) \\[ \\] \\*'), '! ? . , : ; ( ) [ ] *');
+});
+
+test('mdToText: restores an input placeholder that matches an escape index', () => {
+  assert.equal(mdToText('\\* \u00000\u0000'), '* *');
+});
+
 test('fetchSource: a file view on a code host is read as the raw file, and the result names the address read', async () => {
   assert.equal(rawFileUrl('https://github.com/o/r/blob/feature/x/doc/A.md?plain=1#L3'), 'https://raw.githubusercontent.com/o/r/feature/x/doc/A.md');
   assert.equal(rawFileUrl('https://github.com/o/r/tree/main/doc'), 'https://github.com/o/r/tree/main/doc');

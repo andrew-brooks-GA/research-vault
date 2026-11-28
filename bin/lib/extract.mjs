@@ -52,7 +52,8 @@ export function mdToText(md) {
     .replace(/!?\[([^[\]\n]*)\]\([^()\n]*\)/g, '$1')
     .replace(/`+/g, '').replace(/\*+(?=\S)|(?<=\S)\*+/g, '')
     .replace(/(?<![A-Za-z0-9])_+(?=\S)|(?<=\S)_+(?![A-Za-z0-9])/g, '')
-    .replace(/\u0000(\d+)\u0000/g, (_, i) => kept[i]);
+    // An input placeholder with a valid index is indistinguishable from one made here.
+    .replace(/\u0000(\d+)\u0000/g, (m, i) => i.length > 1 && i.startsWith('0') ? m : kept[Number(i)] ?? m);
 }
 
 const MAX_UNZIPPED = 16 * 1024 * 1024; // a gzip body past this is refused, not inflated
