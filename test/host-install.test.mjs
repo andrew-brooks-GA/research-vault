@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, symlinkSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, symlinkSync, rmSync, statSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -156,7 +156,7 @@ test('the Codex orchestrate skill names a script pinned in the installation mani
   manageCodex(root, 'install');
   const skill = readFileSync(join(root, '.agents/skills/research-orchestrate/SKILL.md'), 'utf8');
   const name = '.agents/skills/research-orchestrate/workflow';
-  const path = join(root, name);
+  const path = join(realpathSync(root), name);
   assert.ok(skill.includes(`\`${path}\``), 'the generated skill names the installed Codex script');
   const { files } = JSON.parse(readFileSync(join(root, '.research-vault-host/codex-install.json'), 'utf8'));
   assert.equal(files[name], createHash('sha256').update(readFileSync(path)).digest('hex'));
