@@ -7,7 +7,7 @@ import { makeId, normalizeUrl, normalizeUrlSafe, sha256, verKey } from './ids.mj
 import { buildManifest } from './manifest.mjs';
 import { TYPE_FOLDER } from './fsutil.mjs';
 import { assertControlledValues } from './validate.mjs';
-import { csvList } from './args.mjs';
+import { csvList } from './args.ts';
 import { loadBlocklist, matchBlock } from './blocklist.mjs';
 import { screenText } from './screen.ts';
 

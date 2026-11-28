@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { buildExport, toJsonl } from '../lib/exportjsonl.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { mayBeInside } from '../lib/containment.mjs';
-import { csvList } from '../lib/args.mjs';
+import { csvList } from '../lib/args.ts';
 
 export async function run(args) {
   if (args.format && args.format !== 'jsonl') { process.stderr.write(`unsupported --format: ${args.format} (only jsonl)\n`); return 1; }

@@ -5,7 +5,7 @@ import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseArgs } from '../bin/lib/args.mjs';
+import { parseArgs } from '../bin/lib/args.ts';
 import { fixtureVault, put, testEnv, tmpVault } from './helpers.mjs';
 
 test('a value-taking command flag skips its value before the command', () => {

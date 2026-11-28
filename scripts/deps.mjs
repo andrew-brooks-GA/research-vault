@@ -67,13 +67,13 @@ export const COUPLINGS = [
   ['scripts/deps.mjs', 'test/tooling.test.mjs', 'the tooling import guard uses the import edge kind and paths', "'import'"],
   ['bin/lib/host-install.mjs', 'test/tooling.test.mjs', 'the tooling exclusion guard checks the generated Codex payload', 'installationFiles'],
   ['bin/lib/terms.ts', 'test/terms.test.mjs', 'the stop-word guard pins every word in source order', 'verbatim'],
-  ['bin/lib/args.mjs', 'docs/REFERENCE.md', 'the strict-option error lines', 'unknown option --'],
-  ['bin/lib/args.mjs', 'docs/REFERENCE.md', 'the strict-option error lines', 'needs a value'],
-  ['bin/lib/args.mjs', 'docs/REFERENCE.md', 'the strict-option error lines', 'takes no value'],
-  ['bin/lib/args.mjs', 'test/args.test.mjs', 'the strict-option error lines', 'unknown option --'],
-  ['bin/lib/args.mjs', 'test/args.test.mjs', 'the strict-option error lines', 'needs a value'],
-  ['bin/lib/args.mjs', 'test/args.test.mjs', 'the strict-option error lines', 'takes no value'],
-  ['bin/lib/args.mjs', 'test/gate.test.mjs', 'the strict-option error lines', 'needs a value'],
+  ['bin/lib/args.ts', 'docs/REFERENCE.md', 'the strict-option error lines', 'unknown option --'],
+  ['bin/lib/args.ts', 'docs/REFERENCE.md', 'the strict-option error lines', 'needs a value'],
+  ['bin/lib/args.ts', 'docs/REFERENCE.md', 'the strict-option error lines', 'takes no value'],
+  ['bin/lib/args.ts', 'test/args.test.mjs', 'the strict-option error lines', 'unknown option --'],
+  ['bin/lib/args.ts', 'test/args.test.mjs', 'the strict-option error lines', 'needs a value'],
+  ['bin/lib/args.ts', 'test/args.test.mjs', 'the strict-option error lines', 'takes no value'],
+  ['bin/lib/args.ts', 'test/gate.test.mjs', 'the strict-option error lines', 'needs a value'],
   ['bin/lib/screen.ts', 'test/screen.test.mjs', "screenText's cut mark is quoted in the expected values", '\\u2026'],
   ['bin/lib/gate.mjs', 'skills/research-claims-gate/SKILL.md', 'residual and loaded-script unit names and review scope', 'script:'],
   ['bin/lib/gate.mjs', 'docs/REFERENCE.md', 'residual, repeated-block and loaded-script unit contract', '`rest`'],
@@ -601,7 +601,7 @@ const imports = (file, text) => [...text.matchAll(IMPORT_RE)].map(m => posix.nor
 // The flags a command accepts: every args.<flag> and args['<flag>'] read in its module and in the
 // bin/lib modules it imports directly.
 // ponytail: a flag read by a shared lib module is accepted for every command importing it, and a
-// boolean flag missing from BOOL in bin/lib/args.mjs is not detected.
+// boolean flag missing from BOOL in bin/lib/args.ts is not detected.
 function flagsOf(file) {
   if (!isCodeFile(file) || !existsSync(join(REPO_ROOT, file))) return new Set();
   const text = read(file);

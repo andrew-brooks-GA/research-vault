@@ -1,9 +1,18 @@
 import { parseArgs as parseTokens } from 'node:util';
 
+type OptionNames = [strings: string, booleans: string];
+type Option = { type: 'string' | 'boolean' };
+type ParsedArgs = {
+  _: (string | undefined)[];
+  needle?: (string | undefined)[];
+  help?: true;
+  [name: string]: (string | undefined)[] | string | true | undefined;
+};
+
 // R-23: one options table per command, the union of the flags any of its subcommands or modes reads: strings, then
 // booleans. Every command also takes --vault (string) and --help (boolean). A flag a mode does not read is accepted
 // and ignored there. `--topics` is a list for capture and init and takes no value for lint and manifest.
-const TABLES = {
+const TABLES: Record<string, OptionNames> = {
   advise: ['', 'json'],
   capture: ['answer-summary authority-basis authority-tier batch body-file by-id captured-via confidence content content-file content-hash contributing-ids cwd date-run domain fill language model-id operation-id outcome provider question related series source-type sources state subject-name subject-version summary synthesis-basis task title topics type url volatility',
     'ack-data-egress continue discard force json replace scaffold store-body tested'],
@@ -25,17 +34,17 @@ const TABLES = {
   trust: ['', 'revoke show yes'],
   verify: ['answer-summary answered-by by-id id method notes quotes result run superseded-by', 'json stale succession'],
 };
-const words = (s) => s.split(' ').filter(Boolean);
-const options = ([strings, booleans]) => Object.fromEntries([
-  ...words(`${strings} vault`).map((n) => [n, { type: 'string' }]),
-  ...words(`${booleans} help`).map((n) => [n, { type: 'boolean' }]),
+const words = (s: string): string[] => s.split(' ').filter(Boolean);
+const options = ([strings, booleans]: OptionNames): Record<string, Option> => Object.fromEntries([
+  ...words(`${strings} vault`).map((n: string): [string, Option] => [n, { type: 'string' }]),
+  ...words(`${booleans} help`).map((n: string): [string, Option] => [n, { type: 'boolean' }]),
 ]);
 // The flags that take a value under some command: before the command, one of them takes the next word as its value.
-const VALUED = new Set(Object.values(TABLES).flatMap(([strings]) => words(strings)).concat('vault'));
-export const csvList = s => String(s ?? '').split(',').map(t => t.trim()).filter(Boolean);
+const VALUED = new Set(Object.values(TABLES).flatMap(([strings]: OptionNames) => words(strings)).concat('vault'));
+export const csvList = (s: unknown): string[] => String(s ?? '').split(',').map((t: string) => t.trim()).filter(Boolean);
 
 // The index of the command in argv (flags may come first), or -1.
-export function commandAt(argv) {
+export function commandAt(argv: readonly string[]): number {
   const entries = argv.entries();
   for (const [i, tok] of entries) {
     if (tok === '--') return i + 1 < argv.length ? i + 1 : -1;
@@ -46,7 +55,7 @@ export function commandAt(argv) {
 }
 
 // Whether parsed args ask for the command's help: --help, or -h as a positional (not as an option's value).
-export const wantsHelp = (args) => 'help' in args || args._.slice(1).includes('-h');
+export const wantsHelp = (args: { _: readonly (string | undefined)[]; help?: unknown }): boolean => 'help' in args || args._.slice(1).includes('-h');
 
 // Parses argv against its command's table: `_` holds the command and the positionals. Throws on an unknown option,
 // a value-taking option with no value (at the end, or followed by a word that starts with --) and a value given to
@@ -54,21 +63,21 @@ export const wantsHelp = (args) => 'help' in args || args._.slice(1).includes('-
 // '-' is a value after a value-taking option and a positional anywhere else, as before: node's parser would read it
 // as short options (an inner '-' as `--`, ending the options), so it goes in as `\0<index>`, which argv cannot hold,
 // and is put back.
-export function parseArgs(argv, at = commandAt(argv)) {
+export function parseArgs(argv: readonly string[], at: number = commandAt(argv)): ParsedArgs {
   const cmd = argv[at];
   const flags = cmd === undefined || !Object.hasOwn(TABLES, cmd) ? undefined : TABLES[cmd];
   if (flags === undefined) throw new Error(`no options table for ${cmd}`);
   const table = options(flags);
   const rest = argv.toSpliced(at, 1);
-  const back = (v) => {
+  const back = (v: string): string | undefined => {
     if (!/^\0\d+$/.test(v)) return v;
     const key = v.slice(1);
     const i = Number(key);
     return String(i) === key ? rest[i] : undefined;
   };
-  const out = { _: [cmd] };
-  let err;
-  const args = rest.map((w, i) => (/^-[^-]/.test(w) ? `\0${i}` : w));
+  const out: ParsedArgs = { _: [cmd] };
+  let err: string | undefined;
+  const args = rest.map((w: string, i: number) => (/^-[^-]/.test(w) ? `\0${i}` : w));
   for (const t of parseTokens({ args, options: table, strict: false, allowPositionals: true, tokens: true }).tokens) {
     if (t.kind === 'positional') out._.push(back(t.value));
     else if (t.kind !== 'option') continue; // the option terminator

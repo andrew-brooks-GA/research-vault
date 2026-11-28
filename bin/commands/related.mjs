@@ -4,7 +4,7 @@ import { buildManifest } from '../lib/manifest.mjs';
 import { traverse } from '../lib/graph.mjs';
 import { loadSchema } from '../lib/schema.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
-import { csvList } from '../lib/args.mjs';
+import { csvList } from '../lib/args.ts';
 import { screenText } from '../lib/screen.ts';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');

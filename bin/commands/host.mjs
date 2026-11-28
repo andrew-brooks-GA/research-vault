@@ -2,7 +2,7 @@ import { manageCodex, PACKAGE_ROOT } from '../lib/host-install.mjs';
 import { resolveVault } from '../lib/resolve.mjs';
 import { join } from 'node:path';
 import { runCodexReview } from '../lib/codex-review.mjs';
-import { csvList } from '../lib/args.mjs';
+import { csvList } from '../lib/args.ts';
 
 export async function run(args) {
   const [, action, host] = args._;

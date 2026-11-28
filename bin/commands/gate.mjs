@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { resolveVault } from '../lib/resolve.mjs';
 import { loadProjectConfig, PROJECT_CONFIG_FILENAME } from '../lib/projectconfig.mjs';
 import { loadSchema } from '../lib/schema.mjs';
-import { csvList } from '../lib/args.mjs';
+import { csvList } from '../lib/args.ts';
 import { VERDICTS, draftState, recordVerdict, gateStatus, evidenceFor, renderEvidence, changedUnits, codeLang, ledgerKey, ledgerRoot, stagedGates, missingEvidence } from '../lib/gate.mjs';
 import { readVersions } from '../lib/codelinks.mjs';
 import { buildPacket } from '../lib/packet.mjs';

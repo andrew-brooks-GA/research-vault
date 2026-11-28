@@ -12,7 +12,7 @@ export async function run(args) {
   const vaultPath = resolved.path;
   if (args.fix) {
     reportFallback(resolved);
-    // `--topics` takes no value here (a boolean in lint's table, args.mjs): present means rewrite aliased topics (spec 24).
+    // `--topics` takes no value here (a boolean in lint's table, args.ts): present means rewrite aliased topics (spec 24).
     const { fixed } = fixVault(vaultPath, REPO_ROOT, { topics: args.topics === true });
     if (!args.json) process.stdout.write(`fixed ${fixed} file(s)\n`);
   }

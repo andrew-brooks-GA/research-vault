@@ -12,7 +12,7 @@ export async function run(args) {
     writeManifest(vaultPath, m);
     process.stdout.write(`manifest: ${m.entries.length} entries\n`);
   }
-  // `--topics` takes no value here (a boolean in manifest's table, args.mjs; capture --topics takes a list).
+  // `--topics` takes no value here (a boolean in manifest's table, args.ts; capture --topics takes a list).
   // The vocabulary search sees by default: no superseded. Each topic passes screenText (S-11).
   if (args.topics === true) {
     const counts = new Map();

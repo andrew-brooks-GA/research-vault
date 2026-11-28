@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Changed (spec 56, stage 6):** `bin/lib/args.mjs` is now `bin/lib/args.ts` (types added, nothing else: the conversion check reports no difference). Its importers, its test and two comments name the new path.
 - **Changed (spec 56, stage 6):** `bin/lib/ssrfguard.mjs` is now `bin/lib/ssrfguard.ts` (types added, nothing else: the conversion check reports no difference). Its importer and its test name the new path.
 - **Fixed:** an entry whose `source_id`, `prompt_id` or `superseded_by` is not a string (a number, `true`, a list, a map) is now reported as malformed, `<field> must be a string`, in the same way as an entry with a non-string item in `sources`: `lint` lists it, and `manifest`, `related`, `search` and `compile` stop with that message until the entry is corrected. Before, such a value became a link to a non-string id and `related` could crash on it. This also refuses one form that used to be accepted: one of these three fields written as a list that holds an id; write the id as a plain value.
 - **Security (S-38):** the public-address rule for fetches now also refuses the IPv6 documentation range `3fff::/20` (RFC 9637), as it already refused `2001:db8::/32`.
